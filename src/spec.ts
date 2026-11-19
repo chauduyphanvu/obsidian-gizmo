@@ -53,7 +53,7 @@ export interface Panel {
   compute?: Record<string, string | number>;
   select?: string;
   action?: string;
-  row?: Record<string, string>;
+  row?: Record<string, string | number | boolean>;
   name?: string;
   template?: string;
   open?: string;
@@ -147,7 +147,20 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unkn
   const problems: string[] = [];
   const template = ps.inputs.includes(THIS) ? absentThis(ps.template, values[THIS]) : ps.template;
   const filled = resolveInputs(template, values, problems) as Record<string, unknown>;
-  return problems.length ? { errors: problems } : checkTemplate(filled, ps.strict);
+  if (problems.length) return { errors: problems };
+  const r = checkTemplate(filled, ps.strict);
+  return r.panel ? { ...r, panel: keepRowTypes(r.panel, ps.template.row, filled.row) } : r;
+}
+
+/**
+ * Checking makes every `row` value text. A value that was exactly one `$reference` keeps what the
+ * reference gave, so a number picked from a row is saved as a number.
+ */
+function keepRowTypes(p: Panel, written: unknown, filled: unknown): Panel {
+  if (!p.row || !isPlainObject(written) || !isPlainObject(filled)) return p;
+  const typed = Object.keys(written).filter((k) => written[k] instanceof InputRef && k in p.row!);
+  if (typed.length === 0) return p;
+  return { ...p, row: { ...p.row, ...Object.fromEntries(typed.map((k) => [k, filled[k] as string | number | boolean])) } };
 }
 
 /** A `where` condition no value meets: a comparison with nothing to compare against. */

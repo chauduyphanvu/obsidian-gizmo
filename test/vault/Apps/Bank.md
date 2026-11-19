@@ -38,6 +38,7 @@ panels:
     source: flagged
     sort: -at
     item: "{date} · {description} · {amount} — {reason}"
+    format: {amount: "0.00"}
 ---
 Drop a bank export (Date, Description, Amount, Category) into Finance/bank.csv. The bars show what
 left the account each month; pick a row in the table of largest transactions and flag it with a

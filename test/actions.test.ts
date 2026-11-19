@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bodyOf, fileName, fillRow, runActions, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
-import { askersOf, checkPanel, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
+import { askersOf, checkPanel, describePermission, permissionsOf, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
 import { fakeEnv } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12, 0);
@@ -66,6 +66,34 @@ test("row: shapes what is saved; one whole placeholder keeps the value's type", 
   await runActions(p, doc, d);
   assert.deepEqual(data, { picks: [{ title: "Dune", year: 1965, on: "2026-11-18", at: "2026-11-18T12:00" }] });
   assert.equal(log.at(-1), "notify Kept Dune");
+});
+
+test("row: a value that is exactly one $reference keeps the referenced value's type", async () => {
+  const r = readSpec({
+    app: "x",
+    inputs: { n: [3, 4] },
+    panels: [
+      { view: "table", source: "a", select: "tx", columns: ["x"] },
+      {
+        view: "form", fields: { why: "text" }, save: "flagged",
+        row: { amount: "$tx.Amount", paid: "$tx.paid", who: "$tx.Who", id: "$tx.id", text: "$tx.Amount units", count: "$n", literal: 5, why: "{why}" },
+      },
+      { view: "form", fields: { why: "text" }, save: "flagged", row: { amount: "$tx.Amount" } },
+    ],
+  })!;
+  assert.deepEqual(r.errors, []);
+  const form = r.spec!.panels[1];
+  const tx = { Amount: -489.99, paid: false, Who: "Apple", id: "7" };
+  const p = resolvePanel(form, { tx, n: 3 }).panel!;
+  assert.deepEqual(p.row, { amount: -489.99, paid: false, who: "Apple", id: "7", text: "-489.99 units", count: 3, literal: "5", why: "{why}" });
+  const { d, data } = deps();
+  await runActions(p, { why: "too much" }, d);
+  assert.deepEqual(data, { flagged: [{ amount: -489.99, paid: false, who: "Apple", id: "7", text: "-489.99 units", count: 3, literal: "5", why: "too much", at: "2026-11-18T12:00" }] });
+
+  // A row or a list where one value is expected is still the error it was.
+  const only = r.spec!.panels[2];
+  assert.deepEqual(resolvePanel(only, { tx: { Amount: [1, 2] } }).errors, ['"row" has the wrong type (expected a set of name: text)']);
+  assert.deepEqual(resolvePanel(only, { tx: { Amount: { a: 1 } } }).errors, ['"row" has the wrong type (expected a set of name: text)']);
 });
 
 test("save to a folder creates a note named from the row, never over an existing one", async () => {

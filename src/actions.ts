@@ -42,9 +42,13 @@ export function bodyOf(text: string): string {
   return m ? text.slice(m[0].length) : text;
 }
 
-/** `row:` filled from the context; a value that is exactly one `{placeholder}` keeps the value's type. */
-export function fillRow(templates: Record<string, string>, ctx: Row): Row {
+/**
+ * `row:` filled from the context; a value that is exactly one `{placeholder}` keeps the value's
+ * type, and so does one that is already a number or true/false (a whole `$reference` filled in).
+ */
+export function fillRow(templates: Record<string, string | number | boolean>, ctx: Row): Row {
   return Object.fromEntries(Object.entries(templates).map(([key, t]) => {
+    if (typeof t !== "string") return [key, t];
     const whole = t.match(/^\{([^{}]+)\}$/);
     return [key, whole ? getPath(ctx, whole[1].trim()) ?? null : fillTemplate(t, ctx)];
   }));

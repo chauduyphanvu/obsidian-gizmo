@@ -138,7 +138,7 @@ test("Bank: spending per month from the export; pick a transaction and flag it w
   form.dispatchEvent(new window.Event("submit"));
   await settle();
   assert.deepEqual(f.files.get("Apps/Bank data.md")!.fm!.flagged,
-    [{ description: "Online Furniture Co", amount: "-489.99", date: "2026-10-24", reason: "Too much for a shelf", at: "2026-11-18T12:00" }]);
+    [{ description: "Online Furniture Co", amount: -489.99, date: "2026-10-24", reason: "Too much for a shelf", at: "2026-11-18T12:00" }]);
   assert.equal(text(flagged.querySelector("li")), "2026-10-24 · Online Furniture Co · -489.99 — Too much for a shelf");
 
   // A new export lands in the same file: the table follows it.
