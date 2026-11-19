@@ -56,11 +56,35 @@ export function toTime(v: unknown): number | undefined {
     if (v > 1e8) return v * 1000;
     return undefined;
   }
-  if (typeof v === "string" && /^\d{4}-\d{2}-\d{2}/.test(v)) {
+  if (typeof v === "string") {
+    const local = localStamp(v);
+    if (local !== undefined) return local;
+    if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return undefined;
     const t = Date.parse(v.length === 10 ? `${v}T00:00` : v);
     return Number.isNaN(t) ? undefined : t;
   }
   return undefined;
+}
+
+/** The two digits at i as a number, or -1. */
+function twoDigits(s: string, i: number): number {
+  const a = s.charCodeAt(i) - 48, b = s.charCodeAt(i + 1) - 48;
+  return a >= 0 && a <= 9 && b >= 0 && b <= 9 ? a * 10 + b : -1;
+}
+
+/**
+ * `YYYY-MM-DD` and `YYYY-MM-DDTHH:MM`, the forms saving writes, read as Date.parse reads them (local
+ * time, a day past the month's end rolling over) without its general parser. Undefined for any
+ * other text, and for years below 100 or an hour of 24, which Date.parse is left to read.
+ */
+function localStamp(v: string): number | undefined {
+  if (v.length !== 10 && v.length !== 16) return undefined;
+  const century = twoDigits(v, 0), year = twoDigits(v, 2), month = twoDigits(v, 5), day = twoDigits(v, 8);
+  if (century < 1 || year < 0 || v.charCodeAt(4) !== 45 || v.charCodeAt(7) !== 45 || month < 1 || month > 12 || day < 1 || day > 31) return undefined;
+  if (v.length === 10) return new Date(century * 100 + year, month - 1, day).getTime();
+  const hour = twoDigits(v, 11), minute = twoDigits(v, 14);
+  if (v.charCodeAt(10) !== 84 || v.charCodeAt(13) !== 58 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return undefined;
+  return new Date(century * 100 + year, month - 1, day, hour, minute).getTime();
 }
 
 /** Milliseconds in `30s`, `5m`, `1h`, `1d`; a bare number is minutes. */
