@@ -1,4 +1,6 @@
-import { Notice, getAllTags, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
+import {
+  Notice, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf,
+} from "obsidian";
 import { bodyOf, noteText, withLine } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
 import { DiskCache } from "./cache.ts";
@@ -148,7 +150,13 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | und
       return ticked;
     },
     notify: (message) => { new Notice(message); },
-    openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),
+    // openLinkText creates a note when nothing matches, and the text may come from a row or a link.
+    openNote(path, fromPath) {
+      const linkpath = getLinkpath(path);
+      const target = app.metadataCache.getFirstLinkpathDest(linkpath, fromPath) ?? app.vault.getFileByPath(normalizePath(linkpath));
+      if (!target) return void new Notice(`Can't find “${path}”`);
+      void app.workspace.openLinkText(path, fromPath);
+    },
     showSource: () => { if (leaf) void plugin.showSource(leaf, file); },
     showSourceAt: (line) => { if (leaf) void plugin.showSourceAt(leaf, file, line); },
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),

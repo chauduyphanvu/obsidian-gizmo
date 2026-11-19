@@ -217,6 +217,7 @@ test("cells and layout are checked", () => {
 
 test("cards: a grid, the first picture on top, the next column the title, the rest label and value lines", () => {
   const { el, calls } = drawTable({
+    source: "notes", from: "Books",
     layout: "cards", columns: ["cover", "name", "pct", "status"], labels: { pct: "Read" }, format: { pct: "0%" }, cells: { cover: "image", pct: "progress" },
   }, BOOKS);
   assert.equal(el.querySelector("table"), null);

@@ -3,8 +3,8 @@ import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts"
 import type { Panel } from "../spec.ts";
 import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
-  ACTION_KEYS, DATA_KEYS, GROUP_KEYS, busy, editErrors, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowsOf,
-  selectable, shownRows,
+  ACTION_KEYS, DATA_KEYS, GROUP_KEYS, busy, editErrors, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote,
+  rowsOf, selectable, shownRows,
 } from "./common.ts";
 import type { PanelCtx, ViewDef } from "./registry.ts";
 
@@ -52,7 +52,8 @@ function fillCell(box: HTMLElement, p: Panel, ctx: PanelCtx, r: Row, c: string, 
   const kind = cellKind(p, c);
   if (kind) return drawCell(box, kind, v, r, p, ctx, c);
   const text = display(p, c, v, ctx.now, "cell");
-  if ((c === "name" || title) && typeof r.path === "string") noteLink(box, text, r.path, ctx);
+  const note = c === "name" || title ? rowNote(p, r) : undefined;
+  if (note) noteLink(box, text, note, ctx);
   else box.setText(text);
   box.classList.toggle("na-num", typeof v === "number");
 }
@@ -324,7 +325,8 @@ export const list: ViewDef = {
       const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
       const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) + countLabel(p) : plainItem(p, r, ctx.now);
       const li = ul.createEl("li");
-      if (typeof r.path === "string") noteLink(li, text, r.path, ctx);
+      const note = rowNote(p, r);
+      if (note) noteLink(li, text, note, ctx);
       else li.setText(text);
       rowAction(li, p, ctx, () => r);
       selectable(li, p, ctx, r);

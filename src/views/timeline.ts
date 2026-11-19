@@ -3,7 +3,7 @@ import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { itemText } from "./board.ts";
-import { DATA_KEYS, heading, noteLink, rowsOf, selectable, shownRows } from "./common.ts";
+import { DATA_KEYS, heading, noteLink, rowNote, rowsOf, selectable, shownRows } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /** Width of the label column, kept in step with styles.css. */
@@ -60,7 +60,8 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
     const text = itemText(p, row, ctx.now);
     const line = list.createDiv({ cls: "na-tl-row" });
     const label = line.createDiv({ cls: "na-tl-label", attr: { title: text } });
-    if (typeof row.path === "string") noteLink(label, text, row.path, ctx);
+    const note = rowNote(p, row);
+    if (note) noteLink(label, text, note, ctx);
     else label.setText(text);
     const detail = `${text}: ${end === undefined ? when(start) : `${when(start)} to ${when(end)}`}`;
     const mark = line.createDiv({ cls: "na-tl-track" }).createDiv({

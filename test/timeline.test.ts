@@ -87,7 +87,7 @@ test("a label is the item template, else name, else title; it is cut short by th
 
 test("a note's label is a link that opens it", () => {
   const { ctx, opened } = fakeCtx();
-  const { el } = mount({}, ROWS, ctx);
+  const { el } = mount({ source: "notes", from: "Projects" }, ROWS, ctx);
   const links = [...el.querySelectorAll(".na-tl-label a.internal-link")] as HTMLElement[];
   assert.deepEqual(links.map((a) => text(a)), ["Kitchen remodel with a very long name indeed", "Garden"]);
   links[1].click();

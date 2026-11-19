@@ -160,6 +160,15 @@ export function rowsOf(data: unknown): Row[] {
   return data === undefined ? [] : [{ value: data }];
 }
 
+/**
+ * The note a row is, by its `path`, when the panel reads notes from the vault (notes, tasks, a
+ * base); undefined for rows from anywhere else, where `path` is only data and links nowhere.
+ */
+export function rowNote(p: Panel, row: Row): string | undefined {
+  const kind = p.source ? sourceDef(p.source).id : undefined;
+  return (kind === "notes" || kind === "tasks" || kind === "base") && typeof row.path === "string" ? row.path : undefined;
+}
+
 export function noteLink(el: HTMLElement, text: string, path: string, ctx: PanelCtx): void {
   const a = el.createEl("a", { cls: "internal-link", text, href: "#" });
   a.addEventListener("click", (e) => { e.preventDefault(); ctx.openNote(path); });

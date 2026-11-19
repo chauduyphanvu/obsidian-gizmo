@@ -2,7 +2,7 @@ import { fillWith, getPath, type Row } from "../data.ts";
 import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, editErrors, heading, noteLink, rowKey, rowsOf, selectable } from "./common.ts";
+import { DATA_KEYS, editErrors, heading, noteLink, rowKey, rowNote, rowsOf, selectable } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 /** A card's (or timeline row's) text: the `item` template, else the row's name, title, or first text value; each shown as the panel's `values` and `format` say. */
@@ -106,7 +106,8 @@ export const board: ViewDef = {
         const card = parent.createDiv({ cls: "na-board-card", attr: { draggable: "true" } });
         if (key !== undefined) card.setAttribute("data-key", String(key));
         const title = card.createDiv({ cls: "na-board-text" });
-        if (typeof row.path === "string") noteLink(title, text, row.path, ctx);
+        const note = rowNote(p, row);
+        if (note) noteLink(title, text, note, ctx);
         else title.setText(text);
         card.addEventListener("dragstart", (e) => {
           dragging = { row, from: column, card };
