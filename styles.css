@@ -220,6 +220,8 @@
   height: auto;
   font: inherit;
   text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
   color: var(--text-accent);
   text-decoration: underline;
   cursor: pointer;
