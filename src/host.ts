@@ -121,5 +121,6 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
     openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),
     showSource: () => void plugin.showSource(leaf, file),
     now: () => new Date(),
+    opened: (path) => plugin.background?.opened(path),
   };
 }

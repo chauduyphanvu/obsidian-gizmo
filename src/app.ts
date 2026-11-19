@@ -47,6 +47,8 @@ export interface AppEnv {
   openNote(path: string, fromPath: string): void;
   showSource(): void;
   now(): Date;
+  /** Tells the background service the app was opened, so what it records is sampled if due. */
+  opened?(appPath: string): void;
 }
 
 interface Mounted {
@@ -183,6 +185,7 @@ export class AppController {
     this.destroyPanels();
     this.definition = "";
     this.reconcile();
+    this.env.opened?.(this.appPath);
   }
 
   dispose(): void {

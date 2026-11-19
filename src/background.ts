@@ -1,6 +1,6 @@
 import type { ActionDeps } from "./actions.ts";
 import { panelIds } from "./app.ts";
-import { fillTemplate, parseDuration, toNumber, valueOf, type Row } from "./data.ts";
+import { fillTemplate, parseDuration, stampParts, toNumber, toTime, valueOf, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
 import { streak } from "./group.ts";
@@ -8,7 +8,7 @@ import { sourceDef } from "./sources/registry.ts";
 import {
   permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
-import { defaultDataPath } from "./store.ts";
+import { defaultDataPath, resolveList } from "./store.ts";
 import { rowsOf } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 
@@ -17,6 +17,8 @@ export const TICK_MS = 60_000;
 export const DEFAULT_REFRESH_MS = 10 * 60_000;
 /** The shortest `record` interval; shorter ones are treated as this. */
 export const MIN_RECORD_MS = 60_000;
+/** A recorded list keeps this many rows, the newest. */
+export const MAX_SAMPLES = 10_000;
 
 /** What the background shows and does in Obsidian: notices, commands, the status bar, opening an app. */
 export interface BackgroundSink {
@@ -81,6 +83,10 @@ export class Background {
   private env: BackgroundEnv;
   private apps = new Map<string, AppEntry>();
   private running = false;
+  /** Blocks being sampled now (app path and block), so a tick and an open don't both write one. */
+  private sampling = new Set<string>();
+  /** Problems already told this session. */
+  private told = new Set<string>();
 
   constructor(env: BackgroundEnv) {
     this.env = env;
@@ -115,8 +121,16 @@ export class Background {
     await Promise.all([...this.apps.values()].map((entry) => this.work(entry).catch(() => {})));
   }
 
+  /** An app was opened: what it records is sampled now if due, and a problem with it is told again. */
+  opened(appPath: string): void {
+    const entry = this.running ? this.apps.get(appPath) ?? this.index(appPath) : undefined;
+    if (!entry || !this.granted(entry)) return;
+    for (const job of entry.records) void this.sample(entry, job, true).catch(() => {});
+  }
+
   private async work(entry: AppEntry): Promise<void> {
     if (!this.granted(entry)) return;
+    for (const job of entry.records) await this.sample(entry, job, false).catch(() => {});
   }
 
   private granted(entry: AppEntry): boolean {
@@ -141,6 +155,53 @@ export class Background {
     } catch (e) {
       return { error: (e as Error).message };
     }
+  }
+
+  // ---- Record -------------------------------------------------------------------------------
+
+  /**
+   * Appends one sample of a block's output (`{at, …the row}`) to its list in the data note, unless
+   * the list's last row is younger than the interval; that row's `at` is the only state, so it
+   * holds across restarts. A failed fetch writes nothing and is tried again on the next tick.
+   */
+  private async sample(entry: AppEntry, job: RecordJob, opened: boolean): Promise<void> {
+    const key = `${entry.path}\n${job.block}`;
+    if (this.sampling.has(key)) return;
+    this.sampling.add(key);
+    try {
+      const now = this.env.now();
+      const last = lastSample(resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {}));
+      if (last !== undefined && now.getTime() - last < job.everyMs) return;
+      const ps = this.blockPanel(entry, job.block);
+      const r = ps && await this.evaluate(entry.path, ps, true);
+      if (!r || !("panel" in r)) return;
+      const row = oneRow(r.rows);
+      if (!row) return this.problem(entry, `data.${job.block}: record needs one row; add limit: 1 or pick`, opened);
+      const at = stampParts(now).at;
+      const sample: Row = { at, ...row };
+      sample.at = at;
+      await this.env.actionDeps(entry.path, entry.dataPath).writeFrontmatter(entry.dataPath, (fm) => {
+        const list = Array.isArray(fm[job.list]) ? fm[job.list] as unknown[] : [];
+        fm[job.list] = [...list, sample].slice(-MAX_SAMPLES);
+      });
+    } finally {
+      this.sampling.delete(key);
+    }
+  }
+
+  /** The block as a panel naming it gets it: its chain's stages and keys, its `$names` filled when evaluated. */
+  private blockPanel(entry: AppEntry, block: string): PanelSpec | undefined {
+    const fm = this.env.frontmatter(entry.path) ?? {};
+    const app = { app: "", inputs: fm.inputs, data: fm.data, panels: [{ view: "table", source: block }] };
+    return readSpec(app, { now: this.env.now(), notes: this.env.notes, path: entry.path })?.spec?.panels[0];
+  }
+
+  /** A problem only data can show: told once a session, and again whenever the app is opened. */
+  private problem(entry: AppEntry, message: string, opened: boolean): void {
+    const key = `${entry.path}\n${message}`;
+    if (!opened && this.told.has(key)) return;
+    this.told.add(key);
+    this.env.sink.notify(`${entry.name}: ${message}`);
   }
 
   // ---- Index --------------------------------------------------------------------------------
@@ -179,6 +240,18 @@ export class Background {
     this.apps.set(path, entry);
     return entry;
   }
+}
+
+/** When a list's last row was saved, from its `at`. */
+function lastSample(list: unknown): number | undefined {
+  const last = Array.isArray(list) ? list[list.length - 1] : undefined;
+  return last !== null && typeof last === "object" ? toTime((last as Row).at) : undefined;
+}
+
+/** A block's output as one row: an object, or a list holding exactly one. */
+function oneRow(data: unknown): Row | undefined {
+  const row = Array.isArray(data) ? (data.length === 1 ? data[0] : undefined) : data;
+  return row !== null && typeof row === "object" && !Array.isArray(row) ? { ...(row as Row) } : undefined;
 }
 
 /** The blocks an app records: root blocks with `record` on a web source. */
