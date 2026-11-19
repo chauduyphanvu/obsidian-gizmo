@@ -1,6 +1,7 @@
 import {
   MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
+import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
 import { dropGrants, moveGrants } from "./hosted.ts";
@@ -21,13 +22,15 @@ export default class NoteAppsPlugin extends Plugin {
   store: StoredData = { grants: {} };
   /** Shared by every open app: web cache, notes index, change notifications. */
   dataLayer!: DataLayer;
+  /** Works for allowed apps while their notes are closed: records, shortcuts, status bar, alerts. */
+  background: ReturnType<typeof registerBackground> | undefined;
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
 
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
-    this.dataLayer = new DataLayer(obsidianHost(this.app));
+    this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
     // Notes that change reach the data layer through the metadata event above; any other file only through here.
@@ -67,6 +70,7 @@ export default class NoteAppsPlugin extends Plugin {
         return true;
       },
     });
+    this.background = registerBackground(this);
   }
 
   onunload(): void {

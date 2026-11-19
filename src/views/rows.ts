@@ -218,7 +218,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn 
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "action", ...ACTION_KEYS, "edit"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "action", ...ACTION_KEYS, "edit", "alert"],
   span: 4,
   needsSource: true,
   validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p), ...cellProblems(p)],
@@ -257,6 +257,8 @@ export const table: ViewDef = {
       panel: { view: "table", source: "notes", from: "Books", compute: { left: "pages - read" }, edit: ["left", "path"] },
       errors: ['edit: "left" is computed', 'edit: "path" comes from the note\'s file, not its properties'],
     },
+    { panel: { view: "table", source: "spending", where: { at: "this month" }, alert: { amount: "> 100" } } },
+    { panel: { view: "table", source: "spending", alert: "> 100" }, errors: ['alert on a table needs a field, e.g. alert: {amount: "> 100"}'] },
   ],
   mount(el, p, ctx) {
     let drawn: Drawn | undefined;
@@ -290,7 +292,7 @@ function plainItem(p: Panel, r: Row, now: Date): string {
 
 export const list: ViewDef = {
   id: "list",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "action", ...ACTION_KEYS],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "action", ...ACTION_KEYS, "alert"],
   span: 4,
   needsSource: true,
   validate: (p) => [...rowActionErrors("list", p), ...formatErrors(p)],

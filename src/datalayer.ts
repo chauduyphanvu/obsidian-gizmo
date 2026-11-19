@@ -1,3 +1,4 @@
+import type { CacheEntry } from "./cache.ts";
 import { parseBody, stampParts, type Row } from "./data.ts";
 import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
@@ -30,6 +31,10 @@ export interface Host {
   readText(path: string): Promise<string>;
   /** YAML text as data; throws when it isn't YAML. */
   parseYaml(text: string): unknown;
+  /** The disk copy of a web response, by its cache key (which holds secret placeholders, never secrets). */
+  cacheRead?(key: string): Promise<CacheEntry | undefined>;
+  /** Keeps a web response on disk; never rejects. */
+  cacheWrite?(key: string, entry: CacheEntry): Promise<void>;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -93,12 +98,34 @@ export class DataLayer {
     return compilePipeline(p, opts.now)(await this.rawData(source, p, files, opts));
   }
 
+  /**
+   * A panel's data from the disk copies of the web responses it reads, through its pipeline, and
+   * when the oldest of them was fetched. Undefined when it reads none, or one has no copy.
+   */
+  async cachedPanelData(source: string | undefined, p: Panel, files: AppFiles, now: Date): Promise<{ data: unknown; at: number } | undefined> {
+    if (!source) return undefined;
+    let at: number | undefined;
+    // The source loads as usual, with each web request answered from disk.
+    const offline = Object.create(this) as DataLayer;
+    offline.fetch = async (url, headers, _ttlMs, _force, body) => {
+      const copy = await this.cached(url, headers, body);
+      if (!copy) throw new Error("no copy");
+      at = Math.min(at ?? Infinity, copy.at);
+      return copy.data;
+    };
+    try {
+      const data = await sourceDef(source).load(withSource(p, source), files, offline, { ttlMs: 0, now });
+      return at === undefined ? undefined : { data: compilePipeline(p, now)(data), at };
+    } catch {
+      return undefined;
+    }
+  }
+
   // ---- Web ----------------------------------------------------------------------------------
 
   /** With a `body`, the request is a POST; the same URL with another body is another request. */
   fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false, body?: string | Record<string, unknown>): Promise<unknown> {
-    // The key holds the {secret:id} placeholders, never the secrets themselves.
-    const key = `${source}|${JSON.stringify(headers ?? {})}${body === undefined ? "" : `|${JSON.stringify(body)}`}`;
+    const key = cacheKey(source, headers, body);
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
     const promise = (async () => {
@@ -106,7 +133,9 @@ export class DataLayer {
       const init = body === undefined ? undefined : this.post(body, filled);
       const res = await this.host.fetch(this.withSecrets(source), filled, init);
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
-      return parseBody(res.text, res.contentType, new Date(this.host.now()));
+      const data = parseBody(res.text, res.contentType, new Date(this.host.now()));
+      void this.host.cacheWrite?.(key, { at: this.host.now(), text: res.text, contentType: res.contentType });
+      return data;
     })();
     this.http.set(key, { at: this.host.now(), promise });
     // A failure isn't cached: the next render tries again.
@@ -119,6 +148,17 @@ export class DataLayer {
     if (typeof body === "string") return { method: "POST", body: this.withSecrets(body) };
     if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["content-type"] = "application/json";
     return { method: "POST", body: JSON.stringify(body, (_, v) => (typeof v === "string" ? this.withSecrets(v) : v)) };
+  }
+
+  /** The disk copy of one web request, parsed as a fresh response is; undefined when there is none. */
+  async cached(source: string, headers: Record<string, string> | undefined, body?: string | Record<string, unknown>): Promise<{ data: unknown; at: number } | undefined> {
+    const entry = await this.host.cacheRead?.(cacheKey(source, headers, body));
+    if (!entry) return undefined;
+    try {
+      return { data: parseBody(entry.text, entry.contentType, new Date(this.host.now())), at: entry.at };
+    } catch {
+      return undefined;
+    }
   }
 
   private withSecrets(text: string): string {
@@ -268,6 +308,11 @@ export class DataLayer {
       }
     });
   }
+}
+
+/** What a web response is cached under, in memory and on disk: its {secret:id} placeholders, never the secrets. */
+export function cacheKey(source: string, headers: Record<string, string> | undefined, body?: string | Record<string, unknown>): string {
+  return `${source}|${JSON.stringify(headers ?? {})}${body === undefined ? "" : `|${JSON.stringify(body)}`}`;
 }
 
 function withSource(p: Panel, source: string): Panel {

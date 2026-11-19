@@ -61,7 +61,7 @@ const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format", "values", "compare"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p), ...checkCompare(p)],
@@ -82,6 +82,9 @@ export const number: ViewDef = {
     { panel: { view: "number", source: "stretches", agg: "streak" }, errors: ["agg: streak needs group (a date field) and per"] },
     { panel: { view: "number", source: "sessions", group: "at", per: "week", agg: "sum", field: "minutes" }, errors: ["number can't group rows; for one period use where (e.g. where: {at: this week}) with agg"] },
     { panel: { view: "number", field: "weight" }, errors: ["number needs a source"] },
+    { panel: { view: "number", title: "Doses today", source: "doses", where: { at: "today" }, agg: "count", pin: "status" } },
+    { panel: { view: "number", source: "doses", pin: "sidebar" }, errors: ["pin must be status"] },
+    { panel: { view: "number", source: "https://services.swpc.noaa.gov/kp.json", field: "kp_index", alert: ">= 5" } },
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);
@@ -100,7 +103,7 @@ export const number: ViewDef = {
 
 export const text: ViewDef = {
   id: "text",
-  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values"],
+  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values", "pin", "alert"],
   span: 1,
   validate: (p) => [...(p.text ? [] : ["text needs a text template"]), ...formatErrors(p)],
   examples: [
@@ -111,6 +114,8 @@ export const text: ViewDef = {
     { panel: { view: "text", text: "Plain words work too" } },
     { panel: { view: "text", source: "weights" }, errors: ["text needs a text template"] },
     { panel: { view: "text", source: "spending", text: "{amount}", format: "money" }, errors: ['format "money" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
+    { panel: { view: "text", source: "https://api.example.com/now", pick: "current", text: "{temp}°C", pin: "status" } },
+    { panel: { view: "text", text: "Plain", alert: { temp: "> 30" } }, errors: ["alert needs a source"] },
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);
@@ -122,7 +127,7 @@ export const text: ViewDef = {
 
 export const progress: ViewDef = {
   id: "progress",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "max", "label", "unit", "decimals", "format"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "max", "label", "unit", "decimals", "format", "alert"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p)],
@@ -130,6 +135,7 @@ export const progress: ViewDef = {
     { panel: { view: "progress", source: "notes", from: "Books", max: 24, unit: "books" } },
     { panel: { view: "progress", source: "spending", field: "amount", agg: "sum", max: 500, format: "$0" } },
     { panel: { view: "progress", max: 8 }, errors: ["progress needs a source"] },
+    { panel: { view: "progress", source: "notes", from: "Books", max: 24, alert: ">= 24" } },
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);

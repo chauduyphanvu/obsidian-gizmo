@@ -1,6 +1,7 @@
 import { Notice, getAllTags, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
 import { bodyOf } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
+import { DiskCache } from "./cache.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type NoteAppsPlugin from "./main.ts";
 import { tickLine } from "./sources/tasks.ts";
@@ -11,8 +12,10 @@ function info(f: TFile): FileInfo {
   return { path: f.path, basename: f.basename, mtime: f.stat.mtime, ctime: f.stat.ctime };
 }
 
-export function obsidianHost(app: App): Host {
+/** `pluginDir` (the plugin's folder) turns on the disk copy of web responses, in its `cache` folder. */
+export function obsidianHost(app: App, pluginDir?: string): Host {
   const file = (path: string) => app.vault.getFileByPath(path);
+  const disk = pluginDir ? new DiskCache(app.vault.adapter, normalizePath(`${pluginDir}/cache`)) : undefined;
   return {
     async fetch(url, headers, init) {
       // requestUrl takes the content type apart from the other headers.
@@ -56,6 +59,8 @@ export function obsidianHost(app: App): Host {
       return app.vault.cachedRead(f);
     },
     parseYaml: (text) => parseYaml(text) as unknown,
+    cacheRead: async (key) => disk?.read(key),
+    cacheWrite: async (key, entry) => disk?.write(key, entry),
   };
 }
 
@@ -155,5 +160,7 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | und
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
     copy: (text) => { void navigator.clipboard.writeText(text).catch(() => new Notice("Couldn't copy to the clipboard")); },
     now: () => new Date(),
+    opened: (path) => plugin.background?.opened(path),
+    alerts: plugin.background?.alerts,
   };
 }

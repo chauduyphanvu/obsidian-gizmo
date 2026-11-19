@@ -1,4 +1,5 @@
 import { runActions as runPanelActions } from "./actions.ts";
+import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { basename, typedName, type NoteReader } from "./expand.ts";
@@ -18,9 +19,12 @@ import { sourceDef } from "./sources/registry.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
 import { editErrors, editableSource } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
+import type { AlertFeed } from "./views/alerts.ts";
 import { formatClock } from "./views/timer.ts";
 
 const CACHE_MS = 5 * 60_000;
+/** How long a panel waits for the network before painting the disk copy. */
+const DISK_FIRST_MS = 50;
 
 /** What an app needs from Obsidian; the view passes the real thing, tests a fake. */
 export interface AppEnv {
@@ -59,6 +63,10 @@ export interface AppEnv {
   /** Puts text on the clipboard. */
   copy(text: string): void;
   now(): Date;
+  /** Tells the background service the app was opened, so what it records is sampled if due. */
+  opened?(appPath: string): void;
+  /** Alerts true now across the vault, from the background service. */
+  alerts?: AlertFeed;
 }
 
 /** What an app keeps while it is open: input values, selections, the open tab and its timers. */
@@ -240,6 +248,7 @@ export class AppController {
       },
       select: (name, row) => this.setSelection(name, row),
       selected: (name) => this.selections.get(name),
+      alerts: env.alerts,
     };
   }
 
@@ -250,6 +259,7 @@ export class AppController {
     this.reconcile();
     // Timers kept in memory from an earlier drawing of this app go on counting.
     if ([...this.timers.values()].some((s) => s.endsAt)) this.startTicking();
+    this.env.opened?.(this.appPath);
   }
 
   /** Looks again at what may have changed without a note changing: whether the app is allowed now. */
@@ -656,20 +666,34 @@ export class AppController {
 
   private async loadPanel(m: Mounted): Promise<void> {
     const seq = ++m.seq;
+    const current = () => seq === m.seq && this.mounted.get(m.id) === m;
+    const now = this.env.now();
+    const fromDisk = () => this.env.data.cachedPanelData(m.source, m.p, this.files(), now);
+    let answered = false;
+    // A web response slow to come (memory is cold after a restart) is painted from disk meanwhile.
+    setTimeout(() => {
+      if (!answered && current()) void fromDisk().then((copy) => { if (copy && !answered && current()) this.show(m, copy.data, copy.at); });
+    }, DISK_FIRST_MS);
     try {
       const data = await this.env.data.panelData(m.source, m.p, this.files(), {
         ttlMs: this.spec?.refreshMs ?? CACHE_MS,
-        now: this.env.now(),
+        now,
       });
-      if (seq !== m.seq || this.mounted.get(m.id) !== m) return;
+      answered = true;
+      if (!current()) return;
       this.show(m, data);
     } catch (e) {
-      if (seq !== m.seq || this.mounted.get(m.id) !== m) return;
-      this.showPanelError(m, (e as Error).message);
+      answered = true;
+      if (!current()) return;
+      const copy = await fromDisk();
+      if (!current()) return;
+      if (copy) this.show(m, copy.data, copy.at);
+      else this.showPanelError(m, (e as Error).message);
     }
   }
 
-  private show(m: Mounted, data: unknown): void {
+  /** `asOf`: the data is a disk copy fetched then, and says so. */
+  private show(m: Mounted, data: unknown, asOf?: number): void {
     if (m.remount) {
       m.handle.destroy?.();
       m.el.empty();
@@ -678,9 +702,21 @@ export class AppController {
     }
     m.el.removeClass("na-loading", "na-error", "na-stale");
     m.handle.update(data);
+    this.markAsOf(m, asOf);
+  }
+
+  /**
+   * Marks a panel that shows a disk copy with the copy's age, or clears the mark. CSS draws it from
+   * the attribute, so it stays while a view redraws itself (a chart on resize).
+   */
+  private markAsOf(m: Mounted, at?: number): void {
+    m.el.classList.toggle("na-asof", at !== undefined);
+    if (at === undefined) m.el.removeAttribute("data-asof");
+    else m.el.setAttr("data-asof", asOfText(at, this.env.now().getTime()));
   }
 
   private showPanelError(m: Mounted, message: string): void {
+    this.markAsOf(m);
     m.el.removeClass("na-loading", "na-stale");
     m.el.addClass("na-error");
     m.el.empty();
@@ -699,6 +735,7 @@ export class AppController {
     m.remount = true;
     m.seq++;
     if (waiting === undefined) return this.showPanelError(m, errors.join("; "));
+    this.markAsOf(m);
     m.el.removeClass("na-loading", "na-error", "na-stale");
     m.el.empty();
     const title = plainTitle(m.ps);

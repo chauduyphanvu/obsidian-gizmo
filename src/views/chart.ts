@@ -251,7 +251,7 @@ function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "goal", ...(kind === "bar" ? ["select", "stack"] : [])],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", ...(kind === "bar" ? ["select", "stack"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {

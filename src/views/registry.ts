@@ -2,6 +2,7 @@ import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import { board } from "./board.ts";
 import { calendar } from "./calendar.ts";
+import { alerts, type AlertFeed } from "./alerts.ts";
 import { bar, line } from "./chart.ts";
 import { button, checklist, form } from "./inputs.ts";
 import { pie } from "./pie.ts";
@@ -43,6 +44,8 @@ export interface PanelCtx {
    * updates when the write lands. Absent outside an app.
    */
   setProperty?(field: string, value: unknown): Promise<void>;
+  /** Alerts true now across the vault, when the plugin's background service runs. */
+  alerts?: AlertFeed;
 }
 
 export interface PanelHandle {
@@ -77,6 +80,7 @@ export interface ViewDef {
 export const VIEW_DEFS: readonly ViewDef[] = [
   number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
   calendar, board, scatter, timeline,
+  alerts,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));

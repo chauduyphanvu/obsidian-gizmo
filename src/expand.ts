@@ -122,6 +122,13 @@ export function readBlocks(value: unknown, errors: string[], names: ReadonlySet<
     else blocks.set(name, block);
   }
   checkChains(blocks, errors);
+  // Only a chain's root still holds `record` here; it samples a web source while the app is closed.
+  for (const [name, block] of blocks) {
+    if (block.record === undefined || sourceDef(String(block.source)).id === "url") continue;
+    errors.push(`data.${name}: record needs a URL source`);
+    delete block.record;
+    delete block.into;
+  }
   return blocks;
 }
 

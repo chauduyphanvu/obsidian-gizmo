@@ -6,7 +6,7 @@ import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 export const button: ViewDef = {
   id: "button",
-  keys: [...ACTION_KEYS, "label"],
+  keys: [...ACTION_KEYS, "label", "shortcut"],
   span: 1,
   validate: (p) => needsAction("button", p),
   examples: [
@@ -15,6 +15,8 @@ export const button: ViewDef = {
     { panel: { view: "button", notify: "Hi", unit: "kg" }, errors: ['"unit" doesn\'t apply to button'] },
     { panel: { view: "button", label: "Today's note", open: "Daily/{date}" } },
     { panel: { view: "button", label: "New idea", save: "Ideas/", row: { status: "new" }, template: "[[Idea template]]" } },
+    { panel: { view: "button", label: "Took meds", save: "doses", shortcut: "took-meds" } },
+    { panel: { view: "button", label: "Took meds", save: "doses", shortcut: "Took meds" }, errors: ["shortcut must be lowercase letters, digits and -"] },
   ],
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
@@ -94,7 +96,7 @@ function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
 
 export const form: ViewDef = {
   id: "form",
-  keys: [...ACTION_KEYS, "fields", "label"],
+  keys: [...ACTION_KEYS, "fields", "label", "shortcut"],
   span: 4,
   implicitSource: (p) => (p.target?.kind === "this" ? THIS : undefined),
   validate(p) {
@@ -112,6 +114,7 @@ export const form: ViewDef = {
     { panel: { view: "form", save: "books" }, errors: ["form needs fields"] },
     { panel: { view: "form", fields: { page: "number", status: ["to read", "reading", "done"] }, save: "this" } },
     { panel: { view: "form", fields: { page: "number" }, save: "this", notify: "Saved" }, errors: ['"notify" doesn\'t apply with save: this, which saves each field as it changes'] },
+    { panel: { view: "form", fields: { weight: "number" }, save: "weights", shortcut: "weigh-in" } },
   ],
   mount: (el, p, ctx) => (p.target?.kind === "this" ? propertyForm(el, p, ctx) : redraw(el, () => {
     heading(el, p);

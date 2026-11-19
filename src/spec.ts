@@ -5,6 +5,7 @@ import { RESERVED, storeTarget } from "./store.ts";
 import {
   InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, type InputDef, type InputValue,
 } from "./template.ts";
+import { namesIn } from "./template.ts";
 import {
   Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, readBlocks, readFor, selectOf, typedName,
   type NoteReader, type Produced, type Stage,
@@ -12,6 +13,7 @@ import {
 import type { PipelineKeys } from "./pipeline.ts";
 import { COMMON_KEYS, KEY_TYPES, editPermissions, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
+import { backgroundKeyErrors } from "./views/alerts.ts";
 
 export { parseDuration };
 
@@ -269,6 +271,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(p.save && RESERVED.includes(p.save) && p.target?.kind !== "this" ? [`save can't use "${p.save}", which names part of the app`] : []),
     ...(p.target?.kind === "this" && def.id !== "form" ? ["save: this works on a form"] : []),
     ...(p.target?.kind === "folder" && !p.target.folder ? ["save needs a folder before the /, e.g. save: Books/"] : []),
+    ...backgroundKeyErrors(p),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
 }
@@ -314,7 +317,15 @@ export function readSpec(
   const scope = expander.appScope(blocks, names);
   const isSelection = (n: string) => selects.has(n) || expander.selections.has(n);
   // Names whose values only come at run time, from whoever types or picks them.
-  const late = (n: string) => n === THIS || isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
+  const typed = (n: string) => isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
+  const late = (n: string) => n === THIS || typed(n);
+  // What runs while the app is closed fills its inputs with their starting values; nobody types or picks there.
+  const notLate = (key: string, n: string) => `${key} can't depend on $${typedName(n)}, which has no value until someone ${isSelection(n) ? "picks a row" : "types"}`;
+  for (const [name, block] of blocks) {
+    const n = block.record === undefined ? undefined : [...namesIn(block, names)].find(typed);
+    if (n !== undefined) errors.push(`data.${name}: ${notLate("record", n)}`);
+  }
+  const shortcuts = new Set<string>();
 
   const panels: PanelSpec[] = [];
   const used = new Set<string>();
@@ -360,6 +371,13 @@ export function readSpec(
         break;
       }
     }
+    for (const key of ["shortcut", "pin", "alert"] as const) {
+      const n = r.panel?.[key] !== undefined ? uses.find(late) : undefined;
+      if (n !== undefined) errors.push(at(notLate(key, n)));
+    }
+    const shortcut = r.panel?.shortcut;
+    if (shortcut !== undefined && shortcuts.has(shortcut)) errors.push(at(`two panels use the shortcut "${shortcut}"`));
+    if (shortcut !== undefined) shortcuts.add(shortcut);
     if (r.panel) panels.push({ template: p.template, panel: r.panel, label: p.label, inputs: uses, strict, writtenIn: p.writtenIn });
   };
   // Each entry expands to one or more panels, checked in turn so each panel's problems stay together.
@@ -538,7 +556,14 @@ export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
   const out = new Set<string>();
   for (const { panel } of spec.panels) for (const [perm] of panelPermissions(panel, selfPath)) out.add(perm);
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
+  for (const [perm] of recordPermissions(spec, selfPath)) out.add(perm);
   return [...out].sort();
+}
+
+/** A block that records is fetched while its app is closed, so it asks for what its source needs even when no panel shows it. */
+function recordPermissions(spec: AppSpec, selfPath: string): [string, keyof Panel][] {
+  return Object.values(spec.blocks).flatMap((b) => (b.record === undefined ? []
+    : sourceDef(String(b.source)).permissions({ view: "table", source: String(b.source), headers: b.headers as Panel["headers"] }, selfPath)));
 }
 
 /** For each permission, the notes whose keys ask for it: the app itself or the components it uses. */
@@ -552,6 +577,7 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
     for (const [perm, key] of panelPermissions(ps.panel, selfPath)) add(perm, ps.writtenIn[key] ?? selfPath);
   }
   if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
+  for (const [perm] of recordPermissions(spec, selfPath)) add(perm, selfPath);
   return out;
 }
 
