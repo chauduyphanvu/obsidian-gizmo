@@ -192,6 +192,7 @@ export class AppController {
     this.grantKey = hosting?.grantKey ?? appPath;
     this.hostPath = hosting?.hostPath ?? appPath;
     this.memory = hosting?.memory ?? newMemory();
+    this.readHost();
     this.shell = root.createDiv({ cls: "note-app" });
     const self = this;
     this.ctx = {
