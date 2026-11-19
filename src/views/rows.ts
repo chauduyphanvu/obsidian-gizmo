@@ -43,6 +43,18 @@ function cellProblems(p: Panel): string[] {
   return [...kinds, ...(p.layout !== undefined && p.layout !== "cards" ? ["layout must be cards"] : [])];
 }
 
+/** A value shown as a number, so set right-aligned: a number that `values` doesn't turn into words. */
+function numeric(p: Panel, c: string, v: unknown): boolean {
+  return typeof v === "number" && mapped(p, c, v) === undefined;
+}
+
+/** A column of plain numbers (gaps allowed), whose heading sits over them on the right. */
+function numericColumn(p: Panel, c: string, rows: Row[]): boolean {
+  if (cellKind(p, c) || p.edit?.includes(c)) return false;
+  const values = rows.map((r) => getPath(r, c)).filter((v) => v !== undefined && v !== null && v !== "");
+  return values.length > 0 && values.every((v) => numeric(p, c, v));
+}
+
 /**
  * A cell's value: drawn as its `cells` kind, else as text. A note's name links to the note, and so
  * does a card's title, when the row is a note.
@@ -55,7 +67,7 @@ function fillCell(box: HTMLElement, p: Panel, ctx: PanelCtx, r: Row, c: string, 
   const note = c === "name" || title ? rowNote(p, r) : undefined;
   if (note) noteLink(box, text, note, ctx);
   else box.setText(text);
-  box.classList.toggle("na-num", typeof v === "number");
+  box.classList.toggle("na-num", numeric(p, c, v));
 }
 
 /** How an edited column is typed in: the block's field type when it has `fields`, else what its values are. */
@@ -194,7 +206,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn 
   } else {
     const table = el.createDiv({ cls: "na-table-wrap" }).createEl("table", { cls: "na-table" });
     const head = table.createEl("thead").createEl("tr");
-    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c) });
+    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows) ? "na-num" : undefined });
     if (p.action) head.createEl("th");
     parent = table.createEl("tbody");
   }

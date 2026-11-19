@@ -143,6 +143,7 @@
   border-bottom: 1px solid var(--background-modifier-border);
 }
 .note-app .na-table td.na-num { text-align: right; font-variant-numeric: tabular-nums; }
+.note-app .na-table th.na-num { text-align: right; }
 .note-app .na-list, .note-app .na-checklist { margin: 0; padding-left: var(--size-4-5); }
 .note-app .na-checklist { list-style: none; padding-left: 0; }
 .note-app .na-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }

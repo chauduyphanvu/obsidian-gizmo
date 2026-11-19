@@ -97,6 +97,14 @@ test("values win over format; an unmapped value is shown as usual", () => {
   assert.deepEqual([...el.querySelectorAll("td")].map((td) => text_(td)), ["Clear", "2.00"]);
 });
 
+test("a number shown as words sits on the left; a column of numbers is right-aligned, its heading too", () => {
+  const el = draw(table, { source: "s", columns: ["time", "weathercode", "hi"], values: SKY }, daily);
+  const head = [...el.querySelectorAll("th")].map((th) => th.classList.contains("na-num"));
+  const first = [...el.querySelector("tbody tr")!.querySelectorAll("td")].map((td) => [text_(td), td.classList.contains("na-num")]);
+  assert.deepEqual(head, [false, false, true]);
+  assert.deepEqual(first, [["2026-11-16", false], ["Clear", false], ["12", true]]);
+});
+
 test("values apply to the field of a number panel and the placeholders of a text panel", () => {
   const n = draw(number, { source: "s", field: "weathercode", values: SKY, unit: "code" }, { weathercode: 3 });
   assert.equal(text_(n.querySelector(".na-big")), "Overcast");
