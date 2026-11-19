@@ -1,6 +1,6 @@
 import { withLine } from "./actions.ts";
 import { formatValue, type Row } from "./data.ts";
-import { basename } from "./expand.ts";
+import { basename } from "./store.ts";
 
 /**
  * One change an app made to the vault, with what undoing it needs: what was there before, and

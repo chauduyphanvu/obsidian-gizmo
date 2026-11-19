@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { noteText, runActions, withLine, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
 import { HostedApp, dropGrants, isAllowed, moveGrants } from "../src/hosted.ts";
-import { checkPanel, isComponent, readSpec, type Panel } from "../src/spec.ts";
+import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
+import { isComponent } from "../src/store.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
 
 // Data that comes from the web, a link or a typed value must never become what makes a note run.

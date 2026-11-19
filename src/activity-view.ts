@@ -1,6 +1,6 @@
 import { Modal, Notice } from "obsidian";
 import { describeActor, describeChange, undoMessage, type Entry } from "./activity.ts";
-import { basename } from "./expand.ts";
+import { basename } from "./store.ts";
 import type GizmoPlugin from "./main.ts";
 
 /** When something happened, as a list of recent things says it. */

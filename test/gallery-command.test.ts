@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { componentsNeeded, galleryApps, noteName, planCopy, type GalleryNote } from "../src/gallery.ts";
+import { componentsNeeded, galleryApps, planCopy, type GalleryNote } from "../src/gallery.ts";
+import { basename } from "../src/store.ts";
 import gallery from "../src/gallery-notes.ts";
 
 const note = (path: string, text: string): GalleryNote => ({ path, text });
@@ -14,7 +15,7 @@ const NOTES = [
 ];
 const [TRIP, PLAIN, DEEP, WEATHER, OUTER, INNER] = NOTES;
 
-const names = (list: GalleryNote[]) => list.map((n) => noteName(n.path));
+const names = (list: GalleryNote[]) => list.map((n) => basename(n.path));
 
 test("the apps are listed by name with their app: line, and components are not apps", () => {
   const apps = galleryApps(NOTES);
@@ -100,7 +101,7 @@ test("every gallery app can be copied into an empty vault, with exactly the comp
     assert.deepEqual(plan, { create: [...parts, app.note], reuse: [] });
     // Every `use` in the app is met by the gallery, so the copy opens without a missing link.
     const links = [...app.note.text.matchAll(/use:\s*"\[\[([^\]]+)\]\]"/g)].map((m) => m[1]);
-    assert.deepEqual(links.filter((l) => !parts.some((p) => noteName(p.path) === l)), [], app.name);
+    assert.deepEqual(links.filter((l) => !parts.some((p) => basename(p.path) === l)), [], app.name);
   }
   assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Trip planner")!.note, gallery)), ["Destination weather"]);
   assert.deepEqual(componentsNeeded(apps.find((a) => a.name === "Medication log")!.note, gallery), []);

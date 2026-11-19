@@ -3,8 +3,7 @@ import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { openInstall } from "./share-command.ts";
-import { notePath } from "./spec.ts";
-import { storeTarget } from "./store.ts";
+import { isApp, notePath, storeTarget } from "./store.ts";
 
 /**
  * Obsidian glue for the background service: it starts once the layout is ready, hears about app
@@ -16,7 +15,6 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     const f = app.vault.getFileByPath(path);
     return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
   };
-  const isSet = (v: unknown) => v !== undefined && v !== null && v !== false;
   // An env without a tab: actions never ask for the source view, the only thing a leaf is for.
   const envFor = (path: string) => {
     const file = app.vault.getFileByPath(path);
@@ -33,7 +31,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     data: plugin.dataLayer,
     frontmatter,
     notes: { resolve: (link, from) => app.metadataCache.getFirstLinkpathDest(link, from)?.path, frontmatter },
-    appPaths: () => app.vault.getMarkdownFiles().filter((f) => isSet(frontmatter(f.path)?.app)).map((f) => f.path),
+    appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
     isGranted: (path, wanted) => plugin.isGranted(path, wanted, true),
     storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
     actionDeps(appPath, dataPath, actor) {

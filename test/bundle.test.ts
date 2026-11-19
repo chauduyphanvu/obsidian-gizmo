@@ -4,7 +4,8 @@ import {
   fromBundle, fromFetched, nameProblem, previewInstall, sharedUrl, toBundle, type BundleNote, type InstallTarget,
 } from "../src/bundle.ts";
 import type { NoteReader } from "../src/expand.ts";
-import { componentsNeeded, galleryApps, noteName } from "../src/gallery.ts";
+import { componentsNeeded, galleryApps } from "../src/gallery.ts";
+import { basename } from "../src/store.ts";
 import gallery from "../src/gallery-notes.ts";
 import { parseYaml } from "./support/yaml.ts";
 
@@ -22,7 +23,7 @@ function vault(files: Record<string, string> = {}, folder = ""): InstallTarget {
   };
   return {
     folder,
-    existing: (name) => Object.entries(files).filter(([p]) => noteName(p).toLowerCase() === name.toLowerCase()).map(([, t]) => t),
+    existing: (name) => Object.entries(files).filter(([p]) => basename(p).toLowerCase() === name.toLowerCase()).map(([, t]) => t),
     notes,
     parse: parseYaml,
   };
@@ -37,7 +38,7 @@ function bundled(notes: BundleNote[], about = ""): string {
 test("every gallery app, shared with the components it uses, comes back word for word and installs as it reads in the gallery", () => {
   for (const app of galleryApps(gallery)) {
     const parts = componentsNeeded(app.note, gallery);
-    const notes = [app.note, ...parts].map((n) => note(noteName(n.path), n.text));
+    const notes = [app.note, ...parts].map((n) => note(basename(n.path), n.text));
     const back = fromBundle(bundled(notes, app.about));
     assert.ok("notes" in back, app.name);
     assert.deepEqual(back.notes, notes, app.name);
@@ -48,7 +49,7 @@ test("every gallery app, shared with the components it uses, comes back word for
     assert.equal(preview.about, app.about);
     assert.equal(preview.kind, "app");
     assert.ok(!("refusal" in preview.plan), app.name);
-    assert.deepEqual(preview.plan.create.map((n) => noteName(n.path)), [...parts.map((p) => noteName(p.path)), app.name]);
+    assert.deepEqual(preview.plan.create.map((n) => basename(n.path)), [...parts.map((p) => basename(p.path)), app.name]);
   }
 });
 

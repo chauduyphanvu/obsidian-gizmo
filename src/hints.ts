@@ -1,5 +1,6 @@
 import { AGGS, PERIODS } from "./data.ts";
 import { BLOCK_KEYS } from "./expand.ts";
+import { APP_KEYS, COMPONENT_KEYS } from "./store.ts";
 import { COMMON_KEYS, FIELD_TYPES } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { contextAt, noteKind, type Context, type Position } from "./yamlpos.ts";
@@ -166,10 +167,7 @@ export interface Suggestion {
   hint: string;
 }
 
-const TOP_KEYS = {
-  app: ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view"],
-  component: ["component", "params", "data", "panels", "tabs", "for", "spec"],
-};
+const TOP_KEYS = { app: APP_KEYS, component: COMPONENT_KEYS };
 
 /** Keys a panel with this view takes. */
 function panelKeys(view: string): string[] | undefined {

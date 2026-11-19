@@ -13,7 +13,7 @@ import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerShareCommands } from "./share-command.ts";
-import { defaultDataPath } from "./store.ts";
+import { defaultDataPath, runsAsApp } from "./store.ts";
 import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
@@ -119,9 +119,7 @@ export default class GizmoPlugin extends Plugin {
 
   /** Notes that open as apps: apps, and components (which show how to use them). */
   isApp(file: TFile): boolean {
-    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
-    const set = (v: unknown) => v !== undefined && v !== null && v !== false;
-    return !!fm && (set(fm.app) || set(fm.component));
+    return runsAsApp(this.app.metadataCache.getFileCache(file)?.frontmatter);
   }
 
   /** Whether a leaf about to show this markdown state should show the app instead. */

@@ -1,7 +1,7 @@
 import { parseDuration } from "./data.ts";
 import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { RESERVED, SOURCE_WORDS, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, basename, isSet, storeTarget } from "./store.ts";
 import {
   InputRef, NAME, THIS, fillParams, firstRef, namesIn, nearMisses, parseInputs, refsIn, refusedPlaces, secretIds, stringsIn, unsafeValue, type Kit,
 } from "./template.ts";
@@ -370,17 +370,13 @@ export function linkOf(value: unknown): string | undefined {
   return typeof value === "string" && value.trim() ? storeTarget(value) : undefined;
 }
 
-export function basename(path: string): string {
-  return path.split("/").pop()!.replace(/\.md$/i, "");
-}
-
 const linkName = (path: string) => `[[${basename(path)}]]`;
 
 /** Where a component's panel is written, for messages: "panel 2 (from [[City]] panel 1)". */
 const stepLabel = (base: string, step: string[]) => (base ? `${base} (from ${step.join(" → ")})` : step.join(" → "));
 
 function readComponent(fm: Record<string, unknown> | undefined, name: string, errors: string[]): Component | undefined {
-  if (!fm || fm.component === undefined || fm.component === null || fm.component === false) {
+  if (!fm || !isSet(fm.component)) {
     errors.push(`${name} isn't a component (it has no component: line)`);
     return undefined;
   }

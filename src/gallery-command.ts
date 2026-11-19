@@ -1,5 +1,6 @@
 import { FuzzySuggestModal, Notice, normalizePath, type App, type Plugin, type TFile } from "obsidian";
-import { componentsNeeded, galleryApps, noteName, planCopy, type GalleryApp, type Plan } from "./gallery.ts";
+import { componentsNeeded, galleryApps, planCopy, type GalleryApp, type Plan } from "./gallery.ts";
+import { basename } from "./store.ts";
 import notes from "./gallery-notes.ts";
 
 /** Resolves once Obsidian has read the note's properties, which is when it can open as an app. */
@@ -35,7 +36,7 @@ export async function installNotes(app: App, plan: Plan, label: string): Promise
   const folder = app.fileManager.getNewFileParent("");
   const created: TFile[] = [];
   try {
-    for (const note of plan.create) created.push(await app.vault.create(normalizePath(`${folder.path}/${noteName(note.path)}.md`), note.text));
+    for (const note of plan.create) created.push(await app.vault.create(normalizePath(`${folder.path}/${basename(note.path)}.md`), note.text));
   } catch (e) {
     new Notice(`Couldn't copy “${label}”: ${e instanceof Error ? e.message : String(e)}`);
     return false;
@@ -48,7 +49,7 @@ export async function installNotes(app: App, plan: Plan, label: string): Promise
 /** Creates the app's note and the component notes it uses where new notes go, then opens the app. */
 async function copyApp(app: App, gallery: GalleryApp): Promise<void> {
   const components = componentsNeeded(gallery.note, notes);
-  const existing = await existingNotes(app, [gallery.note, ...components].map((n) => noteName(n.path)));
+  const existing = await existingNotes(app, [gallery.note, ...components].map((n) => basename(n.path)));
   await installNotes(app, planCopy(gallery.note, components, existing), gallery.name);
 }
 

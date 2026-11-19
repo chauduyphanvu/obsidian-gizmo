@@ -1,14 +1,14 @@
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { RESERVED, SOURCE_WORDS, definitionReason, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
 import {
   InputRef, InputText, NAME, THIS, firstRef, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
   type InputDef, type InputValue,
 } from "./template.ts";
 import { namesIn } from "./template.ts";
 import {
-  Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, panelEntries, readBlocks, readFor, selectOf, typedName,
+  Expander, MAX_PANELS, TAKEN, checkVersion, componentParams, panelEntries, readBlocks, readFor, selectOf, typedName,
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
@@ -452,7 +452,7 @@ export function readSpec(
   fm: Record<string, unknown> | undefined,
   opts: { now?: Date; notes?: NoteReader; path?: string; host?: HostNote } = {},
 ): SpecResult | undefined {
-  if (!fm || fm.app === undefined || fm.app === null || fm.app === false) return undefined;
+  if (!fm || !isApp(fm)) return undefined;
   let description = fm.app === true ? "" : String(fm.app);
   const versionError = checkVersion(fm.spec);
   // Keys written for a newer version may mean something else, so nothing is drawn.
@@ -626,8 +626,7 @@ export function readSpec(
   // Data is written into the store's properties; an app's or component's own keys are no place for it.
   const stored = store === undefined ? undefined : opts.notes?.resolve(storeTarget(store), opts.path ?? "");
   const storedFm = stored === undefined ? undefined : opts.notes!.frontmatter(stored);
-  const isSet = (v: unknown) => v !== undefined && v !== null && v !== false;
-  if (storedFm && (isSet(storedFm.app) || isSet(storedFm.component))) {
+  if (runsAsApp(storedFm)) {
     errors.push(`store can't be an app or a component note; name a note that only holds data, e.g. store: "[[Weight log]]"`);
     store = undefined;
   }
@@ -698,10 +697,6 @@ export interface ComponentPreview {
   missing: string[];
   /** A lens's `for` scope: it runs on the notes there, so it isn't previewed on its own. */
   lens?: string;
-}
-
-export function isComponent(fm: Record<string, unknown> | undefined): boolean {
-  return !!fm && fm.component !== undefined && fm.component !== null && fm.component !== false && fm.app === undefined;
 }
 
 /**
@@ -816,10 +811,6 @@ function typedSecrets(template: Record<string, unknown>): string[] {
   for (const v of Object.values(isPlainObject(template.headers) ? template.headers : {})) walk(v);
   walk(template.body);
   return [...out].sort();
-}
-
-export function notePath(path: string): string {
-  return /\.md$/i.test(path) ? path : `${path}.md`;
 }
 
 export function describePermission(perm: string): string {

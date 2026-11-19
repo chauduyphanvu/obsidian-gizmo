@@ -4,8 +4,12 @@
  * `<folder>/<App> data.md` by default, or the note named by the app's `store:` key.
  */
 
-/** Top-level keys that define an app or component; lists may never be named after them. */
-export const RESERVED = ["app", "panels", "tabs", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params", "for", "this"];
+/** The top-level keys of an app note and of a component note, in the order hints offer them. */
+export const APP_KEYS: readonly string[] = ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view"];
+export const COMPONENT_KEYS: readonly string[] = ["component", "params", "data", "panels", "tabs", "for", "spec"];
+
+/** Top-level keys that define an app or component, and `this`; lists may never be named after them. */
+export const RESERVED = [...new Set([...APP_KEYS, ...COMPONENT_KEYS, "this"])].filter((k) => k !== "view");
 
 /**
  * Top-level keys that make a note an app, a component or a lens, or say what one shows. What the
@@ -29,6 +33,37 @@ export function withoutDefinition<T extends Record<string, unknown>>(row: T): T 
 
 /** Kinds of source that are one word (`this` is in RESERVED): `source:` reads the kind, so a list can't be named after one. */
 export const SOURCE_WORDS = ["notes", "tasks"];
+
+/** A frontmatter value that is there: not missing, null or false. */
+export function isSet(v: unknown): boolean {
+  return v !== undefined && v !== null && v !== false;
+}
+
+/** A note its `app` key makes an app. */
+export function isApp(fm: Record<string, unknown> | undefined): boolean {
+  return isSet(fm?.app);
+}
+
+export function isComponent(fm: Record<string, unknown> | undefined): boolean {
+  return !!fm && fm.component !== undefined && fm.component !== null && fm.component !== false && fm.app === undefined;
+}
+
+/**
+ * A note that opens as an app: an app, or a component (which shows how to use it). No data note is
+ * one, and no lens shows on one.
+ */
+export function runsAsApp(fm: Record<string, unknown> | undefined): boolean {
+  return !!fm && (isSet(fm.app) || isSet(fm.component));
+}
+
+/** A path's note name: its last part, without `.md`. */
+export function basename(path: string): string {
+  return path.split("/").pop()!.replace(/\.md$/i, "");
+}
+
+export function notePath(path: string): string {
+  return /\.md$/i.test(path) ? path : `${path}.md`;
+}
 
 export function defaultDataPath(appPath: string): string {
   return `${appPath.replace(/\.md$/i, "")} data.md`;

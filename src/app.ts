@@ -3,9 +3,9 @@ import { stableJson, type Change, type NewEntry } from "./activity.ts";
 import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
-import { basename, typedName, type NoteReader } from "./expand.ts";
+import { typedName, type NoteReader } from "./expand.ts";
 import {
-  askersOf, describePermission, isComponent, isUrl, permissionsOf, pickPanels, readComponentPreview, readSpec,
+  askersOf, describePermission, isUrl, permissionsOf, pickPanels, readComponentPreview, readSpec,
   resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
@@ -17,7 +17,7 @@ import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts"
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { defaultDataPath, resolveList } from "./store.ts";
+import { basename, defaultDataPath, isComponent, resolveList } from "./store.ts";
 import { editErrors, editableSource, mountView } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";

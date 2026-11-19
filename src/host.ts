@@ -8,8 +8,7 @@ import { DiskCache } from "./cache.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type GizmoPlugin from "./main.ts";
 import { tickLine } from "./sources/tasks.ts";
-import { notePath } from "./spec.ts";
-import { storeTarget } from "./store.ts";
+import { notePath, storeTarget } from "./store.ts";
 
 function info(f: TFile): FileInfo {
   return { path: f.path, basename: f.basename, mtime: f.stat.mtime, ctime: f.stat.ctime };

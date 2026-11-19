@@ -4,12 +4,12 @@ import { panelIds } from "./app.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, stampParts, toTime, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
-import { basename, type NoteReader } from "./expand.ts";
+import type { NoteReader } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
 import {
   permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
-import { defaultDataPath, resolveList, storeTarget } from "./store.ts";
+import { basename, defaultDataPath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { rowsOf, startOf } from "./views/common.ts";

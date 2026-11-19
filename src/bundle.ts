@@ -1,7 +1,7 @@
 import type { NoteReader } from "./expand.ts";
 import { planCopy, type Plan } from "./gallery.ts";
-import { storeTarget } from "./store.ts";
-import { describePermission, isComponent, permissionsOf, readComponentPreview, readSpec } from "./spec.ts";
+import { isApp, isComponent, storeTarget } from "./store.ts";
+import { describePermission, permissionsOf, readComponentPreview, readSpec } from "./spec.ts";
 
 /**
  * A shared app: the app (or component) note first, then the notes it needs, each with the name it
@@ -148,7 +148,7 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
   const asks = result.spec ? permissionsOf(result.spec, self).map(describePermission) : [];
   const extras = notes.slice(1).flatMap((n) => {
     const other = fms.get(pathOf(n.name));
-    if (other && other.app !== undefined && other.app !== null && other.app !== false) return [`${n.name} is an app of its own`];
+    if (isApp(other)) return [`${n.name} is an app of its own`];
     if (other && isComponent(other) && other.for !== undefined && other.for !== null) return [`${n.name} shows on every note in ${String(other.for)}`];
     return [];
   });

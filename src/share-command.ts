@@ -2,12 +2,12 @@ import { Modal, Notice, parseYaml, type App, type TFile } from "obsidian";
 import {
   fromBundle, fromFetched, previewInstall, sharedUrl, thenTargets, toBundle, type BundleNote, type InstallPreview,
 } from "./bundle.ts";
-import { basename, type NoteReader } from "./expand.ts";
+import type { NoteReader } from "./expand.ts";
 import { existingNotes, installNotes } from "./gallery-command.ts";
 import { planCopy } from "./gallery.ts";
 import type GizmoPlugin from "./main.ts";
-import { isComponent, readComponentPreview, readSpec } from "./spec.ts";
-import { storeTarget } from "./store.ts";
+import { readComponentPreview, readSpec } from "./spec.ts";
+import { basename, isApp, isComponent, storeTarget } from "./store.ts";
 
 function vaultReader(app: App): NoteReader {
   const frontmatter = (path: string) => {
@@ -25,7 +25,7 @@ async function notesToShare(app: App, file: TFile): Promise<{ notes: BundleNote[
   const fm = app.metadataCache.getFileCache(file)?.frontmatter;
   const notes = vaultReader(app);
   const component = isComponent(fm);
-  if (!fm || (!component && (fm.app === undefined || fm.app === null || fm.app === false))) return { error: "Only an app or a component can be shared" };
+  if (!fm || (!component && !isApp(fm))) return { error: "Only an app or a component can be shared" };
   const opts = { now: new Date(), notes, path: file.path };
   const spec = (component ? readComponentPreview(fm, opts).result : readSpec(fm, opts))?.spec;
   if (!spec) return { error: `${file.basename} has a problem to fix before it can be shared` };

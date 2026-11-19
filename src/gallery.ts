@@ -1,4 +1,4 @@
-import { storeTarget } from "./store.ts";
+import { basename, storeTarget } from "./store.ts";
 
 /** A note of the gallery: its path under gallery/ (`Apps/Budget.md`) and its text exactly as written. */
 export interface GalleryNote {
@@ -15,8 +15,6 @@ export interface GalleryApp {
 
 /** What copying an app into a vault would do. */
 export type Plan = { create: GalleryNote[]; reuse: string[] } | { refusal: string };
-
-export const noteName = (path: string): string => path.split("/").pop()!.replace(/\.md$/i, "");
 
 function frontmatter(text: string): string[] {
   const lines = text.split(/\r?\n/);
@@ -43,7 +41,7 @@ export function galleryApps(notes: GalleryNote[]): GalleryApp[] {
   for (const note of notes) {
     if (!note.path.startsWith("Apps/")) continue;
     const about = frontmatter(note.text).map((l) => /^app:\s*(.*?)\s*$/.exec(l)).find((m) => m)?.[1];
-    if (about !== undefined) apps.push({ name: noteName(note.path), about: unquote(about), note });
+    if (about !== undefined) apps.push({ name: basename(note.path), about: unquote(about), note });
   }
   return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
@@ -53,7 +51,7 @@ function usedNames(text: string): string[] {
   const names = new Set<string>();
   for (const line of frontmatter(text)) {
     const link = /(?:^\s*(?:-\s+)*|[{,]\s*)use:\s*["']?(\[\[[^\]]*\]\])/.exec(line);
-    if (link) names.add(noteName(storeTarget(link[1])));
+    if (link) names.add(basename(storeTarget(link[1])));
   }
   return [...names];
 }
@@ -63,7 +61,7 @@ function usedNames(text: string): string[] {
  * A name the gallery has no component for is left out: the app's own check says if it's missing.
  */
 export function componentsNeeded(app: GalleryNote, notes: GalleryNote[]): GalleryNote[] {
-  const parts = new Map(notes.filter((n) => n.path.startsWith("Components/")).map((n) => [noteName(n.path).toLowerCase(), n]));
+  const parts = new Map(notes.filter((n) => n.path.startsWith("Components/")).map((n) => [basename(n.path).toLowerCase(), n]));
   const seen = new Set([app]);
   const out: GalleryNote[] = [];
   const visit = (note: GalleryNote) => {
@@ -86,12 +84,12 @@ export function componentsNeeded(app: GalleryNote, notes: GalleryNote[]): Galler
  * ever replaced: a taken name stops it, except a component that is already there word for word.
  */
 export function planCopy(app: GalleryNote, components: GalleryNote[], existing: Record<string, string[]>): Plan {
-  const appName = noteName(app.path);
+  const appName = basename(app.path);
   if (existing[appName]?.length) return { refusal: `“${appName}” already exists` };
   const create: GalleryNote[] = [];
   const reuse: string[] = [];
   for (const part of components) {
-    const name = noteName(part.path);
+    const name = basename(part.path);
     const have = existing[name] ?? [];
     if (!have.length) create.push(part);
     else if (have.every((text) => text === part.text)) reuse.push(name);

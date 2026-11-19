@@ -1,10 +1,9 @@
 import { AppController, newMemory, type AppEnv, type AppMemory, type Hosting } from "./app.ts";
 import type { Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
-import { basename, componentParams, linkOf, readFor } from "./expand.ts";
+import { componentParams, linkOf, readFor } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
-import { isComponent } from "./spec.ts";
-import { defaultDataPath } from "./store.ts";
+import { basename, defaultDataPath, isComponent, isSet, runsAsApp } from "./store.ts";
 import { isPlainObject } from "./views/common.ts";
 
 /**
@@ -32,7 +31,7 @@ export function parseHosted(value: unknown): HostedBlock {
   if (!isPlainObject(value)) return { error: "a gizmo block holds an app's keys, e.g. view: countdown" };
   const link = appLink(value.app);
   if (link === undefined) {
-    const app = value.app === undefined || value.app === null || value.app === false ? "" : value.app;
+    const app = isSet(value.app) ? value.app : "";
     return { kind: "embed", definition: { ...value, app } };
   }
   const others = Object.keys(value).filter((k) => k !== "app" && k !== "panels");
@@ -196,8 +195,6 @@ export class HostedApp {
 
 // ---- Lenses --------------------------------------------------------------------------------------
 
-const isSet = (v: unknown) => v !== undefined && v !== null && v !== false;
-
 /**
  * The app a lens runs as on one note: the component, each param filled from the note's property
  * of the same name as `$this.<name>` (a value from the note, checked as one when it's filled), or
@@ -264,7 +261,7 @@ export class LensIndex {
   /** The lenses a note shows, in component-name order: none on an app, a component or another note's data note. */
   lensesFor(path: string): string[] {
     const fm = this.data.host.frontmatter(path);
-    if (fm && (isSet(fm.app) || isSet(fm.component))) return [];
+    if (runsAsApp(fm)) return [];
     if (/ data\.md$/i.test(path) && this.data.host.fileInfo(path.replace(/ data\.md$/i, ".md"))) return [];
     return [...this.all()]
       .filter(([component, scope]) => this.data.notes(scope).some((r) => r.path === path) && this.definition(component, path))
