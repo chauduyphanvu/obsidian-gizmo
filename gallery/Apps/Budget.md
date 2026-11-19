@@ -1,0 +1,64 @@
+---
+app: Log what I spend and get told when the month runs past my limit
+data:
+  spend:
+    source: spend
+    fields:
+      amount: number
+      category: [food, home, transport, fun, other]
+      note: text
+panels:
+  - view: form
+    title: Spent something
+    save: spend
+    label: Add
+  - view: number
+    title: This month
+    source: spend
+    where: {at: this month}
+    field: amount
+    agg: sum
+    compare: previous
+    format: "$0,0.00"
+    label: spent so far
+  - view: progress
+    title: Against my limit
+    source: spend
+    where: {at: this month}
+    field: amount
+    agg: sum
+    max: 2000
+    format: "$0,0"
+    alert: ">= 2000"
+  - view: bar
+    title: Each week against my budget
+    source: spend
+    compute:
+      food: if(category == 'food', amount, 0)
+      home: if(category == 'home', amount, 0)
+      transport: if(category == 'transport', amount, 0)
+      fun: if(category == 'fun', amount, 0)
+      other: if(category == 'other', amount, 0)
+    where: {at: last 8 weeks}
+    group: at
+    per: week
+    y: [food, home, transport, fun, other]
+    agg: sum
+    stack: true
+    goal: 500
+    format: "$0,0"
+    labels: {food: Food, home: Home, transport: Transport, fun: Fun, other: Other}
+  - view: table
+    title: Recent
+    source: spend
+    sort: -at
+    limit: 10
+    columns: [at, amount, category, note]
+    labels: {at: When, amount: Spent}
+    format: {amount: "$0,0.00", at: relative}
+    edit: [amount, category, note]
+---
+Add each purchase as you make it. You get a notice once the month's total reaches the limit (the
+2000 in `max` and `alert`), and the bars stack each week by category against the `goal` line;
+change those numbers to your own budget, and fix a wrong amount or category in the table. It asks
+for nothing; entries are saved in Budget data.
