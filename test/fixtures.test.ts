@@ -609,7 +609,8 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
   // 5 AAPL at the last close of 210, against the $1,000 paid.
   (panels()[4].querySelector("tbody tr") as HTMLElement).click();
   await settle();
-  assert.equal(text(panels()[5].querySelector(".na-title")), "AAPL is worth");
+  assert.equal(text(panels()[5].querySelector(".na-title")), "Worth now");
+  assert.equal(text(panels()[5].querySelector(".na-label")), "5 shares of AAPL at the last close");
   assert.equal(text(panels()[5].querySelector(".na-big")), "$1,050.00");
   assert.equal(text(panels()[6].querySelector(".na-big")), "$50.00");
   assert.ok(f.requests.includes(`${YAHOO}AAPL?range=5d&interval=1d`));

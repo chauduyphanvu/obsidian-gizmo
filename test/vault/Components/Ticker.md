@@ -66,7 +66,7 @@ panels:
     format: {paid: "$0,0.00"}
     select: holding
   - view: number
-    title: $holding.symbol is worth
+    title: Worth now
     source: https://query1.finance.yahoo.com/v8/finance/chart/$holding.symbol?range=5d&interval=1d
     pick: chart.result.0.indicators.quote.0
     compute:
@@ -74,7 +74,7 @@ panels:
     where: {close: "> 0"}
     field: value
     format: "$0,0.00"
-    label: at the last close
+    label: $holding.shares shares of $holding.symbol at the last close
   - view: number
     title: Gain or loss
     source: https://query1.finance.yahoo.com/v8/finance/chart/$holding.symbol?range=5d&interval=1d

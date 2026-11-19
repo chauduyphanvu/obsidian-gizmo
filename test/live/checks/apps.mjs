@@ -110,11 +110,11 @@ export default async function apps(t) {
       const heldText = held?.innerText.replace(/\\s+/g, " ");
       held?.click();
       await quiet();
-      return { shown, buys: na.fm("Apps/Portfolio data.md")?.buys, heldText, worth: panel("QQQ is worth")?.querySelector(".na-big")?.textContent,
+      return { shown, buys: na.fm("Apps/Portfolio data.md")?.buys, heldText, worth: panel("Worth now")?.querySelector(".na-big")?.textContent, worthLabel: panel("Worth now")?.querySelector(".na-label")?.textContent,
         all: [...panel("Everything I hold").querySelectorAll("tbody tr")].map((tr) => tr.innerText.replace(/\\s+/g, " ")), errors: na.errors() };`);
     expect(JSON.stringify(r.shown) === JSON.stringify({ price: "QQQ", chart: "QQQ, last 1y", lines: 1, form: "Record a buy of QQQ", kept: true }), r.shown);
     expect(JSON.stringify(r.buys?.map(({ at, ...b }) => b)) === JSON.stringify([{ symbol: "QQQ", date: "2026-11-10", shares: 4, price: 500 }]), r.buys);
-    expect(r.heldText === "QQQ 4 $2,000.00" && /^\$\d{1,3}(,\d{3})*\.\d\d$/.test(r.worth ?? "") && r.all.includes("QQQ 4 $2,000.00") && r.errors === 0, r);
+    expect(r.heldText === "QQQ 4 $2,000.00" && /^\$\d{1,3}(,\d{3})*\.\d\d$/.test(r.worth ?? "") && r.worthLabel === "4 shares of QQQ at the last close" && r.all.includes("QQQ 4 $2,000.00") && r.errors === 0, r);
     await t.shot("portfolio-desktop.png", 1100, 760, 2);
     return `QQQ over 1y; held ${r.heldText}, worth ${r.worth}`;
   }, { net: NET.Portfolio });
