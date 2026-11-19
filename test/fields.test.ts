@@ -3,11 +3,11 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { runActions, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
-import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
+import { checkPanel, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
 
-// Fields that carry their own label, format and default, and a form that lists fields by name. The
-// fake clock reads 2026-11-18 12:00.
+// Fields that carry their own label, format and default, a form that lists fields by name, and the
+// table defaults a block's fields give. The fake clock reads 2026-11-18 12:00.
 
 const APP = "Apps/Journal.md";
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -208,4 +208,65 @@ test("a save: this form shows its fields by their labels", async () => {
   await settle();
   assert.equal(text(root.querySelector(".na-field > span")), "Where I am");
   assert.equal((root.querySelector("select") as HTMLSelectElement).value, "0");
+});
+
+test("a table over a block with fields shows a note's name and the fields when it lists no columns", () => {
+  const r = read({
+    data: { decisions: DECISIONS, log: { source: "log", fields: { weight: "number", note: "text" } } },
+    panels: [
+      { view: "table", source: "decisions" },
+      { view: "table", source: "log" },
+      { view: "table", source: "decisions", columns: ["name", "outcome"] },
+      { view: "table", source: "decisions", group: "outcome" },
+      { view: "table", source: "notes", from: "Decisions" },
+    ],
+  });
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(r.spec!.panels.map((ps) => ps.panel.columns), [
+    ["name", "expect", "confidence", "review", "outcome", "made", "cost"],
+    ["weight", "note"],
+    ["name", "outcome"],
+    undefined,
+    undefined,
+  ]);
+});
+
+test("edit: true edits every field of the block among the columns, asks what edit: [..] asks, and needs fields", () => {
+  const r = read({
+    data: { decisions: { ...DECISIONS, compute: { hit: 'if(outcome == "right", 1, 0)' } }, plain: { source: "notes", from: "Decisions" } },
+    panels: [
+      { view: "table", source: "decisions", edit: true },
+      { view: "table", source: "decisions", columns: ["name", "outcome", "hit"], edit: true },
+      { view: "table", source: "plain", edit: true },
+      { view: "table", source: "decisions", columns: ["name"], edit: true },
+      { view: "table", source: "decisions", edit: "yes" },
+    ],
+  });
+  assert.deepEqual(r.errors, [
+    "panel 3: edit: true needs fields on the block; or list the columns to edit",
+    "panel 4: edit: true finds no field of the block among the columns; list the columns to edit",
+    'panel 5: "edit" has the wrong type (expected a list of fields, or true)',
+  ]);
+  const [all, some] = r.spec!.panels.map((ps) => ps.panel);
+  assert.deepEqual(all.edit, ["expect", "confidence", "review", "outcome", "made", "cost"]);
+  assert.deepEqual(some.edit, ["outcome"]);
+  assert.deepEqual(permissionsOf(r.spec!, APP), ["edit:Decisions", "read:Decisions"]);
+});
+
+test("an edited table from edit: true writes the note's property, typed as the field", async () => {
+  const app = open({ data: { decisions: DECISIONS }, panels: [{ view: "table", source: "decisions", columns: ["name", "confidence", "outcome"], edit: true }] }, {
+    "Decisions/Bike.md": { fm: { confidence: 60, outcome: "open" } },
+  });
+  await settle();
+  const [confidence, outcome] = app.panels()[0].querySelectorAll("select");
+  assert.deepEqual([...app.panels()[0].querySelectorAll("th")].map(text), ["Decision", "% sure", "It went"]);
+  const choose = (select: Element, label: string) => {
+    for (const o of select.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === label);
+    event(select, "change");
+  };
+  choose(outcome, "right");
+  await settle();
+  choose(app.panels()[0].querySelectorAll("select")[0], "80");
+  await settle();
+  assert.deepEqual(app.f.files.get("Decisions/Bike.md")!.fm, { confidence: 80, outcome: "right" });
 });

@@ -13,7 +13,7 @@ import {
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
 import {
-  COMMON_KEYS, KEY_TYPES, editPermissions, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
+  COMMON_KEYS, KEY_TYPES, editErrors, editPermissions, editableSource, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
 } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { backgroundKeyErrors } from "./views/alerts.ts";
@@ -306,6 +306,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
   if (p.save && def.id !== "checklist") p.target ??= saveTarget(p.save);
   const problems = [
     ...fieldProblems,
+    ...schemaDefaults(p, def.keys),
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
@@ -350,6 +351,28 @@ function settleFields(p: Panel): string[] {
   for (const [name, own] of Object.entries(info)) merged[name] = { ...merged[name], ...own };
   if (Object.keys(merged).length) p.fieldInfo = merged;
   return errors;
+}
+
+/**
+ * What a block's fields give a table that doesn't say: its columns (a note's name, then the fields
+ * in the order typed), and with `edit: true` every field among its columns that can be changed.
+ */
+function schemaDefaults(p: Panel, keys: readonly string[]): string[] {
+  if (keys.includes("columns") && p.columns === undefined && p.schema && !p.group) {
+    const kind = p.source ? sourceDef(p.source).id : undefined;
+    const named = kind === "notes" || kind === "tasks" || kind === "base";
+    p.columns = [...new Set([...(named ? ["name"] : []), ...Object.keys(p.schema)])];
+  }
+  if ((p.edit as unknown) !== true) return [];
+  const schema = p.schema;
+  if (!schema) {
+    delete p.edit;
+    return ["edit: true needs fields on the block; or list the columns to edit"];
+  }
+  // A note's name, a computed column and the like are fields a table may show but never write.
+  const writable = (f: string) => !editableSource(p) || editErrors(p, [f]).length === 0;
+  p.edit = (p.columns ?? Object.keys(schema)).filter((f) => Object.hasOwn(schema, f) && writable(f));
+  return p.edit.length ? [] : ["edit: true finds no field of the block among the columns; list the columns to edit"];
 }
 
 /** Labels and formats the fields give fill in for those the panel doesn't. */

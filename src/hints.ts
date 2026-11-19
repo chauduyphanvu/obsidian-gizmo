@@ -73,7 +73,7 @@ export const KEY_HINTS: Record<string, string> = {
   name: "The new note's file name, e.g. \"{title}\"",
   template: "A note whose text becomes the body of each new note",
   open: "Open this note afterwards, e.g. \"{path}\"",
-  edit: "Table columns to change in place: edit: [status, done]",
+  edit: "Table columns to change in place: edit: [status, done], or true for every field of the block shown",
   shortcut: "Gives this button or form a command and link; letters, digits and -",
   // Background
   pin: "status shows this panel's value in the status bar",

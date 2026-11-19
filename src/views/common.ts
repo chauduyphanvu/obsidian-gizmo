@@ -13,7 +13,7 @@ import type { PanelCtx } from "./registry.ts";
  */
 export type KeyType =
   | "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where"
-  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
+  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap" | "edit";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
 export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept", "fieldInfo"] as const;
@@ -31,7 +31,7 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
   line: "string", notify: "string",
   compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
-  open: "string", edit: "strings", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
+  open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
   end: "string", shortcut: "string", pin: "string", alert: "alert",
 };
@@ -46,6 +46,7 @@ const EXPECTED: Partial<Record<KeyType, string>> = {
   compute: "a set of name: formula",
   textMap: "a set of name: text",
   fieldMap: "a set of name: type, or a list of field names",
+  edit: "a list of fields, or true",
 };
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -82,6 +83,7 @@ function checkType(value: unknown, type: KeyType): boolean {
     case "textMap": return scalarMap(value);
     case "valueMap": return isMap(value) && Object.values(value).every(scalarMap);
     case "compute": return isMap(value) && Object.values(value).every(isText);
+    case "edit": return value === true || (Array.isArray(value) && value.every(scalar));
   }
 }
 

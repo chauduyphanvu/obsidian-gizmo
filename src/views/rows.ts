@@ -266,6 +266,7 @@ export const table: ViewDef = {
     { panel: { view: "table", source: "https://api.example.com/tasks", edit: ["done"] }, errors: ["edit works on notes and saved lists"] },
     { panel: { view: "table", source: "notes", from: "Books", group: "status", edit: ["status"] }, errors: ["edit can't change grouped rows"] },
     { panel: { view: "table", source: "notes", from: "Books", columns: ["name"], edit: ["status"] }, errors: ['edit: "status" isn\'t one of the columns'] },
+    { panel: { view: "table", source: "notes", from: "Books", columns: ["name", "status"], edit: true }, errors: ["edit: true needs fields on the block; or list the columns to edit"] },
     {
       panel: { view: "table", source: "notes", from: "Books", compute: { left: "pages - read" }, edit: ["left", "path"] },
       errors: ['edit: "left" is computed', 'edit: "path" comes from the note\'s file, not its properties'],
