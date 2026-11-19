@@ -184,6 +184,7 @@ export class AppController {
 
   dispose(): void {
     this.unsubscribe?.();
+    this.removeBar();
     this.destroyPanels();
     this.stopTicking();
     if (this.refreshHandle) clearInterval(this.refreshHandle);
@@ -344,6 +345,8 @@ export class AppController {
   }
 
   private setInput(name: string, value: InputValue): void {
+    // A search box applies typing after a pause, which may end after its bar is gone.
+    if (!this.bar) return;
     // An empty search box has no value, so the panels that read it wait.
     const typed = this.spec?.inputs.some((d) => d.name === name && d.kind === "text");
     const next = typed && value === "" ? undefined : value;

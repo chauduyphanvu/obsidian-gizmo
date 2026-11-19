@@ -340,3 +340,25 @@ test("two uses of one component keep their selections apart", async () => {
   assert.equal(text(textB.querySelector(".na-text")), "Picked b1");
   assert.ok(textA.querySelector(".na-waiting"));
 });
+
+test("typing that is applied after the app was closed does nothing", async () => {
+  const fm = { app: "Search", inputs: { q: "text" }, view: "number", source: "https://search.example.com/s?q=$q", pick: "current", field: "t" };
+  const { root, start, f, data, env } = open(fm);
+  const app = start();
+  await settle();
+  const box = root.querySelector('.na-inputs input[type="search"]') as HTMLInputElement;
+  box.value = "late";
+  box.dispatchEvent(new window.Event("input"));
+  app.dispose();
+  await new Promise((r) => setTimeout(r, 350));
+  await settle();
+  assert.deepEqual(f.requests, []);
+  // Nothing of the closed app is still listening: a change to its note isn't read.
+  let reads = 0;
+  const frontmatter = env.frontmatter;
+  env.frontmatter = (path) => { reads++; return frontmatter(path); };
+  f.files.get(APP)!.fm = { ...fm, app: "Search again" };
+  data.fileChanged(APP);
+  f.flush();
+  assert.equal(reads, 0);
+});
