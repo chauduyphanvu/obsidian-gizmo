@@ -389,6 +389,12 @@ export function readSpec(
       }
       p.template.target = { kind: "this", ...(opts.host.scope ? { scope: opts.host.scope } : {}) };
     }
+    // A board's moves write its group field, which, like `edit`, must be settled from the keys.
+    const grouping = p.template.view === "board" ? refsIn(p.template.group)[0] : undefined;
+    if (grouping !== undefined) {
+      errors.push(at(`$${typedName(grouping)} can't be used in "group" on a board, where moving a card changes it`));
+      return;
+    }
     const selected = selectOf(p.template);
     if (selected !== undefined && isSelection(selected)) {
       if (selectedBy.has(selected)) {

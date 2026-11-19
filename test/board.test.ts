@@ -298,3 +298,19 @@ test("item placeholders go through format and values, and the group field's valu
     'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
   ]);
 });
+
+test("what a board's moves write can't be chosen while it runs: no $name in its group", () => {
+  const components = { "C.md": { component: "Plan", params: ["by"], panels: [{ view: "board", source: "notes", from: "Projects", group: "$by" }] } };
+  const notes = { resolve: (l: string) => (`${l}.md` in components ? `${l}.md` : undefined), frontmatter: (p: string) => (components as Record<string, Record<string, unknown>>)[p] };
+  const errors = (fm: Record<string, unknown>) => readSpec({ app: "x", ...fm }, { notes, path: "Apps/X.md" })!.errors;
+  const moved = 'can\'t be used in "group" on a board, where moving a card changes it';
+  assert.deepEqual(errors({ inputs: { by: ["status", "area"] }, panels: [{ view: "board", source: "notes", from: "Projects", group: "$by" }] }), [`panel 1: $by ${moved}`]);
+  assert.deepEqual(errors({ inputs: { q: "text" }, panels: [{ view: "board", source: "notes", from: "Projects", group: "$q" }] }), [`panel 1: $q ${moved}`]);
+  assert.deepEqual(errors({ panels: [{ view: "board", source: "notes", from: "Projects", group: "$this.field" }] }), [`panel 1: $this ${moved}`]);
+  // Through a component, and beside one.
+  assert.deepEqual(errors({ inputs: { by: ["status", "area"] }, panels: [{ use: "[[C]]", with: { by: "$by" } }] }), [`panel 1 (from [[C]] panel 1): $by ${moved}`]);
+  assert.deepEqual(errors({ inputs: { by: ["status", "area"] }, panels: [{ use: "[[C]]", with: { by: "status" }, group: "$by" }] }), [`panel 1 (from [[C]] panel 1): $by ${moved}`]);
+  // A param fixed in the app is typed, not chosen; other views may still group by a $name.
+  assert.deepEqual(errors({ panels: [{ use: "[[C]]", with: { by: "status" } }] }), []);
+  assert.deepEqual(errors({ inputs: { by: ["status", "area"] }, panels: [{ view: "bar", source: "notes", from: "Projects", group: "$by" }] }), []);
+});
