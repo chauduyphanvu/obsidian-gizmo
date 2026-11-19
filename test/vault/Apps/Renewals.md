@@ -25,7 +25,7 @@ panels:
     field: due
     agg: first
     format: until
-    label: to go
+    label: until the next one is due
   - view: table
     title: Coming up
     source: deadlines

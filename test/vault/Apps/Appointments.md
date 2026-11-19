@@ -30,7 +30,7 @@ panels:
     field: date
     agg: first
     format: until
-    label: to go; I'm told the day before
+    label: until the next one; I'm told the day before
     pin: status
     alert: {date: next 1 day}
   - view: form
