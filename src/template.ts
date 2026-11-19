@@ -168,22 +168,57 @@ const FIXED = [
   "select", "shortcut", "pin", "template", "edit", "cells", "layout", "stack", "compare",
 ];
 
+/** Keys a component param typed literally may fill: they say what an app reads and writes, which its prompt then names. */
+const KIT_KEYS = ["from", "save", "append", "template", "tab"];
+
+/**
+ * A component's params as a kit sees them. A param is literal when its value came from the
+ * component's default or a `with` entry holding no reference at all (no input, selection, `$this`,
+ * or param that isn't literal itself): text typed in a note, known before anything runs. Those may
+ * go in `from`, `save`, `append`, `template`, `tab` and anywhere in `source` (a URL's host too); a
+ * param that carries a run-time value may not, and `carried` is told so. No param may name a secret
+ * or go in `view`.
+ */
+export interface Kit {
+  literal: ReadonlyMap<string, unknown>;
+  carried(name: string, key: string): void;
+}
+
+/** A source with its literal params filled in as text, for checking only; the others stay `$name`. */
+function withLiterals(text: string, literal: ReadonlyMap<string, unknown>): string {
+  return text.replace(TOKEN, (m, name: string, path: string) => (literal.has(name) ? asText(readRef(literal.get(name), path.slice(1))) ?? "" : m));
+}
+
+/** A URL whose host is typed out before any `$name`. */
+const HOST_TYPED = /^https:\/\/[^/?#$]+[/?#]/;
+
 /**
  * Where a declared name may not go, so that what an app may touch (hosts, secrets, notes read and
  * written) is settled from the keys before anything runs. `kind` says which names these are:
- * params may name a list as a whole `source` or `save`; inputs may not.
+ * params may name a list as a whole `source` or `save`; inputs may not. With `kit`, params are
+ * read as a kit reads them (see Kit), and a param carrying a run-time value where only a literal
+ * one may go is told to `kit.carried`, not returned.
  */
-export function refusedPlaces(raw: Record<string, unknown>, names: ReadonlySet<string>, kind: "input" | "param"): string[] {
+export function refusedPlaces(raw: Record<string, unknown>, names: ReadonlySet<string>, kind: "input" | "param", kit?: Kit): string[] {
   const errors: string[] = [];
   for (const [key, value] of Object.entries(raw)) {
     const used = [...namesIn(value, names)];
     if (used.length === 0) continue;
     const first = `$${used[0]}`;
     const whole = typeof value === "string" && value === first;
-    if (FIXED.includes(key)) {
+    const carried = kit ? used.filter((n) => !kit.literal.has(n)) : [];
+    if (kit && KIT_KEYS.includes(key)) {
+      if (carried.length) kit.carried(carried[0], key);
+    } else if (kit && key === "source") {
+      const text = typeof value === "string" ? value : "";
+      const shown = withLiterals(text, kit.literal);
+      if (/\{secret:[^}]*\$/.test(text)) errors.push(`${first} can't name a secret`);
+      // A run-time value may fill a URL's path or query, percent-encoded; nothing else of a source.
+      else if (carried.length && !(/^https?:\/\//i.test(shown) && HOST_TYPED.test(shown.slice(0, shown.indexOf("$"))))) kit.carried(carried[0], key);
+    } else if (FIXED.includes(key)) {
       errors.push(`${first} can't be used in "${key}"`);
     } else if (key === "source" && typeof value === "string" && /^https?:\/\//i.test(value)) {
-      if (!/^https:\/\/[^/?#$]+[/?#]/.test(value.slice(0, value.indexOf("$")))) errors.push(`${first} can't be part of a URL's host`);
+      if (!HOST_TYPED.test(value.slice(0, value.indexOf("$")))) errors.push(`${first} can't be part of a URL's host`);
       else if (/\{secret:[^}]*\$/.test(value)) errors.push(`${first} can't name a secret`);
     } else if (key === "source" || key === "save") {
       if (kind === "input") errors.push(`${first} can't choose ${key === "save" ? "where data is saved" : "the source"}; use it in a URL's path or query, or in where`);
@@ -314,8 +349,8 @@ function paramAt(value: unknown, path: string): unknown {
 /**
  * Fills a component's declared params. A whole `$name` takes the value as given (a number stays a
  * number, a list a list, and an app input passed through `with` stays a reference); inside text it
- * becomes text, percent-encoded inside a URL. `$name.path` reads inside a param that holds a set of
- * keys or a list. Inserted values are never scanned again.
+ * becomes text, percent-encoded inside a typed URL. `$name.path` reads inside a param that holds a
+ * set of keys or a list. Inserted values are never scanned again.
  */
 export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>, errors: string[], key = ""): unknown {
   if (typeof value === "string") {
@@ -326,7 +361,9 @@ export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>,
       return paramAt(params.get(ref.input), ref.path);
     }
     const encode = key === "source";
-    const text = (t: string) => (encode ? encodeURIComponent(t) : t);
+    // A param's text is encoded inside a typed web address; one that starts the source (a folder, a
+    // file, a whole address) is the source itself. A run-time value in a source is always encoded.
+    const text = (t: string) => (encode && /^https?:\/\//i.test(value) ? encodeURIComponent(t) : t);
     const out: (string | InputRef)[] = [];
     for (const part of parts) {
       if (!(part instanceof InputRef)) {

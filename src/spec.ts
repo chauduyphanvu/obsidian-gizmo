@@ -440,7 +440,7 @@ export function readSpec(
   errors.push(...inputErrors);
   const start = startingValues(inputs, opts.now ?? new Date());
   const expander = new Expander(opts.notes, opts.path ?? "");
-  const scope = expander.appScope(blocks, names);
+  const scope = expander.appScope(blocks, names, selects);
   const isSelection = (n: string) => selects.has(n) || expander.selections.has(n);
   // Names whose values only come at run time, from whoever types or picks them.
   const typed = (n: string) => isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
