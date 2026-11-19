@@ -173,6 +173,34 @@ test("a lens's save: this form writes the note it is shown on, and the lens foll
   assert.equal(s.el.children.length, 0);
 });
 
+test("showing a note's lenses again leaves them in place, so a field being typed in keeps the focus", async () => {
+  const notes = {
+    "Components/Progress.md": { fm: PROGRESS },
+    "Components/About.md": { fm: { component: "a", for: "Books", panels: [{ view: "text", text: "About $this.name" }] } },
+    "Books/Dune.md": { fm: { page: 1, pages: 412 } },
+  };
+  const { stack, f, changed, index } = lenses(notes, { "Components/Progress.md": ["edit:Books"] });
+  const s = stack("Books/Dune.md");
+  await settle();
+  const moves: string[] = [];
+  new window.MutationObserver((records: MutationRecord[]) => {
+    for (const r of records) moves.push(`-${r.removedNodes.length} +${r.addedNodes.length}`);
+  }).observe(s.el, { childList: true });
+  // What the plugin does on every change to the note: the note changes, and the stack is shown again.
+  f.files.set("Books/Dune.md", { fm: { page: 2, pages: 412 } });
+  changed("Books/Dune.md");
+  s.show("Books/Dune.md");
+  await settle();
+  assert.deepEqual(moves, []);
+  assert.deepEqual([...s.el.querySelectorAll(".na-lens-name")].map(text), ["About", "Progress"]);
+  // A lens that comes in still lands in name order.
+  f.files.set("Components/Cover.md", { fm: { component: "c", for: "Books", panels: [{ view: "text", text: "Cover" }] } });
+  changed("Components/Cover.md");
+  index.changed("Components/Cover.md");
+  s.show("Books/Dune.md");
+  assert.deepEqual([...s.el.querySelectorAll(".na-lens-name")].map(text), ["About", "Cover", "Progress"]);
+});
+
 test("lenses stack in name order; folding one stops it, and the fold is kept per component", async () => {
   const notes = {
     "Components/Progress.md": { fm: PROGRESS },

@@ -385,14 +385,16 @@ export class LensStack {
       item.dispose();
       this.items.delete(component);
     }
-    for (const component of wanted) {
+    wanted.forEach((component, i) => {
       let item = this.items.get(component);
       if (!item) {
         item = new LensItem(this.el, component, hostPath!, this.index.scopeOf(component)!, this.index, this.envFor(component), this.folds);
         this.items.set(component, item);
       }
-      this.el.appendChild(item.el);
-    }
+      // Moving an element takes the focus out of it, and this runs on every change to the note.
+      const at = this.el.children[i];
+      if (at !== item.el) this.el.insertBefore(item.el, at ?? null);
+    });
   }
 
   resize(): void {
