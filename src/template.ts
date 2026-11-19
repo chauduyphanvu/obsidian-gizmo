@@ -190,6 +190,10 @@ export function refusedPlaces(raw: Record<string, unknown>, names: ReadonlySet<s
       else if (!whole) errors.push(`${first} can only be the whole ${key}, naming a list`);
     } else if ((key === "headers" || key === "body") && JSON.stringify(value).match(/\{secret:[^}]*\$/)) {
       errors.push(`${first} can't name a secret`);
+    } else if (key === "body" && typeof value === "string" && !wholeRef(value, names)) {
+      // Spliced into text, a value could close a quote or a field; in a map it is filled as a value, escaped.
+      const [ref, name, path] = [...value.matchAll(TOKEN)].find((m) => names.has(m[1]))!;
+      errors.push(`write body as a map to use ${ref} in it, e.g. body: {${path ? path.split(".").pop() : name}: ${ref}}`);
     }
   }
   return errors;
@@ -217,6 +221,12 @@ export function firstRef(v: unknown): InputRef | undefined {
     if (ref) return ref;
   }
   return undefined;
+}
+
+/** Text that is one declared `$name` (with a path or not) and nothing else: the whole value, not text around it. */
+function wholeRef(text: string, names: ReadonlySet<string>): boolean {
+  const parts = split(text, names);
+  return parts.length === 1 && parts[0] instanceof InputRef;
 }
 
 /** A value a param or input option may hold: no secrets and no line breaks, since headers take it raw. */

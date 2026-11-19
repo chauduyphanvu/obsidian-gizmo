@@ -139,11 +139,26 @@ test("a typed name is filled into a body as a value, so quotes, braces and backs
   assert.ok(f.calls[0].body!.includes("$term"));
 });
 
-test("a typed name inside text is filled as typed", async () => {
-  const ps = readSpec({ app: "x", inputs: { q: "text" }, view: "table", source: GQL, body: "term=$q&limit=5" })!.spec!.panels[0];
-  const r = resolvePanel(ps, { q: "dune" });
-  assert.deepEqual(r.errors, []);
-  assert.equal(r.panel!.body, "term=dune&limit=5");
+test("a name in a text body is refused: nothing would escape it there; a map body takes it as a value", () => {
+  // A refused panel isn't drawn, so its input is also reported as unused; that isn't what is checked here.
+  const read = (fm: Record<string, unknown>) => {
+    const r = readSpec({ app: "x", view: "table", source: GQL, ...fm })!;
+    return { ...r, errors: r.errors.filter((e) => !e.endsWith("isn't used by any panel")) };
+  };
+  assert.deepEqual(read({ inputs: { q: "text" }, body: "term=$q&limit=5" }).errors, ["write body as a map to use $q in it, e.g. body: {q: $q}"]);
+  assert.deepEqual(read({ inputs: { q: "text" }, body: '{"q":"$q"}' }).errors, ["write body as a map to use $q in it, e.g. body: {q: $q}"]);
+  assert.deepEqual(read({ body: "near=$this.city" }).errors, ["write body as a map to use $this.city in it, e.g. body: {city: $this.city}"]);
+  assert.deepEqual(read({ inputs: { k: ["a", "b"] }, body: "kind=$k" }).errors, ["write body as a map to use $k in it, e.g. body: {k: $k}"]);
+  // A component's param, whatever it holds, the same.
+  const notes = { "C.md": { component: "c", params: ["term"], panels: [{ view: "table", source: GQL, body: "term=$term" }] } };
+  const reader = { resolve: (l: string) => (`${l}.md` in notes ? `${l}.md` : undefined), frontmatter: (p: string) => (notes as Record<string, Record<string, unknown>>)[p] };
+  assert.deepEqual(readSpec({ app: "x", panels: [{ use: "[[C]]", with: { term: "dune" } }] }, { notes: reader })!.errors,
+    ["panel 1 (from [[C]] panel 1): write body as a map to use $term in it, e.g. body: {term: $term}"]);
+  // Text without names, a map with them, and one name as the whole body (a value, not text around it) are fine.
+  assert.deepEqual(read({ body: "term=dune&limit=5" }).errors, []);
+  assert.deepEqual(read({ inputs: { q: "text" }, body: "$q" }).errors, []);
+  const ps = read({ inputs: { q: "text" }, body: { term: "$q", limit: 5 } }).spec!.panels[0];
+  assert.deepEqual(resolvePanel(ps, { q: 'du"ne' }).panel!.body, { term: 'du"ne', limit: 5 });
 });
 
 test("a typed value with a secret placeholder or a line break is refused, not sent", () => {
