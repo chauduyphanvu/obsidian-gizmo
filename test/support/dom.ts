@@ -47,6 +47,26 @@ Object.assign(proto, {
   },
 });
 
+// linkedom makes forms plain elements that can't reset; empty their fields the way a browser does
+// for fields with no default.
+Object.assign(window.HTMLElement.prototype, {
+  reset(this: Element) {
+    for (const el of this.querySelectorAll("input, textarea")) {
+      const input = el as HTMLInputElement;
+      if (input.type === "checkbox") input.checked = false;
+      else input.value = "";
+    }
+  },
+});
+
+// linkedom's checkbox has no `checked` until one is set; a browser's starts from the attribute.
+const checked = new WeakMap<Element, boolean>();
+Object.defineProperty(window.HTMLInputElement.prototype, "checked", {
+  configurable: true,
+  get(this: Element) { return checked.get(this) ?? this.hasAttribute("checked"); },
+  set(this: Element, value: boolean) { checked.set(this, !!value); },
+});
+
 // linkedom doesn't track focus; this is enough of it for tests that check focus is kept.
 let focused: Element | null = null;
 Object.defineProperty(document, "activeElement", {
