@@ -420,17 +420,18 @@ test("Project board: add a project, drag it along, pick it for its dates, and op
   const { root, f, opened } = openApp("Apps/Project board.md", samples);
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
-  const [form, board, schedule, picked, open] = panels(root);
+  const [form, board, schedule] = panels(root);
   const column = (name: string) => [...board.querySelectorAll(".na-board-col")].find((c) => text(c.querySelector(".na-board-name")) === name)!;
   const cards = (name: string) => [...column(name).querySelectorAll(".na-board-text")].map(text);
   assert.deepEqual(cards("idea"), ["Learn Rust · learning", "Tax return · money"]);
   assert.deepEqual(cards("doing"), ["Garden beds · home", "Japan trip · travel"]);
   assert.deepEqual(cards("done"), []);
   assert.equal(schedule.querySelectorAll(".na-tl-bar").length, 4);
-  assert.equal(text(picked.querySelector(".na-waiting")), "Pick a row in “Projects”");
-  assert.equal(text(open.querySelector(".na-waiting")), "Pick a row in “Projects”");
+  assert.deepEqual([...schedule.querySelectorAll(".na-tl-label")].map(text), ["Japan trip", "Garden beds", "Learn Rust", "Tax return"]);
+  assert.equal(board.querySelector(".na-detail"), null);
 
   // A new project starts as an idea.
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["name", "area", "start", "due"]);
   const [name, area, start, due] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
   name.value = "Learn piano";
   area.value = "learning";
@@ -449,12 +450,12 @@ test("Project board: add a project, drag it along, pick it for its dates, and op
   assert.equal(f.files.get("Projects/Learn piano.md")!.fm!.status, "doing");
   assert.deepEqual(cards("doing"), ["Garden beds · home", "Japan trip · travel", "Learn piano · learning"]);
 
-  // Pick it: its details, and a button that opens its note.
+  // Pick it: its details under the board, with a link that opens its note.
   click(card("Learn piano"));
   await settle();
-  assert.equal(text(picked.querySelector(".na-text")), "Learn piano is doing, due 2027-06-30 (learning)");
-  assert.equal(text(open.querySelector("button")), "Open Learn piano");
-  click(open.querySelector("button")!);
+  assert.equal(text(board.querySelector(".na-detail-text")), "Learn piano is doing, due 2027-06-30 (learning)");
+  assert.equal(text(board.querySelector(".na-detail a")), "Open");
+  click(board.querySelector(".na-detail a")!);
   await settle();
   assert.deepEqual(opened, ["Projects/Learn piano.md"]);
 });

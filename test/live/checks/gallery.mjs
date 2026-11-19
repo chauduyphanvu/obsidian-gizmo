@@ -78,27 +78,38 @@ export default async function gallery(t) {
     return `${r.before.status} → ${r.after}`;
   });
 
-  await check("Project board: Move to… moves a card; picking it shows its dates and Open opens its note", async () => {
+  await check("Project board: Move to… moves a card; picking it shows its dates under the board and Open opens its note", async () => {
     const r = await run(`
       await na.open("Apps/Project board");
       const el = na.view().contentEl;
-      const panel = ${PANEL};
+      const board = ${PANEL}("Projects");
       const card = () => [...el.querySelectorAll(".na-board-card")].find((c) => c.textContent.includes("Tax return"));
       const from = card().closest(".na-board-col").getAttribute("aria-label");
       const to = from === "doing" ? "done" : "doing";
       na.choose(card().querySelector("select.na-move"), to);
       await na.until(() => na.fm("Projects/Tax return.md")?.status === to, 3000);
       await na.until(() => card()?.closest(".na-board-col")?.getAttribute("aria-label") === to, 3000);
-      card().dispatchEvent(new MouseEvent("click", { bubbles: true }));
-      await na.sleep(500);
-      const picked = na.text(panel("The one I picked"));
-      const open = [...el.querySelectorAll(".na-view-button button")].find((b) => b.textContent.startsWith("Open "));
-      const label = open?.textContent;
-      open.click();
+      // Tax return now shares its column with another project: the detail must be its own.
+      const neighbours = card().closest(".na-board-col").querySelectorAll(".na-board-card").length;
+      card().scrollIntoView({ block: "center" });
+      await na.sleep(300);
+      const line = card().querySelector(".na-board-text").getBoundingClientRect();
+      const title = card().querySelector(".na-board-text a").getBoundingClientRect();
+      return { from, to, status: na.fm("Projects/Tax return.md")?.status, neighbours, at: [Math.min(title.right + 8, line.right - 2), line.top + line.height / 2], waiting: !board.querySelector(".na-detail") };`);
+    expect(r.status === r.to && r.waiting, r);
+    // A real click on the card, beside its title (the title itself is a link to the note).
+    await t.click(r.at);
+    const after = await run(`
+      const board = ${PANEL}("Projects");
+      const detail = await na.until(() => board.querySelector(".na-detail"), 3000);
+      const picked = detail?.querySelector(".na-detail-text")?.textContent;
+      const link = detail?.querySelector("a");
+      const label = link?.textContent;
+      link?.click();
       await na.sleep(1000);
-      return { from, to, status: na.fm("Projects/Tax return.md")?.status, picked, label, state: na.state() };`);
-    expect(r.status === r.to && r.picked.includes(`Tax return is ${r.to}, due`) && r.label === "Open Tax return" && r.state === "markdown:Projects/Tax return.md", r);
-    return `${r.from} → ${r.to}; ${r.picked}; opened ${r.state}`;
+      return { picked, label, state: na.state() };`);
+    expect(after.picked?.startsWith(`Tax return is ${r.to}, due `) && after.label === "Open" && after.state === "markdown:Projects/Tax return.md", { ...r, ...after });
+    return `${r.from} → ${r.to} (${r.neighbours} in that column); ${after.picked}; opened ${after.state}`;
   });
 
   await check("Task inbox: a task added through the form shows in Open; ticking it ticks its line", async () => {

@@ -195,6 +195,13 @@ export async function tools(page, work, phase, results) {
       await page.send("Input.dispatchKeyEvent", { type: "keyUp", key: k.key, code: k.code, windowsVirtualKeyCode: k.vk, nativeVirtualKeyCode: k.vk, modifiers });
       await sleep(150);
     },
+    /** A real left click at [x, y] in the page: move, press and release, as a mouse would. */
+    async click([x, y]) {
+      for (const type of ["mouseMoved", "mousePressed", "mouseReleased"]) {
+        await page.send("Input.dispatchMouseEvent", { type, x, y, button: "left", buttons: type === "mousePressed" ? 1 : 0, clickCount: 1 });
+      }
+      await sleep(150);
+    },
     /**
      * A real mouse drag from one point to another ([x, y] in the page). Chromium hands the drag it
      * starts to CDP, which drops it where the mouse is let go, as the OS would.
