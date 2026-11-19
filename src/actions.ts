@@ -42,6 +42,11 @@ export function bodyOf(text: string): string {
   return m ? text.slice(m[0].length) : text;
 }
 
+/** A template note's body filled from the row; Obsidian's `{{title}}` reads like `{title}`. */
+export function fillBody(body: string, ctx: Row): string {
+  return fillTemplate(body.replace(/\{\{([^{}]+)\}\}/g, "{$1}"), ctx);
+}
+
 /**
  * `row:` filled from the context; a value that is exactly one `{placeholder}` keeps the value's
  * type, and so does one that is already a number or true/false (a whole `$reference` filled in).
@@ -67,7 +72,7 @@ async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: Ac
   const name = fileName(template ? fillTemplate(template, ctx) : "") || at.replace("T", " ").replace(":", ".");
   // A row's name that only names the file isn't kept as a property too.
   const frontmatter = template === "{name}" ? Object.fromEntries(Object.entries(saved).filter(([k]) => k !== "name")) : saved;
-  const body = p.template ? fillTemplate(await deps.readBody(p.template), ctx) : "";
+  const body = p.template ? fillBody(await deps.readBody(p.template), ctx) : "";
   const path = `${folder ? `${folder}/` : ""}${name}.md`;
   if (await deps.createNote(path, frontmatter, body)) return path;
   deps.notify(`“${name}” already exists`);

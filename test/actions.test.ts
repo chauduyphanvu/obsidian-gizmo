@@ -1,7 +1,7 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { bodyOf, fileName, fillRow, runActions, type ActionDeps } from "../src/actions.ts";
+import { bodyOf, fileName, fillBody, fillRow, runActions, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
 import { askersOf, checkPanel, describePermission, permissionsOf, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
 import { fakeEnv } from "./support/fakes.ts";
@@ -114,6 +114,16 @@ test("save to a folder creates a note named from the row, never over an existing
   const again = await runActions(p, doc, d);
   assert.deepEqual(again, { ok: false });
   assert.deepEqual(log.slice(4), ["read [[Book template]]", "notify “Dune Messiah” already exists"]);
+});
+
+test("a template note's {{placeholders}} read like {placeholders}; other templates keep their braces", async () => {
+  assert.equal(fillBody("# {{title}} ({{ year }})\n{author} {{nope}}|{{{title}}}", { title: "Dune", year: 1965, author: "Herbert" }), "# Dune (1965)\nHerbert |{Dune}");
+  const { d, notes, log } = deps();
+  d.readBody = async () => "# {{title}}\nby {{author_name.0}}\n";
+  const p = panel({ view: "list", source: "s", action: "Add", save: "Books/", name: "{title}", template: "[[Book template]]", notify: "Added {{title}}" });
+  await runActions(p, { title: "Dune", author_name: ["Frank Herbert"] }, d);
+  assert.equal(notes.get("Books/Dune.md")!.body, "# Dune\nby Frank Herbert\n");
+  assert.equal(log.at(-1), "notify Added {Dune}");
 });
 
 test("a note's name: name:, else the row's name (then not kept as a property), its title, or the time", async () => {
