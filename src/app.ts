@@ -1,6 +1,11 @@
 import { fillTemplate, stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
-import { describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel, type PanelSpec } from "./spec.ts";
+import {
+  describePermission, isUrl, notePath, permissionsOf, readSpec, resolvePanel, startingValues,
+  type AppSpec, type Panel, type PanelSpec,
+} from "./spec.ts";
+import type { InputValue } from "./template.ts";
+import { renderInputBar } from "./toolbar.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { defaultDataPath } from "./store.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
@@ -27,6 +32,8 @@ export interface AppEnv {
 
 interface Mounted {
   id: string;
+  ps: PanelSpec;
+  /** The panel's keys with the current input values filled in. */
   p: Panel;
   def: ViewDef;
   el: HTMLElement;
@@ -38,6 +45,8 @@ interface Mounted {
   deps: string[];
   /** Bumped on every load so a slow, outdated response can't overwrite a newer one. */
   seq: number;
+  /** An input it uses changed: draw it afresh once its new data arrives. */
+  remount: boolean;
 }
 
 /** JSON with object keys sorted, so the order keys were typed in doesn't matter. */
@@ -88,6 +97,8 @@ export class AppController {
   private tabs: HTMLElement | undefined;
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
   private activeTab: string | undefined;
+  /** Input values; kept while the note is edited, back to their starts when it's reopened. */
+  private values: Record<string, InputValue> = {};
   private ctx: PanelCtx;
 
   constructor(root: HTMLElement, appPath: string, env: AppEnv) {
@@ -143,7 +154,7 @@ export class AppController {
 
   /** Refetches this app's web sources; the panels that use them update when the data arrives. */
   reload(): void {
-    this.env.data.forgetUrls((this.spec?.panels ?? []).map((ps) => ps.panel.source).filter(isUrl));
+    this.env.data.forgetUrls([...this.mounted.values()].map((m) => m.source).filter(isUrl));
   }
 
   resize(): void {
@@ -184,7 +195,7 @@ export class AppController {
     const definition = JSON.stringify(fm);
     if (definition === this.definition) return;
     this.definition = definition;
-    const result = readSpec(fm);
+    const result = readSpec(fm, { now: this.env.now() });
     this.spec = result?.spec;
     this.dataPath = this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath);
 
@@ -220,6 +231,7 @@ export class AppController {
     this.setRefresh(spec);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });
     this.columns = columnsFor(this.shell.clientWidth);
+    this.syncInputs(spec);
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const keep = new Set(ids);
     for (const [id, m] of this.mounted) {
@@ -251,6 +263,42 @@ export class AppController {
     for (const m of order) if (m.tab !== undefined) this.grid.appendChild(m.el);
     this.layout();
     this.subscribe();
+  }
+
+  /** Keeps each input's value while it's still allowed, starts new ones, and draws the bar. */
+  private syncInputs(spec: AppSpec): void {
+    const start = startingValues(spec.inputs, this.env.now());
+    const kept: Record<string, InputValue> = {};
+    for (const def of spec.inputs) {
+      const v = this.values[def.name];
+      const ok = v !== undefined && (def.kind === "date" ? typeof v === "string" : def.options.includes(v));
+      kept[def.name] = ok ? v : start[def.name];
+    }
+    this.values = kept;
+    if (spec.inputs.length === 0) return;
+    const today = () => stampParts(this.env.now()).date;
+    const bar = renderInputBar(this.shell, spec.inputs, this.values, today, (name, value) => this.setInput(name, value));
+    this.shell.insertBefore(bar, this.grid!);
+  }
+
+  private setInput(name: string, value: InputValue): void {
+    if (this.values[name] === value) return;
+    this.values[name] = value;
+    for (const m of this.mounted.values()) if (m.ps.inputs.includes(name)) this.refill(m);
+    this.subscribe();
+  }
+
+  /** Fills a panel's inputs again; its old content stays, dimmed, until the new data arrives. */
+  private refill(m: Mounted): void {
+    const r = resolvePanel(m.ps, this.values);
+    if (!r.panel) return this.showPanelError(m, r.errors.join("; "));
+    m.p = r.panel;
+    m.source = m.p.source ?? m.def.implicitSource?.(m.p);
+    m.deps = this.env.data.depsOf(m.source, m.p, this.files());
+    m.remount = true;
+    m.el.addClass("na-stale");
+    if (m.source) void this.loadPanel(m);
+    else this.show(m, undefined);
   }
 
   private renderTabs(names: string[]): HTMLElement {
@@ -312,12 +360,12 @@ export class AppController {
   // ---- Panels -------------------------------------------------------------------------------
 
   private mount(id: string, ps: PanelSpec, files: AppFiles): Mounted {
-    const p = ps.panel;
+    const p = resolvePanel(ps, this.values).panel ?? ps.panel;
     const def = viewDef(p.view)!;
     const el = createDivIn(this.grid!, `na-panel na-view-${p.view}`);
     const source = p.source ?? def.implicitSource?.(p);
     const m = {
-      id, p, def, el, source,
+      id, ps, p, def, el, source, remount: false,
       span: p.span ?? def.span,
       tab: p.tab,
       deps: this.env.data.depsOf(source, p, files),
@@ -345,16 +393,30 @@ export class AppController {
         now: this.env.now(),
       });
       if (seq !== m.seq || this.mounted.get(m.id) !== m) return;
-      m.el.removeClass("na-loading", "na-error");
-      m.handle.update(data);
+      this.show(m, data);
     } catch (e) {
       if (seq !== m.seq || this.mounted.get(m.id) !== m) return;
-      m.el.removeClass("na-loading");
-      m.el.addClass("na-error");
-      m.el.empty();
-      m.el.createDiv({ cls: "na-title", text: m.p.title ?? m.p.view });
-      m.el.createDiv({ text: (e as Error).message });
+      this.showPanelError(m, (e as Error).message);
     }
+  }
+
+  private show(m: Mounted, data: unknown): void {
+    if (m.remount) {
+      m.handle.destroy?.();
+      m.el.empty();
+      m.handle = m.def.mount(m.el, m.p, this.ctx, m.id);
+      m.remount = false;
+    }
+    m.el.removeClass("na-loading", "na-error", "na-stale");
+    m.handle.update(data);
+  }
+
+  private showPanelError(m: Mounted, message: string): void {
+    m.el.removeClass("na-loading", "na-stale");
+    m.el.addClass("na-error");
+    m.el.empty();
+    m.el.createDiv({ cls: "na-title", text: m.p.title ?? m.p.view });
+    m.el.createDiv({ text: message });
   }
 
   private redraw(id: string): void {

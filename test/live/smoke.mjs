@@ -154,6 +154,41 @@ try {
     return "2 lines and a legend";
   });
 
+  await check("Stocks: a choice redraws its panels and keeps typed text", async () => {
+    const r = await run(`
+      await na.open("Apps/Stocks");
+      const el = na.view().contentEl;
+      const input = el.querySelector(".na-form input");
+      input.value = "watch";
+      const select = el.querySelector('select[aria-label="symbol"]');
+      select.value = "1";
+      select.dispatchEvent(new Event("change"));
+      for (let i = 0; i < 50 && el.querySelector(".na-stale, .na-loading"); i++) await na.sleep(100);
+      await na.sleep(300);
+      return {
+        title: el.querySelector(".na-view-number .na-title")?.textContent,
+        typed: el.querySelector(".na-form input")?.value,
+        chart: el.querySelector(".na-view-line .na-title")?.textContent,
+        lines: el.querySelectorAll(".na-view-line path.na-line").length,
+        errors: na.errors(),
+      };`);
+    if (r.title !== "QQQ" || r.typed !== "watch" || r.chart !== "QQQ, last 6mo" || r.lines !== 1 || r.errors) throw new Error(JSON.stringify(r));
+    return "SPY → QQQ, typed text kept";
+  });
+
+  await check("Day: the date bar picks the notes", async () => {
+    const r = await run(`
+      await na.open("Apps/Day");
+      const el = na.view().contentEl;
+      const date = el.querySelector('.na-inputs input[type="date"]');
+      date.value = "2027-01-15";
+      date.dispatchEvent(new Event("change"));
+      await na.sleep(800);
+      return { title: el.querySelector(".na-view-list .na-title")?.textContent, items: [...el.querySelectorAll(".na-view-list li")].map((li) => li.textContent) };`);
+    if (r.title !== "On 2027-01-15" || JSON.stringify(r.items) !== JSON.stringify(["Eye exam (Dr. Patel)"])) throw new Error(JSON.stringify(r));
+    return "2027-01-15 → Eye exam";
+  });
+
   await check("Meds button logs twice", async () => {
     const r = await run(`
       await na.open("Apps/Meds");
@@ -286,6 +321,8 @@ try {
   await page.shot(join(work, "weather-desktop.png"), 1100, 760);
   await run(`await na.open("Apps/Habits");`);
   await page.shot(join(work, "habits-desktop.png"), 1100, 760);
+  await run(`await na.open("Apps/Stocks"); await na.sleep(1500);`);
+  await page.shot(join(work, "stocks-desktop.png"), 1100, 760);
   await run(`app.workspace.leftSplit.collapse(); await na.open("Apps/Weight");`);
   await page.shot(join(work, "weight-phone.png"), 420, 900);
   await run(`await na.open("Apps/Habits");`);
