@@ -211,3 +211,7 @@
 
 /* Background: as-of badge, alerts */
 .note-app .na-asof { color: var(--text-faint); font-size: var(--font-ui-smaller); margin-top: var(--size-4-1); }
+.note-app .na-alerts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--size-4-1); }
+.note-app .na-alerts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--size-4-2); }
+.note-app .na-alert-title { color: var(--text-normal); }
+.note-app .na-alert-value { margin-left: auto; color: var(--text-accent); font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }

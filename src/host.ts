@@ -122,5 +122,6 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
     showSource: () => void plugin.showSource(leaf, file),
     now: () => new Date(),
     opened: (path) => plugin.background?.opened(path),
+    alerts: plugin.background?.alerts,
   };
 }

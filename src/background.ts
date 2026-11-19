@@ -1,6 +1,8 @@
 import { runActions, type ActionDeps } from "./actions.ts";
 import { panelIds } from "./app.ts";
-import { fillTemplate, parseDuration, stampParts, toNumber, toTime, valueOf, type Row } from "./data.ts";
+import {
+  compileWhere, fillTemplate, formatValue, matches, parseDuration, stampParts, toNumber, toTime, valueOf, type Row,
+} from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
 import { streak } from "./group.ts";
@@ -10,6 +12,7 @@ import {
 } from "./spec.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
 import { InputRef, valueProblem } from "./template.ts";
+import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { rowsOf } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 
@@ -21,11 +24,18 @@ export const MIN_RECORD_MS = 60_000;
 /** A recorded list keeps this many rows, the newest. */
 export const MAX_SAMPLES = 10_000;
 
+/** One status bar item: `<panel title>: <value>`, and the name of the app a click opens. */
+export interface StatusItem {
+  appPath: string;
+  text: string;
+  title: string;
+}
+
 /** What the background shows and does in Obsidian: notices, commands, the status bar, opening an app. */
 export interface BackgroundSink {
   notify(message: string): void;
   setCommands(list: { id: string; name: string }[]): void;
-  setStatus(items: { appPath: string; text: string; title: string }[]): void;
+  setStatus(items: StatusItem[]): void;
   openApp(path: string): void;
 }
 
@@ -70,6 +80,11 @@ interface AppEntry {
   /** Panels with `pin` or `alert`, each with a key unique across the vault. */
   watched: { key: string; ps: PanelSpec }[];
   refreshMs: number;
+  /** When the watched panels were last evaluated, and the evaluation running now. */
+  checkedAt?: number;
+  checking?: Promise<void>;
+  /** Asked to evaluate again while an evaluation runs. */
+  again?: boolean;
   stop(): void;
 }
 
@@ -90,6 +105,23 @@ export class Background {
   private told = new Set<string>();
   /** The command list last published, as JSON. */
   private commands = "";
+  /** Status bar items and alerts true now, by watched panel key; the status list last published. */
+  private pins = new Map<string, StatusItem>();
+  private active = new Map<string, AlertItem>();
+  private status = "";
+  /** Whether each alert was true when last evaluated this session (unknown at first, so one already true is told). */
+  private alertOn = new Map<string, boolean>();
+  private listeners = new Set<() => void>();
+  private alertsShown = "[]";
+
+  /** Alerts true now across the vault, for `view: alerts`. */
+  readonly alerts: AlertFeed = {
+    list: () => this.inOrder(this.active),
+    subscribe: (cb) => {
+      this.listeners.add(cb);
+      return () => this.listeners.delete(cb);
+    },
+  };
 
   constructor(env: BackgroundEnv) {
     this.env = env;
@@ -107,6 +139,9 @@ export class Background {
     this.running = false;
     for (const entry of this.apps.values()) entry.stop();
     this.apps.clear();
+    this.pins.clear();
+    this.active.clear();
+    this.listeners.clear();
   }
 
   /** A note changed, appeared or was renamed to this path: index it if it became an app. Known apps follow their own changes. */
@@ -125,16 +160,21 @@ export class Background {
     await Promise.all([...this.apps.values()].map((entry) => this.work(entry).catch(() => {})));
   }
 
-  /** An app was opened: what it records is sampled now if due, and a problem with it is told again. */
+  /**
+   * An app was opened (or just allowed): what it records is sampled now if due, a problem with it
+   * is told again, and its pins and alerts are evaluated if they never were.
+   */
   opened(appPath: string): void {
     const entry = this.running ? this.apps.get(appPath) ?? this.index(appPath) : undefined;
     if (!entry || !this.granted(entry)) return;
     for (const job of entry.records) void this.sample(entry, job, true).catch(() => {});
+    if (entry.checkedAt === undefined) void this.check(entry);
   }
 
   private async work(entry: AppEntry): Promise<void> {
-    if (!this.granted(entry)) return;
+    if (!this.granted(entry)) return this.forget(entry.path);
     for (const job of entry.records) await this.sample(entry, job, false).catch(() => {});
+    if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.check(entry);
   }
 
   private granted(entry: AppEntry): boolean {
@@ -229,6 +269,92 @@ export class Background {
     this.env.sink.setCommands(list);
   }
 
+  // ---- Status bar and alerts ----------------------------------------------------------------
+
+  /** Evaluates an app's pinned and alerting panels; asked again meanwhile, it runs once more after. */
+  private check(entry: AppEntry): Promise<void> {
+    if (entry.checking) {
+      entry.again = true;
+      return entry.checking;
+    }
+    entry.checking = (async () => {
+      try {
+        do {
+          entry.again = false;
+          await this.checkOnce(entry);
+        } while (entry.again && this.apps.get(entry.path) === entry);
+      } finally {
+        entry.checking = undefined;
+      }
+    })();
+    return entry.checking;
+  }
+
+  /** A panel that can't be evaluated now (a failed fetch) keeps what it showed last. */
+  private async checkOnce(entry: AppEntry): Promise<void> {
+    if (entry.watched.length === 0) return;
+    if (!this.granted(entry)) return this.forget(entry.path);
+    const now = this.env.now();
+    entry.checkedAt = now.getTime();
+    for (const { key, ps } of entry.watched) {
+      const r = await this.evaluate(entry.path, ps);
+      if (this.apps.get(entry.path) !== entry) return;
+      if (!("panel" in r)) continue;
+      const p = r.panel;
+      const title = p.title ?? p.label ?? entry.name;
+      const shown = p.view === "text" ? String(r.value) : `${formatValue(toNumber(r.value) ?? r.value, p.decimals)}${p.unit ? ` ${p.unit}` : ""}`;
+      if (p.pin === "status") this.pins.set(key, { appPath: entry.path, text: `${title}: ${shown}`, title: entry.name });
+      if (p.alert === undefined) continue;
+      const matching = typeof p.alert === "string" ? undefined : rowsOf(r.rows).filter(compileWhere(p.alert, now)).length;
+      const on = matching === undefined ? matches(r.value, p.alert as string, now) : matching > 0;
+      const was = this.alertOn.get(key);
+      this.alertOn.set(key, on);
+      if (!on) {
+        this.active.delete(key);
+        continue;
+      }
+      const text = matching === undefined ? shown : `${matching} ${matching === 1 ? "row" : "rows"}`;
+      this.active.set(key, { appPath: entry.path, app: entry.name, title, text });
+      // Told when it turns true, not again until it has been false.
+      if (was !== true) this.say(`${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`);
+    }
+    this.publish();
+  }
+
+  /** Drops an app's status items and alerts (it's gone, or no longer allowed); `keep` are panels it still watches. */
+  private forget(path: string, keep: ReadonlySet<string> = new Set()): void {
+    let dropped = false;
+    for (const map of [this.pins, this.active, this.alertOn]) {
+      for (const key of map.keys()) {
+        if (!key.startsWith(`${path}\n`) || keep.has(key)) continue;
+        map.delete(key);
+        dropped = true;
+      }
+    }
+    if (dropped) this.publish();
+  }
+
+  /** Tells the status bar and the alert views what changed. */
+  private publish(): void {
+    const status = this.inOrder(this.pins);
+    const json = JSON.stringify(status);
+    if (json !== this.status) {
+      this.status = json;
+      this.env.sink.setStatus(status);
+    }
+    const alerts = JSON.stringify(this.alerts.list());
+    if (alerts === this.alertsShown) return;
+    this.alertsShown = alerts;
+    for (const cb of [...this.listeners]) cb();
+  }
+
+  /** Items by app path, then in the order the app's panels are written. */
+  private inOrder<T>(items: Map<string, T>): T[] {
+    return [...this.apps.values()]
+      .sort((a, b) => a.path.localeCompare(b.path))
+      .flatMap((e) => e.watched.flatMap((w) => (items.has(w.key) ? [items.get(w.key)!] : [])));
+  }
+
   // ---- Record -------------------------------------------------------------------------------
 
   /**
@@ -288,11 +414,18 @@ export class Background {
     old?.stop();
     this.apps.delete(path);
     const entry = spec && this.entry(path, spec, definition);
-    if (this.running) this.publishCommands();
+    // A panel that is still there keeps its alert's state, so editing the app doesn't tell it again.
+    this.forget(path, new Set(entry?.watched.map((w) => w.key)));
+    if (!this.running) return entry;
+    this.publishCommands();
+    if (entry) void this.check(entry);
     return entry;
   }
 
-  /** A new entry for an app, listening for changes to what defines it. */
+  /**
+   * A new entry for an app, listening for changes to what defines it (its note, the components it
+   * links) and to the data its pinned and alerting panels read.
+   */
   private entry(path: string, spec: AppSpec, definition: string): AppEntry {
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const shortcuts = new Map<string, PanelSpec>();
@@ -310,10 +443,18 @@ export class Background {
       refreshMs: spec.refreshMs ?? DEFAULT_REFRESH_MS,
       stop: () => {},
     };
-    // The app note and the components it links to define it; a change to any of them reads it again.
     const definitionDeps = [`file:${path}`, ...spec.links.map((l) => `name:${l}`)];
-    entry.stop = this.env.data.subscribe(definitionDeps, () => {
-      if (this.apps.get(path) === entry) this.index(path);
+    const files = { appPath: path, dataPath: entry.dataPath };
+    const start = startingValues(spec.inputs, this.env.now());
+    const dataDeps = entry.watched.flatMap(({ ps }) => {
+      const p = resolvePanel(ps, start).panel;
+      return p ? this.env.data.depsOf(p.source ?? viewDef(p.view)?.implicitSource?.(p), p, files) : [];
+    });
+    entry.stop = this.env.data.subscribe([...definitionDeps, ...dataDeps], (changed) => {
+      if (this.apps.get(path) !== entry) return;
+      // A new definition makes a new entry, which evaluates itself.
+      if (definitionDeps.some((d) => changed.has(d)) && this.index(path) !== entry) return;
+      if (this.running && dataDeps.some((d) => changed.has(d))) void this.check(entry);
     });
     this.apps.set(path, entry);
     return entry;

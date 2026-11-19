@@ -1,6 +1,6 @@
 import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
-import type { AlertFeed } from "./alerts.ts";
+import { alerts, type AlertFeed } from "./alerts.ts";
 import { bar, line } from "./chart.ts";
 import { button, checklist, form } from "./inputs.ts";
 import { pie } from "./pie.ts";
@@ -65,6 +65,7 @@ export interface ViewDef {
 
 export const VIEW_DEFS: readonly ViewDef[] = [
   number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
+  alerts,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));

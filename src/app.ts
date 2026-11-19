@@ -15,6 +15,7 @@ import { ROW_INDEX } from "./sources/list.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
 import { editErrors, editableSource } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
+import type { AlertFeed } from "./views/alerts.ts";
 import { formatClock } from "./views/timer.ts";
 
 const CACHE_MS = 5 * 60_000;
@@ -49,6 +50,8 @@ export interface AppEnv {
   now(): Date;
   /** Tells the background service the app was opened, so what it records is sampled if due. */
   opened?(appPath: string): void;
+  /** Alerts true now across the vault, from the background service. */
+  alerts?: AlertFeed;
 }
 
 interface Mounted {
@@ -177,6 +180,7 @@ export class AppController {
       },
       select: (name, row) => this.setSelection(name, row),
       selected: (name) => this.selections.get(name),
+      alerts: env.alerts,
     };
   }
 

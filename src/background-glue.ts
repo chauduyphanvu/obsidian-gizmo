@@ -1,5 +1,5 @@
-import { Notice, type WorkspaceLeaf } from "obsidian";
-import { Background, TICK_MS } from "./background.ts";
+import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
+import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv } from "./host.ts";
 import type NoteAppsPlugin from "./main.ts";
 import { notePath } from "./spec.ts";
@@ -24,6 +24,8 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
   const openApp = (path: string) => void app.workspace.openLinkText(path, "", false);
   /** Command id (without the plugin's prefix) → name, as registered. */
   const commands = new Map<string, string>();
+  const bar: HTMLElement[] = [];
+  let shown: StatusItem[] = [];
   let stopped = false;
 
   const bg: Background = new Background({
@@ -63,7 +65,23 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
           commands.set(id, name);
         }
       },
-      setStatus: () => {},
+      // One item per pinned panel, reused in place; Obsidian has no status bar on mobile.
+      setStatus(items) {
+        if (Platform.isMobile) return;
+        while (bar.length < items.length) {
+          const el = plugin.addStatusBarItem();
+          el.addClass("na-status", "mod-clickable");
+          const i = bar.length;
+          el.addEventListener("click", () => { if (shown[i]) openApp(shown[i].appPath); });
+          bar.push(el);
+        }
+        while (bar.length > items.length) bar.pop()!.remove();
+        shown = items;
+        items.forEach((item, i) => {
+          bar[i].setText(item.text);
+          bar[i].setAttr("aria-label", `Open ${item.title}`);
+        });
+      },
       openApp,
     },
   });
@@ -82,6 +100,7 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
   plugin.register(() => {
     stopped = true;
     bg.stop();
+    for (const el of bar.splice(0)) el.remove();
   });
   return bg;
 }
