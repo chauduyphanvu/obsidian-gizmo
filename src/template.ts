@@ -35,13 +35,25 @@ export function refText(ref: InputRef): string {
 }
 
 /**
- * What a reference reads: the whole value, or the path inside it. A path after text, a number or
- * true/false is text as typed, so `$period.geojson` still means the period and ".geojson".
+ * What a reference reads: the whole value, or the path inside it, followed through rows, sets of
+ * keys and lists. Where the path goes on past text, a number or true/false, the rest is text as
+ * typed: `$period.geojson` is the period and ".geojson", and `$q.id.json` is q's id and ".json".
+ * A key missing on the way leaves the whole reference empty. The rest holds only letters, digits,
+ * `_` and dots, which percent-encoding leaves alone, so in a source only the value is encoded.
  */
 export function readRef(value: unknown, path: string): unknown {
   if (!path) return value;
-  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return `${value}.${path}`;
-  return getPath(value, path);
+  const parts = path.split(".");
+  let cur = value;
+  for (let i = 0; i < parts.length; i++) {
+    if (typeof cur === "string" || typeof cur === "number" || typeof cur === "boolean") return `${cur}.${parts.slice(i).join(".")}`;
+    if (cur === null || typeof cur !== "object" || cur instanceof Date) return undefined;
+    // A key that itself holds dots wins, as it does in getPath.
+    const rest = parts.slice(i).join(".");
+    if (!Array.isArray(cur) && Object.hasOwn(cur, rest)) return (cur as Record<string, unknown>)[rest];
+    cur = getPath(cur, parts[i]);
+  }
+  return cur;
 }
 
 /** Text with input references inside; inside a URL the values are percent-encoded. */

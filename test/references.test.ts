@@ -116,3 +116,36 @@ test("a panel whose filled value has a problem resolves to that error", () => {
   assert.deepEqual(resolvePanel(ps, { q: "two\nlines" }), { errors: ["$q can't hold a secret or a line break"] });
   assert.equal(resolvePanel(ps, { q: "war & peace" }).panel!.source, "https://openlibrary.example.org/search.json?q=war%20%26%20peace");
 });
+
+test("a path that goes on past a field's value is text after it, in a source, in text and from $this", () => {
+  const names = new Set(["q", "period"]);
+  const values = { q: { id: 42, slug: "a/b", items: ["x"], nested: { n: 1 } }, period: 2.5 };
+  const fill = (raw: string, key = "text") => resolveInputs(parseInputs(raw, names, key), values);
+  assert.equal(fill("https://api.example.com/item/$q.id.json", "source"), "https://api.example.com/item/42.json");
+  // Only the value is encoded; the text after it is as typed.
+  assert.equal(fill("https://api.example.com/item/$q.slug.json", "source"), "https://api.example.com/item/a%2Fb.json");
+  assert.equal(fill("Item $q.id.json"), "Item 42.json");
+  assert.equal(fill("$q.items.0.txt"), "x.txt");
+  assert.equal(fill("$q.nested.n.of.total"), "1.of.total");
+  assert.equal(fill("$q.nested.n", "where"), 1);
+  // A key missing on the way leaves the whole reference empty.
+  assert.equal(fill("[$q.nope.json]"), "[]");
+  assert.equal(fill("$q.nested.nope.json", "where"), undefined);
+  // A scalar input, as before.
+  assert.equal(fill("https://api.example.com/2.5_$period.geojson", "source"), "https://api.example.com/2.5_2.5.geojson");
+
+  const r = readSpec({
+    app: "Q",
+    panels: [
+      { view: "list", title: "Pick", source: "items", select: "q" },
+      { view: "text", title: "Detail", source: "https://api.example.com/item/$q.id.json", text: "{x}" },
+      { view: "text", title: "City", source: "https://api.example.com/city/$this.city.json", text: "{x} in $this.city.name" },
+    ],
+  }, { path: APP })!;
+  assert.deepEqual(r.errors, []);
+  const [, detail, city] = r.spec!.panels;
+  assert.equal(resolvePanel(detail, { q: { id: 42 } }).panel!.source, "https://api.example.com/item/42.json");
+  const here = resolvePanel(city, { this: { city: "Paris" } }).panel!;
+  assert.equal(here.source, "https://api.example.com/city/Paris.json");
+  assert.equal(here.text, "{x} in Paris.name");
+});
