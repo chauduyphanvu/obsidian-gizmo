@@ -1,3 +1,4 @@
+import { getPath } from "./data.ts";
 import { isPlainObject } from "./views/common.ts";
 
 /**
@@ -5,17 +6,37 @@ import { isPlainObject } from "./views/common.ts";
  * `params`. Anything else that looks like one (`$filter` in an OData URL, `$5`) stays as typed.
  * Input references are kept as objects, never as `$` text, so substituted text is never scanned
  * again and a component's own `$words` can't pick up an app's inputs.
+ * `$name.path.to.field` reads inside a value; only a `.` followed by a letter, digit or `_` continues
+ * the path, so `$symbol.` at the end of a sentence is the name and a full stop.
  */
-const TOKEN = /\$([A-Za-z_][A-Za-z0-9_]*)/g;
+const TOKEN = /\$([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_]+)*)/g;
 export const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
 
 export type InputValue = string | number | boolean;
 
 export class InputRef {
   input: string;
-  constructor(name: string) {
+  /** The dotted path read inside the value (`properties.mag`); empty for the whole value. */
+  path: string;
+  constructor(name: string, path = "") {
     this.input = name;
+    this.path = path;
   }
+}
+
+/** How a reference is written, for messages: `$quake.properties.mag`. */
+export function refText(ref: InputRef): string {
+  return `$${ref.input}${ref.path ? `.${ref.path}` : ""}`;
+}
+
+/**
+ * What a reference reads: the whole value, or the path inside it. A path after text, a number or
+ * true/false is text as typed, so `$period.geojson` still means the period and ".geojson".
+ */
+export function readRef(value: unknown, path: string): unknown {
+  if (!path) return value;
+  if (typeof value === "string" || typeof value === "number" || typeof value === "boolean") return `${value}.${path}`;
+  return getPath(value, path);
 }
 
 /** Text with input references inside; inside a URL the values are percent-encoded. */
@@ -50,7 +71,7 @@ function split(text: string, names: ReadonlySet<string>): (string | InputRef)[] 
   for (const m of text.matchAll(TOKEN)) {
     if (!names.has(m[1])) continue;
     if (m.index > at) parts.push(text.slice(at, m.index));
-    parts.push(new InputRef(m[1]));
+    parts.push(new InputRef(m[1], m[2].slice(1)));
     at = m.index + m[0].length;
   }
   if (at < text.length) parts.push(text.slice(at));
@@ -79,21 +100,49 @@ export function parseInputs(value: unknown, names: ReadonlySet<string>, key = ""
   return value;
 }
 
-/** Fills input references with values. Nothing is scanned again, so a value can't add references. */
-export function resolveInputs(value: unknown, values: Readonly<Record<string, InputValue>>): unknown {
-  if (value instanceof InputRef) return values[value.input];
-  if (value instanceof InputText) {
-    return value.parts.map((p) => {
-      if (!(p instanceof InputRef)) return p;
-      const text = String(values[p.input]);
-      return value.encode ? encodeURIComponent(text) : text;
-    }).join("");
-  }
-  if (Array.isArray(value)) return value.map((v) => resolveInputs(v, values));
-  if (isPlainObject(value) && !(value instanceof Date)) {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, resolveInputs(v, values)]));
-  }
-  return value;
+/**
+ * Why a value filled in at run time can't be used, or undefined. Typed text, a selected row, a
+ * note's properties or a link's parameters may come from anyone: a secret placeholder or a line
+ * break in one would reach a URL or a header, so the panel shows this instead of loading. Where the
+ * value becomes text (`inText`), a row or a list has to be narrowed to one field first.
+ */
+export function valueProblem(ref: InputRef, value: unknown, inText: boolean): string | undefined {
+  if (unsafeValue(value)) return `${refText(ref)} can't hold a secret or a line break`;
+  if (inText && value !== null && typeof value === "object" && !(value instanceof Date)) return `say which field: ${refText(ref)}.id`;
+  return undefined;
+}
+
+/**
+ * Fills references with what `read` gives for each, adding to `problems` what valueProblem finds;
+ * a caller with problems must not use the result. Nothing is scanned again, so a value can't add
+ * references.
+ */
+export function resolveWith(value: unknown, read: (ref: InputRef) => unknown, problems: string[]): unknown {
+  const fill = (ref: InputRef, inText: boolean) => {
+    const v = read(ref);
+    const problem = valueProblem(ref, v, inText);
+    if (problem && !problems.includes(problem)) problems.push(problem);
+    return v;
+  };
+  const walk = (v: unknown): unknown => {
+    if (v instanceof InputRef) return fill(v, false);
+    if (v instanceof InputText) {
+      return v.parts.map((p) => {
+        if (!(p instanceof InputRef)) return p;
+        const text = asText(fill(p, true)) ?? "";
+        return v.encode ? encodeURIComponent(text) : text;
+      }).join("");
+    }
+    if (Array.isArray(v)) return v.map(walk);
+    if (isPlainObject(v) && !(v instanceof Date)) return Object.fromEntries(Object.entries(v).map(([k, x]) => [k, walk(x)]));
+    return v;
+  };
+  return walk(value);
+}
+
+/** Fills references with the values of the names they read (see resolveWith). */
+export function resolveInputs(value: unknown, values: Readonly<Record<string, unknown>>, problems: string[] = []): unknown {
+  return resolveWith(value, (ref) => readRef(values[ref.input], ref.path), problems);
 }
 
 /** Keys a `$name` can never fill: they decide how an app is laid out and what it reads and writes. */
@@ -201,15 +250,30 @@ function asText(v: unknown): string | undefined {
 }
 
 /**
+ * A param's value at a dotted path. A reference passed through `with` gets the path added, to be
+ * read once its value is known; text with references in it takes the path as text, as a scalar does.
+ */
+function paramAt(value: unknown, path: string): unknown {
+  if (!path) return value;
+  if (value instanceof InputRef) return new InputRef(value.input, value.path ? `${value.path}.${path}` : path);
+  if (value instanceof InputText) return new InputText([...value.parts, `.${path}`], value.encode);
+  return readRef(value, path);
+}
+
+/**
  * Fills a component's declared params. A whole `$name` takes the value as given (a number stays a
  * number, a list a list, and an app input passed through `with` stays a reference); inside text it
- * becomes text, percent-encoded inside a URL. Inserted values are never scanned again.
+ * becomes text, percent-encoded inside a URL. `$name.path` reads inside a param that holds a set of
+ * keys or a list. Inserted values are never scanned again.
  */
 export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>, errors: string[], key = ""): unknown {
   if (typeof value === "string") {
     const parts = split(value, new Set(params.keys()));
     if (!parts.some((p) => p instanceof InputRef)) return value;
-    if (parts.length === 1) return params.get((parts[0] as InputRef).input);
+    if (parts.length === 1) {
+      const ref = parts[0] as InputRef;
+      return paramAt(params.get(ref.input), ref.path);
+    }
     const encode = key === "source";
     const text = (t: string) => (encode ? encodeURIComponent(t) : t);
     const out: (string | InputRef)[] = [];
@@ -218,15 +282,15 @@ export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>,
         out.push(part);
         continue;
       }
-      const v = params.get(part.input);
+      const v = paramAt(params.get(part.input), part.path);
       if (v instanceof InputRef) {
         out.push(v);
       } else if (v instanceof InputText) {
         for (const q of v.parts) out.push(q instanceof InputRef ? q : text(q));
       } else {
-        const t = asText(v);
+        const t = v === undefined || v === null ? "" : asText(v);
         if (t === undefined) {
-          errors.push(`$${part.input} holds a list or a set of keys, so it can only be a whole value`);
+          errors.push(`${refText(part)} holds a list or a set of keys, so it can only be a whole value`);
           return value;
         }
         out.push(text(t));

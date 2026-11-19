@@ -112,10 +112,15 @@ export function startingValues(defs: InputDef[], now: Date): Record<string, Inpu
   return Object.fromEntries(defs.map((d) => [d.name, d.kind === "date" ? stampParts(now).date : d.options[0]]));
 }
 
-/** The panel with these input values filled in, checked. */
-export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, InputValue>>): { panel?: Panel; errors: string[] } {
+/**
+ * The panel with these values filled in, checked. A value that can't be used (a secret or a line
+ * break in typed text, a row where text goes) is an error, and the panel isn't drawn.
+ */
+export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unknown>>): { panel?: Panel; errors: string[] } {
   if (ps.inputs.length === 0) return { panel: ps.panel, errors: [] };
-  return checkTemplate(resolveInputs(ps.template, values) as Record<string, unknown>, ps.strict);
+  const problems: string[] = [];
+  const filled = resolveInputs(ps.template, values, problems) as Record<string, unknown>;
+  return problems.length ? { errors: problems } : checkTemplate(filled, ps.strict);
 }
 
 /**
