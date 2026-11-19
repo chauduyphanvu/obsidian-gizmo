@@ -18,9 +18,17 @@ export async function connect(port, vault) {
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let id = 0;
   const pending = new Map();
+  const listeners = new Map();
   ws.onmessage = (e) => {
     const msg = JSON.parse(e.data);
     if (msg.id && pending.has(msg.id)) { pending.get(msg.id)(msg); pending.delete(msg.id); }
+    else if (msg.method) for (const cb of listeners.get(msg.method) ?? []) cb(msg.params);
+  };
+  /** Calls `cb` with the params of every CDP event of this name; returns a function that stops it. */
+  const on = (method, cb) => {
+    if (!listeners.has(method)) listeners.set(method, new Set());
+    listeners.get(method).add(cb);
+    return () => listeners.get(method).delete(cb);
   };
   const send = (method, params = {}) => new Promise((resolve) => {
     pending.set(++id, resolve);
@@ -37,9 +45,9 @@ export async function connect(port, vault) {
     ws.close();
     throw new Error(`refusing: the instance on port ${port} has ${open ?? "no vault"} open, not ${vault}`);
   }
-  const shot = async (file, width, height) => {
+  const shot = async (file, width, height, scale = 2) => {
     if (width) {
-      await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: false });
+      await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: scale, mobile: false });
       await new Promise((r) => setTimeout(r, 600));
     }
     const res = await send("Page.captureScreenshot", { format: "png" });
@@ -47,7 +55,7 @@ export async function connect(port, vault) {
     writeFileSync(file, Buffer.from(res.result.data, "base64"));
     return file;
   };
-  return { evaluate, shot, close: () => ws.close() };
+  return { evaluate, shot, send, on, close: () => ws.close() };
 }
 
 if (import.meta.main) {
