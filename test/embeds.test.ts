@@ -406,3 +406,18 @@ test("record, pin, alert and shortcut work in an app note; in an embed or a lens
   assert.deepEqual(app.errors, []);
   assert.deepEqual(permissionsOf(app.spec!, "Apps/Kp.md"), ["net:api.example.com"]);
 });
+
+test("save: this doesn't bring back a note that has gone", async () => {
+  const value = { view: "form", fields: { page: "number" }, save: "this" };
+  const host = "Books/Dune.md";
+  const t = embed(value, { [host]: { fm: { page: 120 } } }, { host });
+  await settle();
+  t.f.files.delete(host);
+  const page = t.root.querySelector("form.na-form input") as HTMLInputElement;
+  page.value = "135";
+  change(page);
+  await settle();
+  assert.equal(t.f.files.has(host), false);
+  assert.deepEqual(t.writes, []);
+  assert.deepEqual(t.notices, ["That note is gone"]);
+});

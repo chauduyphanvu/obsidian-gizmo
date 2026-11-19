@@ -220,7 +220,7 @@ test("an input used in a block above the named one is filled, checked and reload
     frontmatter: (path: string) => f.files.get(path)?.fm,
     notes: { resolve: () => undefined, frontmatter: () => undefined },
     isGranted: () => true, granted: () => [], grant: async () => {},
-    storePath: (s: string) => s, writeFrontmatter: async () => {}, appendLine: async () => {},
+    storePath: (s: string) => s, writeFrontmatter: async () => {}, updateFrontmatter: async () => false, appendLine: async () => {},
     createNote: async () => false, readBody: async () => "", setTaskDone: async () => false,
     notify: () => {}, openNote: () => {}, showSource: () => {}, showSourceAt: () => {}, sourceLines: async () => [], copy: () => {}, now: () => NOW,
   } satisfies AppEnv;

@@ -203,3 +203,33 @@ test("editing the selected row passes its new values to the panels that read it"
   assert.ok(tr.classList.contains("na-selected"), "clicking the box doesn't change the selection");
   assert.equal(root.querySelector(".na-text")!.textContent, "Dune owned: true");
 });
+
+test("a note that has gone isn't brought back by an edit or a board move; the data note still is made when needed", async () => {
+  const fm = {
+    app: "Shelf",
+    panels: [
+      { view: "table", source: "notes", from: "Books", columns: ["name", "status"], edit: ["status"] },
+      { view: "board", source: "notes", from: "Books", group: "status" },
+    ],
+  };
+  const { root, f, writes, notices, env } = open(fm, { "Books/Dune.md": { fm: { status: "reading" } }, "Books/Emma.md": { fm: { status: "done" } } });
+  await settle();
+  // Deleted (or renamed) after it was drawn, before the vault said so.
+  f.files.delete("Books/Dune.md");
+  const input = root.querySelector("tbody tr input") as HTMLInputElement;
+  input.value = "done";
+  change(input);
+  await settle();
+  const move = root.querySelector(".na-board-card select.na-move") as HTMLSelectElement;
+  for (const o of move.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "done");
+  change(move);
+  await settle();
+  assert.deepEqual(writes, []);
+  assert.equal(f.files.has("Books/Dune.md"), false);
+  assert.deepEqual(notices, ["That note is gone", "That note is gone"]);
+  // The app's own data note is created on its first save, as before.
+  await env.writeFrontmatter(DATA, (data) => { data.log = [1]; });
+  assert.deepEqual(f.files.get(DATA)!.fm, { log: [1] });
+  assert.equal(await env.updateFrontmatter("Books/Gone.md", (data) => { data.x = 1; }), false);
+  assert.equal(f.files.has("Books/Gone.md"), false);
+});

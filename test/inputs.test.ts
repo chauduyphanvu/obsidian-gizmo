@@ -31,6 +31,7 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
     grant: async () => {},
     storePath: (store) => `${store}.md`,
     writeFrontmatter: async () => {},
+    updateFrontmatter: async () => false,
     appendLine: async () => {},
     createNote: async () => false,
     readBody: async () => "",

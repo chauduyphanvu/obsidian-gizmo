@@ -30,6 +30,7 @@ function setup(notes: Parameters<typeof fakeHost>[0], grants: Record<string, str
     grant: async (path, wanted) => { grants[path] = wanted; },
     storePath: (store) => `${store}.md`,
     writeFrontmatter: async () => {},
+    updateFrontmatter: async () => false,
     appendLine: async () => {},
     createNote: async () => false,
     readBody: async () => "",

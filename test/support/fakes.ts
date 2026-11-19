@@ -152,6 +152,15 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
       f.files.set(path, note);
       changed(path);
     },
+    updateFrontmatter: async (path, fn) => {
+      const note = f.files.get(path);
+      if (!note) return false;
+      writes.push(path);
+      note.fm ??= {};
+      fn(note.fm);
+      changed(path);
+      return true;
+    },
     appendLine: async (path) => { writes.push(path); },
     // As in Obsidian, a new note reaches the data layer through the metadata cache's change event.
     createNote: async (path, fm, body) => {

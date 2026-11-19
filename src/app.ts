@@ -23,6 +23,8 @@ import type { AlertFeed } from "./views/alerts.ts";
 import { formatClock } from "./views/timer.ts";
 
 const CACHE_MS = 5 * 60_000;
+/** What a write to a note that was renamed or deleted since it was shown says. */
+const GONE = "That note is gone";
 /** How long a panel waits for the network before painting the disk copy. */
 const DISK_FIRST_MS = 50;
 
@@ -38,8 +40,17 @@ export interface AppEnv {
   grant(path: string, wanted: string[]): Promise<void>;
   /** Path of the note a `store:` value points at. */
   storePath(store: string, fromPath: string): string;
-  /** Changes a note's frontmatter, creating the note if needed; writes to one note run in order. */
+  /**
+   * Changes the frontmatter of the app's data note (or its store), creating the note if needed;
+   * writes to one note run in order.
+   */
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
+  /**
+   * Changes an existing note's frontmatter (a note a row or `save: this` names); false, writing
+   * nothing, when there is no note at that path any more, so a renamed or deleted note isn't
+   * brought back as a stub.
+   */
+  updateFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<boolean>;
   appendLine(path: string, line: string): Promise<void>;
   /**
    * Creates a note at `path` (and its folders) with this frontmatter and body; false, writing
@@ -862,7 +873,7 @@ export class AppController {
     if (!m || m.idle || target?.kind !== "this" || !Object.hasOwn(m.p.fields ?? {}, field)) return;
     if (target.scope && !this.env.data.notes(target.scope).some((r) => r.path === this.hostPath)) return;
     try {
-      await this.env.writeFrontmatter(this.hostPath, (fm) => { fm[field] = value; });
+      if (!(await this.env.updateFrontmatter(this.hostPath, (fm) => { fm[field] = value; }))) this.env.notify(GONE);
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
@@ -883,7 +894,7 @@ export class AppController {
         const path = row.path;
         const scope = sourceDef(m.p.source!).id === "base" ? this.env.data.allNotes() : this.env.data.notes(m.p.from ?? "");
         if (typeof path !== "string" || !scope.some((r) => r.path === path)) return;
-        await this.env.writeFrontmatter(path, (fm) => { fm[field] = value; });
+        if (!(await this.env.updateFrontmatter(path, (fm) => { fm[field] = value; }))) this.env.notify(GONE);
         return;
       }
       const index = (row as Record<symbol, unknown>)[ROW_INDEX];

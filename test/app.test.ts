@@ -37,6 +37,12 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
     grant: async () => {},
     storePath: (store) => `${store}.md`,
     writeFrontmatter: async (path, fn) => { writes.push(path); await edit(path, fn); },
+    updateFrontmatter: async (path, fn) => {
+      if (!f.files.has(path)) return false;
+      writes.push(path);
+      await edit(path, fn);
+      return true;
+    },
     appendLine: async (path) => { writes.push(path); },
     createNote: async () => false,
     readBody: async () => "",

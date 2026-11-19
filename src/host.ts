@@ -107,6 +107,16 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | und
       }
       await app.fileManager.processFrontMatter(target, fn);
     }),
+    async updateFrontmatter(path, fn) {
+      let written = false;
+      await queued(path, async () => {
+        const target = app.vault.getFileByPath(path);
+        if (!target) return;
+        await app.fileManager.processFrontMatter(target, fn);
+        written = true;
+      });
+      return written;
+    },
     appendLine: (path, line) => queued(path, async () => {
       const target = app.vault.getFileByPath(normalizePath(path));
       if (target) {
