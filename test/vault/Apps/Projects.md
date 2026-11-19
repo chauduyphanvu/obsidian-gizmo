@@ -17,10 +17,7 @@ panels:
     source: projects
     start: start
     end: due
-    select: project
-  - view: text
-    title: Picked
-    text: "$project.name is due $project.due"
+    detail: "{name} is due {due}"
   - view: calendar
     title: Due dates
     source: projects
@@ -28,4 +25,4 @@ panels:
     span: 3
 ---
 Drag a project to another column (or use its Move to… menu) to change its status; the note's
-`status` property is what changes. Pick a bar on the schedule to see when that project is due.
+`status` property is what changes. Pick a bar on the schedule to see when that project is due, and open its note from there.

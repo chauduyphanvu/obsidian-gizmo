@@ -274,7 +274,7 @@ test("Projects: drag projects along a board, see the schedule, pick one, see wha
   const { root, f } = openApp("Apps/Projects.md", projects());
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
-  const [board, schedule, picked, due] = [...root.querySelectorAll(".na-panel")];
+  const [board, schedule, due] = [...root.querySelectorAll(".na-panel")];
   const column = (name: string) => [...board.querySelectorAll(".na-board-col")].find((c) => text(c.querySelector(".na-board-name")) === name)!;
   const cards = (name: string) => [...column(name).querySelectorAll(".na-board-text")].map((c) => text(c));
   assert.deepEqual(cards("idea"), ["Japan trip · travel", "Learn Rust · learning"]);
@@ -284,12 +284,14 @@ test("Projects: drag projects along a board, see the schedule, pick one, see wha
   // The schedule runs by start date and shows today; nothing is picked yet.
   assert.deepEqual([...schedule.querySelectorAll(".na-tl-label")].map((l) => text(l)), ["Tax filing", "Kitchen remodel", "Garden beds", "Japan trip", "Learn Rust"]);
   assert.equal(schedule.querySelectorAll(".na-tl-today").length, 1);
-  assert.equal(text(picked.querySelector(".na-waiting")), "Pick a row in “Schedule”");
+  assert.equal(schedule.querySelector(".na-detail"), null);
 
+  // Picked, a project says when it is due under the schedule, with a link to its note.
   const bars = [...schedule.querySelectorAll(".na-tl-bar")] as HTMLElement[];
   bars[2].click();
   await settle();
-  assert.equal(text(picked.querySelector(".na-text")), "Garden beds is due 2026-11-30");
+  assert.equal(text(schedule.querySelector(".na-detail-text")), "Garden beds is due 2026-11-30");
+  assert.equal(text(schedule.querySelector(".na-detail a")), "Open");
 
   // November is shown: the garden is due on the 30th. December has the kitchen.
   const day = (date: string) => due.querySelector(`[data-date="${date}"]`)!;
@@ -307,7 +309,7 @@ test("Projects: drag projects along a board, see the schedule, pick one, see wha
   assert.deepEqual(cards("idea"), ["Learn Rust · learning"]);
   assert.deepEqual(cards("doing"), ["Garden beds · home", "Japan trip · travel", "Kitchen remodel · home"]);
   // The picked project survived the reload, and the calendar stayed on December.
-  assert.equal(text(picked.querySelector(".na-text")), "Garden beds is due 2026-11-30");
+  assert.equal(text(schedule.querySelector(".na-detail-text")), "Garden beds is due 2026-11-30");
   assert.equal(text(due.querySelector(".na-cal-title")), "December 2026");
 });
 
