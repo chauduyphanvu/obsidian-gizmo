@@ -8,7 +8,7 @@ import { defaultDataPath } from "./store.ts";
 import { isPlainObject } from "./views/common.ts";
 
 /**
- * What a `note-app` block holds: an app's keys, as an app note's frontmatter holds them (`embed`),
+ * What a `gizmo` block holds: an app's keys, as an app note's frontmatter holds them (`embed`),
  * or a link to an app note and which of its panels to show (`app`).
  */
 export type HostedBlock =
@@ -29,7 +29,7 @@ function appLink(value: unknown): string | undefined {
  */
 export function parseHosted(value: unknown): HostedBlock {
   if (value === null || value === undefined) return { kind: "embed", definition: { app: "" } };
-  if (!isPlainObject(value)) return { error: "a note-app block holds an app's keys, e.g. view: countdown" };
+  if (!isPlainObject(value)) return { error: "a gizmo block holds an app's keys, e.g. view: countdown" };
   const link = appLink(value.app);
   if (link === undefined) {
     const app = value.app === undefined || value.app === null || value.app === false ? "" : value.app;
@@ -112,7 +112,7 @@ export class Memories {
 }
 
 /**
- * One `note-app` block drawn in a note. With an app's keys it runs as its own app (grants under
+ * One `gizmo` block drawn in a note. With an app's keys it runs as its own app (grants under
  * its block key, data in the note's `<Note> data.md` unless `store` says otherwise). With a link it
  * runs that app note's keys as that app (its grants and data note), showing the panels `panels`
  * names; while the link finds no note it says so, and tries again when a note of that name appears.
@@ -189,8 +189,8 @@ export class HostedApp {
   }
 
   private showError(text: string): void {
-    this.shell = this.root.createDiv({ cls: "note-app" });
-    this.shell.createDiv({ cls: "na-card na-error", text });
+    this.shell = this.root.createDiv({ cls: "gizmo" });
+    this.shell.createDiv({ cls: "gz-card gz-error", text });
   }
 }
 
@@ -300,16 +300,16 @@ class LensItem {
 
   constructor(parent: HTMLElement, componentPath: string, hostPath: string, scope: string, index: LensIndex, env: AppEnv, folds: LensFolds) {
     this.scope = scope;
-    this.el = parent.createDiv({ cls: "na-lens-item" });
-    const head = this.el.createDiv({ cls: "na-lens-head" });
-    this.toggle = head.createEl("button", { cls: "na-lens-toggle" });
+    this.el = parent.createDiv({ cls: "gz-lens-item" });
+    const head = this.el.createDiv({ cls: "gz-lens-head" });
+    this.toggle = head.createEl("button", { cls: "gz-lens-toggle" });
     const name = basename(componentPath);
-    const link = head.createEl("a", { cls: "internal-link na-lens-name", text: name, href: "#" });
+    const link = head.createEl("a", { cls: "internal-link gz-lens-name", text: name, href: "#" });
     link.addEventListener("click", (e) => {
       e.preventDefault();
       env.openNote(componentPath, hostPath);
     });
-    this.body = this.el.createDiv({ cls: "na-lens-body" });
+    this.body = this.el.createDiv({ cls: "gz-lens-body" });
     const hosting: Hosting = {
       kind: "lens", grantKey: componentPath, hostPath, dataPath: defaultDataPath(hostPath), scope,
       definition: () => index.definition(componentPath, hostPath),

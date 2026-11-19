@@ -45,7 +45,7 @@ function open(fm: Record<string, unknown>, notes: Parameters<typeof fakeEnv>[0] 
   const app = new AppController(root, APP, t.env);
   started.push(app);
   app.load();
-  return { ...t, root, panels: () => [...root.querySelectorAll(".na-panel")] };
+  return { ...t, root, panels: () => [...root.querySelectorAll(".gz-panel")] };
 }
 
 test("a field written as a map gives its type, and its label and format to every panel over the block", () => {
@@ -138,7 +138,7 @@ test("a form shows each field by its label and starts it at its default", async 
   });
   await settle();
   const form = app.panels()[0];
-  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["How I feel", "Hours slept", "day", "at", "note", "done"]);
+  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["How I feel", "Hours slept", "day", "at", "note", "done"]);
   const [mood] = form.querySelectorAll("select");
   const [hours, day, at, note, done] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
   assert.equal((mood as HTMLSelectElement).value, "ok");
@@ -206,7 +206,7 @@ test("a save: this form shows its fields by their labels", async () => {
   started.push(app);
   app.load();
   await settle();
-  assert.equal(text(root.querySelector(".na-field > span")), "Where I am");
+  assert.equal(text(root.querySelector(".gz-field > span")), "Where I am");
   assert.equal((root.querySelector("select") as HTMLSelectElement).value, "0");
 });
 

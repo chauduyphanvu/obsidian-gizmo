@@ -61,9 +61,9 @@ test("a panel listed under a tab is the same panel with tab: set; tabs come afte
   started.push(app);
   app.load();
   await settle();
-  const tabs = [...root.querySelectorAll("button.na-tab")];
+  const tabs = [...root.querySelectorAll("button.gz-tab")];
   assert.deepEqual(tabs.map(text), ["History", "Today"]);
-  const shown = () => [...root.querySelectorAll(".na-panel:not(.na-off) .na-title")].map(text);
+  const shown = () => [...root.querySelectorAll(".gz-panel:not(.gz-off) .gz-title")].map(text);
   assert.deepEqual(shown(), ["Doses", "Older", "All"]);
   click(tabs[1]);
   assert.deepEqual(shown(), ["Doses", "Today"]);
@@ -156,7 +156,7 @@ test("a component may group its panels in tabs; a use: inside a tab puts all of 
   assert.deepEqual(readComponentPreview(notes["Components/Kit.md"], { path: "Components/Kit.md", notes: reader }).result.spec!.panels.length, 3);
 });
 
-test("a note-app block may hold tabs", async () => {
+test("a gizmo block may hold tabs", async () => {
   const t = fakeEnv({ "Daily.md": { fm: {} }, "Daily data.md": { fm: LOG } });
   const root = document.createElement("div");
   document.body.appendChild(root);
@@ -165,6 +165,6 @@ test("a note-app block may hold tabs", async () => {
   started.push(h);
   h.load();
   await settle();
-  assert.deepEqual([...root.querySelectorAll("button.na-tab")].map(text), ["Now", "Then"]);
-  assert.equal(root.querySelectorAll(".na-error").length, 0);
+  assert.deepEqual([...root.querySelectorAll("button.gz-tab")].map(text), ["Now", "Then"]);
+  assert.equal(root.querySelectorAll(".gz-error").length, 0);
 });

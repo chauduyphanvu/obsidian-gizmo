@@ -20,7 +20,7 @@ interface StoredData {
   folded?: Record<string, true>;
 }
 
-export default class NoteAppsPlugin extends Plugin {
+export default class GizmoPlugin extends Plugin {
   store: StoredData = { grants: {} };
   /** Shared by every open app: web cache, notes index, change notifications. */
   dataLayer!: DataLayer;

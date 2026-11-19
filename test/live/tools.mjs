@@ -5,16 +5,16 @@ import { join } from "node:path";
 /** Installed once per launch; every check's page code reads it as `na`. */
 const PAGE_HELPERS = `(async () => {
   if (!app.plugins.isEnabled()) await app.plugins.setEnable(true);
-  if (!app.plugins.plugins["note-apps"]) await app.plugins.enablePluginAndSave("note-apps");
+  if (!app.plugins.plugins["gizmo"]) await app.plugins.enablePluginAndSave("gizmo");
   const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
   const leaf = () => app.workspace.getMostRecentLeaf();
   const view = () => leaf().view;
   const settle = async () => {
-    if (view().getViewType() !== "note-app") return sleep(300);
+    if (view().getViewType() !== "gizmo") return sleep(300);
     for (let i = 0; i < 50; i++) {
       await sleep(100);
       const el = view().contentEl;
-      if (el.querySelector(".note-app") && !el.querySelector(".na-loading")) break;
+      if (el.querySelector(".gizmo") && !el.querySelector(".gz-loading")) break;
     }
     await sleep(200);
   };
@@ -49,7 +49,7 @@ const PAGE_HELPERS = `(async () => {
       return notices.slice(mark);
     },
     text: (root) => (root ?? view().contentEl).innerText.replace(/\\n+/g, " | "),
-    errors: (root) => (root ?? view().contentEl).querySelectorAll(".na-panel.na-error, .na-card.na-error").length,
+    errors: (root) => (root ?? view().contentEl).querySelectorAll(".gz-panel.gz-error, .gz-card.gz-error").length,
     state: () => view().getViewType() + ":" + view().file?.path,
     /** Polls until fn() gives something truthy, which it returns; undefined after ms. */
     until: async (fn, ms = 5000) => {
@@ -65,7 +65,7 @@ const PAGE_HELPERS = `(async () => {
       await app.workspace.openLinkText(path, "", false);
       await settle();
       const allowBtn = buttons().find((b) => b.textContent === "Allow");
-      const prompt = allowBtn ? [...allowBtn.closest(".na-card").querySelectorAll("li")].map((li) => li.textContent) : undefined;
+      const prompt = allowBtn ? [...allowBtn.closest(".gz-card").querySelectorAll("li")].map((li) => li.textContent) : undefined;
       if (allowBtn && allow) {
         allowBtn.click();
         for (let i = 0; i < 50 && buttons().some((b) => b.textContent === "Allow"); i++) await sleep(100);
@@ -80,8 +80,8 @@ const PAGE_HELPERS = `(async () => {
       await sleep(600);
     },
     button: (label, root) => buttons(root).find((b) => b.textContent === label),
-    /** The note-app blocks drawn and visible in a leaf (a markdown view keeps its other mode's copy hidden). */
-    embeds: (l = leaf()) => [...l.view.containerEl.querySelectorAll(".na-embed")].filter((e) => e.offsetParent !== null),
+    /** The gizmo blocks drawn and visible in a leaf (a markdown view keeps its other mode's copy hidden). */
+    embeds: (l = leaf()) => [...l.view.containerEl.querySelectorAll(".gz-embed")].filter((e) => e.offsetParent !== null),
     /** Opens a file in a new tab and makes it the active one. */
     openInTab: async (path) => {
       const l = app.workspace.getLeaf("tab");
@@ -102,14 +102,14 @@ const PAGE_HELPERS = `(async () => {
     },
     remove: async (path) => { const f = app.vault.getAbstractFileByPath(path); if (f) await app.vault.delete(f, true); },
     fm: (path) => { const f = app.vault.getFileByPath(path); return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined; },
-    status: () => [...document.querySelectorAll(".status-bar .na-status")].map((e) => e.textContent),
-    commands: () => Object.keys(app.commands.commands).filter((id) => id.startsWith("note-apps:")).sort(),
-    plugin: () => app.plugins.plugins["note-apps"],
+    status: () => [...document.querySelectorAll(".status-bar .gz-status")].map((e) => e.textContent),
+    commands: () => Object.keys(app.commands.commands).filter((id) => id.startsWith("gizmo:")).sort(),
+    plugin: () => app.plugins.plugins["gizmo"],
     /** Turns the plugin off and on again, as the user would in settings. */
     reload: async () => {
-      await app.plugins.disablePlugin("note-apps");
+      await app.plugins.disablePlugin("gizmo");
       await sleep(500);
-      await app.plugins.enablePlugin("note-apps");
+      await app.plugins.enablePlugin("gizmo");
       await sleep(1500);
     },
     /** Picks an option (by value, else by its text) as a person picking it would. */

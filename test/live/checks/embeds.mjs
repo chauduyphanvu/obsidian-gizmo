@@ -1,8 +1,8 @@
-// note-app blocks in ordinary notes (the Meds block's first allow is in fresh.mjs).
+// gizmo blocks in ordinary notes (the Meds block's first allow is in fresh.mjs).
 
-const SHELF_NOTE = "# Reading notes\n\nWhat I am reading, by status.\n\n```note-app\ninputs:\n  status: [done, reading, to read]\npanels:\n  - view: list\n    title: Books $status\n    source: notes\n    from: Books\n    where: {status: $status}\n    item: \"{name}\"\n```\n\nMore text below the block.\n";
-const BROKEN = "# Scratch\n\n```note-app\nview: [number\ntitle: oops\n```\n";
-const WIDE = "# Steps\n\n```note-app\npanels:\n  - view: bar\n    title: Steps per day\n    source: steps\n    x: day\n    y: n\n  - view: button\n    label: Walked\n    save: walks\n```\n";
+const SHELF_NOTE = "# Reading notes\n\nWhat I am reading, by status.\n\n```gizmo\ninputs:\n  status: [done, reading, to read]\npanels:\n  - view: list\n    title: Books $status\n    source: notes\n    from: Books\n    where: {status: $status}\n    item: \"{name}\"\n```\n\nMore text below the block.\n";
+const BROKEN = "# Scratch\n\n```gizmo\nview: [number\ntitle: oops\n```\n";
+const WIDE = "# Steps\n\n```gizmo\npanels:\n  - view: bar\n    title: Steps per day\n    source: steps\n    x: day\n    y: n\n  - view: button\n    label: Walked\n    save: walks\n```\n";
 // A block's lists live in its note's data note.
 const WIDE_DATA = "---\nsteps:\n  - {day: Mon, n: 4000}\n  - {day: Tue, n: 9000}\n  - {day: Wed, n: 7000}\n---\n";
 
@@ -87,8 +87,8 @@ export default async function embeds(t) {
       await na.openMd("Scratch/Broken block.md", "preview");
       await na.sleep(800);
       const block = na.embeds()[0];
-      return { card: block?.querySelector(".na-card.na-error")?.textContent };`);
-    expect(r.card?.startsWith("This block isn't YAML Note Apps can read: ") && r.card.length > 45, r);
+      return { card: block?.querySelector(".gz-card.gz-error")?.textContent };`);
+    expect(r.card?.startsWith("This block isn't YAML Gizmo can read: ") && r.card.length > 45, r);
     return r.card.slice(0, 90);
   });
 
@@ -124,8 +124,8 @@ export default async function embeds(t) {
         await na.openMd("Scratch/Steps.md", "preview");
         await na.sleep(1500);
         const block = na.embeds()[0];
-        const svg = block.querySelector(".na-view-bar svg");
-        return { block: block.clientWidth, svg: svg?.getBoundingClientRect().width, viewBox: svg?.getAttribute("viewBox"), panel: block.querySelector(".na-view-bar").clientWidth };`);
+        const svg = block.querySelector(".gz-view-bar svg");
+        return { block: block.clientWidth, svg: svg?.getBoundingClientRect().width, viewBox: svg?.getAttribute("viewBox"), panel: block.querySelector(".gz-view-bar").clientWidth };`);
       await t.shot("embed-wide.png", 1700, 900);
       expect(r.block > 1000 && r.svg > 960 && Number(r.viewBox?.split(" ")[2]) > 960, r);
       return `block ${r.block} px, chart ${Math.round(r.svg)} px (viewBox ${r.viewBox})`;

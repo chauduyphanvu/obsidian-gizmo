@@ -55,7 +55,7 @@ function columnTitle(p: Panel, c: Column): string {
 
 /** The card whose controls hold the focus, found again after the board is drawn afresh. */
 function focusedKey(el: HTMLElement): string | undefined {
-  return el.ownerDocument.activeElement?.closest?.(".na-board-card")?.getAttribute("data-key") ?? undefined;
+  return el.ownerDocument.activeElement?.closest?.(".gz-board-card")?.getAttribute("data-key") ?? undefined;
 }
 
 export const board: ViewDef = {
@@ -81,48 +81,48 @@ export const board: ViewDef = {
     const own: Panel = { ...p, group: undefined };
     const draw = (rows: Row[]) => {
       const refocus = focusedKey(el);
-      const scrolled = (el.querySelector(".na-board") as HTMLElement | null)?.scrollLeft;
+      const scrolled = (el.querySelector(".gz-board") as HTMLElement | null)?.scrollLeft;
       el.empty();
       heading(el, p, p.label);
       const columns = columnsOf(p, rows);
       if (columns.length === 0) {
-        el.createDiv({ cls: "na-empty", text: "Nothing here yet." });
+        el.createDiv({ cls: "gz-empty", text: "Nothing here yet." });
         return;
       }
-      const root = el.createDiv({ cls: "na-board" });
+      const root = el.createDiv({ cls: "gz-board" });
       let dragging: { row: Row; from: Column; card: HTMLElement } | undefined;
       /** The write is the panel's; the card is dimmed until it is done, and the data reload that follows redraws the board. */
       const move = async (card: HTMLElement, row: Row, to: Column) => {
-        card.classList.add("na-busy");
+        card.classList.add("gz-busy");
         try {
           await ctx.editRow(row, p.group!, to.value);
         } finally {
-          card.classList.remove("na-busy");
+          card.classList.remove("gz-busy");
         }
       };
       const drawCard = (parent: HTMLElement, row: Row, column: Column) => {
         const text = itemText(p, row, ctx.now);
         const key = rowKey(row);
-        const card = parent.createDiv({ cls: "na-board-card", attr: { draggable: "true" } });
+        const card = parent.createDiv({ cls: "gz-board-card", attr: { draggable: "true" } });
         if (key !== undefined) card.setAttribute("data-key", String(key));
-        const title = card.createDiv({ cls: "na-board-text" });
+        const title = card.createDiv({ cls: "gz-board-text" });
         const note = rowNote(p, row);
         if (note) noteLink(title, text, note, ctx);
         else title.setText(text);
         card.addEventListener("dragstart", (e) => {
           dragging = { row, from: column, card };
-          card.classList.add("na-dragging");
+          card.classList.add("gz-dragging");
           // Firefox starts no drag without some data.
           (e as DragEvent).dataTransfer?.setData("text/plain", text);
         });
         card.addEventListener("dragend", () => {
           dragging = undefined;
-          card.classList.remove("na-dragging");
-          for (const c of root.querySelectorAll(".na-over")) c.classList.remove("na-over");
+          card.classList.remove("gz-dragging");
+          for (const c of root.querySelectorAll(".gz-over")) c.classList.remove("gz-over");
         });
         // The keyboard and touch way to move a card.
         const others = columns.filter((c) => c !== column);
-        const moveTo = card.createEl("select", { cls: "dropdown na-move", attr: { "aria-label": `Move ${text}` } });
+        const moveTo = card.createEl("select", { cls: "dropdown gz-move", attr: { "aria-label": `Move ${text}` } });
         moveTo.createEl("option", { text: "Move to…", value: "" });
         others.forEach((c, i) => moveTo.createEl("option", { text: columnTitle(p, c), value: String(i) }));
         moveTo.addEventListener("change", () => {
@@ -135,23 +135,23 @@ export const board: ViewDef = {
         if (key !== undefined && String(key) === refocus) moveTo.focus();
       };
       for (const column of columns) {
-        const col = root.createDiv({ cls: "na-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });
-        const head = col.createDiv({ cls: "na-board-head" });
-        head.createSpan({ cls: "na-board-name", text: columnTitle(p, column) });
-        head.createSpan({ cls: "na-board-count", text: String(column.rows.length) });
-        const cards = col.createDiv({ cls: "na-board-cards" });
-        if (column.rows.length === 0) cards.createDiv({ cls: "na-empty", text: "Nothing here" });
+        const col = root.createDiv({ cls: "gz-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });
+        const head = col.createDiv({ cls: "gz-board-head" });
+        head.createSpan({ cls: "gz-board-name", text: columnTitle(p, column) });
+        head.createSpan({ cls: "gz-board-count", text: String(column.rows.length) });
+        const cards = col.createDiv({ cls: "gz-board-cards" });
+        if (column.rows.length === 0) cards.createDiv({ cls: "gz-empty", text: "Nothing here" });
         const accepts = () => dragging !== undefined && dragging.from !== column;
         col.addEventListener("dragover", (e) => {
           if (!accepts()) return;
           e.preventDefault();
-          col.classList.add("na-over");
+          col.classList.add("gz-over");
         });
         col.addEventListener("dragleave", (e) => {
-          if (!col.contains((e as DragEvent).relatedTarget as Node | null)) col.classList.remove("na-over");
+          if (!col.contains((e as DragEvent).relatedTarget as Node | null)) col.classList.remove("gz-over");
         });
         col.addEventListener("drop", (e) => {
-          col.classList.remove("na-over");
+          col.classList.remove("gz-over");
           if (!accepts()) return;
           e.preventDefault();
           const { card, row } = dragging!;

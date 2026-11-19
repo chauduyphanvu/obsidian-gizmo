@@ -2,15 +2,15 @@ import { MarkdownView, TFile } from "obsidian";
 import type { AppEnv } from "./app.ts";
 import { LensIndex, LensStack, type LensFolds } from "./hosted.ts";
 import { obsidianAppEnv } from "./host.ts";
-import type NoteAppsPlugin from "./main.ts";
+import type GizmoPlugin from "./main.ts";
 
 /**
  * Lenses: above the content of every markdown view (reading and editing alike) whose note has
- * lenses, a `.na-lens` element holding them (see LensStack). It sits beside the editor and the
+ * lenses, a `.gz-lens` element holding them (see LensStack). It sits beside the editor and the
  * preview inside the view's content, so the note's text and the editor's document are untouched and
  * switching modes keeps it. Kept in line with the open notes, their properties and the components.
  */
-export function registerLenses(plugin: NoteAppsPlugin): void {
+export function registerLenses(plugin: GizmoPlugin): void {
   const app = plugin.app;
   const index = new LensIndex(plugin.dataLayer);
   const stacks = new Map<MarkdownView, LensStack>();
@@ -43,7 +43,7 @@ export function registerLenses(plugin: NoteAppsPlugin): void {
       let stack = stacks.get(view);
       if (!stack) {
         if (!path || index.lensesFor(path).length === 0) continue;
-        stack = new LensStack(view.contentEl.createDiv({ cls: "na-lens" }), index, envFor(view), folds);
+        stack = new LensStack(view.contentEl.createDiv({ cls: "gz-lens" }), index, envFor(view), folds);
         stacks.set(view, stack);
       }
       stack.show(path);

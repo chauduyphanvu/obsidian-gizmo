@@ -181,17 +181,17 @@ test("changing a kit's with value changes what it asks, and it asks again", asyn
   started.push(app);
   app.load();
   await settle();
-  const prompt = () => [...root.querySelectorAll(".na-card li")].map(text);
+  const prompt = () => [...root.querySelectorAll(".gz-card li")].map(text);
   assert.deepEqual(prompt(), [
     "Create notes in Bets — for [[Kit]]", "Change properties of notes in Bets — for [[Kit]]", "Read notes in Bets — for [[Kit]]",
   ]);
   [...root.querySelectorAll("button")].find((b) => text(b) === "Allow")!.dispatchEvent(new window.Event("click"));
   await settle();
-  assert.equal(root.querySelectorAll(".na-panel").length, 2);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 2);
   appFm.with.folder = "Wagers";
   t.changed(APP);
   await settle();
-  assert.equal(root.querySelectorAll(".na-panel").length, 0);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 0);
   assert.deepEqual(prompt(), [
     "NewCreate notes in Wagers — for [[Kit]]", "NewChange properties of notes in Wagers — for [[Kit]]", "NewRead notes in Wagers — for [[Kit]]",
   ]);

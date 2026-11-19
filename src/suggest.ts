@@ -34,8 +34,8 @@ class KeySuggest extends EditorSuggest<Suggestion> {
   }
 
   renderSuggestion(suggestion: Suggestion, el: HTMLElement): void {
-    el.createDiv({ cls: "na-suggest-key", text: suggestion.text });
-    if (suggestion.hint) el.createDiv({ cls: "na-suggest-hint", text: suggestion.hint });
+    el.createDiv({ cls: "gz-suggest-key", text: suggestion.text });
+    if (suggestion.hint) el.createDiv({ cls: "gz-suggest-hint", text: suggestion.hint });
   }
 
   selectSuggestion(suggestion: Suggestion): void {

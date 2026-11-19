@@ -1,5 +1,5 @@
 {
-  "name": "note-apps",
+  "name": "gizmo",
   "version": "0.1.0",
   "description": "Turn a note's frontmatter into a working app.",
   "scripts": {

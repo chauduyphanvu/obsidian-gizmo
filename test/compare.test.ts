@@ -106,11 +106,11 @@ test("the pipeline loads both windows, nothing older; rows split back by window"
 
 const compare = (extra: Record<string, unknown> = {}, rows: unknown[] = SPEND) =>
   draw(number, { source: "s", field: "amount", agg: "sum", where: { at: "this week" }, compare: "previous", ...extra }, rows);
-const note = (el: Element) => el.querySelector(".na-compare");
+const note = (el: Element) => el.querySelector(".gz-compare");
 
 test("number compare: the value is this window's, with an arrow, the difference and the percent", () => {
   const up = compare();
-  assert.equal(text_(up.querySelector(".na-big")), "162");
+  assert.equal(text_(up.querySelector(".gz-big")), "162");
   assert.equal(text_(note(up)), "▲ 12 (8%) vs previous");
   assert.equal(note(up)!.getAttribute("aria-label"), "up 12, 8 percent, versus previous");
   assert.equal(note(up)!.getAttribute("role"), "img");
@@ -135,18 +135,18 @@ test("number compare: no previous data, and a change from nothing has no percent
   assert.equal(note(tiny)!.getAttribute("aria-label"), "up 1, less than 1 percent, versus previous");
   // Nothing in this window: the value shows its dash and no comparison is made against it.
   const empty = compare({}, [{ at: "2026-11-10", amount: 100 }]);
-  assert.equal(text_(empty.querySelector(".na-big")), "—");
+  assert.equal(text_(empty.querySelector(".gz-big")), "—");
   assert.equal(note(empty), null);
 });
 
 test("number compare: the difference reads in the panel's format or unit; counts compare too", () => {
   const money = compare({ format: "$0,0.00" });
-  assert.equal(text_(money.querySelector(".na-big")), "$162.00");
+  assert.equal(text_(money.querySelector(".gz-big")), "$162.00");
   assert.equal(text_(note(money)), "▲ $12.00 (8%) vs previous");
   assert.equal(note(money)!.getAttribute("aria-label"), "up $12.00, 8 percent, versus previous");
   assert.equal(text_(note(compare({ unit: "USD" }))), "▲ 12 USD (8%) vs previous");
   const count = draw(number, { source: "s", where: { at: "last 7 days" }, compare: "previous" }, SPEND);
-  assert.equal(text_(count.querySelector(".na-big")), "3");
+  assert.equal(text_(count.querySelector(".gz-big")), "3");
   assert.equal(text_(note(count)), "▲ 2 (200%) vs previous");
   const plain = draw(number, { source: "s", field: "amount", agg: "sum", where: { at: "this week" } }, SPEND.slice(1, 5));
   assert.equal(note(plain), null);
@@ -162,9 +162,9 @@ test("an app loads one window's data once and compares it with the one before", 
   document.body.appendChild(root);
   new AppController(root, "Apps/Spend.md", t.env).load();
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  assert.equal(text_(root.querySelector(".na-big")), "$162.00");
-  assert.equal(text_(root.querySelector(".na-compare")), "▲ $12.00 (8%) vs previous");
+  assert.equal(root.querySelector(".gz-error"), null);
+  assert.equal(text_(root.querySelector(".gz-big")), "$162.00");
+  assert.equal(text_(root.querySelector(".gz-compare")), "▲ $12.00 (8%) vs previous");
   assert.deepEqual(t.f.requests, []);
 });
 
@@ -187,25 +187,25 @@ const geometry = (el: Element) => {
   const n = nums(d);
   return { x: n[0], base: n[1], far: d.includes("Q") ? nums(d.slice(d.indexOf("Q")))[1] : n[2], rounded: d.includes("Q") };
 };
-const barsOf = (el: Element, s: number) => [...el.querySelectorAll(`path.na-bar.na-s${s}`)].map(geometry);
-const goalY = (el: Element) => Number(el.querySelector("line.na-goal")!.getAttribute("y1"));
+const barsOf = (el: Element, s: number) => [...el.querySelectorAll(`path.gz-bar.gz-s${s}`)].map(geometry);
+const goalY = (el: Element) => Number(el.querySelector("line.gz-goal")!.getAttribute("y1"));
 const weights = [{ at: "2026-11-16", w: 10 }, { at: "2026-11-17", w: 40 }, { at: "2026-11-18", w: 60 }];
 
 test("goal draws a dashed line with its label above the data, inside the plot", () => {
   const bars = draw(bar, { source: "s", x: "at", y: "w", goal: 80 }, weights);
   const lines = draw(line, { source: "s", x: "at", y: "w", goal: 80 }, weights);
   for (const el of [bars, lines]) {
-    assert.equal(el.querySelectorAll("line.na-goal").length, 1);
-    assert.equal(text_(el.querySelector("text.na-goal-label")), "goal 80");
+    assert.equal(el.querySelectorAll("line.gz-goal").length, 1);
+    assert.equal(text_(el.querySelector("text.gz-goal-label")), "goal 80");
     assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "goal 80");
     // The plot starts 14 down: a goal beyond the data still fits.
     assert.ok(goalY(el) >= 14, String(goalY(el)));
   }
   assert.ok(goalY(bars) < Math.min(...barsOf(bars, 1).map((b) => b.far)), "above the tallest bar");
-  assert.ok(goalY(lines) < Number(lines.querySelector("circle.na-dot")!.getAttribute("cy")), "above the highest point");
+  assert.ok(goalY(lines) < Number(lines.querySelector("circle.gz-dot")!.getAttribute("cy")), "above the highest point");
   for (const def of [line, bar]) {
     const without = draw(def, { source: "s", x: "at", y: "w" }, weights);
-    assert.equal(without.querySelector(".na-goal"), null);
+    assert.equal(without.querySelector(".gz-goal"), null);
     assert.equal(without.querySelector("svg")!.hasAttribute("aria-label"), false);
   }
 });
@@ -214,11 +214,11 @@ test("a goal below the data reaches down to it; it reads in the panel's unit or 
   const low = draw(line, { source: "s", x: "at", y: "w", goal: -30 }, weights);
   // The plot ends at y 194 (220 less the axis labels); the goal is inside it, below every point.
   assert.ok(goalY(low) <= 194 && goalY(low) >= 14, String(goalY(low)));
-  assert.ok(goalY(low) > Number(low.querySelector("circle.na-dot")!.getAttribute("cy")));
-  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 80, unit: "kg" }, weights).querySelector("text.na-goal-label")), "goal 80 kg");
-  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 1234.5, format: "$0,0" }, weights).querySelector("text.na-goal-label")), "goal $1,235");
+  assert.ok(goalY(low) > Number(low.querySelector("circle.gz-dot")!.getAttribute("cy")));
+  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 80, unit: "kg" }, weights).querySelector("text.gz-goal-label")), "goal 80 kg");
+  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 1234.5, format: "$0,0" }, weights).querySelector("text.gz-goal-label")), "goal $1,235");
   const many = draw(line, { source: "s", x: "at", y: ["w", "v"], goal: 80, format: { w: "0.0 kg" } }, weights);
-  assert.equal(text_(many.querySelector("text.na-goal-label")), "goal 80.0 kg");
+  assert.equal(text_(many.querySelector("text.gz-goal-label")), "goal 80.0 kg");
 });
 
 // ---- stack ----------------------------------------------------------------------------------------
@@ -231,9 +231,9 @@ const parts = [
 
 test("stacked bars pile positive values up and negative ones down, rounded only at the outer end", () => {
   const el = draw(bar, { source: "s", x: "g", y: ["food", "rent", "fun"], stack: true }, parts);
-  const all = [...el.querySelectorAll("path.na-bar")];
+  const all = [...el.querySelectorAll("path.gz-bar")];
   assert.equal(all.length, 8, "a zero draws nothing");
-  assert.ok(all.every((b) => b.classList.contains("na-stacked")));
+  assert.ok(all.every((b) => b.classList.contains("gz-stacked")));
   const [food, rent, fun] = [1, 2, 3].map((s) => barsOf(el, s));
   assert.deepEqual([food.length, rent.length, fun.length], [3, 2, 3]);
   // A week is one column.
@@ -266,7 +266,7 @@ test("the axis covers the tallest stack, not the tallest segment", () => {
   // The scale is shared: 4 on top of 3 is taller than 4 on its own in the side-by-side chart.
   const side = draw(bar, { source: "s", x: "g", y: ["x", "y"] }, rows);
   assert.notEqual(barsOf(side, 1)[0].x, barsOf(side, 2)[0].x, "side by side the same data sits in two columns");
-  assert.equal(side.querySelector(".na-stacked"), null);
+  assert.equal(side.querySelector(".gz-stacked"), null);
   assert.ok(y[0].base - y[0].far > 0);
 });
 
@@ -286,8 +286,8 @@ test("a stacked bar can be selected like any other, by its x", () => {
   const { panel } = checkPanel({ view: "bar", source: "s", x: "g", y: ["food", "rent"], stack: true, select: "week" }, true);
   const el = document.createElement("div");
   bar.mount(el, panel as Panel, c, "k").update(parts);
-  const segments = [...el.querySelectorAll("path.na-bar")] as HTMLElement[];
-  assert.ok(segments.every((b) => b.classList.contains("na-selectable")));
+  const segments = [...el.querySelectorAll("path.gz-bar")] as HTMLElement[];
+  assert.ok(segments.every((b) => b.classList.contains("gz-selectable")));
   // Segments are drawn series by series: food ×3, then rent's first is week 1's.
   segments[3].dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(picked, [parts[0]]);
@@ -296,13 +296,13 @@ test("a stacked bar can be selected like any other, by its x", () => {
 test("a stack of one series is drawn as an ordinary chart", () => {
   const host = document.createElement("div");
   renderChart(host, [{ name: "a", points: [{ x: "wk1", y: 1 }] }], { kind: "bar", width: 600, stack: true });
-  assert.equal(host.querySelector(".na-stacked"), null);
-  assert.equal(host.querySelectorAll("path.na-bar").length, 1);
+  assert.equal(host.querySelector(".gz-stacked"), null);
+  assert.equal(host.querySelectorAll("path.gz-bar").length, 1);
 });
 
 test("goal works on a stack too, above the tallest stack", () => {
   const el = draw(bar, { source: "s", x: "g", y: ["food", "rent"], stack: true, goal: 200 }, parts);
-  assert.equal(text_(el.querySelector("text.na-goal-label")), "goal 200");
+  assert.equal(text_(el.querySelector("text.gz-goal-label")), "goal 200");
   assert.ok(goalY(el) >= 14);
   assert.ok(goalY(el) < Math.min(...[1, 2].flatMap((s) => barsOf(el, s).map((b) => b.far))));
 });

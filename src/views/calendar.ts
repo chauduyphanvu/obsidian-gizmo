@@ -5,7 +5,7 @@ import { svg } from "./chart.ts";
 import { DATA_KEYS, groupedTotals, heading, picks, rowsOf, selectable, seriesNames } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
-/** Shades a day can have besides none; the classes are na-step-1 to na-step-5. */
+/** Shades a day can have besides none; the classes are gz-step-1 to gz-step-5. */
 const SHADES = 5;
 /** Year heatmap: gap between cells, smallest cell (narrower panels scroll), room for month names. */
 const GAP = 2, MIN_CELL = 8, TOP = 16;
@@ -81,8 +81,8 @@ function markDay(el: Element, p: Panel, ctx: PanelCtx, days: Days, date: string,
   const label = days.label(date);
   el.setAttribute("data-date", date);
   const step = days.step(date);
-  if (step) el.classList.add(`na-step-${step}`);
-  if (date === today) el.classList.add("na-today");
+  if (step) el.classList.add(`gz-step-${step}`);
+  if (date === today) el.classList.add("gz-today");
   if (picks(p)) {
     selectable(el, p, ctx, days.row(date), label);
   } else {
@@ -92,18 +92,18 @@ function markDay(el: Element, p: Panel, ctx: PanelCtx, days: Days, date: string,
 }
 
 function drawMonth(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: number, month: number): void {
-  const grid = el.createDiv({ cls: "na-cal-grid" });
+  const grid = el.createDiv({ cls: "gz-cal-grid" });
   // 5 January 2026 is a Monday.
-  for (let i = 0; i < 7; i++) grid.createDiv({ cls: "na-cal-dow", text: new Date(2026, 0, 5 + i).toLocaleDateString(undefined, { weekday: "short" }) });
+  for (let i = 0; i < 7; i++) grid.createDiv({ cls: "gz-cal-dow", text: new Date(2026, 0, 5 + i).toLocaleDateString(undefined, { weekday: "short" }) });
   const lead = (new Date(year, month, 1).getDay() + 6) % 7;
-  for (let i = 0; i < lead; i++) grid.createDiv({ cls: "na-cal-blank" });
+  for (let i = 0; i < lead; i++) grid.createDiv({ cls: "gz-cal-blank" });
   const today = stampParts(ctx.now).date;
   for (let d = 1, last = new Date(year, month + 1, 0).getDate(); d <= last; d++) {
     const date = dayKey(year, month, d);
-    const cell = grid.createDiv({ cls: "na-cal-day", attr: { title: days.label(date) } });
-    cell.createSpan({ cls: "na-cal-num", text: String(d) });
+    const cell = grid.createDiv({ cls: "gz-cal-day", attr: { title: days.label(date) } });
+    cell.createSpan({ cls: "gz-cal-num", text: String(d) });
     const v = days.value(date);
-    if (v) cell.createSpan({ cls: "na-cal-val", text: days.show(date) });
+    if (v) cell.createSpan({ cls: "gz-cal-val", text: days.show(date) });
     markDay(cell, p, ctx, days, date, today);
   }
   arrowKeys(grid, 1, 7);
@@ -124,14 +124,14 @@ function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: nu
   const weeks = cells[cells.length - 1].col + 1;
   const size = Math.max(MIN_CELL, Math.floor((width - (weeks - 1) * GAP) / weeks));
   const at = (i: number) => i * (size + GAP);
-  const scroller = el.createDiv({ cls: "na-cal-scroll" });
+  const scroller = el.createDiv({ cls: "gz-cal-scroll" });
   const root = svg("svg", {
-    width: at(weeks) - GAP, height: TOP + at(7) - GAP, class: "na-cal-year", role: "group", "aria-label": String(year),
+    width: at(weeks) - GAP, height: TOP + at(7) - GAP, class: "gz-cal-year", role: "group", "aria-label": String(year),
   }, scroller);
   const today = stampParts(ctx.now).date;
   for (const c of cells) {
-    if (c.month) svg("text", { x: at(c.col), y: TOP - 5, class: "na-axis" }, root).textContent = c.month;
-    const rect = svg("rect", { x: at(c.col), y: TOP + at(c.row), width: size, height: size, rx: 2, class: "na-cal-day" }, root);
+    if (c.month) svg("text", { x: at(c.col), y: TOP - 5, class: "gz-axis" }, root).textContent = c.month;
+    const rect = svg("rect", { x: at(c.col), y: TOP + at(c.row), width: size, height: size, rx: 2, class: "gz-cal-day" }, root);
     svg("title", {}, rect).textContent = days.label(c.date);
     markDay(rect, p, ctx, days, c.date, today);
   }
@@ -189,15 +189,15 @@ export const calendar: ViewDef = {
     const draw = (focus?: Nav) => {
       el.empty();
       heading(el, p, p.label);
-      const head = el.createDiv({ cls: "na-cal-head" });
+      const head = el.createDiv({ cls: "gz-cal-head" });
       const button = (nav: Nav, text: string, go: () => void, label?: string) => {
-        const b = head.createEl("button", { cls: `na-small na-cal-${nav}`, text });
+        const b = head.createEl("button", { cls: `gz-small gz-cal-${nav}`, text });
         if (label) b.setAttr("aria-label", label);
         b.addEventListener("click", () => { go(); draw(nav); });
         if (nav === focus) b.focus();
       };
       button("prev", "‹", () => move(-1), `Previous ${unit}`);
-      head.createSpan({ cls: "na-cal-title", text: yearly ? String(year) : new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }) });
+      head.createSpan({ cls: "gz-cal-title", text: yearly ? String(year) : new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }) });
       button("next", "›", () => move(1), `Next ${unit}`);
       button("today", "Today", () => { [year, month] = [ctx.now.getFullYear(), ctx.now.getMonth()]; });
       const days = daysOf(p, last, ctx.now);

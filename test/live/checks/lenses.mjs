@@ -9,7 +9,7 @@ ${Array.from({ length: 160 }, (_, i) => `Line ${i + 1} of my notes on this long 
 `;
 
 /** In the page: the lens elements in the active view, and in the whole window. */
-const LENSES = `({ view: na.view().contentEl.querySelectorAll(".na-lens").length, all: document.querySelectorAll(".na-lens").length })`;
+const LENSES = `({ view: na.view().contentEl.querySelectorAll(".gz-lens").length, all: document.querySelectorAll(".gz-lens").length })`;
 
 export default async function lenses(t) {
   const { check, run, expect } = t;
@@ -19,22 +19,22 @@ export default async function lenses(t) {
       await na.openMd("Books/Dune.md", "live");
       await na.sleep(800);
       const ce = na.view().contentEl;
-      const lens = () => na.view().contentEl.querySelector(".na-lens");
-      const first = { ...${LENSES}, top: ce.firstElementChild?.classList.contains("na-lens"), name: lens()?.querySelector(".na-lens-name")?.textContent, prompt: [...(lens()?.querySelectorAll(".na-card li") ?? [])].map((li) => li.textContent) };
+      const lens = () => na.view().contentEl.querySelector(".gz-lens");
+      const first = { ...${LENSES}, top: ce.firstElementChild?.classList.contains("gz-lens"), name: lens()?.querySelector(".gz-lens-name")?.textContent, prompt: [...(lens()?.querySelectorAll(".gz-card li") ?? [])].map((li) => li.textContent) };
       na.button("Allow", lens()).click();
-      await na.until(() => lens().querySelector(".na-view-form input"), 3000);
-      const input = lens().querySelector('.na-view-form input[type="number"]');
+      await na.until(() => lens().querySelector(".gz-view-form input"), 3000);
+      const input = lens().querySelector('.gz-view-form input[type="number"]');
       input.focus();
       na.fill(input, "100");
       await na.until(() => na.fm("Books/Dune.md")?.page === 100, 3000);
       await na.sleep(800);
-      const saved = { page: na.fm("Books/Dune.md")?.page, bar: na.text(lens().querySelector(".na-view-progress")), focused: document.activeElement === input, loading: na.text(lens()).includes("Loading…") };
+      const saved = { page: na.fm("Books/Dune.md")?.page, bar: na.text(lens().querySelector(".gz-view-progress")), focused: document.activeElement === input, loading: na.text(lens()).includes("Loading…") };
       await na.openMd("Books/Dune.md", "preview");
       await na.sleep(800);
       const reading = ${LENSES};
       await na.openMd("Books/Middlemarch.md", "live");
       await na.sleep(800);
-      const middlemarch = { ...${LENSES}, asks: !!na.button("Allow", lens()), bar: na.text(lens()?.querySelector(".na-view-progress") ?? document.body).slice(0, 40) };
+      const middlemarch = { ...${LENSES}, asks: !!na.button("Allow", lens()), bar: na.text(lens()?.querySelector(".gz-view-progress") ?? document.body).slice(0, 40) };
       return { first, saved, reading, middlemarch };`);
     expect(r.first.view === 1 && r.first.all === 1 && r.first.top && r.first.name === "Reading progress" && JSON.stringify(r.first.prompt) === '["Change properties of notes in Books"]', r.first);
     expect(r.saved.page === 100 && r.saved.bar.includes("100/ 412 pages"), r.saved);
@@ -48,34 +48,34 @@ export default async function lenses(t) {
     const r = await run(`
       await na.openMd("Books/Dune.md", "live");
       await na.sleep(600);
-      const lens = () => na.view().contentEl.querySelector(".na-lens");
-      lens().querySelector(".na-lens-toggle").click();
+      const lens = () => na.view().contentEl.querySelector(".gz-lens");
+      lens().querySelector(".gz-lens-toggle").click();
       await na.sleep(300);
-      const folded = { cls: lens().querySelector(".na-lens-item").className, panels: lens().querySelectorAll(".na-panel").length };
+      const folded = { cls: lens().querySelector(".gz-lens-item").className, panels: lens().querySelectorAll(".gz-panel").length };
       await na.openMd("Books/Piranesi.md", "live");
       await na.sleep(600);
-      const other = { cls: lens()?.querySelector(".na-lens-item")?.className, panels: lens()?.querySelectorAll(".na-panel").length };
-      lens().querySelector(".na-lens-toggle").click();
+      const other = { cls: lens()?.querySelector(".gz-lens-item")?.className, panels: lens()?.querySelectorAll(".gz-panel").length };
+      lens().querySelector(".gz-lens-toggle").click();
       await na.sleep(500);
-      const unfolded = lens().querySelectorAll(".na-panel").length;
+      const unfolded = lens().querySelectorAll(".gz-panel").length;
       const places = {};
       for (const p of ["Apps/Library.md", "Daily.md", "Components/Reading progress.md"]) {
         await app.workspace.openLinkText(p, "", false);
         await na.sleep(800);
-        places[p] = document.querySelectorAll(".na-lens").length;
+        places[p] = document.querySelectorAll(".gz-lens").length;
       }
       await na.openMd("Components/Reading progress.md", "source");
       await na.sleep(500);
-      places.componentSource = document.querySelectorAll(".na-lens").length;
+      places.componentSource = document.querySelectorAll(".gz-lens").length;
       await na.openMd("Books/Dune.md", "live");
       await na.sleep(800);
-      const before = document.querySelectorAll(".na-lens").length;
-      await app.plugins.disablePlugin("note-apps");
+      const before = document.querySelectorAll(".gz-lens").length;
+      await app.plugins.disablePlugin("gizmo");
       await na.sleep(800);
-      const off = document.querySelectorAll(".na-lens").length;
-      await app.plugins.enablePlugin("note-apps");
+      const off = document.querySelectorAll(".gz-lens").length;
+      await app.plugins.enablePlugin("gizmo");
       await na.sleep(1500);
-      return { folded, other, unfolded, places, before, off, on: document.querySelectorAll(".na-lens").length };`);
+      return { folded, other, unfolded, places, before, off, on: document.querySelectorAll(".gz-lens").length };`);
     expect(/is-folded/.test(r.folded.cls) && r.folded.panels === 0 && /is-folded/.test(r.other.cls ?? "") && r.other.panels === 0 && r.unfolded > 0, r);
     expect(Object.values(r.places).every((n) => n === 0) && r.before === 1 && r.off === 0 && r.on === 1, r);
     return `folded on Dune and Piranesi; none on ${Object.keys(r.places).join(", ")}; off removes it`;
@@ -89,7 +89,7 @@ export default async function lenses(t) {
         await na.openMd("Books/Long read.md", mode);
         await na.sleep(1000);
         const ce = na.view().contentEl;
-        const lens = ce.querySelector(".na-lens");
+        const lens = ce.querySelector(".gz-lens");
         const pane = ce.querySelector(mode === "live" ? ".markdown-source-view" : ".markdown-reading-view");
         const scroller = ce.querySelector(mode === "live" ? ".cm-scroller" : ".markdown-preview-view");
         scroller.scrollTop = 400;

@@ -118,7 +118,7 @@ test("panels reading the recorded list update after a sample, and opening the ap
   t.env.opened = (path) => t.bg.opened(path);
   const root = document.createElement("div");
   document.body.appendChild(root);
-  const big = () => root.querySelector(".na-big")?.textContent;
+  const big = () => root.querySelector(".gz-big")?.textContent;
   await t.bg.start();
   new AppController(root, "Apps/Kp.md", t.env).load();
   await settle();

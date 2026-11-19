@@ -93,7 +93,7 @@ export function newMemory(): AppMemory {
 }
 
 /**
- * Where an app runs when it isn't an app note opened on its own: `embed`, a `note-app` block with
+ * Where an app runs when it isn't an app note opened on its own: `embed`, a `gizmo` block with
  * its keys; `app`, a block showing panels of an app note as that app; `lens`, a component shown
  * above every note in its `for` scope. The app's path (links, lists typed into it) is given apart.
  */
@@ -229,7 +229,7 @@ export class AppController {
     this.hostPath = hosting?.hostPath ?? appPath;
     this.memory = hosting?.memory ?? newMemory();
     this.readHost();
-    this.shell = root.createDiv({ cls: "note-app" });
+    this.shell = root.createDiv({ cls: "gizmo" });
     const self = this;
     this.ctx = {
       get now() { return self.env.now(); },
@@ -327,10 +327,10 @@ export class AppController {
       this.inspector = undefined;
       return;
     }
-    const pane = this.shell.createDiv({ cls: "na-card na-inspector" });
+    const pane = this.shell.createDiv({ cls: "gz-card gz-inspector" });
     this.shell.insertBefore(pane, this.bar ?? this.grid ?? null);
     this.inspector = pane;
-    pane.createDiv({ cls: "na-empty", text: "Loading…" });
+    pane.createDiv({ cls: "gz-empty", text: "Loading…" });
     await this.fillInspector();
   }
 
@@ -368,11 +368,11 @@ export class AppController {
   private layout(): void {
     this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     if (!this.grid) return;
-    this.grid.className = `na-grid na-cols-${this.columns}`;
+    this.grid.className = `gz-grid gz-cols-${this.columns}`;
     for (const m of this.mounted.values()) {
-      for (const c of [...m.el.classList]) if (c.startsWith("na-span-")) m.el.classList.remove(c);
-      m.el.classList.add(`na-span-${spanOn(m.span, this.columns)}`);
-      m.el.classList.toggle("na-off", m.tab !== undefined && m.tab !== this.activeTab);
+      for (const c of [...m.el.classList]) if (c.startsWith("gz-span-")) m.el.classList.remove(c);
+      m.el.classList.add(`gz-span-${spanOn(m.span, this.columns)}`);
+      m.el.classList.toggle("gz-off", m.tab !== undefined && m.tab !== this.activeTab);
     }
     for (const b of this.tabs?.querySelectorAll("button") ?? []) b.classList.toggle("is-active", b.textContent === this.activeTab);
   }
@@ -413,25 +413,25 @@ export class AppController {
     this.dataPath = h?.dataPath ?? (this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath));
 
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
-    const header = createDivIn(this.shell, "na-header");
+    const header = createDivIn(this.shell, "gz-header");
     this.shell.prepend(header);
 
     if (!result) {
       // A lens whose note no longer fills its params shows nothing until it is taken away.
-      if (!h) header.createDiv({ cls: "na-card", text: "This note has no app key." });
-      else if (h.kind === "app") header.createDiv({ cls: "na-card", text: `[[${basename(this.appPath)}]] isn't an app (it has no app: line)` });
+      if (!h) header.createDiv({ cls: "gz-card", text: "This note has no app key." });
+      else if (h.kind === "app") header.createDiv({ cls: "gz-card", text: `[[${basename(this.appPath)}]] isn't an app (it has no app: line)` });
       return this.showOnly(header);
     }
     const description = this.spec?.description ?? String(fm.app ?? "");
-    if (description) header.createDiv({ cls: "na-description", text: description });
+    if (description) header.createDiv({ cls: "gz-description", text: description });
     if (component) this.renderUsage(header, component);
     if (result.empty) {
       this.renderEmpty(header);
       return this.showOnly(header);
     }
     if (result.errors.length) {
-      const card = header.createDiv({ cls: "na-card na-error" });
-      card.createDiv({ cls: "na-title", text: "This app's keys have problems" });
+      const card = header.createDiv({ cls: "gz-card gz-error" });
+      card.createDiv({ cls: "gz-title", text: "This app's keys have problems" });
       const ul = card.createEl("ul");
       for (const e of result.errors) this.renderError(ul, e);
     }
@@ -448,7 +448,7 @@ export class AppController {
     if (!h && !component && wanted.length === 0 && this.env.granted(this.appPath)?.length !== 0) void this.env.grant(this.appPath, []);
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
-    if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });
+    if (!this.grid) this.grid = this.shell.createDiv({ cls: "gz-grid" });
     this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     this.syncInputs(spec);
     const ids = panelIds(spec.panels.map((ps) => ps.template));
@@ -573,16 +573,16 @@ export class AppController {
     m.source = m.p.source ?? m.def.implicitSource?.(m.p);
     m.deps = this.env.data.depsOf(m.source, m.p, this.files());
     m.remount = true;
-    m.el.addClass("na-stale");
+    m.el.addClass("gz-stale");
     if (m.source) void this.loadPanel(m);
     else this.show(m, undefined);
   }
 
   private renderTabs(names: string[]): HTMLElement {
-    const bar = this.grid!.createDiv({ cls: "na-tabs" });
+    const bar = this.grid!.createDiv({ cls: "gz-tabs" });
     bar.setAttr("role", "tablist");
     for (const name of names) {
-      const b = bar.createEl("button", { cls: "na-tab", text: name });
+      const b = bar.createEl("button", { cls: "gz-tab", text: name });
       b.setAttr("role", "tab");
       b.addEventListener("click", () => {
         this.activeTab = name;
@@ -653,7 +653,7 @@ export class AppController {
     // Unresolved, the checked panel stands in for layout; its title may hold check-time stand-ins.
     const p = r.panel ?? { ...ps.panel, title: plainTitle(ps) };
     const def = viewDef(p.view)!;
-    const el = createDivIn(this.grid!, `na-panel na-view-${p.view}`);
+    const el = createDivIn(this.grid!, `gz-panel gz-view-${p.view}`);
     const source = r.panel ? p.source ?? def.implicitSource?.(p) : undefined;
     const m = {
       id, ps, p, def, el, source, remount: false, idle: false,
@@ -672,12 +672,12 @@ export class AppController {
     }
     m.handle = mountView(def, el, p, this.ctxFor(id), id);
     if (source) {
-      el.addClass("na-loading");
+      el.addClass("gz-loading");
       // A view that draws itself at once (a save: this form) fills in its values in place, so a
       // stand-in added beside it would never be taken away.
       if (!el.hasChildNodes()) {
-        el.createDiv({ cls: "na-title", text: p.title ?? p.label ?? "" });
-        el.createDiv({ cls: "na-empty", text: "Loading…" });
+        el.createDiv({ cls: "gz-title", text: p.title ?? p.label ?? "" });
+        el.createDiv({ cls: "gz-empty", text: "Loading…" });
       }
       void this.loadPanel(m);
     } else {
@@ -722,7 +722,7 @@ export class AppController {
       m.handle = mountView(m.def, m.el, m.p, this.ctxFor(m.id), m.id);
       m.remount = false;
     }
-    m.el.removeClass("na-loading", "na-error", "na-stale");
+    m.el.removeClass("gz-loading", "gz-error", "gz-stale");
     m.handle.update(data);
     this.markAsOf(m, asOf);
   }
@@ -732,17 +732,17 @@ export class AppController {
    * the attribute, so it stays while a view redraws itself (a chart on resize).
    */
   private markAsOf(m: Mounted, at?: number): void {
-    m.el.classList.toggle("na-asof", at !== undefined);
+    m.el.classList.toggle("gz-asof", at !== undefined);
     if (at === undefined) m.el.removeAttribute("data-asof");
     else m.el.setAttr("data-asof", asOfText(at, this.env.now().getTime()));
   }
 
   private showPanelError(m: Mounted, message: string): void {
     this.markAsOf(m);
-    m.el.removeClass("na-loading", "na-stale");
-    m.el.addClass("na-error");
+    m.el.removeClass("gz-loading", "gz-stale");
+    m.el.addClass("gz-error");
     m.el.empty();
-    m.el.createDiv({ cls: "na-title", text: m.p.title ?? m.p.view });
+    m.el.createDiv({ cls: "gz-title", text: m.p.title ?? m.p.view });
     m.el.createDiv({ text: message });
   }
 
@@ -758,11 +758,11 @@ export class AppController {
     m.seq++;
     if (waiting === undefined) return this.showPanelError(m, errors.join("; "));
     this.markAsOf(m);
-    m.el.removeClass("na-loading", "na-error", "na-stale");
+    m.el.removeClass("gz-loading", "gz-error", "gz-stale");
     m.el.empty();
     const title = plainTitle(m.ps);
-    if (title) m.el.createDiv({ cls: "na-title", text: title });
-    m.el.createDiv({ cls: "na-waiting", text: this.waitingFor(waiting) });
+    if (title) m.el.createDiv({ cls: "gz-title", text: title });
+    m.el.createDiv({ cls: "gz-waiting", text: this.waitingFor(waiting) });
   }
 
   /** What a waiting panel asks for: typing in a search box, or picking a row in the panel that selects. */
@@ -782,19 +782,19 @@ export class AppController {
   // ---- Cards --------------------------------------------------------------------------------
 
   private renderPermissionPrompt(header: HTMLElement, wanted: string[], askers: Map<string, Set<string>>): void {
-    const card = header.createDiv({ cls: "na-card" });
-    card.createDiv({ cls: "na-title", text: "This app needs your OK to:" });
+    const card = header.createDiv({ cls: "gz-card" });
+    card.createDiv({ cls: "gz-title", text: "This app needs your OK to:" });
     const ul = card.createEl("ul");
     const before = new Set(this.env.granted(this.grantKey));
     for (const p of wanted) {
       const li = ul.createEl("li");
-      if (before.size && !before.has(p)) li.createSpan({ cls: "na-new", text: "New" });
+      if (before.size && !before.has(p)) li.createSpan({ cls: "gz-new", text: "New" });
       const who = [...(askers.get(p) ?? [])];
       const others = who.filter((path) => path !== this.appPath).map((path) => `[[${basename(path)}]]`);
       const names = [...(others.length && who.includes(this.appPath) ? ["this note"] : []), ...others];
       li.createSpan({ text: describePermission(p) + (others.length ? ` — for ${names.join(", ")}` : "") });
     }
-    const row = card.createDiv({ cls: "na-actions" });
+    const row = card.createDiv({ cls: "gz-actions" });
     row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
       await this.env.grant(this.grantKey, wanted);
       this.load();
@@ -805,7 +805,7 @@ export class AppController {
 
   /** In an embed of an app that isn't allowed yet: the app asks for itself when it is opened. */
   private renderOpenOnce(header: HTMLElement): void {
-    const line = header.createDiv({ cls: "na-waiting" });
+    const line = header.createDiv({ cls: "gz-waiting" });
     line.createSpan({ text: "Open " });
     const link = line.createEl("a", { cls: "internal-link", text: `[[${basename(this.appPath)}]]`, href: "#" });
     link.addEventListener("click", (e) => {
@@ -819,7 +819,7 @@ export class AppController {
   private renderError(ul: HTMLElement, error: string): void {
     const li = ul.createEl("li");
     if (!labelOf(error)) return li.setText(error);
-    const link = li.createEl("button", { cls: "na-error-link", text: error, title: "Show it in the note" });
+    const link = li.createEl("button", { cls: "gz-error-link", text: error, title: "Show it in the note" });
     link.addEventListener("click", () => void this.showErrorSource(error));
   }
 
@@ -831,25 +831,25 @@ export class AppController {
   }
 
   private renderUsage(header: HTMLElement, c: ComponentPreview): void {
-    const card = header.createDiv({ cls: "na-card" });
+    const card = header.createDiv({ cls: "gz-card" });
     card.createDiv({ text: "A component. Use it in an app's panels:" });
-    card.createEl("pre", { cls: "na-example", text: c.usage });
-    const copy = card.createDiv({ cls: "na-actions" }).createEl("button", { text: "Copy" });
+    card.createEl("pre", { cls: "gz-example", text: c.usage });
+    const copy = card.createDiv({ cls: "gz-actions" }).createEl("button", { text: "Copy" });
     copy.addEventListener("click", () => {
       this.env.copy(c.usage);
       copy.setText("Copied");
       setTimeout(() => copy.setText("Copy"), 1000);
     });
-    if (c.lens) card.createDiv({ cls: "na-label", text: `It is also a lens: it shows above every note in ${c.lens}.` });
-    else if (c.missing.length) card.createDiv({ cls: "na-label", text: "Give every param a default to preview it here." });
+    if (c.lens) card.createDiv({ cls: "gz-label", text: `It is also a lens: it shows above every note in ${c.lens}.` });
+    else if (c.missing.length) card.createDiv({ cls: "gz-label", text: "Give every param a default to preview it here." });
   }
 
   private renderEmpty(header: HTMLElement): void {
-    const card = header.createDiv({ cls: "na-card" });
+    const card = header.createDiv({ cls: "gz-card" });
     card.createDiv({ text: "No app keys yet. Add a view under the app line, for example:" });
-    card.createEl("pre", { cls: "na-example", text: "view: countdown\nto: 2027-01-01\nlabel: New year" });
+    card.createEl("pre", { cls: "gz-example", text: "view: countdown\nto: 2027-01-01\nlabel: New year" });
     if (this.hosting) return;
-    card.createDiv({ cls: "na-actions" }).createEl("button", { cls: "mod-cta", text: "Edit source" })
+    card.createDiv({ cls: "gz-actions" }).createEl("button", { cls: "mod-cta", text: "Edit source" })
       .addEventListener("click", () => this.env.showSource());
   }
 
@@ -975,7 +975,7 @@ export class AppController {
       if (!s.endsAt) continue;
       const left = s.endsAt - Date.now();
       const m = this.mounted.get(key);
-      const clock = m?.el.querySelector(`[data-na-timer="${key}"]`);
+      const clock = m?.el.querySelector(`[data-gz-timer="${key}"]`);
       if (clock) clock.textContent = formatClock(left);
       if (left > 0) { running = true; continue; }
       this.timers.set(key, { remainingMs: (m?.p.minutes ?? 0) * 60_000 });

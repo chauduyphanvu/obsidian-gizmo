@@ -59,32 +59,32 @@ test("the cell kinds", () => {
 });
 
 test("progress: a bar for 0–1, or 0–max, with the formatted value as its label", () => {
-  const half = cell("progress", 0.5).td.querySelector(".na-cell-bar")!;
+  const half = cell("progress", 0.5).td.querySelector(".gz-cell-bar")!;
   assert.equal(half.getAttribute("role"), "progressbar");
   assert.equal(half.getAttribute("aria-label"), "0.50");
-  assert.equal((half.querySelector(".na-cell-fill") as HTMLElement).style.width, "50%");
-  const rated = cell("progress", 4, {}, { max: 5, format: { c: "0.0 / 5" } }).td.querySelector(".na-cell-bar")!;
+  assert.equal((half.querySelector(".gz-cell-fill") as HTMLElement).style.width, "50%");
+  const rated = cell("progress", 4, {}, { max: 5, format: { c: "0.0 / 5" } }).td.querySelector(".gz-cell-bar")!;
   assert.equal(rated.getAttribute("aria-label"), "4.0 / 5");
   assert.equal(rated.getAttribute("aria-valuemax"), "5");
-  assert.equal((rated.querySelector(".na-cell-fill") as HTMLElement).style.width, "80%");
-  assert.equal((cell("progress", 9, {}, { max: 5 }).td.querySelector(".na-cell-fill") as HTMLElement).style.width, "100%");
-  assert.equal((cell("progress", -2, {}, { max: 5 }).td.querySelector(".na-cell-fill") as HTMLElement).style.width, "0%");
-  assert.equal((cell("progress", "3", {}, { max: 6 }).td.querySelector(".na-cell-fill") as HTMLElement).style.width, "50%");
+  assert.equal((rated.querySelector(".gz-cell-fill") as HTMLElement).style.width, "80%");
+  assert.equal((cell("progress", 9, {}, { max: 5 }).td.querySelector(".gz-cell-fill") as HTMLElement).style.width, "100%");
+  assert.equal((cell("progress", -2, {}, { max: 5 }).td.querySelector(".gz-cell-fill") as HTMLElement).style.width, "0%");
+  assert.equal((cell("progress", "3", {}, { max: 6 }).td.querySelector(".gz-cell-fill") as HTMLElement).style.width, "50%");
   // Not a number: the plain value.
   assert.equal(text_(cell("progress", "soon").td), "soon");
-  assert.equal(cell("progress", "soon").td.querySelector(".na-cell-bar"), null);
+  assert.equal(cell("progress", "soon").td.querySelector(".gz-cell-bar"), null);
   assert.equal(text_(cell("progress", undefined).td), "—");
 });
 
 test("sparkline: a small line through a list of numbers, named in words; fewer than two numbers is the plain value", () => {
   const { td } = cell("sparkline", [3, 5, 4, 9]);
-  const svg = td.querySelector("svg.na-spark")!;
+  const svg = td.querySelector("svg.gz-spark")!;
   assert.equal(svg.getAttribute("width"), "80");
   assert.equal(svg.getAttribute("height"), "20");
   assert.equal(svg.getAttribute("role"), "img");
   assert.equal(svg.getAttribute("aria-label"), "4 values, from 3 to 9");
   const line = svg.querySelector("polyline")!;
-  assert.ok(line.classList.contains("na-s1"));
+  assert.ok(line.classList.contains("gz-s1"));
   const ys = line.getAttribute("points")!.split(" ").map((p) => Number(p.split(",")[1]));
   assert.equal(ys.length, 4);
   assert.ok(ys[3] < ys[0] && ys[1] < ys[0] && ys[1] > ys[3], "higher values are drawn higher up");
@@ -132,7 +132,7 @@ test("image: an https picture, lazy, named by the row; anything else draws nothi
   assert.equal(img.getAttribute("src"), "https://example.com/dune.jpg");
   assert.equal(img.getAttribute("loading"), "lazy");
   assert.equal(img.getAttribute("alt"), "Dune");
-  assert.ok(img.classList.contains("na-cell-img"));
+  assert.ok(img.classList.contains("gz-cell-img"));
   assert.equal(cell("image", "https://example.com/a.png", { title: "A title" }).td.querySelector("img")!.getAttribute("alt"), "A title");
   assert.equal(cell("image", "https://example.com/a.png").td.querySelector("img")!.getAttribute("alt"), "");
   for (const bad of ["http://example.com/a.png", "javascript:alert(1)", "data:image/png;base64,AAAA", "/local/a.png", "a.png", "", undefined, 5]) {
@@ -143,13 +143,13 @@ test("image: an https picture, lazy, named by the row; anything else draws nothi
 });
 
 test("check: a tick or an empty box that reads out as yes or no", () => {
-  const on = cell("check", true).td.querySelector(".na-check")!;
+  const on = cell("check", true).td.querySelector(".gz-check")!;
   assert.equal(text_(on), "✓");
   assert.equal(on.getAttribute("aria-label"), "yes");
   assert.ok(on.classList.contains("is-on"));
-  assert.equal(cell("check", "true").td.querySelector(".na-check")!.getAttribute("aria-label"), "yes");
+  assert.equal(cell("check", "true").td.querySelector(".gz-check")!.getAttribute("aria-label"), "yes");
   for (const off of [false, undefined, null, "no", 0]) {
-    const mark = cell("check", off).td.querySelector(".na-check")!;
+    const mark = cell("check", off).td.querySelector(".gz-check")!;
     assert.equal(mark.getAttribute("aria-label"), "no", String(off));
     assert.equal(text_(mark), "");
     assert.ok(!mark.classList.contains("is-on"));
@@ -177,11 +177,11 @@ test("a table draws each column as its cells kind and leaves the others as text"
   }, BOOKS);
   const [dune, emma] = [...el.querySelectorAll("tbody tr")];
   assert.equal(text_(dune.querySelector("td")), "Dune");
-  assert.equal(dune.querySelectorAll("td")[1].querySelector(".na-cell-bar")!.getAttribute("aria-label"), "40%");
-  assert.ok(dune.querySelectorAll("td")[2].querySelector("svg.na-spark"));
+  assert.equal(dune.querySelectorAll("td")[1].querySelector(".gz-cell-bar")!.getAttribute("aria-label"), "40%");
+  assert.ok(dune.querySelectorAll("td")[2].querySelector("svg.gz-spark"));
   assert.equal(dune.querySelectorAll("td")[3].querySelector("a")!.getAttribute("href"), "https://example.com/dune");
   assert.equal(dune.querySelectorAll("td")[4].querySelector("img")!.getAttribute("alt"), "Dune");
-  assert.equal(dune.querySelectorAll("td")[5].querySelector(".na-check")!.getAttribute("aria-label"), "yes");
+  assert.equal(dune.querySelectorAll("td")[5].querySelector(".gz-check")!.getAttribute("aria-label"), "yes");
   // Emma: a single trend number, a script address, an http picture.
   const [, , trend, url, cover] = [...emma.querySelectorAll("td")];
   assert.equal(text_(trend), "3");
@@ -192,7 +192,7 @@ test("a table draws each column as its cells kind and leaves the others as text"
 
 test("a check column that is in edit is the editable checkbox", () => {
   const { el, calls } = drawTable({ columns: ["name", "done"], cells: { done: "check" }, edit: ["done"] }, BOOKS.map((b) => ({ ...b, path: undefined })));
-  assert.equal(el.querySelector(".na-check"), null);
+  assert.equal(el.querySelector(".gz-check"), null);
   const box = el.querySelector('tbody tr input[type="checkbox"]') as HTMLInputElement;
   assert.equal(box.checked, true);
   box.checked = false;
@@ -221,28 +221,28 @@ test("cards: a grid, the first picture on top, the next column the title, the re
     layout: "cards", columns: ["cover", "name", "pct", "status"], labels: { pct: "Read" }, format: { pct: "0%" }, cells: { cover: "image", pct: "progress" },
   }, BOOKS);
   assert.equal(el.querySelector("table"), null);
-  const cards = [...el.querySelectorAll(".na-cards > .na-rowcard")];
+  const cards = [...el.querySelectorAll(".gz-cards > .gz-rowcard")];
   assert.equal(cards.length, 2);
   const [dune, emma] = cards;
-  assert.deepEqual([...dune.children].map((c) => c.className), ["na-rowcard-image", "na-rowcard-title", "na-rowcard-line", "na-rowcard-line"]);
-  assert.equal(dune.querySelector(".na-rowcard-image img")!.getAttribute("src"), "https://example.com/dune.jpg");
-  assert.equal(text_(dune.querySelector(".na-rowcard-title")), "Dune");
-  assert.deepEqual([...dune.querySelectorAll(".na-rowcard-line")].map((l) => [text_(l.querySelector(".na-rowcard-label")), text_(l.querySelector(".na-rowcard-value"))]),
+  assert.deepEqual([...dune.children].map((c) => c.className), ["gz-rowcard-image", "gz-rowcard-title", "gz-rowcard-line", "gz-rowcard-line"]);
+  assert.equal(dune.querySelector(".gz-rowcard-image img")!.getAttribute("src"), "https://example.com/dune.jpg");
+  assert.equal(text_(dune.querySelector(".gz-rowcard-title")), "Dune");
+  assert.deepEqual([...dune.querySelectorAll(".gz-rowcard-line")].map((l) => [text_(l.querySelector(".gz-rowcard-label")), text_(l.querySelector(".gz-rowcard-value"))]),
     [["Read", ""], ["status", "reading"]]);
-  assert.equal(dune.querySelector(".na-rowcard-line .na-cell-bar")!.getAttribute("aria-label"), "40%");
+  assert.equal(dune.querySelector(".gz-rowcard-line .gz-cell-bar")!.getAttribute("aria-label"), "40%");
   // An http picture draws nothing; the card still has its title.
-  assert.equal(emma.querySelector(".na-rowcard-image img"), null);
-  assert.equal(text_(emma.querySelector(".na-rowcard-title")), "Emma");
+  assert.equal(emma.querySelector(".gz-rowcard-image img"), null);
+  assert.equal(text_(emma.querySelector(".gz-rowcard-title")), "Emma");
   // The title of a note is a link to it.
-  (dune.querySelector(".na-rowcard-title a") as HTMLElement).click();
+  (dune.querySelector(".gz-rowcard-title a") as HTMLElement).click();
   assert.deepEqual(calls.opened, ["Books/Dune.md"]);
 });
 
 test("cards without an image or a note: the first column is the title, plain text", () => {
   const { el } = drawTable({ layout: "cards", columns: ["task", "room"] }, [{ task: "Bins", room: "kitchen" }]);
-  const card = el.querySelector(".na-rowcard")!;
-  assert.deepEqual([...card.children].map((c) => c.className), ["na-rowcard-title", "na-rowcard-line"]);
-  assert.equal(text_(card.querySelector(".na-rowcard-title")), "Bins");
+  const card = el.querySelector(".gz-rowcard")!;
+  assert.deepEqual([...card.children].map((c) => c.className), ["gz-rowcard-title", "gz-rowcard-line"]);
+  assert.equal(text_(card.querySelector(".gz-rowcard-title")), "Bins");
   assert.equal(card.querySelector("a"), null);
 });
 
@@ -250,19 +250,19 @@ test("cards: a card can be selected with the mouse or the keyboard, its button r
   const { el, calls } = drawTable({
     layout: "cards", columns: ["name", "status", "done"], select: "book", action: "Open", open: "{path}", edit: ["status", "done"],
   }, BOOKS);
-  const [dune, emma] = [...el.querySelectorAll(".na-rowcard")] as HTMLElement[];
-  assert.ok(dune.classList.contains("na-selectable"));
+  const [dune, emma] = [...el.querySelectorAll(".gz-rowcard")] as HTMLElement[];
+  assert.ok(dune.classList.contains("gz-selectable"));
   dune.click();
   assert.deepEqual(calls.picked, [BOOKS[0]]);
-  assert.ok(dune.classList.contains("na-selected"));
-  assert.ok(!emma.classList.contains("na-selected"));
+  assert.ok(dune.classList.contains("gz-selected"));
+  assert.ok(!emma.classList.contains("gz-selected"));
   key(emma, "Enter");
   assert.deepEqual(calls.picked, [BOOKS[0], BOOKS[1]]);
-  assert.ok(emma.classList.contains("na-selected"));
-  assert.ok(!dune.classList.contains("na-selected"));
+  assert.ok(emma.classList.contains("gz-selected"));
+  assert.ok(!dune.classList.contains("gz-selected"));
 
   // A click on the button or an input is that control's, not the card's.
-  (emma.querySelector(".na-rowcard-actions button") as HTMLElement).click();
+  (emma.querySelector(".gz-rowcard-actions button") as HTMLElement).click();
   assert.deepEqual(calls.ran, [BOOKS[1]]);
   assert.equal(calls.picked.length, 2);
   const status = dune.querySelector("input[type=text]") as HTMLInputElement;
@@ -278,9 +278,9 @@ test("cards: a card can be selected with the mouse or the keyboard, its button r
 test("cards show more than 200 rows behind Show all, like a table", () => {
   const rows = Array.from({ length: 205 }, (_, i) => ({ name: `n${i}` }));
   const { el } = drawTable({ layout: "cards" }, rows);
-  assert.equal(el.querySelectorAll(".na-rowcard").length, 200);
-  (el.querySelector("button.na-more") as HTMLElement).click();
-  assert.equal(el.querySelectorAll(".na-rowcard").length, 205);
+  assert.equal(el.querySelectorAll(".gz-rowcard").length, 200);
+  (el.querySelector("button.gz-more") as HTMLElement).click();
+  assert.equal(el.querySelectorAll(".gz-rowcard").length, 205);
 });
 
 test("a card's edit writes back through the app, and the card updates in place", async () => {
@@ -298,21 +298,21 @@ test("a card's edit writes back through the app, and the card updates in place",
   document.body.appendChild(root);
   new AppController(root, "Apps/S.md", t.env).load();
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const grid = root.querySelector(".na-cards")!;
-  const [dune, emma] = [...grid.querySelectorAll(".na-rowcard")];
+  assert.equal(root.querySelector(".gz-error"), null);
+  const grid = root.querySelector(".gz-cards")!;
+  const [dune, emma] = [...grid.querySelectorAll(".gz-rowcard")];
   assert.deepEqual([...dune.querySelectorAll("select option")].map((o) => o.textContent), ["to read", "reading", "done"]);
   const status = dune.querySelector("select") as HTMLSelectElement;
   for (const o of status.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "done");
   change(status);
   await settle();
   assert.deepEqual(t.f.files.get("Books/Dune.md")!.fm, { status: "done" });
-  assert.equal(root.querySelector(".na-cards"), grid, "patched in place, not redrawn");
-  assert.equal(root.querySelectorAll(".na-rowcard")[0], dune);
-  assert.equal(root.querySelectorAll(".na-rowcard")[1], emma);
+  assert.equal(root.querySelector(".gz-cards"), grid, "patched in place, not redrawn");
+  assert.equal(root.querySelectorAll(".gz-rowcard")[0], dune);
+  assert.equal(root.querySelectorAll(".gz-rowcard")[1], emma);
   assert.equal(status.value, "2");
 
-  (emma.querySelector(".na-rowcard-actions button") as HTMLElement).click();
+  (emma.querySelector(".gz-rowcard-actions button") as HTMLElement).click();
   await settle();
   assert.deepEqual(t.opened, ["Books/Emma.md"]);
 });

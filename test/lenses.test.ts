@@ -134,19 +134,19 @@ test("a lens asks once on its component for every note it shows on, naming what 
   const { stack, grants } = lenses(notes);
   const dune = stack("Books/Dune.md");
   await settle();
-  const head = dune.el.querySelector(".na-lens-head")!;
-  assert.equal(text(head.querySelector("a.na-lens-name")), "Progress");
-  assert.deepEqual([...dune.el.querySelectorAll(".na-card li")].map(text), ["Change properties of notes in Books"]);
+  const head = dune.el.querySelector(".gz-lens-head")!;
+  assert.equal(text(head.querySelector("a.gz-lens-name")), "Progress");
+  assert.deepEqual([...dune.el.querySelectorAll(".gz-card li")].map(text), ["Change properties of notes in Books"]);
   assert.equal(describePermission("edit:Books"), "Change properties of notes in Books");
-  (dune.el.querySelector(".na-card button.mod-cta") as HTMLButtonElement).click();
+  (dune.el.querySelector(".gz-card button.mod-cta") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(grants, { "Components/Progress.md": ["edit:Books"] });
-  assert.equal(text(dune.el.querySelector(".na-text")), "Page 120 of 412");
+  assert.equal(text(dune.el.querySelector(".gz-text")), "Page 120 of 412");
 
   const emma = stack("Books/Emma.md");
   await settle();
-  assert.equal(emma.el.querySelector(".na-card"), null, "already allowed");
-  assert.equal(text(emma.el.querySelector(".na-text")), "Page 3 of 474");
+  assert.equal(emma.el.querySelector(".gz-card"), null, "already allowed");
+  assert.equal(text(emma.el.querySelector(".gz-text")), "Page 3 of 474");
 });
 
 test("a lens's save: this form writes the note it is shown on, and the lens follows the note", async () => {
@@ -163,7 +163,7 @@ test("a lens's save: this form writes the note it is shown on, and the lens foll
   await settle();
   assert.deepEqual(writes, ["Books/Dune.md"]);
   assert.deepEqual(f.files.get("Books/Dune.md")!.fm, { page: 150, pages: 412 });
-  assert.equal(text(s.el.querySelector(".na-text")), "Page 150 of 412");
+  assert.equal(text(s.el.querySelector(".gz-text")), "Page 150 of 412");
   // Leaving the folder takes the lens away once the plugin shows the stack again.
   f.files.delete("Books/Dune.md");
   f.files.set("Archive/Dune.md", { fm: { page: 150, pages: 412 } });
@@ -192,13 +192,13 @@ test("showing a note's lenses again leaves them in place, so a field being typed
   s.show("Books/Dune.md");
   await settle();
   assert.deepEqual(moves, []);
-  assert.deepEqual([...s.el.querySelectorAll(".na-lens-name")].map(text), ["About", "Progress"]);
+  assert.deepEqual([...s.el.querySelectorAll(".gz-lens-name")].map(text), ["About", "Progress"]);
   // A lens that comes in still lands in name order.
   f.files.set("Components/Cover.md", { fm: { component: "c", for: "Books", panels: [{ view: "text", text: "Cover" }] } });
   changed("Components/Cover.md");
   index.changed("Components/Cover.md");
   s.show("Books/Dune.md");
-  assert.deepEqual([...s.el.querySelectorAll(".na-lens-name")].map(text), ["About", "Cover", "Progress"]);
+  assert.deepEqual([...s.el.querySelectorAll(".gz-lens-name")].map(text), ["About", "Cover", "Progress"]);
 });
 
 test("lenses stack in name order; folding one stops it, and the fold is kept per component", async () => {
@@ -210,20 +210,20 @@ test("lenses stack in name order; folding one stops it, and the fold is kept per
   const { stack, folded } = lenses(notes, { "Components/Progress.md": ["edit:Books"] });
   const s = stack("Books/Dune.md");
   await settle();
-  assert.deepEqual([...s.el.querySelectorAll(".na-lens-name")].map(text), ["About", "Progress"]);
-  const toggle = s.el.querySelector(".na-lens-toggle") as HTMLButtonElement;
+  assert.deepEqual([...s.el.querySelectorAll(".gz-lens-name")].map(text), ["About", "Progress"]);
+  const toggle = s.el.querySelector(".gz-lens-toggle") as HTMLButtonElement;
   assert.equal(toggle.getAttribute("aria-expanded"), "true");
   toggle.click();
   assert.equal(toggle.getAttribute("aria-expanded"), "false");
   assert.deepEqual([...folded], ["Components/About.md"]);
-  assert.equal(s.el.querySelector(".na-lens-item .na-lens-body")!.children.length, 0, "a folded lens doesn't run");
+  assert.equal(s.el.querySelector(".gz-lens-item .gz-lens-body")!.children.length, 0, "a folded lens doesn't run");
   // Another note starts with it folded.
   const other = stack("Books/Dune.md");
   await settle();
-  assert.equal(other.el.querySelector(".na-lens-toggle")!.getAttribute("aria-expanded"), "false");
+  assert.equal(other.el.querySelector(".gz-lens-toggle")!.getAttribute("aria-expanded"), "false");
   toggle.click();
   await settle();
-  assert.equal(text(s.el.querySelector(".na-text")), "About Dune");
+  assert.equal(text(s.el.querySelector(".gz-text")), "About Dune");
   s.dispose();
   assert.equal(s.el.children.length, 0);
 });
@@ -234,8 +234,8 @@ test("a lens component opened on its own shows how it is used and where, and ask
   const root = document.createElement("div");
   new AppController(root, "Components/Progress.md", t.env).load();
   await settle();
-  assert.equal(text(root.querySelector(".na-card .na-label")), "It is also a lens: it shows above every note in Books.");
-  assert.equal(root.querySelectorAll(".na-panel").length, 0);
+  assert.equal(text(root.querySelector(".gz-card .gz-label")), "It is also a lens: it shows above every note in Books.");
+  assert.equal(root.querySelectorAll(".gz-panel").length, 0);
   assert.equal(root.querySelector("button.mod-cta"), null);
 });
 

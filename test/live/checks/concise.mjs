@@ -3,9 +3,9 @@
 // scores every due decision, so no alert is left on for the checks after it.
 
 /** In the page: the panel of the active app titled so. */
-const PANEL = `const panel = (title) => [...na.view().contentEl.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title);
-const tab = async (name) => { [...na.view().contentEl.querySelectorAll("button.na-tab")].find((b) => b.textContent === name).click(); await na.sleep(400); };
-const field = (form, label) => [...form.querySelectorAll("label.na-field")].find((l) => l.querySelector("span").textContent === label).querySelector("input, select, textarea");
+const PANEL = `const panel = (title) => [...na.view().contentEl.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title);
+const tab = async (name) => { [...na.view().contentEl.querySelectorAll("button.gz-tab")].find((b) => b.textContent === name).click(); await na.sleep(400); };
+const field = (form, label) => [...form.querySelectorAll("label.gz-field")].find((l) => l.querySelector("span").textContent === label).querySelector("input, select, textarea");
 const day = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");`;
 
 /** In the page: for each dropdown in an element, its longest choice's text width and the room it has for text. */
@@ -27,11 +27,11 @@ export default async function concise(t) {
       const { prompt } = await na.open("Apps/Decisions", false);
       const asked = { prompt, errors: na.errors() };
       na.button("Allow").click();
-      await na.until(() => !na.button("Allow") && na.view().contentEl.querySelector(".na-panel"), 5000);
+      await na.until(() => !na.button("Allow") && na.view().contentEl.querySelector(".gz-panel"), 5000);
       await na.settle();
       const status = await na.until(() => na.status().find((s) => s.startsWith("Ready to score")), 5000);
       ${PANEL}
-      return { ...asked, after: na.errors(), tabs: [...na.view().contentEl.querySelectorAll("button.na-tab")].map((b) => b.textContent), status, right: panel("Right so far")?.querySelector(".na-big")?.textContent };`);
+      return { ...asked, after: na.errors(), tabs: [...na.view().contentEl.querySelectorAll("button.gz-tab")].map((b) => b.textContent), status, right: panel("Right so far")?.querySelector(".gz-big")?.textContent };`);
     expect(r.errors === 0 && [...(r.prompt ?? [])].sort().join("|") === "Change properties of notes in Decisions|Create notes in Decisions|Read notes in Decisions", r);
     expect(r.after === 0 && r.tabs.join("|") === "Score|Waiting|Track record" && r.status === "Ready to score: 1" && r.right === "57%", r);
     return `${r.prompt.join(", ")}; status "${r.status}"; right so far ${r.right}`;
@@ -62,22 +62,22 @@ export default async function concise(t) {
       const path = "Decisions/${DUE}.md";
       const row = () => [...panel("How did these turn out?").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td")?.textContent === "${DUE}");
       const shown = [...panel("How did these turn out?").querySelectorAll("th")].map((th) => th.textContent);
-      const learned = row().querySelector("input.na-edit");
+      const learned = row().querySelector("input.gz-edit");
       learned.focus();
       na.fill(learned, "The basement has signal after all");
       await na.until(() => na.fm(path)?.learned, 3000);
       await na.sleep(500);
-      na.choose(row().querySelector("select.na-edit"), "right");
+      na.choose(row().querySelector("select.gz-edit"), "right");
       await na.until(() => na.fm(path)?.outcome === "right", 3000);
       // Should the clock have moved past another review day, that one is scored too.
       for (let i = 0; i < 10; i++) {
-        const select = panel("How did these turn out?")?.querySelector("tbody select.na-edit");
+        const select = panel("How did these turn out?")?.querySelector("tbody select.gz-edit");
         if (!select) break;
         na.choose(select, "right");
         await na.sleep(800);
       }
       const status = await na.until(() => na.status().find((s) => s === "Ready to score: 0"), 5000);
-      return { shown, fm: na.fm(path), status, right: panel("Right so far")?.querySelector(".na-big")?.textContent, empty: panel("How did these turn out?")?.querySelector(".na-empty")?.textContent };`);
+      return { shown, fm: na.fm(path), status, right: panel("Right so far")?.querySelector(".gz-big")?.textContent, empty: panel("How did these turn out?")?.querySelector(".gz-empty")?.textContent };`);
     expect(r.shown.join("|") === "Decision|I expected|% sure|Due|It went|What I learned", r);
     expect(r.fm?.outcome === "right" && r.fm.learned === "The basement has signal after all" && r.fm.confidence === 80 && r.status === "Ready to score: 0" && r.empty === "Nothing here yet.", r);
     return `outcome ${r.fm.outcome}, learned saved; status "${r.status}"; right so far ${r.right}`;
@@ -87,7 +87,7 @@ export default async function concise(t) {
     const r = await run(`
       ${PANEL}
       const form = panel("A decision I'm making").querySelector("form");
-      const labels = [...form.querySelectorAll(".na-field > span")].map((s) => s.textContent);
+      const labels = [...form.querySelectorAll(".gz-field > span")].map((s) => s.textContent);
       na.fill(field(form, "Decision"), "Walk to work in winter");
       na.fill(field(form, "I expected"), "I keep it up through January");
       na.choose(field(form, "% sure"), "70");
@@ -108,20 +108,20 @@ export default async function concise(t) {
       ${PANEL}
       await tab("Waiting");
       const line = panel("Still waiting to find out");
-      const labels = [...line.querySelectorAll(".na-tl-label")].map((l) => l.textContent);
-      const row = [...line.querySelectorAll(".na-tl-row")].find((r) => r.querySelector(".na-tl-label").textContent === "Start running three mornings a week");
-      row.querySelector(".na-tl-bar").click();
+      const labels = [...line.querySelectorAll(".gz-tl-label")].map((l) => l.textContent);
+      const row = [...line.querySelectorAll(".gz-tl-row")].find((r) => r.querySelector(".gz-tl-label").textContent === "Start running three mornings a week");
+      row.querySelector(".gz-tl-bar").click();
       await na.sleep(400);
-      const detail = line.querySelector(".na-detail");
-      const shown = { text: detail?.querySelector(".na-detail-text")?.textContent, link: detail?.querySelector("a")?.textContent };
+      const detail = line.querySelector(".gz-detail");
+      const shown = { text: detail?.querySelector(".gz-detail-text")?.textContent, link: detail?.querySelector("a")?.textContent };
       return { labels, shown };`);
     await t.shot("concise-Decisions-waiting-picked.png");
     const opened = await run(`
       ${PANEL}
-      panel("Still waiting to find out").querySelector(".na-detail a").click();
+      panel("Still waiting to find out").querySelector(".gz-detail a").click();
       await na.until(() => app.workspace.getActiveFile()?.path === "Decisions/Start running three mornings a week.md", 3000);
       await na.sleep(800);
-      return { file: app.workspace.getActiveFile()?.path, type: na.view().getViewType(), lens: na.view().contentEl.querySelector(".na-lens .na-lens-name")?.textContent };`);
+      return { file: app.workspace.getActiveFile()?.path, type: na.view().getViewType(), lens: na.view().contentEl.querySelector(".gz-lens .gz-lens-name")?.textContent };`);
     expect(r.labels.includes("Start running three mornings a week") && r.labels.includes("Walk to work in winter") && !r.labels.includes(DUE), r);
     expect(r.shown.text === "Start running three mornings a week. I expected: I'm still doing it in February (60% sure). I'll know by 2027-02-09." && r.shown.link === "Open", r);
     expect(opened.file === "Decisions/Start running three mornings a week.md" && opened.type === "markdown" && opened.lens === "Decision review", opened);
@@ -133,15 +133,15 @@ export default async function concise(t) {
       const path = "Decisions/Walk to work in winter.md";
       await na.openMd(path, "live");
       await na.sleep(800);
-      const lens = () => na.view().contentEl.querySelector(".na-lens");
-      const prompt = [...(lens()?.querySelectorAll(".na-card li") ?? [])].map((li) => li.textContent);
+      const lens = () => na.view().contentEl.querySelector(".gz-lens");
+      const prompt = [...(lens()?.querySelectorAll(".gz-card li") ?? [])].map((li) => li.textContent);
       na.button("Allow", lens())?.click();
-      const select = await na.until(() => lens().querySelector(".na-view-form select"), 3000);
-      const before = lens().querySelector(".na-view-text .na-text")?.textContent;
+      const select = await na.until(() => lens().querySelector(".gz-view-form select"), 3000);
+      const before = lens().querySelector(".gz-view-text .gz-text")?.textContent;
       na.choose(select, "wrong");
       await na.until(() => na.fm(path)?.outcome === "wrong", 3000);
       await na.sleep(800);
-      return { prompt, before, after: lens().querySelector(".na-view-text .na-text")?.textContent, outcome: na.fm(path)?.outcome, lenses: na.view().contentEl.querySelectorAll(".na-lens").length };`);
+      return { prompt, before, after: lens().querySelector(".gz-view-text .gz-text")?.textContent, outcome: na.fm(path)?.outcome, lenses: na.view().contentEl.querySelectorAll(".gz-lens").length };`);
     expect(r.prompt.join("|") === "Change properties of notes in Decisions" && r.lenses === 1, r);
     expect(r.before === "I expect: I keep it up through January (70% sure). Due 2027-06-01." && r.outcome === "wrong" && r.after === "I expected: I keep it up through January (70% sure). It went wrong.", r);
     return `"${r.before}" → "${r.after}"`;
@@ -152,24 +152,24 @@ export default async function concise(t) {
       const { prompt } = await na.open("Apps/Bets", false);
       const asked = { prompt, errors: na.errors() };
       na.button("Allow").click();
-      await na.until(() => !na.button("Allow") && na.view().contentEl.querySelector(".na-panel"), 5000);
+      await na.until(() => !na.button("Allow") && na.view().contentEl.querySelector(".gz-panel"), 5000);
       await na.settle();
       ${PANEL}
       const status = await na.until(() => na.status().find((s) => s.startsWith("Bets to score")), 5000);
       await tab("Waiting");
-      return { ...asked, after: na.errors(), status, right: panel("Right so far")?.querySelector(".na-big")?.textContent,
-        waiting: [...panel("Still waiting to find out").querySelectorAll(".na-tl-label")].map((l) => l.textContent),
+      return { ...asked, after: na.errors(), status, right: panel("Right so far")?.querySelector(".gz-big")?.textContent,
+        waiting: [...panel("Still waiting to find out").querySelectorAll(".gz-tl-label")].map((l) => l.textContent),
         decide: na.commands().filter((c) => c.endsWith(":decide")) };`);
     const want = ["Create notes in Bets — for [[Decision kit]]", "Change properties of notes in Bets — for [[Decision kit]]", "Read notes in Bets — for [[Decision kit]]"];
     expect(r.errors === 0 && [...(r.prompt ?? [])].sort().join("|") === [...want].sort().join("|"), r);
     expect(r.after === 0 && r.status === "Bets to score: 0" && r.right === "100%", r);
     expect(r.waiting.join("|") === "The corner bakery is still open in 2030|The bridge opens before summer 2028", r);
-    expect(r.decide.join("|") === "note-apps:Apps/Bets.md:decide|note-apps:Apps/Decisions.md:decide", r);
+    expect(r.decide.join("|") === "gizmo:Apps/Bets.md:decide|gizmo:Apps/Decisions.md:decide", r);
     return `${r.prompt.join(", ")}; status "${r.status}"`;
   });
 
   const dark = await run(`return document.body.classList.contains("theme-dark");`);
-  const pick = `${PANEL} await tab("Waiting"); const line = panel("Still waiting to find out"); if (!line.querySelector(".na-tl-bar.na-selected")) line.querySelector(".na-tl-bar")?.click(); await na.sleep(400);`;
+  const pick = `${PANEL} await tab("Waiting"); const line = panel("Still waiting to find out"); if (!line.querySelector(".gz-tl-bar.gz-selected")) line.querySelector(".gz-tl-bar")?.click(); await na.sleep(400);`;
   const views = [
     ["Decisions", `await na.open("Apps/Decisions");`],
     ["Decisions-waiting", `await na.open("Apps/Decisions"); ${pick}`],

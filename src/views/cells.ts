@@ -37,10 +37,10 @@ function progressCell(td: HTMLElement, value: unknown, p: Panel, shown: (v: unkn
   const max = p.max ?? 1;
   const label = shown(n);
   const bar = td.createDiv({
-    cls: "na-cell-bar",
+    cls: "gz-cell-bar",
     attr: { role: "progressbar", "aria-label": label, "aria-valuemin": 0, "aria-valuemax": max, "aria-valuenow": n, title: label },
   });
-  bar.createDiv({ cls: "na-cell-fill" }).style.width = `${max > 0 ? Math.max(0, Math.min(1, n / max)) * 100 : 0}%`;
+  bar.createDiv({ cls: "gz-cell-fill" }).style.width = `${max > 0 ? Math.max(0, Math.min(1, n / max)) * 100 : 0}%`;
 }
 
 /** A small line through a list of numbers; fewer than two show as the plain value. */
@@ -54,12 +54,12 @@ function sparklineCell(td: HTMLElement, value: unknown, shown: (v: unknown) => s
   ];
   const points = nums.map((n, i) => at(n, i).map((v) => v.toFixed(1)).join(",")).join(" ");
   const root = svg("svg", {
-    viewBox: `0 0 ${SPARK_W} ${SPARK_H}`, width: SPARK_W, height: SPARK_H, class: "na-spark", role: "img",
+    viewBox: `0 0 ${SPARK_W} ${SPARK_H}`, width: SPARK_W, height: SPARK_H, class: "gz-spark", role: "img",
     "aria-label": `${nums.length} values, from ${shown(nums[0])} to ${shown(nums[nums.length - 1])}`,
   }, td);
-  svg("polyline", { points, class: "na-spark-line na-s1" }, root);
+  svg("polyline", { points, class: "gz-spark-line gz-s1" }, root);
   const [x, y] = at(nums[nums.length - 1], nums.length - 1);
-  svg("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 2, class: "na-spark-dot na-s1" }, root);
+  svg("circle", { cx: x.toFixed(1), cy: y.toFixed(1), r: 2, class: "gz-spark-dot gz-s1" }, root);
 }
 
 /** An https address opens outside Obsidian; a note path or `[[link]]` opens the note; anything else is text. */
@@ -80,13 +80,13 @@ function imageCell(td: HTMLElement, value: unknown, row: Row): void {
   const url = typeof value === "string" ? httpsUrl(value.trim()) : undefined;
   if (!url) return;
   const alt = String(row.name ?? row.title ?? "");
-  td.createEl("img", { cls: "na-cell-img", attr: { src: url.href, alt, loading: "lazy", referrerpolicy: "no-referrer" } });
+  td.createEl("img", { cls: "gz-cell-img", attr: { src: url.href, alt, loading: "lazy", referrerpolicy: "no-referrer" } });
 }
 
 /** A tick, or an empty box, that reads out as yes or no. */
 function checkCell(td: HTMLElement, value: unknown): void {
   const on = value === true || String(value).toLowerCase() === "true";
-  td.createSpan({ cls: `na-check${on ? " is-on" : ""}`, text: on ? "✓" : "", attr: { role: "img", "aria-label": on ? "yes" : "no" } });
+  td.createSpan({ cls: `gz-check${on ? " is-on" : ""}`, text: on ? "✓" : "", attr: { role: "img", "aria-label": on ? "yes" : "no" } });
 }
 
 /**

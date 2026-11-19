@@ -1,7 +1,7 @@
 import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv } from "./host.ts";
-import type NoteAppsPlugin from "./main.ts";
+import type GizmoPlugin from "./main.ts";
 import { notePath } from "./spec.ts";
 import { storeTarget } from "./store.ts";
 
@@ -9,7 +9,7 @@ import { storeTarget } from "./store.ts";
  * Obsidian glue for the background service: it starts once the layout is ready, hears about app
  * notes from the metadata cache, ticks on one interval, and stops when the plugin unloads.
  */
-export function registerBackground(plugin: NoteAppsPlugin): Background {
+export function registerBackground(plugin: GizmoPlugin): Background {
   const app = plugin.app;
   const frontmatter = (path: string) => {
     const f = app.vault.getFileByPath(path);
@@ -70,7 +70,7 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
         if (Platform.isMobile) return;
         while (bar.length < items.length) {
           const el = plugin.addStatusBarItem();
-          el.addClass("na-status", "mod-clickable");
+          el.addClass("gz-status", "mod-clickable");
           const i = bar.length;
           el.addEventListener("click", () => { if (shown[i]) openApp(shown[i].appPath); });
           bar.push(el);
@@ -89,7 +89,7 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
   plugin.registerEvent(app.metadataCache.on("changed", (file) => bg.noteChanged(file.path)));
   plugin.registerEvent(app.vault.on("rename", (file) => bg.noteChanged(file.path)));
   // A link may open Obsidian; it's answered once the apps are known.
-  plugin.registerObsidianProtocolHandler("note-apps", (params) => {
+  plugin.registerObsidianProtocolHandler("gizmo", (params) => {
     app.workspace.onLayoutReady(() => void bg.runUri({ ...params }));
   });
   app.workspace.onLayoutReady(() => {

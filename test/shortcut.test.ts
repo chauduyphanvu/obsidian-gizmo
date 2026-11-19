@@ -51,10 +51,10 @@ test("a form's command opens the app to fill it in", async () => {
 test("a link fills a form's fields by type; fields not given save as an untouched form; others are ignored", async () => {
   const t = meds();
   await t.bg.start();
-  await t.bg.runUri({ action: "note-apps", app: "Meds", do: "effects", note: "headache", severity: "bad", dizzy: "yes", hours: "2.5", when: "08:30", extra: "ignored" });
+  await t.bg.runUri({ action: "gizmo", app: "Meds", do: "effects", note: "headache", severity: "bad", dizzy: "yes", hours: "2.5", when: "08:30", extra: "ignored" });
   assert.deepEqual(t.data("effects"), [{ note: "headache", severity: "bad", dizzy: true, hours: 2.5, on: "2026-11-18", when: "08:30", at: "2026-11-18T12:00" }]);
   assert.deepEqual(t.notices, ["Logged bad: headache"]);
-  await t.bg.runUri({ action: "note-apps", app: "Apps/Meds", do: "effects" });
+  await t.bg.runUri({ action: "gizmo", app: "Apps/Meds", do: "effects" });
   assert.deepEqual(t.data("effects")![1], { note: "", severity: "mild", dizzy: false, hours: null, on: "2026-11-18", when: "", at: "2026-11-18T12:00" });
 });
 

@@ -163,8 +163,8 @@ function open(path: string, notes: Notes = vault()) {
   const app = new AppController(root, path, t.env);
   started.push(app);
   app.load();
-  const panel = (title: string) => [...root.querySelectorAll(".na-panel")].find((p) => text(p.querySelector(".na-title")) === title)!;
-  const tab = (name: string) => click([...root.querySelectorAll("button.na-tab")].find((b) => text(b) === name)!);
+  const panel = (title: string) => [...root.querySelectorAll(".gz-panel")].find((p) => text(p.querySelector(".gz-title")) === title)!;
+  const tab = (name: string) => click([...root.querySelectorAll("button.gz-tab")].find((b) => text(b) === name)!);
   return { ...t, root, panel, tab };
 }
 
@@ -200,10 +200,10 @@ test("Decisions, Bets, the kit and the lens read without problems and ask for ex
 test("Decisions: the due decision is counted, scored in place from the dropdown, and leaves the count", async () => {
   const app = open("Apps/Decisions.md");
   await settle();
-  assert.equal(app.root.querySelectorAll(".na-error").length, 0);
-  assert.deepEqual([...app.root.querySelectorAll("button.na-tab")].map(text), ["Score", "Waiting", "Track record"]);
-  assert.equal(text(app.panel("Ready to score").querySelector(".na-big")), "1");
-  assert.equal(text(app.panel("Right so far").querySelector(".na-big")), "57%");
+  assert.equal(app.root.querySelectorAll(".gz-error").length, 0);
+  assert.deepEqual([...app.root.querySelectorAll("button.gz-tab")].map(text), ["Score", "Waiting", "Track record"]);
+  assert.equal(text(app.panel("Ready to score").querySelector(".gz-big")), "1");
+  assert.equal(text(app.panel("Right so far").querySelector(".gz-big")), "57%");
   const score = app.panel("How did these turn out?");
   assert.deepEqual([...score.querySelectorAll("th")].map(text), ["Decision", "I expected", "% sure", "Due", "It went", "What I learned"]);
   const row = score.querySelector("tbody tr")!;
@@ -218,16 +218,16 @@ test("Decisions: the due decision is counted, scored in place from the dropdown,
     expect: "Coverage is just as good at home and at work", confidence: 80, made: "2026-10-20", review: "2026-11-15",
     outcome: "right", learned: "The basement has signal after all",
   });
-  assert.equal(text(app.panel("Ready to score").querySelector(".na-big")), "0");
-  assert.equal(text(app.panel("Right so far").querySelector(".na-big")), "63%");
-  assert.equal(text(app.panel("How did these turn out?").querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(app.panel("Ready to score").querySelector(".gz-big")), "0");
+  assert.equal(text(app.panel("Right so far").querySelector(".gz-big")), "63%");
+  assert.equal(text(app.panel("How did these turn out?").querySelector(".gz-empty")), "Nothing here yet.");
 });
 
 test("Decisions: the form writes a decision note with a number, outcome open and today's date", async () => {
   const app = open("Apps/Decisions.md");
   await settle();
   const form = app.panel("A decision I'm making");
-  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["Decision", "I expected", "% sure", "Due"]);
+  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Decision", "I expected", "% sure", "Due"]);
   const [name, expect] = form.querySelectorAll("input");
   (name as HTMLInputElement).value = "Walk to work in winter";
   (expect as HTMLInputElement).value = "I keep it up through January";
@@ -240,7 +240,7 @@ test("Decisions: the form writes a decision note with a number, outcome open and
   });
   assert.ok(app.notices.includes("Written down. Come back on 2027-02-01 to score it."), app.notices.join("; "));
   app.tab("Waiting");
-  assert.ok([...app.panel("Still waiting to find out").querySelectorAll(".na-tl-label")].map(text).includes("Walk to work in winter"));
+  assert.ok([...app.panel("Still waiting to find out").querySelectorAll(".gz-tl-label")].map(text).includes("Walk to work in winter"));
 });
 
 test("Decisions: picking a decision on the timeline shows what I expected, with a link to its note", async () => {
@@ -248,12 +248,12 @@ test("Decisions: picking a decision on the timeline shows what I expected, with 
   await settle();
   app.tab("Waiting");
   const timeline = app.panel("Still waiting to find out");
-  assert.deepEqual([...timeline.querySelectorAll(".na-tl-label")].map(text), [
+  assert.deepEqual([...timeline.querySelectorAll(".gz-tl-label")].map(text), [
     "Switch to the cheaper phone plan", "Skip the extended warranty on the laptop", "Start running three mornings a week",
   ]);
-  click(timeline.querySelectorAll(".na-tl-bar")[2]);
-  const detail = timeline.querySelector(".na-detail")!;
-  assert.equal(text(detail.querySelector(".na-detail-text")),
+  click(timeline.querySelectorAll(".gz-tl-bar")[2]);
+  const detail = timeline.querySelector(".gz-detail")!;
+  assert.equal(text(detail.querySelector(".gz-detail-text")),
     "Start running three mornings a week. I expected: I'm still doing it in February (60% sure). I'll know by 2027-02-09.");
   click(detail.querySelector("a")!);
   assert.deepEqual(app.opened, ["Decisions/Start running three mornings a week.md"]);
@@ -264,8 +264,8 @@ test("Decisions: the track record charts what I said against how often I was rig
   await settle();
   app.tab("Track record");
   const chart = app.panel("How sure I said I was, and how often I was right");
-  assert.equal(text(chart.querySelector(".na-legend")), "I saidI was right");
-  assert.equal(chart.querySelectorAll("path.na-bar").length, 8, "four levels of sure, each with what I said and how often I was right");
+  assert.equal(text(chart.querySelector(".gz-legend")), "I saidI was right");
+  assert.equal(chart.querySelectorAll("path.gz-bar").length, 8, "four levels of sure, each with what I said and how often I was right");
   const scored = app.panel("Scored");
   assert.deepEqual([...scored.querySelectorAll("th")].map(text), ["Decision", "% sure", "It went", "What I learned"]);
   assert.equal(scored.querySelectorAll("tbody tr").length, 7);
@@ -293,10 +293,10 @@ test("Decisions: the decide shortcut writes a note from a link, with the default
 test("Bets: the kit runs on Bets, counts and writes there, and leaves Decisions alone", async () => {
   const app = open("Apps/Bets.md");
   await settle();
-  assert.equal(app.root.querySelectorAll(".na-error").length, 0);
-  assert.equal(text(app.root.querySelector(".na-description")), "Bets I've made with friends, scored when we find out who was right");
-  assert.equal(text(app.panel("Bets to score").querySelector(".na-big")), "0");
-  assert.equal(text(app.panel("Right so far").querySelector(".na-big")), "100%");
+  assert.equal(app.root.querySelectorAll(".gz-error").length, 0);
+  assert.equal(text(app.root.querySelector(".gz-description")), "Bets I've made with friends, scored when we find out who was right");
+  assert.equal(text(app.panel("Bets to score").querySelector(".gz-big")), "0");
+  assert.equal(text(app.panel("Right so far").querySelector(".gz-big")), "100%");
   const form = app.panel("Before I know");
   const [name, expect] = form.querySelectorAll("input");
   (name as HTMLInputElement).value = "Alex is late to the party";
@@ -309,7 +309,7 @@ test("Bets: the kit runs on Bets, counts and writes there, and leaves Decisions 
   });
   assert.ok(![...app.f.files.keys()].some((p) => p.startsWith("Decisions/Alex")));
   // Due today, it is ready to score.
-  assert.equal(text(app.panel("Bets to score").querySelector(".na-big")), "1");
+  assert.equal(text(app.panel("Bets to score").querySelector(".gz-big")), "1");
 });
 
 // ---- The lens --------------------------------------------------------------------------------------
@@ -325,14 +325,14 @@ test("the Decision review lens shows on a decision note, reads it back, and save
   started.push(stack);
   stack.show("Decisions/Switch to the cheaper phone plan.md");
   await settle();
-  assert.equal(text(el.querySelector(".na-view-text .na-text")), "I expect: Coverage is just as good at home and at work (80% sure). Due 2026-11-15.");
-  const form = el.querySelector("form.na-form")!;
-  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["It went", "What I learned", "Due"]);
+  assert.equal(text(el.querySelector(".gz-view-text .gz-text")), "I expect: Coverage is just as good at home and at work (80% sure). Due 2026-11-15.");
+  const form = el.querySelector("form.gz-form")!;
+  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["It went", "What I learned", "Due"]);
   choose(form.querySelector("select")!, "wrong");
   await settle();
   const fm = t.f.files.get("Decisions/Switch to the cheaper phone plan.md")!.fm!;
   assert.equal(fm.outcome, "wrong");
-  assert.equal(text(el.querySelector(".na-view-text .na-text")), "I expected: Coverage is just as good at home and at work (80% sure). It went wrong.");
+  assert.equal(text(el.querySelector(".gz-view-text .gz-text")), "I expected: Coverage is just as good at home and at work (80% sure). It went wrong.");
 });
 
 // ---- The short version is the long one -----------------------------------------------------------
@@ -357,7 +357,7 @@ test("the short Decisions draws what the long Decision journal draws, over the s
   const long = open("Apps/Decision journal.md", { ...notes, "Apps/Decision journal.md": { fm: LONG } });
   const short = open("Apps/Decisions.md", structuredClone(notes));
   await settle();
-  assert.deepEqual([long, short].map((a) => [...a.root.querySelectorAll("button.na-tab")].map(text)), [["Score", "Waiting", "Track record"], ["Score", "Waiting", "Track record"]]);
+  assert.deepEqual([long, short].map((a) => [...a.root.querySelectorAll("button.gz-tab")].map(text)), [["Score", "Waiting", "Track record"], ["Score", "Waiting", "Track record"]]);
   for (const title of ["Ready to score", "Right so far"]) assert.equal(shown(short.panel(title)), shown(long.panel(title)), title);
   // Scoring shows each decision exactly as the long one does, column for column.
   const [longScore, shortScore] = [long, short].map((a) => cells(a.panel("How did these turn out?")));
@@ -366,15 +366,15 @@ test("the short Decisions draws what the long Decision journal draws, over the s
   assert.equal(shortScore.length, 2);
   for (const a of [long, short]) a.tab("Waiting");
   const [longLine, shortLine] = [long, short].map((a) => a.panel("Still waiting to find out"));
-  assert.deepEqual([...shortLine.querySelectorAll(".na-tl-label")].map(text), [...longLine.querySelectorAll(".na-tl-label")].map(text));
-  click(longLine.querySelectorAll(".na-tl-bar")[2]);
-  click(shortLine.querySelectorAll(".na-tl-bar")[2]);
+  assert.deepEqual([...shortLine.querySelectorAll(".gz-tl-label")].map(text), [...longLine.querySelectorAll(".gz-tl-label")].map(text));
+  click(longLine.querySelectorAll(".gz-tl-bar")[2]);
+  click(shortLine.querySelectorAll(".gz-tl-bar")[2]);
   await settle();
-  const picked = text(long.panel("The one I picked").querySelector(".na-text"));
+  const picked = text(long.panel("The one I picked").querySelector(".gz-text"));
   assert.match(picked, /^Start running three mornings a week\. I expected: /);
-  assert.equal(text(short.panel("Still waiting to find out").querySelector(".na-detail-text")), picked);
+  assert.equal(text(short.panel("Still waiting to find out").querySelector(".gz-detail-text")), picked);
   click([...long.root.querySelectorAll("button")].find((b) => text(b) === "Open its note")!);
-  click(short.panel("Still waiting to find out").querySelector(".na-detail a")!);
+  click(short.panel("Still waiting to find out").querySelector(".gz-detail a")!);
   assert.deepEqual([short.opened, long.opened], [["Decisions/Start running three mornings a week.md"], ["Decisions/Start running three mornings a week.md"]]);
   for (const a of [long, short]) a.tab("Track record");
   const chart = "How sure I said I was, and how often I was right";

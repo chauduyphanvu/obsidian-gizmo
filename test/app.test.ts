@@ -105,8 +105,8 @@ test("a slow web source doesn't hold up the other panels", async () => {
   });
   app.load();
   await settle();
-  assert.ok(root.querySelector(".na-view-number")!.classList.contains("na-loading"));
-  assert.equal(text(root.querySelector(".na-view-countdown .na-big")), "30days");
+  assert.ok(root.querySelector(".gz-view-number")!.classList.contains("gz-loading"));
+  assert.equal(text(root.querySelector(".gz-view-countdown .gz-big")), "30days");
 });
 
 test("new data updates its panel and leaves typed input alone", async () => {
@@ -119,12 +119,12 @@ test("new data updates its panel and leaves typed input alone", async () => {
   });
   app.load();
   await settle();
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "80.2");
-  const input = root.querySelector(".na-form input") as HTMLInputElement;
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "80.2");
+  const input = root.querySelector(".gz-form input") as HTMLInputElement;
   input.value = "77";
   await edit("Apps/W data.md", (fm) => { fm.weights = [{ weight: 80.2 }, { weight: 79.5 }]; });
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "79.5");
-  assert.equal(root.querySelector(".na-form input"), input);
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "79.5");
+  assert.equal(root.querySelector(".gz-form input"), input);
   assert.equal(input.value, "77");
 });
 
@@ -136,13 +136,13 @@ test("editing one panel's keys keeps the other panels as they are", async () => 
   const { app, root, edit } = setup({ "Apps/W.md": { fm: { app: "x", panels } }, "Apps/W data.md": { fm: { weights: [{ weight: 80 }] } } });
   app.load();
   await settle();
-  const form = root.querySelector(".na-view-form");
-  const before = root.querySelector(".na-view-number");
+  const form = root.querySelector(".gz-view-form");
+  const before = root.querySelector(".gz-view-number");
   await edit("Apps/W.md", (fm) => { fm.panels = [panels[0], { ...panels[1], unit: "kg" }, { view: "countdown", to: "2027-01-01" }]; });
-  assert.equal(root.querySelector(".na-view-form"), form);
-  assert.notEqual(root.querySelector(".na-view-number"), before);
-  assert.equal(text(root.querySelector(".na-view-number .na-unit")), "kg");
-  assert.deepEqual([...root.querySelectorAll(".na-panel")].map((e) => e.className.split(" ")[1]), ["na-view-form", "na-view-number", "na-view-countdown"]);
+  assert.equal(root.querySelector(".gz-view-form"), form);
+  assert.notEqual(root.querySelector(".gz-view-number"), before);
+  assert.equal(text(root.querySelector(".gz-view-number .gz-unit")), "kg");
+  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => e.className.split(" ")[1]), ["gz-view-form", "gz-view-number", "gz-view-countdown"]);
 });
 
 test("a notes panel follows edits to the notes it reads", async () => {
@@ -152,9 +152,9 @@ test("a notes panel follows edits to the notes it reads", async () => {
   });
   app.load();
   await settle();
-  assert.equal(text(root.querySelector(".na-list")), "2026-12-04 Dentist");
+  assert.equal(text(root.querySelector(".gz-list")), "2026-12-04 Dentist");
   await edit("Health/Dentist.md", (fm) => { fm.date = "2026-12-20"; });
-  assert.equal(text(root.querySelector(".na-list")), "2026-12-20 Dentist");
+  assert.equal(text(root.querySelector(".gz-list")), "2026-12-20 Dentist");
 });
 
 test("saving writes the data note, never the app note", async () => {
@@ -166,21 +166,21 @@ test("saving writes the data note, never the app note", async () => {
   });
   app.load();
   await settle();
-  (root.querySelector("button.na-button") as HTMLButtonElement).click();
+  (root.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(writes, ["Apps/W data.md"]);
   assert.equal(f.files.get("Apps/W data.md")?.fm?.doses instanceof Array, true);
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "1");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "1");
 });
 
 test("broken keys show the problems and redraw once fixed", async () => {
   const { app, root, edit } = setup({ "Apps/W.md": { fm: { app: "x", panels: [{ view: "gauge" }] } } });
   app.load();
   await settle();
-  assert.match(text(root.querySelector(".na-error")), /view must be one of/);
+  assert.match(text(root.querySelector(".gz-error")), /view must be one of/);
   await edit("Apps/W.md", (fm) => { fm.panels = [{ view: "countdown", to: "2026-11-25" }]; });
-  assert.equal(root.querySelector(".na-error"), null);
-  assert.equal(text(root.querySelector(".na-big")), "7days");
+  assert.equal(root.querySelector(".gz-error"), null);
+  assert.equal(text(root.querySelector(".gz-big")), "7days");
 });
 
 test("editing a data block remounts only the panels that use it", async () => {
@@ -194,13 +194,13 @@ test("editing a data block remounts only the panels that use it", async () => {
   });
   app.load();
   await settle();
-  const [first, second] = [...root.querySelectorAll(".na-view-number")];
-  assert.equal(text(first.querySelector(".na-big")), "80");
+  const [first, second] = [...root.querySelectorAll(".gz-view-number")];
+  assert.equal(text(first.querySelector(".gz-big")), "80");
   await edit("Apps/W.md", (fm) => { fm.data = { weekly: { source: "weights", sort: "-weight", limit: 1 } }; });
-  const [first2, second2] = [...root.querySelectorAll(".na-view-number")];
+  const [first2, second2] = [...root.querySelectorAll(".gz-view-number")];
   assert.notEqual(first2, first);
   assert.equal(second2, second);
-  assert.equal(text(first2.querySelector(".na-big")), "82");
+  assert.equal(text(first2.querySelector(".gz-big")), "82");
 });
 
 test("without tabs there's no tab bar; spans become classes", async () => {
@@ -211,9 +211,9 @@ test("without tabs there's no tab bar; spans become classes", async () => {
   ] } } });
   app.load();
   await settle();
-  assert.equal(root.querySelector(".na-tabs"), null);
-  assert.equal(root.querySelector(".na-grid")!.className, "na-grid na-cols-4");
-  assert.deepEqual([...root.querySelectorAll(".na-panel")].map((e) => [...e.classList].find((c) => c.startsWith("na-span-"))), ["na-span-1", "na-span-2", "na-span-4"]);
+  assert.equal(root.querySelector(".gz-tabs"), null);
+  assert.equal(root.querySelector(".gz-grid")!.className, "gz-grid gz-cols-4");
+  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => [...e.classList].find((c) => c.startsWith("gz-span-"))), ["gz-span-1", "gz-span-2", "gz-span-4"]);
 });
 
 test("tabs: untabbed panels stay above the bar; switching keeps elements and typed text", async () => {
@@ -228,22 +228,22 @@ test("tabs: untabbed panels stay above the bar; switching keeps elements and typ
   });
   app.load();
   await settle();
-  const children = [...root.querySelector(".na-grid")!.children];
-  assert.deepEqual(children.map((e) => e.classList.contains("na-tabs") ? "tabs" : e.className.split(" ")[1]),
-    ["na-view-countdown", "tabs", "na-view-form", "na-view-line", "na-view-countdown"]);
-  const tabs = [...root.querySelectorAll("button.na-tab")] as HTMLButtonElement[];
+  const children = [...root.querySelector(".gz-grid")!.children];
+  assert.deepEqual(children.map((e) => e.classList.contains("gz-tabs") ? "tabs" : e.className.split(" ")[1]),
+    ["gz-view-countdown", "tabs", "gz-view-form", "gz-view-line", "gz-view-countdown"]);
+  const tabs = [...root.querySelectorAll("button.gz-tab")] as HTMLButtonElement[];
   assert.deepEqual(tabs.map((b) => [b.textContent, b.classList.contains("is-active")]), [["Log", true], ["Chart", false]]);
-  const off = () => children.filter((e) => e.classList.contains("na-off")).map((e) => e.className.split(" ")[1]);
-  assert.deepEqual(off(), ["na-view-line"]);
+  const off = () => children.filter((e) => e.classList.contains("gz-off")).map((e) => e.className.split(" ")[1]);
+  assert.deepEqual(off(), ["gz-view-line"]);
   // A chart in a hidden tab is still drawn at its real width.
-  assert.equal(root.querySelector(".na-chart-svg")!.getAttribute("viewBox"), "0 0 894 220");
+  assert.equal(root.querySelector(".gz-chart-svg")!.getAttribute("viewBox"), "0 0 894 220");
 
-  const input = root.querySelector(".na-form input") as HTMLInputElement;
+  const input = root.querySelector(".gz-form input") as HTMLInputElement;
   input.value = "77";
   tabs[1].click();
-  assert.deepEqual(off(), ["na-view-form", "na-view-countdown"]);
+  assert.deepEqual(off(), ["gz-view-form", "gz-view-countdown"]);
   tabs[0].click();
-  assert.equal(root.querySelector(".na-form input"), input);
+  assert.equal(root.querySelector(".gz-form input"), input);
   assert.equal(input.value, "77");
 });
 
@@ -252,9 +252,9 @@ test("the open tab survives an edit to the note while it still exists", async ()
   const { app, root, edit } = setup({ "Apps/W.md": { fm: { app: "x", panels } } });
   app.load();
   await settle();
-  (root.querySelectorAll("button.na-tab")[1] as HTMLButtonElement).click();
+  (root.querySelectorAll("button.gz-tab")[1] as HTMLButtonElement).click();
   await edit("Apps/W.md", (fm) => { fm.panels = [...panels, { view: "countdown", to: "2027-03-01", tab: "C" }]; });
-  assert.deepEqual([...root.querySelectorAll("button.na-tab.is-active")].map((b) => b.textContent), ["B"]);
+  assert.deepEqual([...root.querySelectorAll("button.gz-tab.is-active")].map((b) => b.textContent), ["B"]);
   await edit("Apps/W.md", (fm) => { fm.panels = [panels[0]]; });
-  assert.deepEqual([...root.querySelectorAll("button.na-tab.is-active")].map((b) => b.textContent), ["A"]);
+  assert.deepEqual([...root.querySelectorAll("button.gz-tab.is-active")].map((b) => b.textContent), ["A"]);
 });

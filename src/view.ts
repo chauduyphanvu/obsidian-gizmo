@@ -1,22 +1,22 @@
 import { FileView, type TFile, type WorkspaceLeaf } from "obsidian";
 import { AppController } from "./app.ts";
 import { obsidianAppEnv } from "./host.ts";
-import type NoteAppsPlugin from "./main.ts";
+import type GizmoPlugin from "./main.ts";
 
-export const VIEW_TYPE = "note-app";
+export const VIEW_TYPE = "gizmo";
 
 /** The tab an app note opens in. All the work happens in its AppController. */
 export class AppView extends FileView {
-  private plugin: NoteAppsPlugin;
+  private plugin: GizmoPlugin;
   private controller: AppController | undefined;
 
-  constructor(leaf: WorkspaceLeaf, plugin: NoteAppsPlugin) {
+  constructor(leaf: WorkspaceLeaf, plugin: GizmoPlugin) {
     super(leaf);
     this.plugin = plugin;
   }
 
   getViewType(): string { return VIEW_TYPE; }
-  getDisplayText(): string { return this.file?.basename ?? "Note app"; }
+  getDisplayText(): string { return this.file?.basename ?? "Gizmo"; }
   getIcon(): string { return "layout-dashboard"; }
 
   async onOpen(): Promise<void> {

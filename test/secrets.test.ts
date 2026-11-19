@@ -58,14 +58,14 @@ test("typed text that completes a secret placeholder beside a literal brace is n
   document.body.appendChild(root);
   new AppController(root, "Apps/Q.md", t.env).load();
   await settle(2);
-  const box = root.querySelector("input.na-search") as HTMLInputElement;
+  const box = root.querySelector("input.gz-search") as HTMLInputElement;
   box.value = "secret:demo}";
   const e = new (globalThis as unknown as { window: { Event: typeof Event } }).window.Event("keydown", { bubbles: true }) as Event & { key: string };
   e.key = "Enter";
   box.dispatchEvent(e);
   await settle();
   assert.ok(!JSON.stringify(t.f.calls).includes("s3cret"), JSON.stringify(t.f.calls));
-  assert.match(root.querySelector(".na-panel.na-error")?.textContent ?? "", /secret/);
+  assert.match(root.querySelector(".gz-panel.gz-error")?.textContent ?? "", /secret/);
 });
 
 test("text a value completes into a secret placeholder is the panel's error, in headers or a body, typed or picked", () => {

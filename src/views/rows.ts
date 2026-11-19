@@ -13,7 +13,7 @@ const HIDDEN_COLUMNS = new Set(["path", "mtime", "ctime", "tags", "position"]);
 /** A row's own button, running the panel's actions with that row. */
 function rowAction(parent: HTMLElement, p: Panel, ctx: PanelCtx, row: () => Row): void {
   if (!p.action) return;
-  const b = parent.createEl("button", { cls: "na-small na-row-action", text: p.action });
+  const b = parent.createEl("button", { cls: "gz-small gz-row-action", text: p.action });
   busy(b, () => ctx.runActions(p, row()));
 }
 
@@ -67,7 +67,7 @@ function fillCell(box: HTMLElement, p: Panel, ctx: PanelCtx, r: Row, c: string, 
   const note = c === "name" || title ? rowNote(p, r) : undefined;
   if (note) noteLink(box, text, note, ctx);
   else box.setText(text);
-  box.classList.toggle("na-num", numeric(p, c, v));
+  box.classList.toggle("gz-num", numeric(p, c, v));
 }
 
 /** How an edited column is typed in: the block's field type when it has `fields`, else what its values are. */
@@ -97,7 +97,7 @@ function editCell(td: HTMLElement, field: string, type: string | string[], write
     }
   };
   if (Array.isArray(type)) {
-    const select = td.createEl("select", { cls: "dropdown na-edit" });
+    const select = td.createEl("select", { cls: "dropdown gz-edit" });
     select.setAttr("aria-label", field);
     let options: unknown[] = [];
     select.addEventListener("change", () => void run(select, options[Number(select.value)]));
@@ -112,13 +112,13 @@ function editCell(td: HTMLElement, field: string, type: string | string[], write
     };
   }
   if (type === "checkbox") {
-    const box = td.createEl("input", { type: "checkbox", cls: "na-edit" });
+    const box = td.createEl("input", { type: "checkbox", cls: "gz-edit" });
     box.setAttr("aria-label", field);
     box.addEventListener("change", () => void run(box, box.checked));
     return (v) => { box.checked = v === true; };
   }
   const kind = ["number", "date", "time"].includes(type) ? type : "text";
-  const input = td.createEl("input", { type: kind, cls: "na-edit" });
+  const input = td.createEl("input", { type: kind, cls: "gz-edit" });
   input.setAttr("aria-label", field);
   if (kind === "number") input.setAttr("step", "any");
   let saved = "";
@@ -170,43 +170,43 @@ function tableRow(body: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
   const tr = body.createEl("tr");
   const cells = env.columns.map((c) => column(tr.createEl("td"), env, c, i));
   for (const cell of cells) cell(r);
-  if (env.p.action) rowAction(tr.createEl("td", { cls: "na-row-actions" }), env.p, env.ctx, () => env.current[i]);
+  if (env.p.action) rowAction(tr.createEl("td", { cls: "gz-row-actions" }), env.p, env.ctx, () => env.current[i]);
   return { el: tr, show: (row) => cells.forEach((cell) => cell(row)) };
 }
 
 /** A card: the first picture on top, the next column as the title, the others as label and value lines. */
 function card(grid: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
   const { p } = env;
-  const el = grid.createDiv({ cls: "na-rowcard" });
+  const el = grid.createDiv({ cls: "gz-rowcard" });
   const image = env.columns.find((c) => cellKind(p, c) === "image" && !env.edited.has(c));
   const [title, ...rest] = env.columns.filter((c) => c !== image);
   const shows: ((row: Row) => void)[] = [];
-  if (image) shows.push(column(el.createDiv({ cls: "na-rowcard-image" }), env, image, i));
-  if (title) shows.push(column(el.createDiv({ cls: "na-rowcard-title" }), env, title, i, true));
+  if (image) shows.push(column(el.createDiv({ cls: "gz-rowcard-image" }), env, image, i));
+  if (title) shows.push(column(el.createDiv({ cls: "gz-rowcard-title" }), env, title, i, true));
   for (const c of rest) {
-    const line = el.createDiv({ cls: "na-rowcard-line" });
-    line.createSpan({ cls: "na-rowcard-label", text: labelOf(p, c) });
-    shows.push(column(line.createSpan({ cls: "na-rowcard-value" }), env, c, i));
+    const line = el.createDiv({ cls: "gz-rowcard-line" });
+    line.createSpan({ cls: "gz-rowcard-label", text: labelOf(p, c) });
+    shows.push(column(line.createSpan({ cls: "gz-rowcard-value" }), env, c, i));
   }
   for (const show of shows) show(r);
-  if (p.action) rowAction(el.createDiv({ cls: "na-rowcard-actions" }), p, env.ctx, () => env.current[i]);
+  if (p.action) rowAction(el.createDiv({ cls: "gz-rowcard-actions" }), p, env.ctx, () => env.current[i]);
   return { el, show: (row) => shows.forEach((show) => show(row)) };
 }
 
 function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn | undefined {
   heading(el, p, p.label);
-  if (rows.length === 0) { el.createDiv({ cls: "na-empty", text: "Nothing here yet." }); return undefined; }
+  if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return undefined; }
   const env: RowEnv = {
     p, ctx, columns: columnsOf(p, rows), edited: new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)])), current: [...rows],
   };
   const cards = p.layout === "cards";
   let parent: HTMLElement;
   if (cards) {
-    parent = el.createDiv({ cls: "na-cards" });
+    parent = el.createDiv({ cls: "gz-cards" });
   } else {
-    const table = el.createDiv({ cls: "na-table-wrap" }).createEl("table", { cls: "na-table" });
+    const table = el.createDiv({ cls: "gz-table-wrap" }).createEl("table", { cls: "gz-table" });
     const head = table.createEl("thead").createEl("tr");
-    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows) ? "na-num" : undefined });
+    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows) ? "gz-num" : undefined });
     if (p.action) head.createEl("th");
     parent = table.createEl("tbody");
   }
@@ -333,8 +333,8 @@ export const list: ViewDef = {
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p, p.label);
     const rows = rowsOf(data);
-    if (rows.length === 0) { el.createDiv({ cls: "na-empty", text: "Nothing here yet." }); return; }
-    const ul = el.createEl("ul", { cls: "na-list" });
+    if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return; }
+    const ul = el.createEl("ul", { cls: "gz-list" });
     shownRows(el, rows, (r) => {
       const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
       const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) + countLabel(p) : plainItem(p, r, ctx.now);

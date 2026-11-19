@@ -41,16 +41,16 @@ export default async function interaction(t) {
       const el = na.view().contentEl;
       const box = el.querySelector('input[aria-label="q"]');
       box.focus();
-      const about = [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "About this book");
+      const about = [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "About this book");
       return { focused: document.activeElement === box, about: na.text(about) };`);
     await type("dune");
     await press("Enter");
     const r = await run(`
       const el = na.view().contentEl;
       const box = el.querySelector('input[aria-label="q"]');
-      const results = await na.until(() => el.querySelectorAll(".na-view-list li").length >= 3 && !el.querySelector(".na-loading, .na-stale"), ${OPENLIBRARY_WAIT});
+      const results = await na.until(() => el.querySelectorAll(".gz-view-list li").length >= 3 && !el.querySelector(".gz-loading, .gz-stale"), ${OPENLIBRARY_WAIT});
       await na.sleep(300);
-      return { results: !!results, pending: !!el.querySelector(".na-loading, .na-stale"), items: [...el.querySelectorAll(".na-view-list li")].slice(0, 3).map((li) => li.textContent), focused: document.activeElement === box, caret: box.selectionStart, value: box.value };`);
+      return { results: !!results, pending: !!el.querySelector(".gz-loading, .gz-stale"), items: [...el.querySelectorAll(".gz-view-list li")].slice(0, 3).map((li) => li.textContent), focused: document.activeElement === box, caret: box.selectionStart, value: box.value };`);
     // Still waiting for its answer says nothing about the plugin; an answer that is wrong does.
     if (!r.results && r.pending) t.skip(`Open Library hasn't answered in ${OPENLIBRARY_WAIT / 1000} s`);
     searched = r.results;
@@ -60,11 +60,11 @@ export default async function interaction(t) {
     await press("Enter");
     const after = await run(`
       await na.sleep(800);
-      const about = [...na.view().contentEl.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "About this book");
+      const about = [...na.view().contentEl.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "About this book");
       return na.text(about);`);
     expect(before.focused && before.about.includes("Pick a row in “Search results”"), before);
     expect(r.results && r.focused && r.caret === 4 && r.value === "dune", r);
-    expect(/na-selectable/.test(tabbed.cls ?? ""), { tabbed, note: "Tab from the search box should reach the first result" });
+    expect(/gz-selectable/.test(tabbed.cls ?? ""), { tabbed, note: "Tab from the search box should reach the first result" });
     expect(/, by .+First published in \d{4}; \d+ editions\./.test(after), after);
     return `${r.items[0]} … caret ${r.caret}; About: ${after.slice(0, 70)}`;
   }, { net: OPENLIBRARY });
@@ -73,19 +73,19 @@ export default async function interaction(t) {
     if (!searched) t.skip("the search before it got no results from Open Library to add");
     const r = await run(`
       const el = na.view().contentEl;
-      const items = [...el.querySelectorAll(".na-view-list li")];
+      const items = [...el.querySelectorAll(".gz-view-list li")];
       const dune = items.find((li) => li.textContent.startsWith("Dune · "));
       const other = items.find((li) => !li.textContent.startsWith("Dune · ") && !app.vault.getAbstractFileByPath("Books/" + li.textContent.split(" · ")[0] + ".md") && !/[\\\\/:*?"<>|#^\\[\\]]/.test(li.textContent.split(" · ")[0]));
       const mark = na.notices.length;
       na.button("Add", dune).click();
       const exists = await na.noticesSince(mark, "already exists");
       const title = other.textContent.split(" · ")[0];
-      const shelfBefore = el.querySelectorAll(".na-view-table tbody tr").length;
+      const shelfBefore = el.querySelectorAll(".gz-view-table tbody tr").length;
       na.button("Add", other).click();
       const created = await na.until(() => na.fm("Books/" + title + ".md"), 5000);
-      await na.until(() => el.querySelectorAll(".na-view-table tbody tr").length === shelfBefore + 1, 3000);
+      await na.until(() => el.querySelectorAll(".gz-view-table tbody tr").length === shelfBefore + 1, 3000);
       const text = await na.read("Books/" + title + ".md");
-      const shelf = [...el.querySelectorAll(".na-view-table tbody tr")].map((tr) => tr.textContent);
+      const shelf = [...el.querySelectorAll(".gz-view-table tbody tr")].map((tr) => tr.textContent);
       await na.remove("Books/" + title + ".md");
       return { exists, title, created, text, shelfBefore, shelf };`);
     expect(r.exists.includes("“Dune” already exists"), r.exists);
@@ -98,14 +98,14 @@ export default async function interaction(t) {
     const r = await run(`
       await na.open("Apps/Library");
       const el = na.view().contentEl;
-      const row = [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Dune"));
+      const row = [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Dune"));
       const select = row.querySelector("select");
-      const table = el.querySelector(".na-view-table table");
+      const table = el.querySelector(".gz-view-table table");
       select.focus();
       na.choose(select, "reading");
       const written = await na.until(() => na.fm("Books/Dune.md")?.status === "reading", 3000);
       await na.sleep(800);
-      const out = { written: !!written, sameSelect: row.isConnected && row.querySelector("select") === select, sameTable: el.querySelector(".na-view-table table") === table, focused: document.activeElement === select, value: select.selectedOptions[0]?.textContent };
+      const out = { written: !!written, sameSelect: row.isConnected && row.querySelector("select") === select, sameTable: el.querySelector(".gz-view-table table") === table, focused: document.activeElement === select, value: select.selectedOptions[0]?.textContent };
       na.choose(select, "done");
       await na.until(() => na.fm("Books/Dune.md")?.status === "done", 3000);
       return out;`);
@@ -118,8 +118,8 @@ export default async function interaction(t) {
       await na.write("Books/Project Hail Mary.md", "---\\nstatus: reading\\n---\\n");
       await na.open("Apps/Library");
       const el = na.view().contentEl;
-      const goal = () => el.querySelector(".na-view-progress .na-big")?.textContent;
-      const row = await na.until(() => [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Project Hail Mary")), 3000);
+      const goal = () => el.querySelector(".gz-view-progress .gz-big")?.textContent;
+      const row = await na.until(() => [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Project Hail Mary")), 3000);
       const before = goal();
       const d = new Date();
       const today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
@@ -128,7 +128,7 @@ export default async function interaction(t) {
       await na.until(() => goal() !== before, 3000);
       const after = goal();
       await na.remove("Books/Project Hail Mary.md");
-      return { before, after, written: !!written, title: el.querySelector(".na-view-progress .na-title")?.textContent };`);
+      return { before, after, written: !!written, title: el.querySelector(".gz-view-progress .gz-title")?.textContent };`);
     const count = (s) => Number(s?.split("/")[0]);
     expect(r.written && r.title === "Reading goal" && /\/ 24 books$/.test(r.after ?? "") && count(r.after) === count(r.before) + 1, r);
     return `${r.before} → ${r.after}`;
@@ -138,19 +138,19 @@ export default async function interaction(t) {
     const r = await run(`
       await na.open("Apps/Chores");
       const el = na.view().contentEl;
-      const form = el.querySelector(".na-view-form");
-      const fields = [...form.querySelectorAll(".na-field > span")].map((s) => s.textContent);
+      const form = el.querySelector(".gz-view-form");
+      const fields = [...form.querySelectorAll(".gz-field > span")].map((s) => s.textContent);
       na.fill(form.querySelector('input[type="text"]'), "Descale the kettle");
       na.choose(form.querySelector("select"), "kitchen");
       na.button("Add", form).click();
-      const todo = () => [...el.querySelectorAll(".na-view-table tbody tr")];
+      const todo = () => [...el.querySelectorAll(".gz-view-table tbody tr")];
       await na.until(() => todo().some((tr) => tr.textContent.includes("Descale the kettle")), 3000);
       const listed = todo().map((tr) => tr.textContent);
       const tick = todo().find((tr) => tr.textContent.includes("Descale the kettle")).querySelector('input[type="checkbox"]');
       tick.click();
       await na.until(() => !todo().some((tr) => tr.textContent.includes("Descale the kettle")), 3000);
       await na.sleep(500);
-      return { fields, listed, after: todo().map((tr) => tr.textContent), done: el.querySelector(".na-view-number .na-big")?.textContent, saved: na.fm("Apps/Chores data.md")?.chores };`);
+      return { fields, listed, after: todo().map((tr) => tr.textContent), done: el.querySelector(".gz-view-number .gz-big")?.textContent, saved: na.fm("Apps/Chores data.md")?.chores };`);
     expect(JSON.stringify(r.fields) === '["task","room","done"]', r.fields);
     expect(r.listed.some((x) => x.includes("Descale the kettle")) && !r.after.some((x) => x.includes("Descale the kettle")) && r.done === "1", r);
     expect(r.saved?.length === 1 && r.saved[0].done === true && r.saved[0].room === "kitchen", r.saved);
@@ -163,10 +163,10 @@ export default async function interaction(t) {
       const el = na.view().contentEl;
       na.choose(el.querySelector('select[aria-label="period"]'), "1");
       await na.sleep(300);
-      await na.until(() => !el.querySelector(".na-stale, .na-loading"), 10000);
+      await na.until(() => !el.querySelector(".gz-stale, .gz-loading"), 10000);
       await na.sleep(300);
-      const first = el.querySelector(".na-view-number");
-      return { title: first.querySelector(".na-title")?.textContent, value: first.querySelector(".na-big")?.textContent, errors: na.errors() };`);
+      const first = el.querySelector(".gz-view-number");
+      return { title: first.querySelector(".gz-title")?.textContent, value: first.querySelector(".gz-big")?.textContent, errors: na.errors() };`);
     expect(r.title === "Earthquakes, past day" && /^\d+$/.test(r.value ?? "") && r.errors === 0, r);
     return `${r.title}: ${r.value}`;
   }, { net: USGS });
@@ -177,13 +177,13 @@ export default async function interaction(t) {
     const r = await run(`
       await na.open("Apps/Planet Earth");
       const el = na.view().contentEl;
-      [...el.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Earthquakes").click();
-      const panel = (title) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title);
+      [...el.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Earthquakes").click();
+      const panel = (title) => [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title);
       const row = await na.until(() => panel("The ten strongest")?.querySelector("tbody tr"), 10000);
       const [mag, place] = [...row.querySelectorAll("td")].map((td) => td.textContent);
       const waiting = panel("The one I picked").textContent;
       row.click();
-      const card = await na.until(() => panel("The one I picked").querySelector(".na-rowcard"), 3000);
+      const card = await na.until(() => panel("The one I picked").querySelector(".gz-rowcard"), 3000);
       const link = card?.querySelector("a")?.getAttribute("href");
       const mark = na.notices.length;
       na.button("Follow", row).click();
@@ -193,7 +193,7 @@ export default async function interaction(t) {
       const followed = [...panel("Quakes I'm following").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td").textContent === saved?.quake);
       na.fill(followed.querySelector("input"), "Near family");
       const note = await na.until(() => na.fm("Apps/Planet Earth data.md")?.following?.find((f) => f.quake === saved.quake)?.note, 3000);
-      return { mag, place, waiting, title: card?.querySelector(".na-rowcard-title")?.textContent, link, saved, notices, note, errors: na.errors() };`);
+      return { mag, place, waiting, title: card?.querySelector(".gz-rowcard-title")?.textContent, link, saved, notices, note, errors: na.errors() };`);
     expect(r.waiting.includes("Pick a row in “The ten strongest”") && /^\d+\.\d$/.test(r.mag) && r.title === r.place, r);
     expect(/^https:\/\/earthquake\.usgs\.gov\/earthquakes\/eventpage\/\w+$/.test(r.link ?? "") && r.saved?.page === r.link && r.saved.quake.startsWith("M ") && typeof r.saved.when === "number", r);
     expect(r.notices.includes(`Following ${r.place}`) && r.note === "Near family" && r.errors === 0, r);
@@ -206,14 +206,14 @@ export default async function interaction(t) {
       await na.sleep(800);
       await na.open("Scratch/Rooms");
       const el = na.view().contentEl;
-      const bars = () => [...el.querySelectorAll(".na-view-bar path.na-bar")];
-      const list = () => na.text(el.querySelector(".na-view-list"));
+      const bars = () => [...el.querySelectorAll(".gz-view-bar path.gz-bar")];
+      const list = () => na.text(el.querySelector(".gz-view-list"));
       const waiting = list();
       bars().find((b) => b.getAttribute("aria-label") === "kitchen").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await na.sleep(600);
       const opacity = bars().map((b) => b.getAttribute("aria-label") + " " + getComputedStyle(b).opacity);
       const picked = list();
-      bars().find((b) => b.classList.contains("na-selected")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      bars().find((b) => b.classList.contains("gz-selected")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await na.sleep(600);
       return { waiting, opacity, picked, cleared: list(), after: bars().map((b) => getComputedStyle(b).opacity) };`);
     expect(r.waiting.includes("Pick a row in “Chores per room”"), r);

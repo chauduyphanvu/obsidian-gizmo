@@ -56,8 +56,8 @@ class GalleryPicker extends FuzzySuggestModal<GalleryApp> {
   }
 
   renderSuggestion(match: { item: GalleryApp }, el: HTMLElement): void {
-    el.createDiv({ cls: "na-suggest-key", text: match.item.name });
-    el.createDiv({ cls: "na-suggest-hint", text: match.item.about });
+    el.createDiv({ cls: "gz-suggest-key", text: match.item.name });
+    el.createDiv({ cls: "gz-suggest-hint", text: match.item.about });
   }
 
   onChooseItem(item: GalleryApp): void {

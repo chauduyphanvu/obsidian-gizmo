@@ -37,7 +37,7 @@ function dotsOf(p: Panel, data: unknown): { dots: Dot[]; isTime: boolean } {
 function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, width: number): void {
   const { dots, isTime } = dotsOf(p, data);
   if (dots.length === 0) {
-    el.createDiv({ cls: "na-empty", text: "No data to chart yet." });
+    el.createDiv({ cls: "gz-empty", text: "No data to chart yet." });
     return;
   }
   const W = Math.max(280, Math.round(width));
@@ -56,24 +56,24 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
   const fmtY = (v: number) => mapped(p, yName, v) ?? formatted(yName, v, () => formatValue(v, p.decimals) + (p.unit ? ` ${p.unit}` : ""));
   const fmtX = (v: unknown) => mapped(p, xName, v) ?? formatted(xName, v, () => formatValue(v));
 
-  const wrap = el.createDiv({ cls: "na-chart" });
-  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "na-chart-svg", role: "group", "aria-label": `${labelOf(p, yName)} by ${labelOf(p, xName)}` }, wrap);
+  const wrap = el.createDiv({ cls: "gz-chart" });
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg", role: "group", "aria-label": `${labelOf(p, yName)} by ${labelOf(p, xName)}` }, wrap);
   for (const t of niceTicks(yMin, yMax)) {
-    svg("line", { x1: L, x2: W - R, y1: sy(t), y2: sy(t), class: "na-gridline" }, root);
-    svg("text", { x: L - 8, y: sy(t) + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = tick(yName, t);
+    svg("line", { x1: L, x2: W - R, y1: sy(t), y2: sy(t), class: "gz-gridline" }, root);
+    svg("text", { x: L - 8, y: sy(t) + 4, class: "gz-axis", "text-anchor": "end" }, root).textContent = tick(yName, t);
   }
   const xTicks = isTime
     ? timeTicks(xMin, xMax, Math.max(2, Math.floor((W - L - R) / 80)))
     : niceTicks(xMin, xMax, Math.max(2, Math.floor((W - L - R) / 80))).map((at) => ({ at, label: tick(xName, at) }));
-  for (const t of xTicks) svg("text", { x: sx(t.at), y: H - 6, class: "na-axis", "text-anchor": "middle" }, root).textContent = t.label;
+  for (const t of xTicks) svg("text", { x: sx(t.at), y: H - 6, class: "gz-axis", "text-anchor": "middle" }, root).textContent = t.label;
 
-  const readout = wrap.createDiv({ cls: "na-readout" });
+  const readout = wrap.createDiv({ cls: "gz-readout" });
   const axes = `x: ${labelOf(p, xName)} · y: ${labelOf(p, yName)}`;
   readout.setText(axes);
   const texts = new WeakMap<Element, string>();
   for (const d of shown) {
     const text = p.item ? fillWith(p.item, d.row, (path, v) => display(p, path, v, ctx.now, "text")) : `${fmtX(getPath(d.row, xName))}, ${fmtY(d.y)}`;
-    const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "na-scatter-dot na-s1", tabindex: 0 }, root);
+    const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "gz-scatter-dot gz-s1", tabindex: 0 }, root);
     svg("title", {}, dot).textContent = text;
     texts.set(dot, text);
     if (picks(p)) {
@@ -87,7 +87,7 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
   for (const on of ["pointerover", "focusin"]) root.addEventListener(on, (e) => readout.setText(texts.get(e.target as Element) ?? axes));
   for (const off of ["pointerleave", "focusout"]) root.addEventListener(off, () => readout.setText(axes));
   if (dots.length > shown.length) {
-    el.createDiv({ cls: "na-label", text: `Showing ${shown.length.toLocaleString()} of ${dots.length.toLocaleString()}` });
+    el.createDiv({ cls: "gz-label", text: `Showing ${shown.length.toLocaleString()} of ${dots.length.toLocaleString()}` });
   }
 }
 

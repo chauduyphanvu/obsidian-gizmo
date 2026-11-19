@@ -53,7 +53,7 @@ test("a web row saved as a note keeps its data but none of the keys that make a 
   const t = fakeEnv({ "Apps/Find.md": { fm: FIND } }, { [API]: evil });
   const root = draw(t.env, "Apps/Find.md");
   await settle();
-  (root.querySelector(".na-row-action") as HTMLButtonElement).click();
+  (root.querySelector(".gz-row-action") as HTMLButtonElement).click();
   await settle();
   const fm = t.f.files.get("Books/Dune.md")!.fm!;
   assert.deepEqual(fm, { title: "Dune", author: "Frank Herbert", text: "Vault locked", pin: "status", at: "2026-11-18T12:00" });
@@ -180,7 +180,7 @@ test("a web row saved as a note can't put its text in the status bar", async () 
   await t.bg.start();
   const root = draw(t.env, "Apps/Find.md");
   await settle();
-  (root.querySelector(".na-row-action") as HTMLButtonElement).click();
+  (root.querySelector(".gz-row-action") as HTMLButtonElement).click();
   await settle();
   t.bg.noteChanged("Books/Dune.md");
   await settle();

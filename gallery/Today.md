@@ -5,14 +5,14 @@ and the count beside it follows.
 
 ## Meds
 
-```note-app
+```gizmo
 app: "[[Medication log]]"
 panels: [Took meds, Doses today]
 ```
 
 ## Water
 
-```note-app
+```gizmo
 panels:
   - view: button
     label: Drank a glass of water

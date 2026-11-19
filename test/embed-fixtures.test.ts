@@ -40,15 +40,15 @@ test("Reading progress: a lens above every book tracks the page I'm on, saved in
   const stack = new LensStack(el, index, () => t.env, { folded: () => false, setFolded: () => {} });
   stack.show("Books/Dune.md");
   await settle();
-  assert.equal(text(el.querySelector(".na-lens-name")), "Reading progress");
-  assert.deepEqual([...el.querySelectorAll(".na-card li")].map(text), ["Change properties of notes in Books"]);
-  (el.querySelector(".na-card button.mod-cta") as HTMLButtonElement).click();
+  assert.equal(text(el.querySelector(".gz-lens-name")), "Reading progress");
+  assert.deepEqual([...el.querySelectorAll(".gz-card li")].map(text), ["Change properties of notes in Books"]);
+  (el.querySelector(".gz-card button.mod-cta") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(grants, { "Components/Reading progress.md": ["edit:Books"] });
-  assert.equal(el.querySelector(".na-error"), null);
-  assert.equal(text(el.querySelector(".na-view-progress .na-big")), "412/ 412 pages");
+  assert.equal(el.querySelector(".gz-error"), null);
+  assert.equal(text(el.querySelector(".gz-view-progress .gz-big")), "412/ 412 pages");
 
-  const form = el.querySelector("form.na-form")!;
+  const form = el.querySelector("form.gz-form")!;
   const [page, pages] = [...form.querySelectorAll("input")] as HTMLInputElement[];
   const status = form.querySelector("select")!;
   assert.deepEqual([page.value, pages.value, text(status.querySelector("option[selected]"))], ["412", "412", "done"]);
@@ -58,14 +58,14 @@ test("Reading progress: a lens above every book tracks the page I'm on, saved in
   choose(status, "reading");
   await settle();
   assert.deepEqual(t.f.files.get("Books/Dune.md")!.fm, { finished: "2026-02-10", status: "reading", page: 100, pages: 412 });
-  assert.equal(text(el.querySelector(".na-view-progress .na-big")), "100/ 412 pages");
+  assert.equal(text(el.querySelector(".gz-view-progress .gz-big")), "100/ 412 pages");
   assert.deepEqual(t.writes, ["Books/Dune.md", "Books/Dune.md"]);
   stack.dispose();
 });
 
 test("Today: my day at a glance, logging meds and water from the note itself", async () => {
   const today = vaultNote("Today.md");
-  const sources = [...today.body.matchAll(/```note-app\n([\s\S]*?)```/g)].map((m) => m[1]);
+  const sources = [...today.body.matchAll(/```gizmo\n([\s\S]*?)```/g)].map((m) => m[1]);
   assert.equal(sources.length, 2);
   const t = fakeEnv({ "Today.md": { fm: today.fm }, "Apps/Meds.md": { fm: vaultNote("Apps/Meds.md").fm }, "Daily.md": {} });
   const [meds, water] = sources.map((source) => {
@@ -75,21 +75,21 @@ test("Today: my day at a glance, logging meds and water from the note itself", a
     return el;
   });
   await settle();
-  assert.equal(meds.querySelector(".na-error"), null);
-  assert.equal(water.querySelector(".na-error"), null);
+  assert.equal(meds.querySelector(".gz-error"), null);
+  assert.equal(water.querySelector(".gz-error"), null);
 
   // Meds, as that app: only the panel asked for, saving to Meds's own data note.
-  assert.deepEqual([...meds.querySelectorAll(".na-panel")].map((p) => text(p)), ["Took meds"]);
-  (meds.querySelector("button.na-button") as HTMLButtonElement).click();
+  assert.deepEqual([...meds.querySelectorAll(".gz-panel")].map((p) => text(p)), ["Took meds"]);
+  (meds.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.equal((t.f.files.get("Apps/Meds data.md")!.fm!.doses as unknown[]).length, 1);
   assert.deepEqual(t.notices, ["Logged"]);
 
   // Water, an app of the note's own, saving to its data note.
-  assert.equal(text(water.querySelector(".na-view-number .na-big")), "0of 8");
-  (water.querySelector("button.na-button") as HTMLButtonElement).click();
+  assert.equal(text(water.querySelector(".gz-view-number .gz-big")), "0of 8");
+  (water.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(t.f.files.get("Today data.md")!.fm, { water: [{ at: "2026-11-18T12:00" }] });
-  assert.equal(text(water.querySelector(".na-view-number .na-big")), "1of 8");
+  assert.equal(text(water.querySelector(".gz-view-number .gz-big")), "1of 8");
   assert.deepEqual(t.writes, ["Daily.md", "Apps/Meds data.md", "Today data.md"]);
 });

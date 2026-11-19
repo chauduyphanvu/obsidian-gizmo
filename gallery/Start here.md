@@ -1,6 +1,6 @@
 # Start here
 
-A note app is an ordinary note whose properties start with `app:` and one sentence saying what it is for, and the keys you type under it (a view, a source, a form, a button) turn it into a small app. It takes input, keeps state and writes back to your vault, saving what you log in a data note beside it, with no code and nothing hidden in a database. A component is a note that other apps, or every note in a folder, can reuse.
+A gizmo is an ordinary note whose properties start with `app:` and one sentence saying what it is for, and the keys you type under it (a view, a source, a form, a button) turn it into a small app. It takes input, keeps state and writes back to your vault, saving what you log in a data note beside it, with no code and nothing hidden in a database. A component is a note that other apps, or every note in a folder, can reuse.
 
 - [[Medication log]]: Log every dose I take and keep my streak going
 - [[Weight]]: Log my weight and watch the trend toward my goal (needs [[Tracker kit]])

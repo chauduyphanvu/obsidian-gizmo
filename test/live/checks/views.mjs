@@ -24,7 +24,7 @@ journal:
 `;
 
 /** In the page: a column's cards on the Projects board, by its name. */
-const COLUMN = `(name) => [...na.view().contentEl.querySelectorAll('.na-board-col[aria-label="' + name + '"] .na-board-card')].map((c) => c.querySelector(".na-board-text").textContent)`;
+const COLUMN = `(name) => [...na.view().contentEl.querySelectorAll('.gz-board-col[aria-label="' + name + '"] .gz-board-card')].map((c) => c.querySelector(".gz-board-text").textContent)`;
 
 export default async function views(t) {
   const { check, run, expect, press } = t;
@@ -34,17 +34,17 @@ export default async function views(t) {
       await na.open("Apps/Projects");
       const el = na.view().contentEl;
       const column = ${COLUMN};
-      const card = [...el.querySelectorAll(".na-board-card")].find((c) => c.textContent.includes("Japan trip"));
-      const select = card.querySelector("select.na-move");
+      const card = [...el.querySelectorAll(".gz-board-card")].find((c) => c.textContent.includes("Japan trip"));
+      const select = card.querySelector("select.gz-move");
       select.focus();
       na.choose(select, "doing");
       const written = await na.until(() => na.fm("Projects/Japan trip.md")?.status === "doing", 3000);
       await na.until(() => column("doing").some((c) => c.startsWith("Japan trip")), 3000);
       await na.sleep(300);
       const active = document.activeElement;
-      return { written: !!written, idea: column("idea"), doing: column("doing"), focus: active?.className, focusCard: active?.closest(".na-board-card")?.textContent.slice(0, 20) };`);
+      return { written: !!written, idea: column("idea"), doing: column("doing"), focus: active?.className, focusCard: active?.closest(".gz-board-card")?.textContent.slice(0, 20) };`);
     expect(r.written && r.doing.some((c) => c.startsWith("Japan trip")) && !r.idea.some((c) => c.startsWith("Japan trip")), r);
-    expect(/na-move/.test(r.focus ?? "") && r.focusCard?.startsWith("Japan trip"), { note: "focus should stay on the moved card's Move to… menu", ...r });
+    expect(/gz-move/.test(r.focus ?? "") && r.focusCard?.startsWith("Japan trip"), { note: "focus should stay on the moved card's Move to… menu", ...r });
     return `doing: ${r.doing.join(", ")}; focus on its menu`;
   });
 
@@ -52,11 +52,11 @@ export default async function views(t) {
     const pos = await run(`
       await na.open("Apps/Projects");
       const el = na.view().contentEl;
-      const card = [...el.querySelectorAll(".na-board-card")].find((c) => c.textContent.includes("Learn Rust"));
-      const col = el.querySelector('.na-board-col[aria-label="doing"]');
+      const card = [...el.querySelectorAll(".gz-board-card")].find((c) => c.textContent.includes("Learn Rust"));
+      const col = el.querySelector('.gz-board-col[aria-label="doing"]');
       card.scrollIntoView({ block: "center" });
       await na.sleep(200);
-      const a = card.querySelector(".na-board-text").getBoundingClientRect(), b = col.getBoundingClientRect();
+      const a = card.querySelector(".gz-board-text").getBoundingClientRect(), b = col.getBoundingClientRect();
       return { from: [a.x + 6, a.y + a.height / 2], to: [b.x + b.width / 2, b.y + b.height - 12] };`);
     const dragged = await t.drag(pos.from, pos.to);
     const r = await run(`
@@ -74,10 +74,10 @@ export default async function views(t) {
     const r = await run(`
       await na.open("Apps/Projects");
       const el = na.view().contentEl;
-      const schedule = [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "Schedule");
-      const picked = () => schedule.querySelector(".na-detail") ? na.text(schedule.querySelector(".na-detail")) : "";
+      const schedule = [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "Schedule");
+      const picked = () => schedule.querySelector(".gz-detail") ? na.text(schedule.querySelector(".gz-detail")) : "";
       const before = picked();
-      const bar = () => [...el.querySelectorAll(".na-tl-bar")].find((b) => (b.getAttribute("aria-label") ?? b.closest(".na-tl-row").textContent).includes("Kitchen remodel"));
+      const bar = () => [...el.querySelectorAll(".gz-tl-bar")].find((b) => (b.getAttribute("aria-label") ?? b.closest(".gz-tl-row").textContent).includes("Kitchen remodel"));
       bar().click();
       await na.sleep(500);
       const after = picked();
@@ -93,25 +93,25 @@ export default async function views(t) {
     const r = await run(`
       await na.open("Apps/Projects");
       const el = na.view().contentEl;
-      const cal = el.querySelector(".na-view-calendar");
-      const title = () => cal.querySelector(".na-cal-title").textContent;
+      const cal = el.querySelector(".gz-view-calendar");
+      const title = () => cal.querySelector(".gz-cal-title").textContent;
       const first = title();
-      cal.querySelector(".na-cal-next").click();
+      cal.querySelector(".gz-cal-next").click();
       await na.sleep(200);
       const next = title();
-      cal.querySelector(".na-cal-prev").click();
-      cal.querySelector(".na-cal-prev").click();
+      cal.querySelector(".gz-cal-prev").click();
+      cal.querySelector(".gz-cal-prev").click();
       await na.sleep(200);
       const prev = title();
-      cal.querySelector(".na-cal-next").click();
-      cal.querySelector(".na-cal-next").click();
+      cal.querySelector(".gz-cal-next").click();
+      cal.querySelector(".gz-cal-next").click();
       await na.sleep(200);
       const shown = title();
-      const card = [...el.querySelectorAll(".na-board-card")].find((c) => c.textContent.includes("Japan trip"));
-      na.choose(card.querySelector("select.na-move"), "idea");
+      const card = [...el.querySelectorAll(".gz-board-card")].find((c) => c.textContent.includes("Japan trip"));
+      na.choose(card.querySelector("select.gz-move"), "idea");
       await na.until(() => na.fm("Projects/Japan trip.md")?.status === "idea", 3000);
       await na.sleep(800);
-      return { first, next, prev, shown, after: title(), dueDays: [...cal.querySelectorAll(".na-cal-day .na-cal-val")].length };`);
+      return { first, next, prev, shown, after: title(), dueDays: [...cal.querySelectorAll(".gz-cal-day .gz-cal-val")].length };`);
     expect(r.first !== r.next && r.prev !== r.first && r.shown === r.next && r.after === r.next, r);
     return `${r.first} → ${r.next} → ${r.prev} → ${r.shown}; after a move still ${r.after}`;
   });
@@ -124,20 +124,20 @@ export default async function views(t) {
       await app.fileManager.processFrontMatter(na.file("Apps/Habits data.md"), (fm) => { fm.stretches = fm.stretches.filter((s) => !String(s.at).startsWith(key)); });
       await na.open("Apps/Habits");
       const el = na.view().contentEl;
-      [...el.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Year").click();
+      [...el.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Year").click();
       await na.sleep(400);
-      const day = () => el.querySelector('.na-cal-year [data-date="' + key + '"]');
+      const day = () => el.querySelector('.gz-cal-year [data-date="' + key + '"]');
       const label = () => day().getAttribute("aria-label");
-      const streak = () => el.querySelector(".na-view-number .na-big").textContent;
+      const streak = () => el.querySelector(".gz-view-number .gz-big").textContent;
       const before = { streak: streak(), label: label(), cls: day().getAttribute("class") };
       na.button("Stretched").click();
       await na.until(() => label() !== before.label, 3000);
       await na.sleep(300);
-      const svg = el.querySelector(".na-cal-year");
-      const panel = el.querySelector(".na-view-calendar");
-      return { key, before, streak: streak(), label: label(), cls: day().getAttribute("class"), svg: svg.getBoundingClientRect().width, panel: panel.clientWidth, scroll: el.querySelector(".na-cal-scroll").scrollWidth - el.querySelector(".na-cal-scroll").clientWidth };`);
-    expect(r.before.label === `${r.key}: 0` && !/na-step/.test(r.before.cls), r.before);
-    expect(Number.parseInt(r.streak) > Number.parseInt(r.before.streak) && r.label === `${r.key}: 1` && /na-step-\d/.test(r.cls) && /na-today/.test(r.cls), r);
+      const svg = el.querySelector(".gz-cal-year");
+      const panel = el.querySelector(".gz-view-calendar");
+      return { key, before, streak: streak(), label: label(), cls: day().getAttribute("class"), svg: svg.getBoundingClientRect().width, panel: panel.clientWidth, scroll: el.querySelector(".gz-cal-scroll").scrollWidth - el.querySelector(".gz-cal-scroll").clientWidth };`);
+    expect(r.before.label === `${r.key}: 0` && !/gz-step/.test(r.before.cls), r.before);
+    expect(Number.parseInt(r.streak) > Number.parseInt(r.before.streak) && r.label === `${r.key}: 1` && /gz-step-\d/.test(r.cls) && /gz-today/.test(r.cls), r);
     expect(r.svg <= r.panel && r.scroll <= 0, r);
     return `streak ${r.before.streak} → ${r.streak}; ${r.label}; ${r.cls}; ${Math.round(r.svg)} px in a ${r.panel} px panel`;
   });
@@ -148,7 +148,7 @@ export default async function views(t) {
       await na.write("Scratch/Journal.md", ${JSON.stringify(JOURNAL("__MONTH__"))}.replaceAll("__MONTH__", ${JSON.stringify(month)}));
       await na.sleep(800);
       await na.open("Scratch/Journal");
-      na.view().contentEl.querySelector(".na-cal-today").focus();`);
+      na.view().contentEl.querySelector(".gz-cal-today").focus();`);
     const at = () => run(`return document.activeElement?.getAttribute("data-date");`);
     await press("Tab");
     const first = await at();
@@ -162,8 +162,8 @@ export default async function views(t) {
     const r = await run(`
       await na.sleep(500);
       const el = na.view().contentEl;
-      const list = [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "That day");
-      return { list: na.text(list), selected: el.querySelector(".na-cal-day.na-selected")?.getAttribute("data-date"), focus: document.activeElement?.getAttribute("data-date") };`);
+      const list = [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "That day");
+      return { list: na.text(list), selected: el.querySelector(".gz-cal-day.gz-selected")?.getAttribute("data-date"), focus: document.activeElement?.getAttribute("data-date") };`);
     expect(first === `${month}-01` && right === `${month}-02` && down === `${month}-09`, { first, right, down });
     expect(r.selected === `${month}-09` && r.focus === `${month}-09` && r.list.includes("Long walk by the river") && r.list.includes("Called my sister") && !r.list.includes("notebook"), r);
     return `Tab → ${first}, → ${right}, ↓ ${down}, Enter picks it: ${r.list}`;

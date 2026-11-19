@@ -102,10 +102,10 @@ const SHELF = [
 ];
 
 test("the docs' example base: its file.hasLink is named, then its view's filters; without both, its and/or/not filters are read", () => {
-  assert.throws(() => compileBase(parseYaml(DOCS_EXAMPLE), SRC), { message: "[[Books.base]] uses file.hasLink, which Note Apps can't read" });
+  assert.throws(() => compileBase(parseYaml(DOCS_EXAMPLE), SRC), { message: "[[Books.base]] uses file.hasLink, which Gizmo can't read" });
   const without = DOCS_EXAMPLE.replace('        - file.hasLink("Textbook")\n', "");
   // A view's own filters narrow what the base shows there; read as every note, they would let an edit reach any note.
-  assert.throws(() => compileBase(parseYaml(without), SRC), { message: '[[Books.base]] filters its view "My table"; Note Apps reads only the base\'s own filters' });
+  assert.throws(() => compileBase(parseYaml(without), SRC), { message: '[[Books.base]] filters its view "My table"; Gizmo reads only the base\'s own filters' });
   // Formulas, properties, summaries and a view's order, grouping and limit aren't read.
   const unfiltered = without.replace(/    filters:\n      and:\n        - 'status != "done"'\n        - or:\n            - "formula.ppu > 5"\n            - "price > 2.1"\n/, "");
   assert.notEqual(unfiltered, without);
@@ -116,9 +116,9 @@ test("the docs' example base: its file.hasLink is named, then its view's filters
 test("a base's filters may be one filter string; with none, every note matches", () => {
   assert.deepEqual(matching(`filters: 'file.hasTag("book")'`, SHELF), ["Textbooks/Calculus.md"]);
   assert.throws(() => matching("views:\n  - type: table\n    name: All\n    filters: 'file.hasTag(\"book\")'", SHELF),
-    { message: '[[Books.base]] filters its view "All"; Note Apps reads only the base\'s own filters' });
+    { message: '[[Books.base]] filters its view "All"; Gizmo reads only the base\'s own filters' });
   assert.throws(() => matching("views:\n  - type: table\n  - type: cards\n    filters: 'file.hasTag(\"book\")'", SHELF),
-    { message: '[[Books.base]] filters its view "view 2"; Note Apps reads only the base\'s own filters' });
+    { message: '[[Books.base]] filters its view "view 2"; Gizmo reads only the base\'s own filters' });
   assert.deepEqual(matching("views:\n  - type: table\n    name: All\n    limit: 2\n    order: [file.name]", SHELF).length, 4);
   assert.deepEqual(SHELF.filter(compileBase(null, SRC)).length, 4);
   assert.throws(() => compileBase(["a"], SRC), { message: "[[Books.base]] isn't a base: it should hold keys such as filters and views" });
@@ -207,16 +207,16 @@ test("anything else in the filters is an error naming it", () => {
     ['file.hasTag("a") == true', 'uses file.hasTag("a") == true'],
     ["author.name == 'x'", "uses author.name"],
   ];
-  for (const [filter, what] of cases) assert.equal(why(filter), `[[Books.base]] ${what}, which Note Apps can't read`, String(filter));
-  assert.equal(why({ and: ["pages > 3", { or: ["formula.x"] }] }), "[[Books.base]] uses formula.x, which Note Apps can't read");
-  assert.equal(why("status =="), "[[Books.base]] has a filter Note Apps can't read: status ==");
-  assert.equal(why('"done"'), '[[Books.base]] has a filter Note Apps can\'t read: "done"');
-  assert.equal(why('file.inFolder("a", "b")'), '[[Books.base]] has a filter Note Apps can\'t read: file.inFolder("a", "b")');
-  assert.equal(why('date("soon") < finished'), '[[Books.base]] has a filter Note Apps can\'t read: date("soon") < finished');
+  for (const [filter, what] of cases) assert.equal(why(filter), `[[Books.base]] ${what}, which Gizmo can't read`, String(filter));
+  assert.equal(why({ and: ["pages > 3", { or: ["formula.x"] }] }), "[[Books.base]] uses formula.x, which Gizmo can't read");
+  assert.equal(why("status =="), "[[Books.base]] has a filter Gizmo can't read: status ==");
+  assert.equal(why('"done"'), '[[Books.base]] has a filter Gizmo can\'t read: "done"');
+  assert.equal(why('file.inFolder("a", "b")'), '[[Books.base]] has a filter Gizmo can\'t read: file.inFolder("a", "b")');
+  assert.equal(why('date("soon") < finished'), '[[Books.base]] has a filter Gizmo can\'t read: date("soon") < finished');
   assert.equal(why({ and: ["a"], or: ["b"] }), "[[Books.base]] has a filter group with and, or in it; a group holds one of and, or, not");
   assert.equal(why({ any: ["a"] }), "[[Books.base]] has a filter group with any in it; a group holds one of and, or, not");
   assert.equal(why({ and: "a" }), '[[Books.base]] has "and" without a list of filters under it');
-  assert.equal(why({ and: [3] }), "[[Books.base]] has a filter Note Apps can't read: 3");
+  assert.equal(why({ and: [3] }), "[[Books.base]] has a filter Gizmo can't read: 3");
 });
 
 const BASE_TEXT = `filters:
@@ -309,7 +309,7 @@ function openShelf() {
 test("a panel over a base reloads when the base or any note changes, and edits the note's property", async () => {
   const { root, f, data, writes, names } = openShelf();
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   assert.deepEqual(names(), ["Dune"]);
 
   // A note changes so that the base now matches it.
@@ -343,12 +343,12 @@ test("a base that can't be read shows why in its panel", async () => {
   f.flush();
   await settle();
   // A list needs and, or or not above it.
-  assert.ok(root.querySelector(".na-error")!.textContent!.endsWith("[[Books.base]] has a filter Note Apps can't read: [\"file.hasLink(\\\"Textbook\\\")\"]"));
+  assert.ok(root.querySelector(".gz-error")!.textContent!.endsWith("[[Books.base]] has a filter Gizmo can't read: [\"file.hasLink(\\\"Textbook\\\")\"]"));
   f.others.set("Bases/Books.base", "filters:\n  or:\n    - file.hasLink(\"Textbook\")");
   data.fileChanged("Bases/Books.base");
   f.flush();
   await settle();
-  assert.match(root.querySelector(".na-error")!.textContent!, /\[\[Books\.base\]\] uses file\.hasLink, which Note Apps can't read$/);
+  assert.match(root.querySelector(".gz-error")!.textContent!, /\[\[Books\.base\]\] uses file\.hasLink, which Gizmo can't read$/);
 });
 
 test("a base whose view has its own filters is the panel's error, so nothing it would show unfiltered can be edited", async () => {
@@ -358,7 +358,7 @@ test("a base whose view has its own filters is the panel's error, so nothing it 
   data.fileChanged("Bases/Books.base");
   f.flush();
   await settle();
-  assert.match(root.querySelector(".na-error")!.textContent!, /\[\[Books\.base\]\] filters its view "Reading"; Note Apps reads only the base's own filters$/);
+  assert.match(root.querySelector(".gz-error")!.textContent!, /\[\[Books\.base\]\] filters its view "Reading"; Gizmo reads only the base's own filters$/);
   assert.equal(root.querySelector("tbody select"), null);
   assert.deepEqual(writes, []);
 });

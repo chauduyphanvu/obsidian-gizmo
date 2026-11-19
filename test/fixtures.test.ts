@@ -68,16 +68,16 @@ test("Library: search Open Library, read about a pick, add it to Books, set its 
 
   const { root, f, notices } = openApp("Apps/Library.md", books(), { [SEARCH]: DOCS });
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [results, about, goal, shelf] = [...root.querySelectorAll(".na-panel")];
-  assert.equal(text(results.querySelector(".na-waiting")), "Type in “q”");
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [results, about, goal, shelf] = [...root.querySelectorAll(".gz-panel")];
+  assert.equal(text(results.querySelector(".gz-waiting")), "Type in “q”");
   // Dune, Piranesi and The Overstory were finished this year; Middlemarch last December.
-  assert.equal(text(goal.querySelector(".na-big")), "3/ 24 books");
+  assert.equal(text(goal.querySelector(".gz-big")), "3/ 24 books");
   assert.deepEqual([...shelf.querySelectorAll("th")].map((th) => text(th)), ["Book", "Author", "Status", "Finished"]);
-  assert.equal(text(about.querySelector(".na-waiting")), "Pick a row in “Search results”");
+  assert.equal(text(about.querySelector(".gz-waiting")), "Pick a row in “Search results”");
   assert.deepEqual([...shelf.querySelectorAll("tbody tr td:first-child")].map((td) => text(td)), ["Dune", "Middlemarch", "Piranesi", "The Overstory"]);
 
-  const box = root.querySelector('.na-inputs input[type="search"]') as HTMLInputElement;
+  const box = root.querySelector('.gz-inputs input[type="search"]') as HTMLInputElement;
   box.value = "dune";
   key(box, "Enter");
   await settle();
@@ -87,12 +87,12 @@ test("Library: search Open Library, read about a pick, add it to Books, set its 
 
   (items[1] as HTMLElement).click();
   await settle();
-  assert.equal(text(about.querySelector(".na-text")), "Dune Messiah, by Frank Herbert. First published in 1969; 52 editions.");
+  assert.equal(text(about.querySelector(".gz-text")), "Dune Messiah, by Frank Herbert. First published in 1969; 52 editions.");
 
   // Dune is already on the shelf; Dune Messiah isn't.
-  (items[0].querySelector("button.na-row-action") as HTMLButtonElement).click();
+  (items[0].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
-  (items[1].querySelector("button.na-row-action") as HTMLButtonElement).click();
+  (items[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(notices, ["“Dune” already exists", "Added Dune Messiah to Books"]);
   assert.deepEqual(f.files.get("Books/Dune Messiah.md")!.fm,
@@ -111,7 +111,7 @@ test("Library: search Open Library, read about a pick, add it to Books, set its 
   finished.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal(f.files.get("Books/Dune Messiah.md")!.fm!.finished, "2026-11-17");
-  assert.equal(text(goal.querySelector(".na-big")), "4/ 24 books");
+  assert.equal(text(goal.querySelector(".gz-big")), "4/ 24 books");
 });
 
 test("Chores: a form shaped by the block saves chores; ticking one off moves it to done", async () => {
@@ -121,25 +121,25 @@ test("Chores: a form shaped by the block saves chores; ticking one off moves it 
 
   const { root, f } = openApp("Apps/Chores.md", {});
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const form = root.querySelector("form.na-form")!;
-  assert.deepEqual([...form.querySelectorAll(".na-field span")].map((s) => text(s)), ["task", "room", "done"]);
+  assert.equal(root.querySelector(".gz-error"), null);
+  const form = root.querySelector("form.gz-form")!;
+  assert.deepEqual([...form.querySelectorAll(".gz-field span")].map((s) => text(s)), ["task", "room", "done"]);
   (form.querySelector("input") as HTMLInputElement).value = "Water the plants";
   choose(form.querySelector("select")!, "garden");
   form.dispatchEvent(new window.Event("submit"));
   await settle();
   assert.deepEqual(f.files.get("Apps/Chores data.md")!.fm!.chores, [{ task: "Water the plants", room: "garden", done: false, at: "2026-11-18T12:00" }]);
-  const todo = root.querySelector(".na-view-table")!;
+  const todo = root.querySelector(".gz-view-table")!;
   assert.equal(text(todo.querySelector("tbody tr")), "Water the plantsgarden");
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "0");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "0");
 
   const tick = todo.querySelector('tbody input[type="checkbox"]') as HTMLInputElement;
   tick.checked = true;
   tick.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal((f.files.get("Apps/Chores data.md")!.fm!.chores as { done: boolean }[])[0].done, true);
-  assert.equal(text(todo.querySelector(".na-empty")), "Nothing here yet.");
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "1");
+  assert.equal(text(todo.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "1");
 });
 
 /** A file of the test vault that isn't a note: its text, as the vault would hand it over. */
@@ -152,18 +152,18 @@ test("Bank: spending per month from the export; pick a transaction and flag it w
 
   const { root, f, changed } = openApp("Apps/Bank.md", { "Finance/bank.csv": vaultFile("Finance/bank.csv") });
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [months, largest, flag, flagged] = [...root.querySelectorAll(".na-panel")];
-  assert.equal(months.querySelectorAll(".na-bar").length, 4);
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [months, largest, flag, flagged] = [...root.querySelectorAll(".gz-panel")];
+  assert.equal(months.querySelectorAll(".gz-bar").length, 4);
   const rows = [...largest.querySelectorAll("tbody tr")];
   assert.equal(rows.length, 8);
   assert.deepEqual(rows.slice(4).map((tr) => text(tr.querySelectorAll("td")[1])),
     ["Online Furniture Co", "Apple Store", 'Bistro "Le Chat", Elm Ave', "Whole Foods Market"]);
-  assert.equal(text(flag.querySelector(".na-waiting")), "Pick a row in “Largest transactions”");
+  assert.equal(text(flag.querySelector(".gz-waiting")), "Pick a row in “Largest transactions”");
 
   (rows[4] as HTMLElement).click();
   await settle();
-  const form = root.querySelector("form.na-form")!;
+  const form = root.querySelector("form.gz-form")!;
   (form.querySelector("input") as HTMLInputElement).value = "Too much for a shelf";
   form.dispatchEvent(new window.Event("submit"));
   await settle();
@@ -197,13 +197,13 @@ test("Reading list: save an article from a feed as a note, then tick it off when
   const responses = { "https://hnrss.org/frontpage": raw(HN, "application/xml; charset=utf-8"), "https://xkcd.com/atom.xml": raw(XKCD, "text/xml; charset=UTF-8") };
   const { root, f, notices } = openApp("Apps/Reading list.md", {}, responses);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [hn, xkcd, saved] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [hn, xkcd, saved] = [...root.querySelectorAll(".gz-panel")];
   assert.deepEqual([...hn.querySelectorAll("li")].map((li) => text(li)), ["Unreal Tournament 2004 in the BrowserSave", "Show HN: A tiny & fast parserSave"]);
   assert.deepEqual([...xkcd.querySelectorAll("li")].map((li) => text(li)), ["Voyager CrashSave"]);
-  assert.equal(text(saved.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(saved.querySelector(".gz-empty")), "Nothing here yet.");
 
-  const save = (li: Element) => (li.querySelector("button.na-row-action") as HTMLButtonElement).click();
+  const save = (li: Element) => (li.querySelector("button.gz-row-action") as HTMLButtonElement).click();
   save(hn.querySelectorAll("li")[1]);
   await settle();
   save(xkcd.querySelector("li")!);
@@ -233,13 +233,13 @@ test("Week: the next seven days from a calendar file; log an item as done, or so
 
   const { root, f, notices, changed } = openApp("Apps/Week.md", { "Calendar/family.ics": vaultFile("Calendar/family.ics") });
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [agenda, form, done] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [agenda, form, done] = [...root.querySelectorAll(".gz-panel")];
   // Wed 18 Nov: the Thursday bins and Tuesday's swim practice (a weekly rule), not Thanksgiving on the 26th.
   assert.deepEqual([...agenda.querySelectorAll("li")].map((li) => text(li)), ["2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
-  assert.equal(text(done.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(done.querySelector(".gz-empty")), "Nothing here yet.");
 
-  (agenda.querySelectorAll("li")[1].querySelector("button.na-row-action") as HTMLButtonElement).click();
+  (agenda.querySelectorAll("li")[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(notices, ["Logged Swim practice"]);
   assert.deepEqual(f.files.get("Apps/Week data.md")!.fm!.done, [{ what: "Swim practice", planned: "2026-11-24T17:30", at: "2026-11-18T12:00" }]);
@@ -273,35 +273,35 @@ test("Projects: drag projects along a board, see the schedule, pick one, see wha
 
   const { root, f } = openApp("Apps/Projects.md", projects());
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [board, schedule, due] = [...root.querySelectorAll(".na-panel")];
-  const column = (name: string) => [...board.querySelectorAll(".na-board-col")].find((c) => text(c.querySelector(".na-board-name")) === name)!;
-  const cards = (name: string) => [...column(name).querySelectorAll(".na-board-text")].map((c) => text(c));
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [board, schedule, due] = [...root.querySelectorAll(".gz-panel")];
+  const column = (name: string) => [...board.querySelectorAll(".gz-board-col")].find((c) => text(c.querySelector(".gz-board-name")) === name)!;
+  const cards = (name: string) => [...column(name).querySelectorAll(".gz-board-text")].map((c) => text(c));
   assert.deepEqual(cards("idea"), ["Japan trip · travel", "Learn Rust · learning"]);
   assert.deepEqual(cards("doing"), ["Garden beds · home", "Kitchen remodel · home"]);
   assert.deepEqual(cards("done"), ["Tax filing · money"]);
 
   // The schedule runs by start date and shows today; nothing is picked yet.
-  assert.deepEqual([...schedule.querySelectorAll(".na-tl-label")].map((l) => text(l)), ["Tax filing", "Kitchen remodel", "Garden beds", "Japan trip", "Learn Rust"]);
-  assert.equal(schedule.querySelectorAll(".na-tl-today").length, 1);
-  assert.equal(schedule.querySelector(".na-detail"), null);
+  assert.deepEqual([...schedule.querySelectorAll(".gz-tl-label")].map((l) => text(l)), ["Tax filing", "Kitchen remodel", "Garden beds", "Japan trip", "Learn Rust"]);
+  assert.equal(schedule.querySelectorAll(".gz-tl-today").length, 1);
+  assert.equal(schedule.querySelector(".gz-detail"), null);
 
   // Picked, a project says when it is due under the schedule, with a link to its note.
-  const bars = [...schedule.querySelectorAll(".na-tl-bar")] as HTMLElement[];
+  const bars = [...schedule.querySelectorAll(".gz-tl-bar")] as HTMLElement[];
   bars[2].click();
   await settle();
-  assert.equal(text(schedule.querySelector(".na-detail-text")), "Garden beds is due 2026-11-30");
-  assert.equal(text(schedule.querySelector(".na-detail a")), "Open");
+  assert.equal(text(schedule.querySelector(".gz-detail-text")), "Garden beds is due 2026-11-30");
+  assert.equal(text(schedule.querySelector(".gz-detail a")), "Open");
 
   // November is shown: the garden is due on the 30th. December has the kitchen.
   const day = (date: string) => due.querySelector(`[data-date="${date}"]`)!;
-  assert.equal(text(day("2026-11-30").querySelector(".na-cal-val")), "1");
-  assert.ok(day("2026-11-18").classList.contains("na-today"));
+  assert.equal(text(day("2026-11-30").querySelector(".gz-cal-val")), "1");
+  assert.ok(day("2026-11-18").classList.contains("gz-today"));
   (due.querySelector('button[aria-label="Next month"]') as HTMLButtonElement).click();
-  assert.equal(text(day("2026-12-15").querySelector(".na-cal-val")), "1");
+  assert.equal(text(day("2026-12-15").querySelector(".gz-cal-val")), "1");
 
   // Drag Japan trip to doing: its note's status changes and the board follows.
-  const trip = [...board.querySelectorAll(".na-board-card")].find((c) => text(c.querySelector(".na-board-text")).startsWith("Japan"))!;
+  const trip = [...board.querySelectorAll(".gz-board-card")].find((c) => text(c.querySelector(".gz-board-text")).startsWith("Japan"))!;
   event(trip, "dragstart");
   event(column("doing"), "drop");
   await settle();
@@ -309,8 +309,8 @@ test("Projects: drag projects along a board, see the schedule, pick one, see wha
   assert.deepEqual(cards("idea"), ["Learn Rust · learning"]);
   assert.deepEqual(cards("doing"), ["Garden beds · home", "Japan trip · travel", "Kitchen remodel · home"]);
   // The picked project survived the reload, and the calendar stayed on December.
-  assert.equal(text(schedule.querySelector(".na-detail-text")), "Garden beds is due 2026-11-30");
-  assert.equal(text(due.querySelector(".na-cal-title")), "December 2026");
+  assert.equal(text(schedule.querySelector(".gz-detail-text")), "Garden beds is due 2026-11-30");
+  assert.equal(text(due.querySelector(".gz-cal-title")), "December 2026");
 });
 
 test("Habits: log a stretch, and the streak and today's square in the Year tab follow", async () => {
@@ -320,26 +320,26 @@ test("Habits: log a stretch, and the streak and today's square in the Year tab f
 
   const { root, f } = openApp("Apps/Habits.md", { "Apps/Habits data.md": { fm: vaultNote("Apps/Habits data.md").fm } });
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  assert.deepEqual([...root.querySelectorAll("button.na-tab")].map(text), ["Weeks", "Moods", "Year"]);
-  const streak = () => text(root.querySelector(".na-view-number .na-big"));
+  assert.equal(root.querySelector(".gz-error"), null);
+  assert.deepEqual([...root.querySelectorAll("button.gz-tab")].map(text), ["Weeks", "Moods", "Year"]);
+  const streak = () => text(root.querySelector(".gz-view-number .gz-big"));
   const square = (date: string) => root.querySelector(`rect[data-date="${date}"]`)!;
   assert.equal(root.querySelectorAll("rect").length, 365);
   assert.equal(streak(), "0days");
   // A day with a stretch, the day after without; none yet today.
   assert.equal(square("2026-11-05").getAttribute("aria-label"), "2026-11-05: 1");
-  assert.ok(/na-step/.test(square("2026-11-05").getAttribute("class")!));
+  assert.ok(/gz-step/.test(square("2026-11-05").getAttribute("class")!));
   assert.equal(square("2026-11-06").getAttribute("aria-label"), "2026-11-06: 0");
   assert.equal(square("2026-11-18").getAttribute("aria-label"), "2026-11-18: 0");
-  assert.ok(square("2026-11-18").classList.contains("na-today"));
-  assert.ok(!/na-step/.test(square("2026-11-18").getAttribute("class")!));
+  assert.ok(square("2026-11-18").classList.contains("gz-today"));
+  assert.ok(!/gz-step/.test(square("2026-11-18").getAttribute("class")!));
 
-  (root.querySelector("button.na-button") as HTMLButtonElement).click();
+  (root.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual((f.files.get("Apps/Habits data.md")!.fm!.stretches as { at: string }[]).at(-1), { at: "2026-11-18T12:00" });
   assert.equal(streak(), "1days");
   assert.equal(square("2026-11-18").getAttribute("aria-label"), "2026-11-18: 1");
-  assert.ok(/na-step/.test(square("2026-11-18").getAttribute("class")!));
+  assert.ok(/gz-step/.test(square("2026-11-18").getAttribute("class")!));
 });
 
 /** The notes of a test vault folder, each with its whole text as its body, so task lines count as in the file. */
@@ -358,8 +358,8 @@ test("Tasks: what's open across project notes, ticked off in the note itself", a
 
   const { root, f, notices } = openApp("Apps/Tasks.md", withText("Tasks"));
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [open, soon, done] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [open, soon, done] = [...root.querySelectorAll(".gz-panel")];
   const openRows = () => [...open.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].slice(0, 3).map((td) => text(td)));
   // Undated tasks sort first; a code block's checkboxes aren't tasks.
   assert.deepEqual(openRows(), [
@@ -372,7 +372,7 @@ test("Tasks: what's open across project notes, ticked off in the note itself", a
     ["Renew the domain 📅 2026-11-25 #admin", "Website", "2026-11-25"],
     ["File the return 📅 2027-01-31", "Tax return", "2027-01-31"],
   ]);
-  assert.equal(text(soon.querySelector(".na-big")), "4");
+  assert.equal(text(soon.querySelector(".gz-big")), "4");
   assert.deepEqual([...done.querySelectorAll("li")].map((li) => text(li)),
     ["Measure the space 📅 2026-11-02 · Garden shed", "Find last year's return · Tax return", "Pick a theme · Website"]);
 
@@ -384,7 +384,7 @@ test("Tasks: what's open across project notes, ticked off in the note itself", a
   assert.equal(f.files.get("Tasks/Tax return.md")!.body,
     "Everything for this year's return, in order.\n\n1. [x] Find last year's return\n2. [x] Download bank statements 📅 2026-11-19\n3. [ ] File the return 📅 2027-01-31\n");
   assert.equal(openRows().length, 7);
-  assert.equal(text(soon.querySelector(".na-big")), "3");
+  assert.equal(text(soon.querySelector(".gz-big")), "3");
   assert.equal(text(done.querySelectorAll("li")[2]), "Download bank statements 📅 2026-11-19 · Tax return");
 });
 
@@ -400,8 +400,8 @@ test("Shelf: the books Books.base picks, by status, set in place", async () => {
   document.body.appendChild(root);
   new AppController(root, "Apps/Shelf.md", t.env).load();
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [shelf, byStatus] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [shelf, byStatus] = [...root.querySelectorAll(".gz-panel")];
   const rows = [...shelf.querySelectorAll("tbody tr")];
   assert.deepEqual(rows.map((tr) => text(tr.querySelector("td"))), ["Dune", "Middlemarch", "Piranesi", "The Overstory"]);
   assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["done · 4"]);
@@ -427,19 +427,19 @@ test("Spending: log a purchase, see the week against last, the stack against the
   ];
   const { root, f } = openApp("Apps/Spending.md", { "Apps/Spending data.md": { fm: { spend } } });
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  const [form, week, chart, recent] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [form, week, chart, recent] = [...root.querySelectorAll(".gz-panel")];
 
   // This week ($42.25) against last week ($125.50).
-  assert.equal(text(week.querySelector(".na-big")), "$42.25");
-  assert.equal(text(week.querySelector(".na-compare")), "▼ $83.25 (66%) vs previous");
-  assert.equal(week.querySelector(".na-compare")!.getAttribute("aria-label"), "down $83.25, 66 percent, versus previous");
+  assert.equal(text(week.querySelector(".gz-big")), "$42.25");
+  assert.equal(text(week.querySelector(".gz-compare")), "▼ $83.25 (66%) vs previous");
+  assert.equal(week.querySelector(".gz-compare")!.getAttribute("aria-label"), "down $83.25, 66 percent, versus previous");
 
   // Weekly totals stacked by category, with the budget line.
-  assert.equal(text(chart.querySelector(".na-goal-label")), "goal $400");
-  assert.equal(text(chart.querySelector(".na-legend")), "FoodRentTransportFunOther");
-  assert.ok(chart.querySelectorAll("path.na-bar.na-stacked").length >= 6);
-  assert.match(text(chart.querySelector(".na-readout")), /Food \$30.*Transport \$12/);
+  assert.equal(text(chart.querySelector(".gz-goal-label")), "goal $400");
+  assert.equal(text(chart.querySelector(".gz-legend")), "FoodRentTransportFunOther");
+  assert.ok(chart.querySelectorAll("path.gz-bar.gz-stacked").length >= 6);
+  assert.match(text(chart.querySelector(".gz-readout")), /Food \$30.*Transport \$12/);
 
   // Recent purchases, newest first, in the panel's formats; category is a dropdown.
   assert.deepEqual([...recent.querySelectorAll("th")].map((th) => text(th)), ["When", "Spent", "category", "note"]);
@@ -456,8 +456,8 @@ test("Spending: log a purchase, see the week against last, the stack against the
   await settle();
   const saved = f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[];
   assert.deepEqual(saved.at(-1), { amount: 20, category: "fun", note: "movie", at: "2026-11-18T12:00" });
-  assert.equal(text(week.querySelector(".na-big")), "$62.25");
-  assert.equal(text(week.querySelector(".na-compare")), "▼ $63.25 (50%) vs previous");
+  assert.equal(text(week.querySelector(".gz-big")), "$62.25");
+  assert.equal(text(week.querySelector(".gz-compare")), "▼ $63.25 (50%) vs previous");
   assert.deepEqual([...recent.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelectorAll("td")[1])).slice(0, 2), ["$20.00", "$30.25"]);
   assert.equal(text(recent.querySelector("tbody tr td")), "just now");
 
@@ -465,8 +465,8 @@ test("Spending: log a purchase, see the week against last, the stack against the
   choose(recent.querySelector("tbody tr select")!, "food");
   await settle();
   assert.equal((f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[]).at(-1)!.category, "food");
-  assert.equal(text(week.querySelector(".na-big")), "$62.25");
-  assert.match(text(chart.querySelector(".na-readout")), /Food \$50/);
+  assert.equal(text(week.querySelector(".gz-big")), "$62.25");
+  assert.match(text(chart.querySelector(".gz-readout")), /Food \$50/);
 });
 
 const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
@@ -507,14 +507,14 @@ test("Space weather: Kp now, told when a storm is likely, an hourly record of my
   assert.deepEqual(t.out.commands, [{ id: `${path}:saw-aurora`, name: "Space weather: Saw aurora" }]);
 
   const root = await t.open(path);
-  assert.equal(root.querySelector(".na-error"), null);
-  const [now, , record, sightings] = [...root.querySelectorAll(".na-panel")];
-  assert.equal(text(now.querySelector(".na-big")), "5.33");
-  assert.equal(text(record.querySelector(".na-title")), "My Kp record");
-  assert.ok(record.querySelector(".na-chart-svg"));
-  (root.querySelector("button.na-button") as HTMLButtonElement).click();
+  assert.equal(root.querySelector(".gz-error"), null);
+  const [now, , record, sightings] = [...root.querySelectorAll(".gz-panel")];
+  assert.equal(text(now.querySelector(".gz-big")), "5.33");
+  assert.equal(text(record.querySelector(".gz-title")), "My Kp record");
+  assert.ok(record.querySelector(".gz-chart-svg"));
+  (root.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
-  assert.equal(text(sightings.querySelector(".na-list")), "2026-11-18T12:00");
+  assert.equal(text(sightings.querySelector(".gz-list")), "2026-11-18T12:00");
   // From a hotkey or a link, without opening the app.
   t.advance(90 * 60_000);
   await t.bg.runUri({ app: "Space weather", do: "saw-aurora" });
@@ -547,13 +547,13 @@ test("Attention: what needs my attention across my apps, and the day's to-dos", 
   assert.deepEqual(permissionsOf(spec.spec!, path), []);
   const t = await background([path, "Apps/Space weather.md"]);
   const root = await t.open(path);
-  const items = [...root.querySelectorAll(".na-alerts li")];
+  const items = [...root.querySelectorAll(".gz-alerts li")];
   assert.deepEqual(items.map((li) => [...li.children].map((c) => text(c))), [["Space weather", "Kp now", "5.33"]]);
-  const box = root.querySelector(".na-checklist input") as HTMLInputElement;
+  const box = root.querySelector(".gz-checklist input") as HTMLInputElement;
   box.dispatchEvent(new window.Event("change"));
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Attention data.md")!.fm!.done_today, ["Take meds"]);
-  assert.match(text(root.querySelector(".na-view-checklist .na-title")), /1\/4/);
+  assert.match(text(root.querySelector(".gz-view-checklist .gz-title")), /1\/4/);
 });
 
 const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/";
@@ -568,7 +568,7 @@ const yahoo = (symbol: string, closes: number[]) => ({
   },
 });
 const TICKER = { "Components/Ticker.md": { fm: vaultNote("Components/Ticker.md").fm } };
-const panelsOf = (root: Element) => [...root.querySelectorAll(".na-panel")];
+const panelsOf = (root: Element) => [...root.querySelectorAll(".gz-panel")];
 const cells = (tr: Element) => [...tr.querySelectorAll("td")].map((td) => text(td));
 
 test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what I hold of one and what it is worth", async () => {
@@ -580,25 +580,25 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
   const responses = { [`${YAHOO}SPY`]: yahoo("SPY", [523, 523.88, 517.99, 506.24, 508.29]), [`${YAHOO}AAPL`]: yahoo("AAPL", [200, 205, 210]) };
   const { root, f } = openApp(path, TICKER, responses);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   const panels = () => panelsOf(root);
   const [price, session, chart, form, held, worth, , buys, everything, paid] = panels();
   assert.equal(panels().length, 10);
-  assert.equal(text(price.querySelector(".na-title")), "SPY");
-  assert.equal(text(price.querySelector(".na-big")), "$508.29");
-  assert.equal(text(session.querySelector(".na-big")), "0.40%");
-  assert.equal(text(chart.querySelector(".na-title")), "SPY, last 6mo");
-  assert.ok(chart.querySelector(".na-chart-svg"));
-  assert.equal(text(form.querySelector(".na-title")), "Record a buy of SPY");
-  for (const empty of [held, buys, everything]) assert.equal(text(empty.querySelector(".na-empty")), "Nothing here yet.");
-  assert.equal(text(worth.querySelector(".na-waiting")), "Pick a row in “What I hold”");
-  assert.equal(text(paid.querySelector(".na-big")), "—");
+  assert.equal(text(price.querySelector(".gz-title")), "SPY");
+  assert.equal(text(price.querySelector(".gz-big")), "$508.29");
+  assert.equal(text(session.querySelector(".gz-big")), "0.40%");
+  assert.equal(text(chart.querySelector(".gz-title")), "SPY, last 6mo");
+  assert.ok(chart.querySelector(".gz-chart-svg"));
+  assert.equal(text(form.querySelector(".gz-title")), "Record a buy of SPY");
+  for (const empty of [held, buys, everything]) assert.equal(text(empty.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(worth.querySelector(".gz-waiting")), "Pick a row in “What I hold”");
+  assert.equal(text(paid.querySelector(".gz-big")), "—");
 
   const record = async (symbol: string, date: string, shares: string, price: string) => {
-    choose(root.querySelector('.na-inputs select[aria-label="symbol"]')!, symbol);
+    choose(root.querySelector('.gz-inputs select[aria-label="symbol"]')!, symbol);
     await settle();
     const buy = panels()[3];
-    assert.equal(text(buy.querySelector(".na-title")), `Record a buy of ${symbol}`);
+    assert.equal(text(buy.querySelector(".gz-title")), `Record a buy of ${symbol}`);
     const fields = buy.querySelectorAll("input") as unknown as HTMLInputElement[];
     [fields[0].value, fields[1].value, fields[2].value] = [date, shares, price];
     buy.querySelector("form")!.dispatchEvent(new window.Event("submit"));
@@ -613,19 +613,19 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
     { symbol: "AAPL", date: "2026-11-17", shares: 5, price: 200, at: "2026-11-18T12:00" },
   ]);
   // The Ticker follows the pick; the totals cover every stock.
-  assert.equal(text(panels()[0].querySelector(".na-big")), "$210.00");
+  assert.equal(text(panels()[0].querySelector(".gz-big")), "$210.00");
   assert.deepEqual([...panels()[4].querySelectorAll("tbody tr")].map(cells), [["AAPL", "5", "$1,000.00"]]);
   assert.deepEqual([...panels()[7].querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))), [""]);
   assert.deepEqual([...panels()[8].querySelectorAll("tbody tr")].map(cells), [["AAPL", "5", "$1,000.00"], ["SPY", "15", "$7,550.00"]]);
-  assert.equal(text(panels()[9].querySelector(".na-big")), "$8,550.00");
+  assert.equal(text(panels()[9].querySelector(".gz-big")), "$8,550.00");
 
   // 5 AAPL at the last close of 210, against the $1,000 paid.
   (panels()[4].querySelector("tbody tr") as HTMLElement).click();
   await settle();
-  assert.equal(text(panels()[5].querySelector(".na-title")), "Worth now");
-  assert.equal(text(panels()[5].querySelector(".na-label")), "5 shares of AAPL at the last close");
-  assert.equal(text(panels()[5].querySelector(".na-big")), "$1,050.00");
-  assert.equal(text(panels()[6].querySelector(".na-big")), "$50.00");
+  assert.equal(text(panels()[5].querySelector(".gz-title")), "Worth now");
+  assert.equal(text(panels()[5].querySelector(".gz-label")), "5 shares of AAPL at the last close");
+  assert.equal(text(panels()[5].querySelector(".gz-big")), "$1,050.00");
+  assert.equal(text(panels()[6].querySelector(".gz-big")), "$50.00");
   assert.ok(f.requests.includes(`${YAHOO}AAPL?range=5d&interval=1d`));
 
   // Sold out of AAPL: setting its buy's shares to 0 takes it out of what I hold.
@@ -634,7 +634,7 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
   shares.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal((f.files.get("Apps/Portfolio data.md")!.fm!.buys as { shares: number }[])[2].shares, 0);
-  assert.equal(text(panels()[4].querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(panels()[4].querySelector(".gz-empty")), "Nothing here yet.");
   assert.deepEqual([...panels()[8].querySelectorAll("tbody tr")].map(cells), [["SPY", "15", "$7,550.00"]]);
 });
 
@@ -657,10 +657,10 @@ test("AAPL: the whole note is the Ticker; its price is in the status bar, a 3% f
   document.body.appendChild(root);
   mount(root, path, t.env);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  assert.equal(text(root.querySelector(".na-description")), "Follow one stock, record what I buy of it, and see what my shares are worth");
+  assert.equal(root.querySelector(".gz-error"), null);
+  assert.equal(text(root.querySelector(".gz-description")), "Follow one stock, record what I buy of it, and see what my shares are worth");
   const panels = () => panelsOf(root);
-  assert.equal(text(panels()[3].querySelector(".na-title")), "Record a buy of AAPL");
+  assert.equal(text(panels()[3].querySelector(".gz-title")), "Record a buy of AAPL");
   const fields = panels()[3].querySelectorAll("input") as unknown as HTMLInputElement[];
   [fields[0].value, fields[1].value, fields[2].value] = ["2026-11-02", "10", "190"];
   panels()[3].querySelector("form")!.dispatchEvent(new window.Event("submit"));
@@ -668,8 +668,8 @@ test("AAPL: the whole note is the Ticker; its price is in the status bar, a 3% f
   assert.deepEqual(t.f.files.get("Apps/AAPL data.md")!.fm!.buys, [{ symbol: "AAPL", date: "2026-11-02", shares: 10, price: 190, at: "2026-11-18T12:00" }]);
   (panels()[4].querySelector("tbody tr") as HTMLElement).click();
   await settle();
-  assert.equal(text(panels()[5].querySelector(".na-big")), "$1,980.00");
-  assert.equal(text(panels()[6].querySelector(".na-big")), "$80.00");
+  assert.equal(text(panels()[5].querySelector(".gz-big")), "$1,980.00");
+  assert.equal(text(panels()[6].querySelector(".gz-big")), "$80.00");
 });
 
 /** The Health folder of the test vault, as notes. */
@@ -693,24 +693,24 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   document.body.appendChild(root);
   mount(root, path, t.env);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   const [coming, next, form, day, all] = panelsOf(root);
   const items = (panel: Element) => [...panel.querySelectorAll("li")].map((li) => text(li));
   // The physical in September is past, so it is only in the table.
   assert.deepEqual(items(coming), ["in 16 days · Dentist with Dr. Lee", "in 58 days · Eye exam with Dr. Patel"]);
-  assert.equal(text(next.querySelector(".na-big")), "16 days");
-  assert.equal(text(day.querySelector(".na-title")), "On 2026-11-18");
-  assert.equal(text(day.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(next.querySelector(".gz-big")), "16 days");
+  assert.equal(text(day.querySelector(".gz-title")), "On 2026-11-18");
+  assert.equal(text(day.querySelector(".gz-empty")), "Nothing here yet.");
   assert.deepEqual([...all.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))), ["Eye exam", "Dentist", "Physical"]);
 
   // Half-way through booking, look at another day: the form keeps what was typed.
   const [what, date, who] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
   what.value = "Blood test";
-  const bar = root.querySelector('.na-inputs input[type="date"]') as HTMLInputElement;
+  const bar = root.querySelector('.gz-inputs input[type="date"]') as HTMLInputElement;
   bar.value = "2027-01-15";
   bar.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
-  assert.equal(text(panelsOf(root)[3].querySelector(".na-title")), "On 2027-01-15");
+  assert.equal(text(panelsOf(root)[3].querySelector(".gz-title")), "On 2027-01-15");
   assert.deepEqual(items(panelsOf(root)[3]), ["Eye exam with Dr. Patel"]);
   assert.equal((panelsOf(root)[2].querySelector("input") as HTMLInputElement).value, "Blood test");
 
@@ -720,7 +720,7 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   await settle();
   assert.deepEqual(t.f.files.get("Health/Blood test 2026-11-19.md")!.fm, { what: "Blood test", date: "2026-11-19", who: "Dr. Kim", at: "2026-11-18T12:00" });
   assert.deepEqual(items(panelsOf(root)[0])[0], "tomorrow · Blood test with Dr. Kim");
-  assert.equal(text(panelsOf(root)[1].querySelector(".na-big")), "1 day");
+  assert.equal(text(panelsOf(root)[1].querySelector(".gz-big")), "1 day");
   assert.deepEqual(t.notices, ["Booked Blood test on 2026-11-19", "Appointments: Next appointment (1 row)"]);
   assert.equal(t.out.status[0].text, "Next appointment: 1 day");
 
@@ -753,12 +753,12 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   document.body.appendChild(root);
   mount(root, path, t.env);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   const [form, next, coming, done] = panelsOf(root);
-  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map((s) => text(s)), ["What", "Due"]);
-  assert.equal(text(next.querySelector(".na-big")), "—");
-  assert.equal(text(coming.querySelector(".na-empty")), "Nothing here yet.");
-  assert.equal(text(done.querySelector(".na-empty")), "Nothing here yet.");
+  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map((s) => text(s)), ["What", "Due"]);
+  assert.equal(text(next.querySelector(".gz-big")), "—");
+  assert.equal(text(coming.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(done.querySelector(".gz-empty")), "Nothing here yet.");
 
   const add = async (what: string, due: string) => {
     const [a, b] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
@@ -777,7 +777,7 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   assert.deepEqual([...coming.querySelectorAll("th")].map((th) => text(th)), ["What", "Due", "Days left", "Done"]);
   assert.deepEqual(rows().map((tr) => [text(tr.querySelector("td")), (tr.querySelector('input[type="date"]') as HTMLInputElement).value, text(tr.querySelectorAll("td")[2])]),
     [["Car insurance", "2026-11-25", "7"], ["Passport", "2027-03-01", "103"]]);
-  assert.equal(text(next.querySelector(".na-big")), "7 days");
+  assert.equal(text(next.querySelector(".gz-big")), "7 days");
   // A week away: told once.
   assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)"]);
 
@@ -787,7 +787,7 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   await settle();
   assert.equal((t.f.files.get("Apps/Renewals data.md")!.fm!.deadlines as { done?: boolean }[])[1].done, true);
   assert.deepEqual(rows().map((tr) => text(tr.querySelector("td"))), ["Passport"]);
-  assert.equal(text(next.querySelector(".na-big")), "103 days");
+  assert.equal(text(next.querySelector(".gz-big")), "103 days");
   assert.equal(text(done.querySelector("li")), "Car insurance, due 2026-11-25");
 
   // The passport office wants it sooner: within two weeks again, so told again.
@@ -796,7 +796,7 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   due.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal((t.f.files.get("Apps/Renewals data.md")!.fm!.deadlines as { due: string }[])[0].due, "2026-12-01");
-  assert.equal(text(next.querySelector(".na-big")), "13 days");
+  assert.equal(text(next.querySelector(".gz-big")), "13 days");
   assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)", "Renewals: Coming up (1 row)"]);
 });
 
@@ -826,22 +826,22 @@ test("Currency: today's rate told when it reaches mine, an amount converted, a t
   document.body.appendChild(root);
   mount(root, path, t.env);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   const [rate, converted, chart, sent] = panelsOf(root);
-  assert.equal(text(rate.querySelector(".na-title")), "1 USD in EUR");
-  assert.equal(text(rate.querySelector(".na-big")), "0.9600");
-  assert.equal(text(converted.querySelector(".na-waiting")), "Type in “amount”");
-  assert.equal(text(chart.querySelector(".na-title")), "USD in EUR, week by week since 2025");
-  assert.equal(chart.querySelectorAll("path.na-line").length, 1);
-  assert.equal(text(sent.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(rate.querySelector(".gz-title")), "1 USD in EUR");
+  assert.equal(text(rate.querySelector(".gz-big")), "0.9600");
+  assert.equal(text(converted.querySelector(".gz-waiting")), "Type in “amount”");
+  assert.equal(text(chart.querySelector(".gz-title")), "USD in EUR, week by week since 2025");
+  assert.equal(chart.querySelectorAll("path.gz-line").length, 1);
+  assert.equal(text(sent.querySelector(".gz-empty")), "Nothing here yet.");
 
-  const amount = root.querySelector('.na-inputs input[type="search"]') as HTMLInputElement;
+  const amount = root.querySelector('.gz-inputs input[type="search"]') as HTMLInputElement;
   amount.value = "250";
   key(amount, "Enter");
   await settle();
   const item = converted.querySelector("li")!;
   assert.equal(text(item), "250.00 USD is 240.00 EUR at 0.9600I sent it");
-  (item.querySelector("button.na-row-action") as HTMLButtonElement).click();
+  (item.querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Currency data.md")!.fm!.transfers,
     [{ date: "2026-11-18", sent: 250, from: "USD", got: 240, to: "EUR", rate: 0.96, at: "2026-11-18T12:00" }]);
@@ -855,9 +855,9 @@ test("Currency: today's rate told when it reaches mine, an amount converted, a t
   assert.equal((t.f.files.get("Apps/Currency data.md")!.fm!.transfers as { note: string }[])[0].note, "December rent");
 
   // Pounds instead: both requests follow the pick, and the amount carries over.
-  choose(root.querySelector('.na-inputs select[aria-label="have"]')!, "GBP");
+  choose(root.querySelector('.gz-inputs select[aria-label="have"]')!, "GBP");
   await settle();
-  assert.equal(text(panelsOf(root)[0].querySelector(".na-big")), "1.1400");
+  assert.equal(text(panelsOf(root)[0].querySelector(".gz-big")), "1.1400");
   assert.equal(text(panelsOf(root)[1].querySelector("li")), "250.00 GBP is 285.00 EUR at 1.1400I sent it");
   assert.ok(t.f.requests.includes(`${FRANKFURTER}?base=GBP&quotes=EUR&from=2025-01-01&group=week`));
 });
@@ -893,21 +893,21 @@ test("Weather: now, the next hours and the week in words, told when rain is like
   document.body.appendChild(root);
   mount(root, path, t.env);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   const [now, rainy, hours, chance, week, walks] = panelsOf(root);
   // One request feeds every panel that reads the forecast.
   assert.equal(t.f.requests.filter((u) => u.startsWith(METEO)).length, 1);
   assert.equal(text(now.querySelector("li")), "8.4°C, feels like 6.2°C, overcast, wind 12.3 km/hI went for a walk");
-  assert.equal(text(rainy.querySelector(".na-big")), "2hours");
-  assert.equal(text(hours.querySelector(".na-legend")), "TemperatureFeels like");
-  assert.equal(hours.querySelectorAll("path.na-line").length, 2);
-  assert.equal(text(chance.querySelector(".na-goal-label")), "goal 50 %");
+  assert.equal(text(rainy.querySelector(".gz-big")), "2hours");
+  assert.equal(text(hours.querySelector(".gz-legend")), "TemperatureFeels like");
+  assert.equal(hours.querySelectorAll("path.gz-line").length, 2);
+  assert.equal(text(chance.querySelector(".gz-goal-label")), "goal 50 %");
   assert.deepEqual([...week.querySelectorAll("th")].map((th) => text(th)), ["Day", "Sky", "Temperature", "Rain chance"]);
   assert.deepEqual([...week.querySelectorAll("tbody tr")].map(cells),
     [["Wednesday", "overcast", "6 to 9 °C", "85 %"], ["Thursday", "rain", "6 to 11 °C", "100 %"], ["Friday", "clear", "2 to 8 °C", "0 %"]]);
-  assert.equal(text(walks.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(walks.querySelector(".gz-empty")), "Nothing here yet.");
 
-  (now.querySelector("button.na-row-action") as HTMLButtonElement).click();
+  (now.querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Weather data.md")!.fm!.walks, [{ sky: "overcast", temp: 8.4, feels: 6.2, wind: 12.25, at: "2026-11-18T12:00" }]);
   assert.deepEqual(lines, ["Daily.md: - Walked in London: overcast, 8.4°C, feels like 6.2°C, wind 12.25 km/h"]);
@@ -967,12 +967,12 @@ test("Planet Earth: told of a strong quake, pick one to see where and how deep w
   document.body.appendChild(root);
   mount(root, path, t.env);
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  assert.deepEqual([...root.querySelectorAll("button.na-tab")].map((b) => text(b)), ["Earthquakes", "Sun", "Philadelphia", "Saigon"]);
-  const panel = (title: string) => panelsOf(root).find((p) => text(p.querySelector(".na-title")) === title)!;
-  assert.equal(text(panel("Earthquakes, past week").querySelector(".na-big")), "3");
-  assert.equal(text(panel("Strongest").querySelector(".na-big")), "7.1");
-  assert.equal(text(panel("Solar wind").querySelector(".na-big")), "418km/s");
+  assert.equal(root.querySelector(".gz-error"), null);
+  assert.deepEqual([...root.querySelectorAll("button.gz-tab")].map((b) => text(b)), ["Earthquakes", "Sun", "Philadelphia", "Saigon"]);
+  const panel = (title: string) => panelsOf(root).find((p) => text(p.querySelector(".gz-title")) === title)!;
+  assert.equal(text(panel("Earthquakes, past week").querySelector(".gz-big")), "3");
+  assert.equal(text(panel("Strongest").querySelector(".gz-big")), "7.1");
+  assert.equal(text(panel("Solar wind").querySelector(".gz-big")), "418km/s");
 
   const strongest = panel("The ten strongest");
   assert.deepEqual([...strongest.querySelectorAll("th")].map((th) => text(th)).slice(0, 3), ["Magnitude", "Where", "When"]);
@@ -982,22 +982,22 @@ test("Planet Earth: told of a strong quake, pick one to see where and how deep w
     ["4.5", "8 km W of Ridgecrest, CA", "2 days ago"],
     ["3.2", "10 km N of Anchorage, Alaska", "6 hours ago"],
   ]);
-  assert.equal(text(panel("The one I picked").querySelector(".na-waiting")), "Pick a row in “The ten strongest”");
+  assert.equal(text(panel("The one I picked").querySelector(".gz-waiting")), "Pick a row in “The ten strongest”");
   assert.deepEqual([...panel("Felt by the most people").querySelectorAll("li")].map((li) => text(li)),
     ["450 reports · M7.1 · 120 km S of Hachijo-jima, Japan", "12 reports · M4.5 · 8 km W of Ridgecrest, CA"]);
 
   // Picked: the quake as a card, with how deep it was and a link to its page.
   (rows[0] as HTMLElement).click();
   await settle();
-  const card = panel("The one I picked").querySelector(".na-rowcard")!;
-  assert.equal(text(card.querySelector(".na-rowcard-title")), "120 km S of Hachijo-jima, Japan");
-  const lines = Object.fromEntries([...card.querySelectorAll(".na-rowcard-line")].map((l) => [text(l.querySelector(".na-rowcard-label")), l.querySelector(".na-rowcard-value")!]));
+  const card = panel("The one I picked").querySelector(".gz-rowcard")!;
+  assert.equal(text(card.querySelector(".gz-rowcard-title")), "120 km S of Hachijo-jima, Japan");
+  const lines = Object.fromEntries([...card.querySelectorAll(".gz-rowcard-line")].map((l) => [text(l.querySelector(".gz-rowcard-label")), l.querySelector(".gz-rowcard-value")!]));
   assert.deepEqual(Object.keys(lines), ["Magnitude", "When", "Depth", "Felt reports", "USGS page"]);
   assert.deepEqual([text(lines.Magnitude), text(lines.Depth), text(lines["Felt reports"])], ["7.1", "35 km", "450"]);
   assert.equal(lines["USGS page"].querySelector("a")!.getAttribute("href"), "https://earthquake.usgs.gov/earthquakes/eventpage/us7001");
 
   // Follow it, and say why.
-  (rows[0].querySelector("button.na-row-action") as HTMLButtonElement).click();
+  (rows[0].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Planet Earth data.md")!.fm!.following, [{
     quake: "M 7.1 - 120 km S of Hachijo-jima, Japan", when: at(17, 9), page: "https://earthquake.usgs.gov/earthquakes/eventpage/us7001", at: "2026-11-18T12:00",
@@ -1013,7 +1013,7 @@ test("Planet Earth: told of a strong quake, pick one to see where and how deep w
   assert.equal((t.f.files.get("Apps/Planet Earth data.md")!.fm!.following as { note: string }[])[0].note, "My cousin lives on Hachijo-jima");
 
   // A city, through the component: now, and its last thirteen weeks from one request.
-  assert.equal(text(panel("Saigon now").querySelector(".na-big")), "48°F");
-  assert.equal(text(panel("Average high and low by week, last three months").querySelector(".na-legend")), "HighLow");
+  assert.equal(text(panel("Saigon now").querySelector(".gz-big")), "48°F");
+  assert.equal(text(panel("Average high and low by week, last three months").querySelector(".gz-legend")), "HighLow");
   assert.equal(t.f.requests.filter((u) => u.includes("latitude=10.82")).length, 1);
 });

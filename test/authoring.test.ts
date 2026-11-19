@@ -22,7 +22,7 @@ function open(path: string, notes: Parameters<typeof fakeEnv>[0], lines: string[
 const NOTE = ["---", "app: Meds", "refresh: soon", "panels:", "  - view: text", "    text: ok", "  - view: gauge", "---"];
 const MEDS = { "Apps/Meds.md": { fm: { app: "Meds", refresh: "soon", panels: [{ view: "text", text: "ok" }, { view: "gauge" }] } } };
 
-const links = (root: Element) => [...root.querySelectorAll(".na-error li")];
+const links = (root: Element) => [...root.querySelectorAll(".gz-error li")];
 
 // ---- Errors that point at the line -------------------------------------------------------------------
 
@@ -30,12 +30,12 @@ test("the problems card links an error that names a panel, and leaves the others
   const { root, source } = open("Apps/Meds.md", MEDS, NOTE);
   const items = links(root);
   assert.equal(items.length, 2);
-  const placed = items.find((li) => li.querySelector(".na-error-link"))!;
-  const plain = items.find((li) => !li.querySelector(".na-error-link"))!;
-  const link = placed.querySelector("button.na-error-link") as HTMLButtonElement;
+  const placed = items.find((li) => li.querySelector(".gz-error-link"))!;
+  const plain = items.find((li) => !li.querySelector(".gz-error-link"))!;
+  const link = placed.querySelector("button.gz-error-link") as HTMLButtonElement;
   assert.match(text(link), /^panel 2: view must be one of /);
   assert.equal(text(placed), text(link));
-  assert.equal(plain.querySelector(".na-error-link"), null);
+  assert.equal(plain.querySelector(".gz-error-link"), null);
   assert.equal(text(plain), "refresh must look like 30s, 5m, 1h");
 
   link.click();
@@ -46,7 +46,7 @@ test("the problems card links an error that names a panel, and leaves the others
 test("the line is looked up when the link is clicked, so it follows edits made since the card was drawn", async () => {
   const { root, source } = open("Apps/Meds.md", MEDS, NOTE);
   source.lines = ["---", "app: Meds", "# a note to self", "# another", ...NOTE.slice(2)];
-  (root.querySelector("button.na-error-link") as HTMLButtonElement).click();
+  (root.querySelector("button.gz-error-link") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(source.shownAt, [8]);
 });
@@ -56,7 +56,7 @@ test("when the note no longer has that panel, the link just opens the source", a
   let opened = 0;
   t.env.showSource = () => { opened++; };
   t.source.lines = ["---", "app: Meds", "---"];
-  (t.root.querySelector("button.na-error-link") as HTMLButtonElement).click();
+  (t.root.querySelector("button.gz-error-link") as HTMLButtonElement).click();
   await settle();
   assert.equal(opened, 1);
   assert.deepEqual(t.source.shownAt, []);
@@ -68,7 +68,7 @@ test("an error from a component is a link to the app's panel that uses it", asyn
     "Apps/Meds.md": { fm: { app: "Meds", panels: [{ view: "text", text: "ok" }, { use: "[[Ticker]]" }] } },
     "Components/Ticker.md": { fm: { component: "T", panels: [{ view: "gauge" }] } },
   }, lines);
-  const link = root.querySelector("button.na-error-link") as HTMLButtonElement;
+  const link = root.querySelector("button.gz-error-link") as HTMLButtonElement;
   assert.match(text(link), /^panel 2 \(from \[\[Ticker\]\] panel 1\): view must be one of /);
   link.click();
   await settle();
@@ -80,7 +80,7 @@ test("a data block's error links to the block", async () => {
   const { root, source } = open("Apps/Meds.md", {
     "Apps/Meds.md": { fm: { app: "Meds", data: { doses: { colour: "red", source: "doses" } }, panels: [{ view: "text", text: "ok" }] } },
   }, lines);
-  const link = root.querySelector("button.na-error-link") as HTMLButtonElement;
+  const link = root.querySelector("button.gz-error-link") as HTMLButtonElement;
   assert.equal(text(link), 'data.doses: unknown key "colour"');
   link.click();
   await settle();
@@ -90,7 +90,7 @@ test("a data block's error links to the block", async () => {
 test("a component note's own errors stay text, since they name the component, not a panel of this note", () => {
   const { root } = open("Components/T.md", { "Components/T.md": { fm: { component: "T", panels: [{ view: "gauge" }] } } }, ["---", "component: T", "panels:", "  - view: gauge", "---"]);
   assert.equal(links(root).length >= 1, true);
-  assert.equal(root.querySelector(".na-error-link"), null);
+  assert.equal(root.querySelector(".gz-error-link"), null);
 });
 
 // ---- Data inspector ----------------------------------------------------------------------------------
@@ -118,7 +118,7 @@ async function openApp(fm: Record<string, unknown>, responses: Record<string, un
   return t;
 }
 
-const shell = (root: Element) => root.querySelector(".note-app")!;
+const shell = (root: Element) => root.querySelector(".gizmo")!;
 
 test("inspect lists each distinct source once, under the first panel that uses it, with its raw data", async () => {
   const { app } = await openApp(PLANET);
@@ -160,47 +160,47 @@ test("sources differ by their notes scope too, and a panel waiting for typing is
 
 test("the action opens the pane above the panels, and closes it again", async () => {
   const { app, root } = await openApp(PLANET);
-  assert.equal(root.querySelector(".na-inspector"), null);
+  assert.equal(root.querySelector(".gz-inspector"), null);
   await app.toggleInspector();
-  const pane = root.querySelector(".na-inspector")!;
+  const pane = root.querySelector(".gz-inspector")!;
   assert.ok(pane);
   const order = [...shell(root).children];
-  assert.ok(order.indexOf(pane) < order.indexOf(root.querySelector(".na-grid")!));
-  assert.deepEqual([...pane.querySelectorAll(".na-inspect-head")].map(text), [
+  assert.ok(order.indexOf(pane) < order.indexOf(root.querySelector(".gz-grid")!));
+  assert.deepEqual([...pane.querySelectorAll(".gz-inspect-head")].map(text), [
     "Strongest · earthquake.usgs.gov", "Now · api.open-meteo.com", "Doses · list: doses",
   ]);
-  assert.equal(pane.querySelectorAll(".na-inspect-source").length, 3);
+  assert.equal(pane.querySelectorAll(".gz-inspect-source").length, 3);
   await app.toggleInspector();
-  assert.equal(root.querySelector(".na-inspector"), null);
+  assert.equal(root.querySelector(".gz-inspector"), null);
   await app.toggleInspector();
-  assert.equal(root.querySelectorAll(".na-inspector").length, 1);
+  assert.equal(root.querySelectorAll(".gz-inspector").length, 1);
 });
 
 test("the pane sits above the input bar too, and a key in it copies its path", async () => {
   const t = await openApp({ ...PLANET, inputs: { period: ["a", "b"] } });
   await t.app.toggleInspector();
   const order = [...shell(t.root).children].map((c) => c.className.split(" ")[0]);
-  assert.ok(order.indexOf("na-inspector") < order.indexOf("na-inputs"), order.join());
-  const pane = t.root.querySelector(".na-inspector")!;
-  const tree = pane.querySelector(".na-inspect-source .na-tree > details")!;
-  const features = [...tree.querySelectorAll(":scope > .na-children > .na-node")].find((n) => text(n.querySelector("button.na-key")) === "features")!;
+  assert.ok(order.indexOf("gz-inspector") < order.indexOf("gz-inputs"), order.join());
+  const pane = t.root.querySelector(".gz-inspector")!;
+  const tree = pane.querySelector(".gz-inspect-source .gz-tree > details")!;
+  const features = [...tree.querySelectorAll(":scope > .gz-children > .gz-node")].find((n) => text(n.querySelector("button.gz-key")) === "features")!;
   features.setAttribute("open", "");
   features.dispatchEvent(new window.Event("toggle"));
-  const zero = features.querySelector(".na-children > .na-node")!;
+  const zero = features.querySelector(".gz-children > .gz-node")!;
   zero.setAttribute("open", "");
   zero.dispatchEvent(new window.Event("toggle"));
-  const props = [...zero.querySelectorAll(":scope > .na-children > .na-node")].find((n) => text(n.querySelector("button.na-key")) === "properties")!;
+  const props = [...zero.querySelectorAll(":scope > .gz-children > .gz-node")].find((n) => text(n.querySelector("button.gz-key")) === "properties")!;
   props.setAttribute("open", "");
   props.dispatchEvent(new window.Event("toggle"));
-  const mag = [...props.querySelectorAll(".na-leaf")].find((n) => text(n.querySelector("button.na-key")) === "mag")!;
-  (mag.querySelector("button.na-key") as HTMLButtonElement).click();
+  const mag = [...props.querySelectorAll(".gz-leaf")].find((n) => text(n.querySelector("button.gz-key")) === "mag")!;
+  (mag.querySelector("button.gz-key") as HTMLButtonElement).click();
   assert.deepEqual(t.copied, ["features.0.properties.mag"]);
 });
 
 test("a source that fails shows its problem in the pane", async () => {
   const t = await openApp({ app: "Down", panels: [{ view: "text", title: "Down", source: "https://x.example.com/fail", text: "{a}" }] }, {});
   await t.app.toggleInspector();
-  assert.equal(text(t.root.querySelector(".na-inspector .na-inspect-error")), "x.example.com answered 503");
+  assert.equal(text(t.root.querySelector(".gz-inspector .gz-inspect-error")), "x.example.com answered 503");
 });
 
 test("secrets never appear: the address keeps its placeholder, headers aren't shown", async () => {
@@ -214,9 +214,9 @@ test("secrets never appear: the address keeps its placeholder, headers aren't sh
   // The request really carried the secret, so the check below isn't vacuous.
   assert.ok(t.f.requests.some((u) => u.includes("key=s3cret")));
   await t.app.toggleInspector();
-  const pane = t.root.querySelector(".na-inspector")!;
-  assert.equal(text(pane.querySelector(".na-inspect-url")), "https://api.example.com/x?key={secret:demo}");
-  assert.equal(text(pane.querySelector(".na-inspect-head")), "Keyed · api.example.com");
+  const pane = t.root.querySelector(".gz-inspector")!;
+  assert.equal(text(pane.querySelector(".gz-inspect-url")), "https://api.example.com/x?key={secret:demo}");
+  assert.equal(text(pane.querySelector(".gz-inspect-head")), "Keyed · api.example.com");
   assert.ok(!t.root.innerHTML.includes("s3cret"));
   assert.ok(!text(pane).includes("Bearer"));
   assert.ok(!text(pane).includes("authorization"));
@@ -225,28 +225,28 @@ test("secrets never appear: the address keeps its placeholder, headers aren't sh
 test("the pane stays through unchanged redraws, and is filled anew when the app's keys change", async () => {
   const t = await openApp(PLANET);
   await t.app.toggleInspector();
-  const pane = t.root.querySelector(".na-inspector")!;
-  const tree = pane.querySelector(".na-tree > details")!;
+  const pane = t.root.querySelector(".gz-inspector")!;
+  const tree = pane.querySelector(".gz-tree > details")!;
   t.changed("Apps/Planet.md");
   await settle();
-  assert.equal(t.root.querySelector(".na-inspector"), pane);
-  assert.equal(pane.querySelector(".na-tree > details"), tree);
+  assert.equal(t.root.querySelector(".gz-inspector"), pane);
+  assert.equal(pane.querySelector(".gz-tree > details"), tree);
 
   const fm = t.f.files.get("Apps/Planet.md")!.fm!;
   (fm.panels as unknown[]).push({ view: "text", title: "More", source: "https://more.example.com/x", text: "{a}" });
   t.changed("Apps/Planet.md");
   await settle();
-  assert.equal(t.root.querySelector(".na-inspector"), pane);
-  assert.deepEqual([...pane.querySelectorAll(".na-inspect-head")].map(text).at(-1), "More · more.example.com");
-  assert.equal(pane.querySelectorAll(".na-inspect-source").length, 4);
+  assert.equal(t.root.querySelector(".gz-inspector"), pane);
+  assert.deepEqual([...pane.querySelectorAll(".gz-inspect-head")].map(text).at(-1), "More · more.example.com");
+  assert.equal(pane.querySelectorAll(".gz-inspect-source").length, 4);
 });
 
 test("an app with nothing to read says so, and the pane goes with the app", async () => {
   const t = await openApp({ app: "Plain", panels: [{ view: "text", title: "Hi", text: "hello" }] });
   await t.app.toggleInspector();
-  assert.match(text(t.root.querySelector(".na-inspector")), /No data to inspect/);
+  assert.match(text(t.root.querySelector(".gz-inspector")), /No data to inspect/);
   t.app.dispose();
-  assert.equal(t.root.querySelector(".na-inspector"), null);
+  assert.equal(t.root.querySelector(".gz-inspector"), null);
 });
 
 // ---- Component usage ----------------------------------------------------------------------------------
@@ -256,11 +256,11 @@ test("a component's usage hint has a Copy button that copies the snippet", () =>
   try {
     const fm = { component: "Price and chart", params: { symbol: null, range: "6mo" }, panels: [{ view: "text", text: "x" }] };
     const { root, copied } = open("Components/Ticker.md", { "Components/Ticker.md": { fm } });
-    const snippet = text(root.querySelector("pre.na-example"));
+    const snippet = text(root.querySelector("pre.gz-example"));
     assert.equal(snippet, 'panels:\n  - use: "[[Ticker]]"\n    with: {symbol: …, range: 6mo}');
     const button = [...root.querySelectorAll("button")].find((b) => text(b) === "Copy") as HTMLButtonElement;
     assert.ok(button);
-    assert.equal(button.closest(".na-card")?.querySelector("pre.na-example")?.textContent, snippet);
+    assert.equal(button.closest(".gz-card")?.querySelector("pre.gz-example")?.textContent, snippet);
     button.click();
     assert.deepEqual(copied, [snippet]);
     assert.equal(text(button), "Copied");
@@ -292,5 +292,5 @@ test("an app still asking for permissions has no panels loaded, so there is noth
   t.env.isGranted = () => false;
   t.app.load();
   await t.app.toggleInspector();
-  assert.match(text(t.root.querySelector(".na-inspector")), /No data to inspect/);
+  assert.match(text(t.root.querySelector(".gz-inspector")), /No data to inspect/);
 });

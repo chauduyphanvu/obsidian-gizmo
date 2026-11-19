@@ -72,13 +72,13 @@ test("grouped, each group's share is its share column, which a chart, a pie and 
   started.push(app);
   app.load();
   await settle();
-  const [bar, table, pie, number] = [...root.querySelectorAll(".na-panel")];
-  assert.equal(bar.querySelectorAll("path.na-bar").length, 3, "60% is a share of 0, which draws no bar");
-  assert.match(text(bar.querySelector(".na-readout")), /^90 · 50%$/);
+  const [bar, table, pie, number] = [...root.querySelectorAll(".gz-panel")];
+  assert.equal(bar.querySelectorAll("path.gz-bar").length, 3, "60% is a share of 0, which draws no bar");
+  assert.match(text(bar.querySelector(".gz-readout")), /^90 · 50%$/);
   assert.deepEqual([...table.querySelectorAll("th")].map(text), ["confidence", "share"]);
   assert.deepEqual([...table.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].map(text)), [
     ["60", "0%"], ["70", "100%"], ["80", "50%"], ["90", "50%"],
   ]);
   assert.ok(text(pie).includes("67%") || text(pie).includes("50%"), text(pie));
-  assert.equal(text(number.querySelector(".na-big")), "60%");
+  assert.equal(text(number.querySelector(".gz-big")), "60%");
 });

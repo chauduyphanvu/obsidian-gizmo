@@ -194,14 +194,14 @@ test("editing the selected row passes its new values to the panels that read it"
   const tr = root.querySelector("tbody tr") as HTMLElement;
   tr.click();
   await settle();
-  assert.equal(root.querySelector(".na-text")!.textContent, "Dune owned: false");
+  assert.equal(root.querySelector(".gz-text")!.textContent, "Dune owned: false");
   const box = tr.querySelector("input") as HTMLInputElement;
   box.checked = true;
   box.dispatchEvent(new window.Event("click", { bubbles: true }));
   change(box);
   await settle();
-  assert.ok(tr.classList.contains("na-selected"), "clicking the box doesn't change the selection");
-  assert.equal(root.querySelector(".na-text")!.textContent, "Dune owned: true");
+  assert.ok(tr.classList.contains("gz-selected"), "clicking the box doesn't change the selection");
+  assert.equal(root.querySelector(".gz-text")!.textContent, "Dune owned: true");
 });
 
 test("a note that has gone isn't brought back by an edit or a board move; the data note still is made when needed", async () => {
@@ -220,7 +220,7 @@ test("a note that has gone isn't brought back by an edit or a board move; the da
   input.value = "done";
   change(input);
   await settle();
-  const move = root.querySelector(".na-board-card select.na-move") as HTMLSelectElement;
+  const move = root.querySelector(".gz-board-card select.gz-move") as HTMLSelectElement;
   for (const o of move.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "done");
   change(move);
   await settle();

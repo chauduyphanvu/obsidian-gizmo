@@ -75,20 +75,20 @@ test("a choice reloads only the panels that use it, in place, and keeps typed te
   start();
   await settle();
   assert.deepEqual(f.requests, ["https://api.example.com/quote/SPY"]);
-  const number = root.querySelector(".na-view-number")!;
-  const form = root.querySelector(".na-view-form")!;
+  const number = root.querySelector(".gz-view-number")!;
+  const form = root.querySelector(".gz-view-form")!;
   const input = form.querySelector("input") as HTMLInputElement;
   input.value = "watch earnings";
-  assert.equal(text(number.querySelector(".na-title")), "SPY");
+  assert.equal(text(number.querySelector(".gz-title")), "SPY");
 
   choose(root, "symbol", "QQQ");
-  assert.ok(number.classList.contains("na-stale"));
+  assert.ok(number.classList.contains("gz-stale"));
   await settle();
   assert.deepEqual(f.requests, ["https://api.example.com/quote/SPY", "https://api.example.com/quote/QQQ"]);
-  assert.equal(root.querySelector(".na-view-number"), number);
-  assert.equal(text(number.querySelector(".na-title")), "QQQ");
-  assert.ok(!number.classList.contains("na-stale"));
-  assert.equal(root.querySelector(".na-view-form"), form);
+  assert.equal(root.querySelector(".gz-view-number"), number);
+  assert.equal(text(number.querySelector(".gz-title")), "QQQ");
+  assert.ok(!number.classList.contains("gz-stale"));
+  assert.equal(root.querySelector(".gz-view-form"), form);
   assert.equal(form.querySelector("input"), input);
   assert.equal(input.value, "watch earnings");
 });
@@ -100,7 +100,7 @@ test("switching quickly ends on the last choice", async () => {
   choose(root, "symbol", "QQQ");
   choose(root, "symbol", "SPY");
   await settle();
-  assert.equal(text(root.querySelector(".na-view-number .na-title")), "SPY");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-title")), "SPY");
 });
 
 test("choices are kept across edits to the note and start over when it's reopened", async () => {
@@ -110,12 +110,12 @@ test("choices are kept across edits to the note and start over when it's reopene
   choose(root, "symbol", "QQQ");
   await settle();
   await edit("Apps/S.md", (fm) => { (fm.panels as unknown[]).push({ view: "countdown", to: "2027-06-01" }); });
-  assert.equal(text(root.querySelector(".na-view-number .na-title")), "QQQ");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-title")), "QQQ");
   assert.equal(text(root.querySelector("select option[selected]")), "QQQ");
   first.dispose();
   start();
   await settle();
-  assert.equal(text(root.querySelector(".na-view-number .na-title")), "SPY");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-title")), "SPY");
 });
 
 test("the date bar steps days, jumps to today, and takes a typed date", async () => {
@@ -130,9 +130,9 @@ test("the date bar steps days, jumps to today, and takes a typed date", async ()
   });
   start();
   await settle();
-  const list = () => text(root.querySelector(".na-view-list .na-list")) || text(root.querySelector(".na-view-list .na-empty"));
-  const button = (label: string) => [...root.querySelectorAll(".na-inputs button")].find((b) => b.textContent === label) as HTMLButtonElement;
-  const date = root.querySelector('.na-inputs input[type="date"]') as HTMLInputElement;
+  const list = () => text(root.querySelector(".gz-view-list .gz-list")) || text(root.querySelector(".gz-view-list .gz-empty"));
+  const button = (label: string) => [...root.querySelectorAll(".gz-inputs button")].find((b) => b.textContent === label) as HTMLButtonElement;
+  const date = root.querySelector('.gz-inputs input[type="date"]') as HTMLInputElement;
   assert.equal(date.value, "2026-11-18");
   assert.equal(list(), "Nothing here yet.");
   button("›").click();

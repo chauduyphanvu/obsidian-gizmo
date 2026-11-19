@@ -42,15 +42,15 @@ const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** How a value looks in one line, and the class that colours it. */
 function preview(value: unknown): { text: string; cls: string } {
-  if (Array.isArray(value)) return { text: `[…] ${plural(value.length, "item")}`, cls: "na-t-meta" };
-  if (isContainer(value)) return { text: `{…} ${plural(Object.keys(value).length, "key")}`, cls: "na-t-meta" };
+  if (Array.isArray(value)) return { text: `[…] ${plural(value.length, "item")}`, cls: "gz-t-meta" };
+  if (isContainer(value)) return { text: `{…} ${plural(Object.keys(value).length, "key")}`, cls: "gz-t-meta" };
   if (typeof value === "string") {
     const one = value.replace(/\s+/g, " ");
-    return { text: `"${one.length > PREVIEW_CHARS ? `${one.slice(0, PREVIEW_CHARS)}…` : one}"`, cls: "na-t-string" };
+    return { text: `"${one.length > PREVIEW_CHARS ? `${one.slice(0, PREVIEW_CHARS)}…` : one}"`, cls: "gz-t-string" };
   }
-  if (typeof value === "number") return { text: String(value), cls: "na-t-number" };
-  if (typeof value === "boolean") return { text: String(value), cls: "na-t-bool" };
-  return { text: String(value), cls: "na-t-null" };
+  if (typeof value === "number") return { text: String(value), cls: "gz-t-number" };
+  if (typeof value === "boolean") return { text: String(value), cls: "gz-t-bool" };
+  return { text: String(value), cls: "gz-t-null" };
 }
 
 /** Puts "Copied" beside a key for a moment. */
@@ -59,7 +59,7 @@ function flashing(row: HTMLElement, key: HTMLElement): () => void {
   let timer: ReturnType<typeof setTimeout> | undefined;
   return () => {
     if (!badge) {
-      badge = row.createSpan({ cls: "na-copied", text: "Copied", attr: { role: "status" } });
+      badge = row.createSpan({ cls: "gz-copied", text: "Copied", attr: { role: "status" } });
       row.insertBefore(badge, key.nextSibling);
     }
     clearTimeout(timer);
@@ -75,9 +75,9 @@ function keyButton(row: HTMLElement, label: string, path: string[], copy: (text:
   const typed = path.join(".");
   const dotted = label.includes(".");
   const title = dotted
-    ? `This name has a dot in it. Note Apps reads a name with a dot as one name only when it is the whole path, at the top of the data; elsewhere the dot splits the path. ${typed}`
+    ? `This name has a dot in it. Gizmo reads a name with a dot as one name only when it is the whole path, at the top of the data; elsewhere the dot splits the path. ${typed}`
     : `Copy ${typed}`;
-  const key = row.createEl("button", { cls: "na-key", text: label, title });
+  const key = row.createEl("button", { cls: "gz-key", text: label, title });
   const flash = flashing(row, key);
   key.addEventListener("click", (e) => {
     // Inside a summary, a click would also open or close the node.
@@ -91,7 +91,7 @@ function keyButton(row: HTMLElement, label: string, path: string[], copy: (text:
 function drawChildren(el: HTMLElement, value: Container, path: string[], depth: number, copy: (text: string) => void): void {
   if (Array.isArray(value)) {
     value.slice(0, LIST_CAP).forEach((item, i) => drawNode(el, String(i), item, [...path, String(i)], depth + 1, copy));
-    if (value.length > LIST_CAP) el.createDiv({ cls: "na-inspect-more", text: `… ${value.length - LIST_CAP} more` });
+    if (value.length > LIST_CAP) el.createDiv({ cls: "gz-inspect-more", text: `… ${value.length - LIST_CAP} more` });
     return;
   }
   for (const [k, v] of Object.entries(value)) drawNode(el, k, v, [...path, k], depth + 1, copy);
@@ -104,20 +104,20 @@ function drawChildren(el: HTMLElement, value: Container, path: string[], depth: 
 function drawNode(parent: HTMLElement, label: string | undefined, value: unknown, path: string[], depth: number, copy: (text: string) => void): void {
   const { text, cls } = preview(value);
   if (!isContainer(value)) {
-    const row = parent.createDiv({ cls: "na-node na-leaf" });
+    const row = parent.createDiv({ cls: "gz-node gz-leaf" });
     if (label !== undefined) keyButton(row, label, path, copy);
-    row.createSpan({ cls: `na-val ${cls}`, text });
+    row.createSpan({ cls: `gz-val ${cls}`, text });
     return;
   }
-  const node = parent.createEl("details", { cls: "na-node" });
+  const node = parent.createEl("details", { cls: "gz-node" });
   const summary = node.createEl("summary");
   if (label !== undefined) keyButton(summary, label, path, copy);
-  summary.createSpan({ cls: `na-val ${cls}`, text });
+  summary.createSpan({ cls: `gz-val ${cls}`, text });
   let drawn = false;
   const fill = () => {
     if (drawn) return;
     drawn = true;
-    drawChildren(node.createDiv({ cls: "na-children" }), value, path, depth, copy);
+    drawChildren(node.createDiv({ cls: "gz-children" }), value, path, depth, copy);
   };
   if (depth === 0) {
     node.setAttribute("open", "");
@@ -138,16 +138,16 @@ const isError = (data: unknown): data is { error: string } =>
 export function renderInspector(el: HTMLElement, sources: InspectedSource[], copy: (text: string) => void): void {
   el.empty();
   if (sources.length === 0) {
-    el.createDiv({ cls: "na-label", text: "No data to inspect: none of this app's panels reads a source right now." });
+    el.createDiv({ cls: "gz-label", text: "No data to inspect: none of this app's panels reads a source right now." });
     return;
   }
   for (const s of sources) {
-    const box = el.createDiv({ cls: "na-inspect-source" });
-    const head = box.createDiv({ cls: "na-inspect-head" });
-    head.createSpan({ cls: "na-inspect-title", text: s.title });
-    head.createSpan({ cls: "na-inspect-kind", text: ` · ${s.kind}` });
-    if (s.source) box.createDiv({ cls: "na-inspect-url", text: s.source });
-    if (isError(s.data)) box.createDiv({ cls: "na-inspect-error", text: s.data.error });
-    else drawNode(box.createDiv({ cls: "na-tree" }), undefined, s.data, [], 0, copy);
+    const box = el.createDiv({ cls: "gz-inspect-source" });
+    const head = box.createDiv({ cls: "gz-inspect-head" });
+    head.createSpan({ cls: "gz-inspect-title", text: s.title });
+    head.createSpan({ cls: "gz-inspect-kind", text: ` · ${s.kind}` });
+    if (s.source) box.createDiv({ cls: "gz-inspect-url", text: s.source });
+    if (isError(s.data)) box.createDiv({ cls: "gz-inspect-error", text: s.data.error });
+    else drawNode(box.createDiv({ cls: "gz-tree" }), undefined, s.data, [], 0, copy);
   }
 }

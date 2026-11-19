@@ -5,7 +5,7 @@ import { bodyOf, noteText, withLine } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
 import { DiskCache } from "./cache.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
-import type NoteAppsPlugin from "./main.ts";
+import type GizmoPlugin from "./main.ts";
 import { tickLine } from "./sources/tasks.ts";
 import { notePath } from "./spec.ts";
 import { storeTarget } from "./store.ts";
@@ -85,7 +85,7 @@ async function ensureFolder(app: App, path: string): Promise<void> {
 }
 
 /** Without a leaf (an embed, a lens) there is no app tab to show the source in. */
-export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
+export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
   const app = plugin.app;
   return {
     data: plugin.dataLayer,

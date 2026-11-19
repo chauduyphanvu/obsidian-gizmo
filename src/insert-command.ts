@@ -23,8 +23,8 @@ class ViewPicker extends FuzzySuggestModal<ViewDef> {
   }
 
   renderSuggestion(match: { item: ViewDef }, el: HTMLElement): void {
-    el.createDiv({ cls: "na-suggest-key", text: match.item.id });
-    el.createDiv({ cls: "na-suggest-hint", text: VIEW_HINTS[match.item.id] ?? "" });
+    el.createDiv({ cls: "gz-suggest-key", text: match.item.id });
+    el.createDiv({ cls: "gz-suggest-hint", text: VIEW_HINTS[match.item.id] ?? "" });
   }
 
   onChooseItem(def: ViewDef): void {

@@ -21,9 +21,9 @@ export function slicesOf(rows: unknown[], nameField: string, valueField: string)
   const shown = raw.length > MAX_SLICES ? raw.slice(0, MAX_SLICES - 1) : raw;
   // Colours follow the names, not the sizes, so a slice keeps its colour as values change.
   const names = shown.map((s) => s.name).sort((a, b) => a.localeCompare(b));
-  const slices = shown.map((s) => ({ ...s, colour: `na-s${names.indexOf(s.name) + 1}` }));
+  const slices = shown.map((s) => ({ ...s, colour: `gz-s${names.indexOf(s.name) + 1}` }));
   const rest = raw.slice(shown.length);
-  if (rest.length) slices.push({ name: "Other", value: rest.reduce((sum, s) => sum + s.value, 0), colour: "na-other" });
+  if (rest.length) slices.push({ name: "Other", value: rest.reduce((sum, s) => sum + s.value, 0), colour: "gz-other" });
   return slices;
 }
 
@@ -66,44 +66,44 @@ export const pie: ViewDef = {
     const sized = seriesNames(p)[0] ?? "count";
     const slices = slicesOf(rows, nameField, sized);
     if (slices.length === 0) {
-      el.createDiv({ cls: "na-empty", text: "Nothing to show yet." });
+      el.createDiv({ cls: "gz-empty", text: "Nothing to show yet." });
       return;
     }
     const total = slices.reduce((sum, s) => sum + s.value, 0);
     const fmt = (v: number) => (formatFor(p, sized) !== undefined ? display(p, sized, v, ctx.now) : formatValue(v, p.decimals) + (p.unit ? ` ${p.unit}` : ""));
     const share = (v: number) => `${Math.round((v / total) * 100)}%`;
-    const box = el.createDiv({ cls: "na-pie" });
-    const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "na-pie-svg", role: "img", width: SIZE, height: SIZE }, box);
-    const readout = el.createDiv({ cls: "na-readout" });
+    const box = el.createDiv({ cls: "gz-pie" });
+    const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "gz-pie-svg", role: "img", width: SIZE, height: SIZE }, box);
+    const readout = el.createDiv({ cls: "gz-readout" });
     // The sized field's label, when the panel gives one, says what the total is of.
     const showTotal = () => readout.setText(`${labelFor(p, sized) ?? "Total"} · ${fmt(total)}`);
     const shapes = slices.length === 1
-      ? [svg("circle", { cx: SIZE / 2, cy: SIZE / 2, r: SIZE / 2 - 2 - RING / 2, "stroke-width": RING, class: `na-ring ${slices[0].colour}` }, root)]
+      ? [svg("circle", { cx: SIZE / 2, cy: SIZE / 2, r: SIZE / 2 - 2 - RING / 2, "stroke-width": RING, class: `gz-ring ${slices[0].colour}` }, root)]
       : (() => {
         let a = -Math.PI / 2;
         return slices.map((s) => {
           const a1 = a + (s.value / total) * Math.PI * 2;
-          const path = svg("path", { d: arc(a, a1), class: `na-slice ${s.colour}` }, root);
+          const path = svg("path", { d: arc(a, a1), class: `gz-slice ${s.colour}` }, root);
           a = a1;
           return path;
         });
       })();
     // Every slice's value and share is printed here too, so nothing depends on telling colours apart.
-    const legend = box.createDiv({ cls: "na-pie-legend" });
+    const legend = box.createDiv({ cls: "gz-pie-legend" });
     slices.forEach((s, i) => {
-      const name = s.colour === "na-other" ? s.name : mapped(p, nameField, s.name) ?? s.name;
+      const name = s.colour === "gz-other" ? s.name : mapped(p, nameField, s.name) ?? s.name;
       const item = legendItem(legend, s.colour, name);
-      item.createSpan({ cls: "na-pie-value", text: `${fmt(s.value)} · ${share(s.value)}` });
+      item.createSpan({ cls: "gz-pie-value", text: `${fmt(s.value)} · ${share(s.value)}` });
       shapes[i].addEventListener("pointerenter", () => readout.setText(`${name} · ${fmt(s.value)} · ${share(s.value)}`));
       shapes[i].addEventListener("pointerleave", showTotal);
       // "Other" folds several rows together, so there is no one row to pick.
-      const row = s.colour === "na-other" ? undefined : rows.find((r) => String(getPath(r, nameField) ?? NONE) === s.name);
+      const row = s.colour === "gz-other" ? undefined : rows.find((r) => String(getPath(r, nameField) ?? NONE) === s.name);
       if (row) {
         selectable(shapes[i], p, ctx, row, name);
         selectable(item, p, ctx, row);
       }
     });
     showTotal();
-    if (p.label && p.title) el.createDiv({ cls: "na-label", text: p.label });
+    if (p.label && p.title) el.createDiv({ cls: "gz-label", text: p.label });
   }),
 };

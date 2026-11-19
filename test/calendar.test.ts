@@ -53,7 +53,7 @@ const DAYS = [
   { at: "2026-11-17", count: 3 },
 ];
 const cell = (el: Element, date: string) => el.querySelector(`[data-date="${date}"]`) as HTMLElement;
-const step = (el: Element | null) => /na-step-(\d)/.exec(el?.getAttribute("class") ?? "")?.[1];
+const step = (el: Element | null) => /gz-step-(\d)/.exec(el?.getAttribute("class") ?? "")?.[1];
 
 test("shades are five steps by where a value sits among the non-zero ones; zero has none", () => {
   assert.deepEqual([...shadeSteps([1, 2, 3, 4, 5, 0, 0])], [[1, 1], [2, 2], [3, 3], [4, 4], [5, 5]]);
@@ -83,24 +83,24 @@ test("a calendar's rows reach the view per day through the data layer", async ()
 
 test("the month grid starts on Monday, lines the 1st up under its weekday and outlines today", () => {
   const { el } = mount({}, DAYS);
-  assert.equal(text(el.querySelector(".na-cal-title")), "November 2026");
-  assert.deepEqual([...el.querySelectorAll(".na-cal-dow")].map((d) => text(d)), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
+  assert.equal(text(el.querySelector(".gz-cal-title")), "November 2026");
+  assert.deepEqual([...el.querySelectorAll(".gz-cal-dow")].map((d) => text(d)), ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]);
   // 1 November 2026 is a Sunday: six blanks, then thirty days.
-  assert.equal(el.querySelectorAll(".na-cal-blank").length, 6);
-  assert.equal(el.querySelectorAll(".na-cal-day").length, 30);
+  assert.equal(el.querySelectorAll(".gz-cal-blank").length, 6);
+  assert.equal(el.querySelectorAll(".gz-cal-day").length, 30);
   const [first, today] = [cell(el, "2026-11-01"), cell(el, "2026-11-18")];
-  assert.equal(text(first.querySelector(".na-cal-num")), "1");
-  assert.ok(today.classList.contains("na-today"));
-  assert.equal(el.querySelectorAll(".na-today").length, 1);
+  assert.equal(text(first.querySelector(".gz-cal-num")), "1");
+  assert.ok(today.classList.contains("gz-today"));
+  assert.equal(el.querySelectorAll(".gz-today").length, 1);
 });
 
 test("each day shows its value and is shaded by quantile; zero and missing days are not", () => {
   const { el } = mount({}, DAYS);
-  assert.equal(text(cell(el, "2026-11-05").querySelector(".na-cal-val")), "4");
+  assert.equal(text(cell(el, "2026-11-05").querySelector(".gz-cal-val")), "4");
   assert.deepEqual(["2026-11-04", "2026-11-03", "2026-11-17", "2026-11-05"].map((d) => step(cell(el, d))), ["1", "2", "4", "5"]);
   for (const d of ["2026-11-06", "2026-11-10"]) {
     assert.equal(step(cell(el, d)), undefined);
-    assert.equal(cell(el, d).querySelector(".na-cal-val"), null);
+    assert.equal(cell(el, d).querySelector(".gz-cal-val"), null);
   }
   assert.equal(cell(el, "2026-11-03").getAttribute("title"), "2026-11-03: 2");
   assert.equal(cell(el, "2026-11-10").getAttribute("aria-label"), "2026-11-10: 0");
@@ -108,9 +108,9 @@ test("each day shows its value and is shaded by quantile; zero and missing days 
 
 test("with y and agg a day shows its total", () => {
   const { el } = mount({ y: "amount", agg: "sum", label: "spent" }, [{ at: "2026-11-03", count: 2, amount: 12.5 }, { at: "2026-11-04", count: 1, amount: 40 }]);
-  assert.equal(text(cell(el, "2026-11-03").querySelector(".na-cal-val")), "12.5");
+  assert.equal(text(cell(el, "2026-11-03").querySelector(".gz-cal-val")), "12.5");
   assert.equal(cell(el, "2026-11-04").getAttribute("aria-label"), "2026-11-04: 40");
-  assert.equal(text(el.querySelector(".na-title")), "spent");
+  assert.equal(text(el.querySelector(".gz-title")), "spent");
 });
 
 test("prev, next and Today move the month; the month survives a data reload and keeps the button focused", () => {
@@ -118,18 +118,18 @@ test("prev, next and Today move the month; the month survives a data reload and 
   const button = (name: string) => el.querySelector(`button[aria-label="${name}"]`) as HTMLButtonElement;
   assert.deepEqual([...el.querySelectorAll("button")].map((b) => text(b)), ["‹", "›", "Today"]);
   button("Previous month").click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "October 2026");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "October 2026");
   assert.equal(document.activeElement, button("Previous month"));
   handle.update([{ at: "2026-10-31", count: 5 }]);
-  assert.equal(text(el.querySelector(".na-cal-title")), "October 2026");
-  assert.equal(text(cell(el, "2026-10-31").querySelector(".na-cal-val")), "5");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "October 2026");
+  assert.equal(text(cell(el, "2026-10-31").querySelector(".gz-cal-val")), "5");
   button("Next month").click();
   button("Next month").click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "December 2026");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "December 2026");
   button("Next month").click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "January 2027");
-  (el.querySelector("button.na-cal-today") as HTMLButtonElement).click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "November 2026");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "January 2027");
+  (el.querySelector("button.gz-cal-today") as HTMLButtonElement).click();
+  assert.equal(text(el.querySelector(".gz-cal-title")), "November 2026");
 });
 
 test("days are buttons that pick their row, days without data included; picking again clears", () => {
@@ -139,10 +139,10 @@ test("days are buttons that pick their row, days without data included; picking 
   assert.deepEqual([day.getAttribute("role"), day.getAttribute("tabindex")], ["button", "0"]);
   day.click();
   assert.deepEqual(picked, [{ at: "2026-11-04", count: 1 }]);
-  assert.ok(day.classList.contains("na-selected"));
+  assert.ok(day.classList.contains("gz-selected"));
   cell(el, "2026-11-10").click();
   assert.deepEqual(picked.at(-1), { at: "2026-11-10", count: 0 });
-  assert.ok(!day.classList.contains("na-selected"));
+  assert.ok(!day.classList.contains("gz-selected"));
   cell(el, "2026-11-10").click();
   assert.equal(picked.at(-1), undefined);
 });
@@ -179,7 +179,7 @@ test("arrow keys move by day and by week inside the month, and stop at its edges
 
 test("year layout: 53 week columns of 7 days, month names on top, each day labelled", () => {
   const { el } = mount({ layout: "year", select: "day" }, [{ at: "2026-03-14", count: 3 }, { at: "2026-03-15", count: 1 }]);
-  assert.equal(text(el.querySelector(".na-cal-title")), "2026");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "2026");
   const rects = [...el.querySelectorAll("rect")];
   assert.equal(rects.length, 365);
   assert.deepEqual([...el.querySelectorAll("text")].map((t) => text(t)), ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"]);
@@ -187,7 +187,7 @@ test("year layout: 53 week columns of 7 days, month names on top, each day label
   assert.equal(day.getAttribute("aria-label"), "2026-03-14: 3");
   assert.equal(text(day.querySelector("title")), "2026-03-14: 3");
   assert.equal(step(day), "4");
-  assert.ok(cell(el, "2026-11-18").classList.contains("na-today"));
+  assert.ok(cell(el, "2026-11-18").classList.contains("gz-today"));
   // 1 January 2026 is a Thursday, so it is the fourth row of the first column; Monday is the first row.
   const [jan1, jan5, dec31] = ["2026-01-01", "2026-01-05", "2026-12-31"].map((d) => cell(el, d));
   const at = (r: Element) => [Number(r.getAttribute("x")), Number(r.getAttribute("y"))];
@@ -208,16 +208,16 @@ test("year cells fit the panel width, never below 8px, and scroll when they can'
   handle.resize!(300);
   assert.equal(widest(el), 8);
   assert.ok(Number(el.querySelector("svg")!.getAttribute("width")) > 300);
-  assert.ok(el.querySelector(".na-cal-scroll"));
+  assert.ok(el.querySelector(".gz-cal-scroll"));
 });
 
 test("a year too wide for its panel opens scrolled to today; a whole year that fits doesn't scroll", () => {
   const narrow = mount({ layout: "year" }, [], fakeCtx(300).ctx).el;
-  const scroller = narrow.querySelector(".na-cal-scroll") as HTMLElement;
+  const scroller = narrow.querySelector(".gz-cal-scroll") as HTMLElement;
   // 18 November 2026 is in column 46 of 10 px columns: up to its end and four weeks more, less the 300 px shown.
   assert.equal(scroller.scrollLeft, (47 + 4) * 10 - 300);
   const wide = mount({ layout: "year" }, [], fakeCtx(600).ctx).el;
-  assert.equal((wide.querySelector(".na-cal-scroll") as HTMLElement).scrollLeft, 0);
+  assert.equal((wide.querySelector(".gz-cal-scroll") as HTMLElement).scrollLeft, 0);
 });
 
 test("year layout moves by year and arrows go a day up or down and a week across", () => {
@@ -231,26 +231,26 @@ test("year layout moves by year and arrows go a day up or down and a week across
   assert.equal(press("2026-03-14", "ArrowRight"), "2026-03-21");
   assert.equal(press("2026-03-14", "ArrowLeft"), "2026-03-07");
   (el.querySelector('button[aria-label="Next year"]') as HTMLButtonElement).click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "2027");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "2027");
   assert.equal(el.querySelectorAll("rect").length, 365);
   for (let i = 0; i < 3; i++) (el.querySelector('button[aria-label="Previous year"]') as HTMLButtonElement).click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "2024");
+  assert.equal(text(el.querySelector(".gz-cal-title")), "2024");
   assert.equal(el.querySelectorAll("rect").length, 366);
-  (el.querySelector("button.na-cal-today") as HTMLButtonElement).click();
-  assert.equal(text(el.querySelector(".na-cal-title")), "2026");
+  (el.querySelector("button.gz-cal-today") as HTMLButtonElement).click();
+  assert.equal(text(el.querySelector(".gz-cal-title")), "2026");
 });
 
 test("format and values show in each day's value and in its tooltip and label", () => {
   const rows = [{ at: "2026-11-03", count: 2, amount: 1234.5 }, { at: "2026-11-04", count: 1, amount: 40 }];
   const money = mount({ y: "amount", agg: "sum", format: "$0,0" }, rows).el;
-  assert.equal(text(cell(money, "2026-11-03").querySelector(".na-cal-val")), "$1,235");
+  assert.equal(text(cell(money, "2026-11-03").querySelector(".gz-cal-val")), "$1,235");
   assert.equal(cell(money, "2026-11-03").getAttribute("title"), "2026-11-03: $1,235");
   assert.equal(cell(money, "2026-11-04").getAttribute("aria-label"), "2026-11-04: $40");
   // A day with no data still says so, whatever the format.
   assert.equal(cell(money, "2026-11-10").getAttribute("aria-label"), "2026-11-10: $0");
 
   const named = mount({ values: { count: { 2: "twice", 1: "once" } }, select: "day" }, rows).el;
-  assert.equal(text(cell(named, "2026-11-03").querySelector(".na-cal-val")), "twice");
+  assert.equal(text(cell(named, "2026-11-03").querySelector(".gz-cal-val")), "twice");
   assert.equal(cell(named, "2026-11-04").getAttribute("aria-label"), "2026-11-04: once");
   assert.equal(cell(named, "2026-11-10").getAttribute("aria-label"), "2026-11-10: 0");
 

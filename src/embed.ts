@@ -1,7 +1,7 @@
 import { MarkdownRenderChild, MarkdownView, parseYaml } from "obsidian";
 import { HostedApp, Memories, blockKey } from "./hosted.ts";
 import { obsidianAppEnv } from "./host.ts";
-import type NoteAppsPlugin from "./main.ts";
+import type GizmoPlugin from "./main.ts";
 
 /** A block's app, started when Obsidian loads the block's element and disposed when it goes. */
 class EmbedChild extends MarkdownRenderChild {
@@ -28,27 +28,27 @@ class EmbedChild extends MarkdownRenderChild {
 }
 
 /**
- * ```note-app blocks: an app drawn in place in any note (see HostedApp). Obsidian draws a block
+ * ```gizmo blocks: an app drawn in place in any note (see HostedApp). Obsidian draws a block
  * again whenever it likes (in live preview, each time the cursor leaves it), so what a block keeps
  * (inputs, selections, tab, timers) is kept by its identity while its note is open.
  */
-export function registerEmbeds(plugin: NoteAppsPlugin): void {
+export function registerEmbeds(plugin: GizmoPlugin): void {
   const app = plugin.app;
   const live = new Set<HostedApp>();
   const memories = new Memories();
 
-  plugin.registerMarkdownCodeBlockProcessor("note-app", (source, el, ctx) => {
-    el.addClass("na-embed");
+  plugin.registerMarkdownCodeBlockProcessor("gizmo", (source, el, ctx) => {
+    el.addClass("gz-embed");
     const file = app.vault.getFileByPath(ctx.sourcePath);
     let value: unknown;
     try {
       value = parseYaml(source);
     } catch (e) {
-      el.createDiv({ cls: "note-app" }).createDiv({ cls: "na-card na-error", text: `This block isn't YAML Note Apps can read: ${(e as Error).message}` });
+      el.createDiv({ cls: "gizmo" }).createDiv({ cls: "gz-card gz-error", text: `This block isn't YAML Gizmo can read: ${(e as Error).message}` });
       return;
     }
     if (!file) {
-      el.createDiv({ cls: "note-app" }).createDiv({ cls: "na-card na-error", text: "A note-app block runs in a note." });
+      el.createDiv({ cls: "gizmo" }).createDiv({ cls: "gz-card gz-error", text: "A gizmo block runs in a note." });
       return;
     }
     const memory = memories.of(blockKey(file.path, source), file.path);

@@ -220,7 +220,7 @@ export class Background {
   }
 
   /**
-   * Answers `obsidian://note-apps?app=…&do=…&field=value…`. Any web page can send one, so it only
+   * Answers `obsidian://gizmo?app=…&do=…&field=value…`. Any web page can send one, so it only
    * runs a panel its author marked with `shortcut`, in an app the user already allowed; the other
    * parameters only fill that form's fields, checked against their types.
    */

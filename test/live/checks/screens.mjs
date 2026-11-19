@@ -6,7 +6,7 @@ import { join } from "node:path";
 /** In the page: how far the active view's content is wider than the view, and which panels are. */
 const OVERFLOW = `(() => {
   const ce = na.view().contentEl;
-  const wide = [...ce.querySelectorAll(".na-panel, .na-lens, .na-embed")].filter((p) => p.getBoundingClientRect().right > ce.getBoundingClientRect().right + 1);
+  const wide = [...ce.querySelectorAll(".gz-panel, .gz-lens, .gz-embed")].filter((p) => p.getBoundingClientRect().right > ce.getBoundingClientRect().right + 1);
   return { over: ce.scrollWidth - ce.clientWidth, wide: wide.map((p) => p.className.split(" ").slice(0, 2).join(".")) };
 })()`;
 
@@ -14,7 +14,7 @@ export default async function screens(t) {
   const { check, run, expect, page } = t;
   const apps = readdirSync(join(t.vault, "Apps")).filter((f) => f.endsWith(".md") && !f.endsWith(" data.md")).map((f) => f.replace(/\.md$/, ""));
   const name = (s) => s.replace(/[ /]/g, "-");
-  const open = (path) => run(`await na.open(${JSON.stringify(path)}); await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 6000); await na.sleep(500);`);
+  const open = (path) => run(`await na.open(${JSON.stringify(path)}); await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 6000); await na.sleep(500);`);
 
   await check("no fixture app makes its pane scroll sideways, at 1100 px or at phone width", async () => {
     const bad = [];
@@ -41,11 +41,11 @@ export default async function screens(t) {
     ["Today-live", `await na.openMd("Today.md", "live");`],
     ["Dune-lens-live", `await na.openMd("Books/Dune.md", "live");`],
     ["Dune-lens-reading", `await na.openMd("Books/Dune.md", "preview");`],
-    ["Habits-year", `await na.open("Apps/Habits"); [...na.view().contentEl.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Year").click();`],
-    ["Projects-picked", `await na.open("Apps/Projects"); if (!na.view().contentEl.querySelector(".na-tl-bar.na-selected")) na.view().contentEl.querySelector(".na-tl-bar")?.click();`],
-    ["Planet-Earth-inspector", `await na.open("Apps/Planet Earth"); if (!na.view().contentEl.querySelector(".na-inspector")) [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data").click(); await na.sleep(2000);`],
+    ["Habits-year", `await na.open("Apps/Habits"); [...na.view().contentEl.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Year").click();`],
+    ["Projects-picked", `await na.open("Apps/Projects"); if (!na.view().contentEl.querySelector(".gz-tl-bar.gz-selected")) na.view().contentEl.querySelector(".gz-tl-bar")?.click();`],
+    ["Planet-Earth-inspector", `await na.open("Apps/Planet Earth"); if (!na.view().contentEl.querySelector(".gz-inspector")) [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data").click(); await na.sleep(2000);`],
     ["Plants-cards", `await na.open("Scratch/Plants");`],
-    ["Journal-calendar", `await na.open("Scratch/Journal"); if (!na.view().contentEl.querySelector(".na-cal-day.na-selected")) na.view().contentEl.querySelector('.na-cal-day[data-date$="-09"]')?.click();`],
+    ["Journal-calendar", `await na.open("Scratch/Journal"); if (!na.view().contentEl.querySelector(".gz-cal-day.gz-selected")) na.view().contentEl.querySelector('.gz-cal-day[data-date$="-09"]')?.click();`],
   ];
   await run(`app.workspace.leftSplit.expand();`);
   for (const theme of ["light", "dark"]) {

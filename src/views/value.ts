@@ -50,14 +50,14 @@ function checkCompare(p: Panel): string[] {
 function drawChange(el: HTMLElement, p: Panel, now: Date, value: unknown, previous: unknown[]): void {
   const before = previous.length ? toNumber(valueOf(p, previous, now)) : undefined;
   if (before === undefined) {
-    el.createDiv({ cls: "na-compare", text: "no previous data" });
+    el.createDiv({ cls: "gz-compare", text: "no previous data" });
     return;
   }
   const after = toNumber(value);
   if (after === undefined) return;
   const diff = after - before;
   if (diff === 0) {
-    el.createDiv({ cls: "na-compare", text: "no change vs previous", attr: { role: "img", "aria-label": "no change, versus previous" } });
+    el.createDiv({ cls: "gz-compare", text: "no change vs previous", attr: { role: "img", "aria-label": "no change, versus previous" } });
     return;
   }
   const size = formatFor(p, p.field) !== undefined
@@ -69,7 +69,7 @@ function drawChange(el: HTMLElement, p: Panel, now: Date, value: unknown, previo
   const shown = percent === undefined ? "" : small ? " (<1%)" : ` (${Math.round(percent)}%)`;
   const spoken = percent === undefined ? "" : `, ${small ? "less than 1" : Math.round(percent)} percent`;
   el.createDiv({
-    cls: "na-compare",
+    cls: "gz-compare",
     text: `${diff > 0 ? "▲" : "▼"} ${size}${shown} vs previous`,
     attr: { role: "img", "aria-label": `${diff > 0 ? "up" : "down"} ${size}${spoken}, versus previous` },
   });
@@ -112,11 +112,11 @@ export const number: ViewDef = {
     // With compare, the data holds the window before too; the value is the current window's.
     const { current, previous } = splitByWindow(p, data, ctx.now);
     const { value, text, unit } = panelValue(p, current, ctx.now);
-    const row = el.createDiv({ cls: "na-big" });
+    const row = el.createDiv({ cls: "gz-big" });
     row.createSpan({ text });
-    if (unit) row.createSpan({ cls: "na-unit", text: unit });
+    if (unit) row.createSpan({ cls: "gz-unit", text: unit });
     if (previous) drawChange(el, p, ctx.now, value, previous);
-    if (p.label) el.createDiv({ cls: "na-label", text: p.label });
+    if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
   }),
 };
 
@@ -138,8 +138,8 @@ export const text: ViewDef = {
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);
-    el.createDiv({ cls: "na-text", text: panelValue(p, data, ctx.now).text });
-    if (p.label) el.createDiv({ cls: "na-label", text: p.label });
+    el.createDiv({ cls: "gz-text", text: panelValue(p, data, ctx.now).text });
+    if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
   }),
 };
 
@@ -159,12 +159,12 @@ export const progress: ViewDef = {
     heading(el, p);
     const { value, text, unit } = panelValue(p, data, ctx.now);
     const max = p.max ?? 100;
-    const big = el.createDiv({ cls: "na-big" });
+    const big = el.createDiv({ cls: "gz-big" });
     big.createSpan({ text });
-    big.createSpan({ cls: "na-unit", text: `/ ${display(p, p.field, max, ctx.now)}${unit ? ` ${unit}` : ""}` });
-    const bar = el.createDiv({ cls: "na-progress" }).createDiv({ cls: "na-progress-fill" });
+    big.createSpan({ cls: "gz-unit", text: `/ ${display(p, p.field, max, ctx.now)}${unit ? ` ${unit}` : ""}` });
+    const bar = el.createDiv({ cls: "gz-progress" }).createDiv({ cls: "gz-progress-fill" });
     bar.style.width = `${Math.max(0, Math.min(100, ((value as number) / max) * 100))}%`;
-    if (p.label) el.createDiv({ cls: "na-label", text: p.label });
+    if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
   }),
 };
 
@@ -181,11 +181,11 @@ export const countdown: ViewDef = {
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
     const days = daysUntil(p.to!, ctx.now);
-    const big = el.createDiv({ cls: "na-big" });
+    const big = el.createDiv({ cls: "gz-big" });
     big.createSpan({ text: String(Math.abs(days)) });
-    big.createSpan({ cls: "na-unit", text: Math.abs(days) === 1 ? "day" : "days" });
+    big.createSpan({ cls: "gz-unit", text: Math.abs(days) === 1 ? "day" : "days" });
     const when = new Date(Date.parse(p.to!.length === 10 ? `${p.to}T00:00` : p.to!));
     const suffix = days < 0 ? "ago" : days === 0 ? "today" : "left";
-    el.createDiv({ cls: "na-label", text: `${p.label ? `${p.label} · ` : ""}${when.toLocaleDateString()} · ${suffix}` });
+    el.createDiv({ cls: "gz-label", text: `${p.label ? `${p.label} · ` : ""}${when.toLocaleDateString()} · ${suffix}` });
   }),
 };

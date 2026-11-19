@@ -45,12 +45,12 @@ marks:
 
 /** In the page: the stacked bars of the right-most week, as class and height. */
 const LAST_WEEK_BARS = `(() => {
-  const bars = [...na.view().contentEl.querySelectorAll(".na-view-bar path.na-bar")];
+  const bars = [...na.view().contentEl.querySelectorAll(".gz-view-bar path.gz-bar")];
   const xs = bars.map((b) => Number(b.getAttribute("d").match(/^M([\\d.]+)/)[1]));
   const right = Math.max(...xs);
   return bars.filter((b, i) => Math.abs(xs[i] - right) < 1).map((b) => {
     const m = b.getAttribute("d").match(/^M[\\d.]+,([\\d.]+)V([\\d.]+)/);
-    return b.getAttribute("class").replace("na-bar ", "") + ":" + Math.round(Math.abs(Number(m[1]) - Number(m[2])));
+    return b.getAttribute("class").replace("gz-bar ", "") + ":" + Math.round(Math.abs(Number(m[1]) - Number(m[2])));
   });
 })()`;
 
@@ -65,19 +65,19 @@ export default async function display(t) {
       await na.write("Apps/Spending data.md", "---\\nspend:\\n  - {amount: 50, category: food, note: groceries, at: " + at + "}\\n---\\n");
       await na.open("Apps/Spending");
       const el = na.view().contentEl;
-      const week = () => el.querySelector(".na-view-number");
-      const before = { value: week().querySelector(".na-big").textContent, compare: week().querySelector(".na-compare")?.textContent, bars: ${LAST_WEEK_BARS} };
-      const form = el.querySelector(".na-view-form");
+      const week = () => el.querySelector(".gz-view-number");
+      const before = { value: week().querySelector(".gz-big").textContent, compare: week().querySelector(".gz-compare")?.textContent, bars: ${LAST_WEEK_BARS} };
+      const form = el.querySelector(".gz-view-form");
       na.fill(form.querySelector('input[type="number"]'), "80");
       na.choose(form.querySelector("select"), "food");
       na.fill(form.querySelector('input[type="text"]'), "dinner out");
       na.button("Add", form).click();
-      await na.until(() => week().querySelector(".na-big").textContent !== before.value, 3000);
+      await na.until(() => week().querySelector(".gz-big").textContent !== before.value, 3000);
       await na.sleep(500);
       return {
-        before, value: week().querySelector(".na-big").textContent, compare: week().querySelector(".na-compare")?.textContent,
-        bars: ${LAST_WEEK_BARS}, goal: el.querySelector(".na-view-bar .na-goal-label")?.textContent,
-        goalLine: !!el.querySelector(".na-view-bar line.na-goal"),
+        before, value: week().querySelector(".gz-big").textContent, compare: week().querySelector(".gz-compare")?.textContent,
+        bars: ${LAST_WEEK_BARS}, goal: el.querySelector(".gz-view-bar .gz-goal-label")?.textContent,
+        goalLine: !!el.querySelector(".gz-view-bar line.gz-goal"),
       };`);
     expect(r.value === "$80.00" && /^▲ \$30\.00 \(60%\) vs previous$/.test(r.compare ?? ""), r);
     const height = (bars) => bars.reduce((s, b) => s + Number(b.split(":")[1]), 0);
@@ -90,7 +90,7 @@ export default async function display(t) {
       await na.open("Apps/Spending");
       const el = na.view().contentEl;
       const before = ${LAST_WEEK_BARS};
-      const row = [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.includes("dinner out"));
+      const row = [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.includes("dinner out"));
       const select = row.querySelector("select");
       select.focus();
       na.choose(select, "fun");
@@ -109,19 +109,19 @@ export default async function display(t) {
       await na.open("Scratch/Plants");`);
     const r1 = await run(`
       const el = na.view().contentEl;
-      const cards = el.querySelectorAll(".na-card-item, .na-cards > *");
-      const picked = () => na.text([...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "Picked"));
-      const card = (name) => [...el.querySelectorAll(".na-selectable")].find((c) => c.textContent.includes(name));
+      const cards = el.querySelectorAll(".gz-card-item, .gz-cards > *");
+      const picked = () => na.text([...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "Picked"));
+      const card = (name) => [...el.querySelectorAll(".gz-selectable")].find((c) => c.textContent.includes(name));
       card("Fern").click();
       await na.sleep(400);
       const first = picked();
       card("Cactus").focus();
-      return { first, count: el.querySelectorAll(".na-selectable").length, focused: document.activeElement?.textContent?.slice(0, 20) };`);
+      return { first, count: el.querySelectorAll(".gz-selectable").length, focused: document.activeElement?.textContent?.slice(0, 20) };`);
     await press("Enter");
     const r2 = await run(`
       const el = na.view().contentEl;
-      const picked = () => na.text([...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "Picked"));
-      const card = (name) => [...el.querySelectorAll(".na-selectable")].find((c) => c.textContent.includes(name));
+      const picked = () => na.text([...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "Picked"));
+      const card = (name) => [...el.querySelectorAll(".gz-selectable")].find((c) => c.textContent.includes(name));
       await na.sleep(400);
       const second = picked();
       na.button("Watered", card("Basil")).click();
@@ -131,7 +131,7 @@ export default async function display(t) {
       card("Fern").querySelector('input[type="checkbox"]').click();
       await na.until(() => na.fm("Scratch/Plants data.md")?.plants?.[0]?.thirsty === false, 3000);
       await na.sleep(400);
-      return { second, third, fourth: picked(), waterings: na.fm("Scratch/Plants data.md")?.waterings, plants: na.fm("Scratch/Plants data.md")?.plants, selected: [...el.querySelectorAll(".na-selected")].map((c) => c.textContent.slice(0, 12)) };`);
+      return { second, third, fourth: picked(), waterings: na.fm("Scratch/Plants data.md")?.waterings, plants: na.fm("Scratch/Plants data.md")?.plants, selected: [...el.querySelectorAll(".gz-selected")].map((c) => c.textContent.slice(0, 12)) };`);
     expect(r1.count === 3 && r1.first.includes("Fern in the hall"), r1);
     expect(r2.second.includes("Cactus in the study") && r2.third.includes("Cactus in the study") && r2.fourth.includes("Cactus in the study"), r2);
     expect(r2.waterings?.length === 1 && r2.waterings[0].plant === "Basil" && r2.plants[0].thirsty === false && r2.plants[1].thirsty === false && r2.plants[2].thirsty === true, r2);

@@ -11,7 +11,7 @@ const settle = async (n = 5) => { for (let i = 0; i < n; i++) await new Promise(
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
 const NOW = new Date(2026, 10, 18, 12, 0).getTime();
 /** The age a panel marks its disk copy with (drawn by CSS from the attribute). */
-const asOf = (root: Element) => root.querySelector(".na-panel.na-asof")?.getAttribute("data-asof") ?? undefined;
+const asOf = (root: Element) => root.querySelector(".gz-panel.gz-asof")?.getAttribute("data-asof") ?? undefined;
 
 test("a successful response is written through to disk and read back parsed", async () => {
   const f = fakeHost();
@@ -118,13 +118,13 @@ test("cold start: the disk copy paints first, with its age, then the network's a
   await t.f.host.cacheWrite!(cacheKey(URL_T, undefined), { at: NOW - 2 * 3_600_000, text: JSON.stringify({ current: { t: 3 } }), contentType: "application/json" });
   new AppController(t.root, "Apps/W.md", t.env).load();
   await settle(2);
-  assert.ok(t.root.querySelector(".na-view-number")!.classList.contains("na-loading"), "waits briefly for the network first");
+  assert.ok(t.root.querySelector(".gz-view-number")!.classList.contains("gz-loading"), "waits briefly for the network first");
   await settle(6);
-  assert.equal(text(t.root.querySelector(".na-big")), "3");
+  assert.equal(text(t.root.querySelector(".gz-big")), "3");
   assert.equal(asOf(t.root), "as of 2 hours ago");
   t.answer(200, { current: { t: 9 } });
   await settle(2);
-  assert.equal(text(t.root.querySelector(".na-big")), "9");
+  assert.equal(text(t.root.querySelector(".gz-big")), "9");
   assert.equal(asOf(t.root), undefined);
 });
 
@@ -135,8 +135,8 @@ test("the network failing shows the disk copy with its age instead of an error",
   await settle(1);
   t.answer(503, {});
   await settle(3);
-  assert.equal(t.root.querySelector(".na-error"), null);
-  assert.equal(text(t.root.querySelector(".na-big")), "3");
+  assert.equal(t.root.querySelector(".gz-error"), null);
+  assert.equal(text(t.root.querySelector(".gz-big")), "3");
   assert.equal(asOf(t.root), "as of 3 days ago");
 });
 
@@ -146,7 +146,7 @@ test("the network failing without a disk copy shows the error", async () => {
   await settle(1);
   t.answer(503, {});
   await settle(3);
-  assert.match(text(t.root.querySelector(".na-error")), /api.example.com answered 503/);
+  assert.match(text(t.root.querySelector(".gz-error")), /api.example.com answered 503/);
   assert.equal(asOf(t.root), undefined);
 });
 
@@ -159,12 +159,12 @@ test("the age stays on a panel while its view draws itself again", async () => {
   const app = new AppController(root, "Apps/W.md", t.env);
   app.load();
   await settle(3);
-  const chart = root.querySelector(".na-chart-svg");
+  const chart = root.querySelector(".gz-chart-svg");
   assert.equal(asOf(root), "as of 1 minute ago");
   // A chart draws itself again at a new width, emptying its panel.
-  Object.defineProperty(root.querySelector(".note-app"), "clientWidth", { value: 700, configurable: true });
+  Object.defineProperty(root.querySelector(".gizmo"), "clientWidth", { value: 700, configurable: true });
   app.resize();
   await settle(20);
-  assert.notEqual(root.querySelector(".na-chart-svg"), chart);
+  assert.notEqual(root.querySelector(".gz-chart-svg"), chart);
   assert.equal(asOf(root), "as of 1 minute ago");
 });

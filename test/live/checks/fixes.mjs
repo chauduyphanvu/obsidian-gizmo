@@ -99,7 +99,7 @@ export default async function fixes(t) {
       na.button("Open the plan").click();
       await na.sleep(1000);
       return { missing, opened: na.state() };`);
-    expect(r.missing.notices.includes("Can't find “Plans/Holiday plan”") && r.missing.state === "note-app:Scratch/Opener.md" && !r.missing.created, r);
+    expect(r.missing.notices.includes("Can't find “Plans/Holiday plan”") && r.missing.state === "gizmo:Scratch/Opener.md" && !r.missing.created, r);
     expect(r.opened === "markdown:Plans/Holiday plan.md", r);
     return `“Can't find” and nothing made; then opened ${r.opened}`;
   });
@@ -109,7 +109,7 @@ export default async function fixes(t) {
       await na.write("Books/Throwaway.md", "---\\nstatus: to read\\n---\\n");
       await na.open("Apps/Library");
       const el = na.view().contentEl;
-      const row = await na.until(() => [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Throwaway")), 3000);
+      const row = await na.until(() => [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Throwaway")), 3000);
       const select = row.querySelector("select");
       const disk = app.vault.adapter.basePath + "/Books/Throwaway.md";
       const mark = na.notices.length;
@@ -129,7 +129,7 @@ export default async function fixes(t) {
       await na.write("Scratch/Saver.md", ${JSON.stringify(SAVER)});
       await na.sleep(800);
       const { prompt } = await na.open("Scratch/Saver");
-      const item = [...na.view().contentEl.querySelectorAll(".na-view-list li")].find((li) => li.textContent.startsWith("Sneaky post"));
+      const item = [...na.view().contentEl.querySelectorAll(".gz-view-list li")].find((li) => li.textContent.startsWith("Sneaky post"));
       na.button("Keep", item).click();
       const fm = await na.until(() => na.fm("Scratch/Kept/Sneaky post.md"), 3000);
       await app.workspace.openLinkText("Scratch/Kept/Sneaky post", "", false);
@@ -145,7 +145,7 @@ export default async function fixes(t) {
       await na.write("Scratch/Jotter.md", ${JSON.stringify(JOTTER)});
       await na.sleep(500);
       await na.open("Scratch/Jotter");
-      const form = na.view().contentEl.querySelector(".na-form");
+      const form = na.view().contentEl.querySelector(".gz-form");
       na.fill(form.querySelector("input"), "---");
       na.button("Jot", form).click();
       const text = await na.until(() => na.read("Scratch/Jottings.md"), 3000);

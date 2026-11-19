@@ -44,10 +44,10 @@ export default async function data(t) {
     const r = await run(`
       await na.open("Apps/Movers");
       const el = na.view().contentEl;
-      const bars = [...el.querySelectorAll(".na-view-bar path.na-bar")];
+      const bars = [...el.querySelectorAll(".gz-view-bar path.gz-bar")];
       // A bar is drawn from the zero line: down (a larger y) for a negative value.
       const negative = bars.filter((b) => { const m = b.getAttribute("d").match(/^M[\\d.]+,([\\d.]+)V([\\d.]+)/); return m && Number(m[2]) > Number(m[1]); }).length;
-      return { errors: na.errors(), last: el.querySelector(".na-view-number .na-big")?.textContent, bars: bars.length, negative, rows: el.querySelectorAll(".na-view-table tbody tr").length };`);
+      return { errors: na.errors(), last: el.querySelector(".gz-view-number .gz-big")?.textContent, bars: bars.length, negative, rows: el.querySelectorAll(".gz-view-table tbody tr").length };`);
     expect(r.errors === 0 && /^-?\d+\.\d\d%$/.test(r.last) && r.bars >= 55 && r.bars <= 70 && r.negative > 0 && r.negative < r.bars && r.rows === 5, r);
     return `last ${r.last}, ${r.bars} bars (${r.negative} negative), ${r.rows} rows`;
   }, { net: NET.Movers });
@@ -63,12 +63,12 @@ export default async function data(t) {
       try {
         na.choose(el.querySelector('select[aria-label="symbol"]'), "2");
         await na.sleep(300);
-        await na.until(() => !el.querySelector(".na-stale, .na-loading"), 8000);
+        await na.until(() => !el.querySelector(".gz-stale, .gz-loading"), 8000);
         await na.sleep(500);
       } finally {
         host.fetch = fetch;
       }
-      return { urls, title: el.querySelector(".na-view-number .na-title")?.textContent, stale: el.querySelectorAll(".na-stale").length, errors: na.errors() };`);
+      return { urls, title: el.querySelector(".gz-view-number .gz-title")?.textContent, stale: el.querySelectorAll(".gz-stale").length, errors: na.errors() };`);
     expect(r.urls.length === 1 && r.urls[0].includes("/chart/AAPL?") && r.title === "AAPL, last session" && r.stale === 0 && r.errors === 0, r);
     return `${r.urls.length} request: ${r.urls[0]}`;
   }, { net: NET.Movers });
@@ -89,7 +89,7 @@ export default async function data(t) {
       await na.sleep(800);
       await na.open("Scratch/Typo");
       const el = na.view().contentEl;
-      return { problems: [...el.querySelectorAll(".na-card.na-error li")].map((li) => li.textContent), total: el.querySelector(".na-view-number .na-big")?.textContent, panels: el.querySelectorAll(".na-panel").length };`);
+      return { problems: [...el.querySelectorAll(".gz-card.gz-error li")].map((li) => li.textContent), total: el.querySelector(".gz-view-number .gz-big")?.textContent, panels: el.querySelectorAll(".gz-panel").length };`);
     expect(r.problems.includes('panel 2: compute.x: unknown function "foo"') && r.total === "10", r);
     return `${r.problems.join("; ")}; Total still ${r.total}`;
   });

@@ -45,16 +45,16 @@ const ROWS = [
   { name: "No date", due: "2026-12-01" },
   { name: "Bad date", start: "someday", due: "2026-12-01" },
 ];
-const labels = (el: Element) => [...el.querySelectorAll(".na-tl-label")].map((l) => l.getAttribute("title"));
-const marks = (el: Element) => [...el.querySelectorAll(".na-tl-bar, .na-tl-dot")] as HTMLElement[];
+const labels = (el: Element) => [...el.querySelectorAll(".gz-tl-label")].map((l) => l.getAttribute("title"));
+const marks = (el: Element) => [...el.querySelectorAll(".gz-tl-bar, .gz-tl-dot")] as HTMLElement[];
 const percent = (el: Element, prop: string) => Number(new RegExp(`${prop}: ([\\d.]+)%`).exec(el.getAttribute("style") ?? "")?.[1]);
-const ticks = (el: Element) => [...el.querySelectorAll(".na-tl-tick")].map((t) => text(t));
+const ticks = (el: Element) => [...el.querySelectorAll(".gz-tl-tick")].map((t) => text(t));
 
 test("one row per item, in order of start; bars run from start to end on a shared axis", () => {
   const { el } = mount({ item: "{name}" }, ROWS);
   assert.deepEqual(labels(el), ["Kitchen remodel with a very long name indeed", "Garden", "Backwards", "Milestone"]);
   const [kitchen, garden] = marks(el);
-  assert.ok(kitchen.classList.contains("na-tl-bar") && garden.classList.contains("na-tl-bar"));
+  assert.ok(kitchen.classList.contains("gz-tl-bar") && garden.classList.contains("gz-tl-bar"));
   // Kitchen starts first and ends last; Garden sits inside its span.
   assert.ok(percent(kitchen, "left") < percent(garden, "left"));
   assert.ok(percent(garden, "left") + percent(garden, "width") < percent(kitchen, "left") + percent(kitchen, "width"));
@@ -63,7 +63,7 @@ test("one row per item, in order of start; bars run from start to end on a share
 
 test("an item with no end, or an end before its start, is a dot at its start", () => {
   const { el } = mount({ item: "{name}" }, ROWS);
-  assert.deepEqual(marks(el).map((m) => m.classList.contains("na-tl-dot")), [false, false, true, true]);
+  assert.deepEqual(marks(el).map((m) => m.classList.contains("gz-tl-dot")), [false, false, true, true]);
   assert.equal(marks(el)[2].getAttribute("title"), "Backwards: 2026-11-10");
   assert.equal(marks(el)[0].getAttribute("title"), "Kitchen remodel with a very long name indeed: 2026-10-05 to 2026-12-15");
 });
@@ -71,35 +71,35 @@ test("an item with no end, or an end before its start, is a dot at its start", (
 test("items without a valid start are left out and counted in a muted note", () => {
   const { el } = mount({}, ROWS);
   assert.equal(marks(el).length, 4);
-  assert.equal(text(el.querySelector(".na-label")), "2 without a date");
-  assert.equal(mount({}, ROWS.slice(0, 2)).el.querySelector(".na-label"), null);
+  assert.equal(text(el.querySelector(".gz-label")), "2 without a date");
+  assert.equal(mount({}, ROWS.slice(0, 2)).el.querySelector(".gz-label"), null);
   const none = mount({}, [{ name: "x" }]);
-  assert.equal(text(none.el.querySelector(".na-empty")), "Nothing here yet.");
-  assert.equal(text(none.el.querySelector(".na-label")), "1 without a date");
+  assert.equal(text(none.el.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(none.el.querySelector(".gz-label")), "1 without a date");
 });
 
 test("a label is the item template, else name, else title; it is cut short by the page, so the full text is in its title", () => {
   const { el } = mount({}, [{ name: "A", start: "2026-11-01" }, { title: "B", start: "2026-11-02" }, { room: "C", start: "2026-11-03" }]);
   assert.deepEqual(labels(el), ["A", "B", "C"]);
   assert.deepEqual(labels(mount({ item: "{name} ({due})" }, ROWS.slice(0, 1)).el), ["Garden (2026-11-30)"]);
-  assert.equal(text(el.querySelector(".na-tl-label")), "A");
+  assert.equal(text(el.querySelector(".gz-tl-label")), "A");
 });
 
 test("a note's label is a link that opens it", () => {
   const { ctx, opened } = fakeCtx();
   const { el } = mount({ source: "notes", from: "Projects" }, ROWS, ctx);
-  const links = [...el.querySelectorAll(".na-tl-label a.internal-link")] as HTMLElement[];
+  const links = [...el.querySelectorAll(".gz-tl-label a.internal-link")] as HTMLElement[];
   assert.deepEqual(links.map((a) => text(a)), ["Kitchen remodel with a very long name indeed", "Garden"]);
   links[1].click();
   assert.deepEqual(opened, ["Projects/Garden.md"]);
 });
 
 test("a today line shows when today is inside the axis, and not otherwise", () => {
-  assert.equal(mount({}, ROWS).el.querySelectorAll(".na-tl-today").length, 1);
+  assert.equal(mount({}, ROWS).el.querySelectorAll(".gz-tl-today").length, 1);
   const past = mount({}, [{ name: "Old", start: "2025-01-01", due: "2025-02-01" }]);
-  assert.equal(past.el.querySelector(".na-tl-today"), null);
+  assert.equal(past.el.querySelector(".gz-tl-today"), null);
   const { el } = mount({}, [{ name: "Due today", start: "2026-11-18" }, { name: "Later", start: "2026-12-18" }]);
-  assert.ok(percent(el.querySelector(".na-tl-today")!, "left") > 0);
+  assert.ok(percent(el.querySelector(".gz-tl-today")!, "left") > 0);
 });
 
 test("ticks are days on a short span and months on a long one, and fewer when narrow", () => {
@@ -126,7 +126,7 @@ test("bars are focusable with a text label, and with select they pick their row"
   assert.equal(garden.getAttribute("aria-label"), "Garden: 2026-11-01 to 2026-11-30");
   garden.click();
   assert.deepEqual(picked, [ROWS[0]]);
-  assert.ok(garden.classList.contains("na-selected"));
+  assert.ok(garden.classList.contains("gz-selected"));
   garden.click();
   assert.equal(picked.at(-1), undefined);
 });
@@ -134,12 +134,12 @@ test("bars are focusable with a text label, and with select they pick their row"
 test("at most 200 rows are drawn, then a Show all button draws the rest", () => {
   const many = Array.from({ length: 250 }, (_, i) => ({ name: `n${i}`, start: `2026-${String(1 + (i % 12)).padStart(2, "0")}-01` }));
   const { el } = mount({}, many);
-  assert.equal(el.querySelectorAll(".na-tl-row").length, 200);
-  const more = el.querySelector("button.na-more") as HTMLButtonElement;
+  assert.equal(el.querySelectorAll(".gz-tl-row").length, 200);
+  const more = el.querySelector("button.gz-more") as HTMLButtonElement;
   assert.equal(text(more), "Show all 250");
   more.click();
-  assert.equal(el.querySelectorAll(".na-tl-row").length, 250);
-  assert.equal(el.querySelector("button.na-more"), null);
+  assert.equal(el.querySelectorAll(".gz-tl-row").length, 250);
+  assert.equal(el.querySelector("button.gz-more"), null);
 });
 
 test("item placeholders and the default text go through values and format", () => {

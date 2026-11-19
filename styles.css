@@ -1,36 +1,36 @@
-.note-app {
+.gizmo {
   padding: var(--size-4-4) var(--size-4-4) var(--size-4-8);
   max-width: 960px;
   margin: 0 auto;
 }
 
-.note-app .na-description {
+.gizmo .gz-description {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
   margin-bottom: var(--size-4-3);
 }
 
 /* Column count and spans are set as classes by src/layout.ts, which keeps the same numbers. */
-.note-app .na-grid {
+.gizmo .gz-grid {
   display: grid;
   grid-template-columns: minmax(0, 1fr);
   gap: var(--size-4-3);
 }
-.note-app .na-grid.na-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.note-app .na-grid.na-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.note-app .na-grid.na-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.note-app .na-span-2 { grid-column: span 2; }
-.note-app .na-span-3 { grid-column: span 3; }
-.note-app .na-span-4 { grid-column: span 4; }
-.note-app .na-off { display: none; }
-.note-app .na-tabs {
+.gizmo .gz-grid.gz-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.gizmo .gz-grid.gz-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.gizmo .gz-grid.gz-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.gizmo .gz-span-2 { grid-column: span 2; }
+.gizmo .gz-span-3 { grid-column: span 3; }
+.gizmo .gz-span-4 { grid-column: span 4; }
+.gizmo .gz-off { display: none; }
+.gizmo .gz-tabs {
   grid-column: 1 / -1;
   display: flex;
   flex-wrap: wrap;
   gap: var(--size-4-1);
   border-bottom: 1px solid var(--background-modifier-border);
 }
-.note-app button.na-tab {
+.gizmo button.gz-tab {
   background: none;
   box-shadow: none;
   border-radius: var(--radius-s) var(--radius-s) 0 0;
@@ -38,11 +38,11 @@
   border-bottom: 2px solid transparent;
   margin-bottom: -1px;
 }
-.note-app button.na-tab:hover { color: var(--text-normal); }
-.note-app button.na-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
+.gizmo button.gz-tab:hover { color: var(--text-normal); }
+.gizmo button.gz-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
 
-.note-app .na-panel,
-.note-app .na-card {
+.gizmo .gz-panel,
+.gizmo .gz-card {
   background: var(--background-secondary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-l);
@@ -50,24 +50,24 @@
   min-width: 0;
 }
 
-.note-app .na-card { margin-bottom: var(--size-4-3); }
-.note-app .na-card ul { margin: var(--size-4-2) 0; }
-.note-app .na-error { border-color: var(--text-error); }
+.gizmo .gz-card { margin-bottom: var(--size-4-3); }
+.gizmo .gz-card ul { margin: var(--size-4-2) 0; }
+.gizmo .gz-error { border-color: var(--text-error); }
 
-.note-app .na-title {
+.gizmo .gz-title {
   font-weight: var(--font-semibold);
   font-size: var(--font-ui-small);
   color: var(--text-normal);
   margin-bottom: var(--size-4-2);
 }
 
-.note-app .na-label {
+.gizmo .gz-label {
   color: var(--text-muted);
   font-size: var(--font-ui-smaller);
   margin-top: var(--size-4-1);
 }
 
-.note-app .na-big {
+.gizmo .gz-big {
   font-size: 2.1em;
   font-weight: 650;
   line-height: 1.15;
@@ -75,17 +75,17 @@
   letter-spacing: -0.01em;
 }
 
-.note-app .na-unit {
+.gizmo .gz-unit {
   font-size: 0.5em;
   font-weight: 500;
   color: var(--text-muted);
   margin-left: 0.3em;
 }
 
-.note-app .na-text { font-size: var(--font-text-size); line-height: 1.5; }
-.note-app .na-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
+.gizmo .gz-text { font-size: var(--font-text-size); line-height: 1.5; }
+.gizmo .gz-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
 
-.note-app .na-row {
+.gizmo .gz-row {
   display: flex;
   align-items: center;
   justify-content: space-between;
@@ -93,40 +93,40 @@
   flex-wrap: wrap;
 }
 
-.note-app .na-row .na-title { margin-bottom: 0; }
-.note-app .na-small { font-size: var(--font-ui-smaller); padding: 2px 8px; height: auto; }
-.note-app .na-button { width: 100%; height: 2.6em; font-size: var(--font-ui-medium); }
+.gizmo .gz-row .gz-title { margin-bottom: 0; }
+.gizmo .gz-small { font-size: var(--font-ui-smaller); padding: 2px 8px; height: auto; }
+.gizmo .gz-button { width: 100%; height: 2.6em; font-size: var(--font-ui-medium); }
 
 /* Charts */
-.note-app .na-chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
-.note-app .na-gridline { stroke: var(--background-modifier-border); stroke-width: 1; }
-.note-app .na-axis { stroke: none; fill: var(--text-faint); font-size: 11px; font-family: var(--font-interface); }
+.gizmo .gz-chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.gizmo .gz-gridline { stroke: var(--background-modifier-border); stroke-width: 1; }
+.gizmo .gz-axis { stroke: none; fill: var(--text-faint); font-size: 11px; font-family: var(--font-interface); }
 /* Series colours: one series wears the theme accent; several take a fixed, colour-blind-checked
    order (validated against Obsidian's default panel colours in both themes). */
-.note-app {
-  --na-s1: #2a78d6; --na-s2: #eb6834; --na-s3: #1baf7a; --na-s4: #eda100; --na-s5: #e87ba4; --na-s6: #008300;
+.gizmo {
+  --gz-s1: #2a78d6; --gz-s2: #eb6834; --gz-s3: #1baf7a; --gz-s4: #eda100; --gz-s5: #e87ba4; --gz-s6: #008300;
 }
-.theme-dark .note-app {
-  --na-s1: #3987e5; --na-s2: #d95926; --na-s3: #199e70; --na-s4: #c98500; --na-s5: #d55181; --na-s6: #0ca30c;
+.theme-dark .gizmo {
+  --gz-s1: #3987e5; --gz-s2: #d95926; --gz-s3: #199e70; --gz-s4: #c98500; --gz-s5: #d55181; --gz-s6: #0ca30c;
 }
-.note-app .na-accent { --na-c: var(--interactive-accent); }
-.note-app .na-s1 { --na-c: var(--na-s1); }
-.note-app .na-s2 { --na-c: var(--na-s2); }
-.note-app .na-s3 { --na-c: var(--na-s3); }
-.note-app .na-s4 { --na-c: var(--na-s4); }
-.note-app .na-s5 { --na-c: var(--na-s5); }
-.note-app .na-s6 { --na-c: var(--na-s6); }
-.note-app .na-other { --na-c: var(--text-faint); }
-.note-app .na-line { fill: none; stroke: var(--na-c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.note-app .na-area { fill: var(--na-c); opacity: 0.1; }
-.note-app .na-dot { fill: var(--na-c); stroke: var(--background-secondary); stroke-width: 2; }
-.note-app .na-bar { fill: var(--na-c); }
-.note-app .na-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
-.note-app .na-legend-item { display: inline-flex; align-items: center; gap: 6px; }
-.note-app .na-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--na-c); flex: none; }
-.note-app .na-readout .na-legend-item { margin-left: 12px; }
-.note-app .na-cursor { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
-.note-app .na-readout {
+.gizmo .gz-accent { --gz-c: var(--interactive-accent); }
+.gizmo .gz-s1 { --gz-c: var(--gz-s1); }
+.gizmo .gz-s2 { --gz-c: var(--gz-s2); }
+.gizmo .gz-s3 { --gz-c: var(--gz-s3); }
+.gizmo .gz-s4 { --gz-c: var(--gz-s4); }
+.gizmo .gz-s5 { --gz-c: var(--gz-s5); }
+.gizmo .gz-s6 { --gz-c: var(--gz-s6); }
+.gizmo .gz-other { --gz-c: var(--text-faint); }
+.gizmo .gz-line { fill: none; stroke: var(--gz-c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.gizmo .gz-area { fill: var(--gz-c); opacity: 0.1; }
+.gizmo .gz-dot { fill: var(--gz-c); stroke: var(--background-secondary); stroke-width: 2; }
+.gizmo .gz-bar { fill: var(--gz-c); }
+.gizmo .gz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.gizmo .gz-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gizmo .gz-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--gz-c); flex: none; }
+.gizmo .gz-readout .gz-legend-item { margin-left: 12px; }
+.gizmo .gz-cursor { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
+.gizmo .gz-readout {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
@@ -135,53 +135,53 @@
 }
 
 /* Tables and lists */
-.note-app .na-table-wrap { overflow-x: auto; }
-.note-app .na-table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small); }
-.note-app .na-table th { text-align: left; color: var(--text-muted); font-weight: var(--font-medium); }
-.note-app .na-table th, .note-app .na-table td {
+.gizmo .gz-table-wrap { overflow-x: auto; }
+.gizmo .gz-table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small); }
+.gizmo .gz-table th { text-align: left; color: var(--text-muted); font-weight: var(--font-medium); }
+.gizmo .gz-table th, .gizmo .gz-table td {
   padding: var(--size-4-1) var(--size-4-2);
   border-bottom: 1px solid var(--background-modifier-border);
 }
-.note-app .na-table td.na-num { text-align: right; font-variant-numeric: tabular-nums; }
-.note-app .na-table th.na-num { text-align: right; }
-.note-app .na-list, .note-app .na-checklist { margin: 0; padding-left: var(--size-4-5); }
-.note-app .na-checklist { list-style: none; padding-left: 0; }
-.note-app .na-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }
-.note-app .na-checklist input:checked + span { color: var(--text-faint); text-decoration: line-through; }
+.gizmo .gz-table td.gz-num { text-align: right; font-variant-numeric: tabular-nums; }
+.gizmo .gz-table th.gz-num { text-align: right; }
+.gizmo .gz-list, .gizmo .gz-checklist { margin: 0; padding-left: var(--size-4-5); }
+.gizmo .gz-checklist { list-style: none; padding-left: 0; }
+.gizmo .gz-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }
+.gizmo .gz-checklist input:checked + span { color: var(--text-faint); text-decoration: line-through; }
 
 /* Forms */
-.note-app .na-form { display: flex; flex-wrap: wrap; gap: var(--size-4-3); align-items: flex-end; }
-.note-app .na-field { display: flex; flex-direction: column; gap: var(--size-4-1); font-size: var(--font-ui-small); color: var(--text-muted); }
-.note-app .na-field textarea { min-width: 260px; }
+.gizmo .gz-form { display: flex; flex-wrap: wrap; gap: var(--size-4-3); align-items: flex-end; }
+.gizmo .gz-field { display: flex; flex-direction: column; gap: var(--size-4-1); font-size: var(--font-ui-small); color: var(--text-muted); }
+.gizmo .gz-field textarea { min-width: 260px; }
 
 /* Progress and timer */
-.note-app .na-progress {
+.gizmo .gz-progress {
   height: 8px;
   border-radius: 4px;
   background: var(--background-modifier-border);
   margin-top: var(--size-4-2);
   overflow: hidden;
 }
-.note-app .na-progress-fill { height: 100%; background: var(--interactive-accent); }
-.note-app .na-clock { margin-bottom: var(--size-4-2); }
-.note-app .na-actions { display: flex; gap: var(--size-4-2); margin-top: var(--size-4-2); }
-.note-app .na-example { margin: var(--size-4-2) 0; padding: var(--size-4-2) var(--size-4-3); background: var(--background-primary); border-radius: var(--radius-s); font-size: var(--font-ui-small); }
-.note-app .na-more { margin-top: var(--size-4-2); }
-.note-app .na-loading .na-empty { font-style: italic; }
+.gizmo .gz-progress-fill { height: 100%; background: var(--interactive-accent); }
+.gizmo .gz-clock { margin-bottom: var(--size-4-2); }
+.gizmo .gz-actions { display: flex; gap: var(--size-4-2); margin-top: var(--size-4-2); }
+.gizmo .gz-example { margin: var(--size-4-2) 0; padding: var(--size-4-2) var(--size-4-3); background: var(--background-primary); border-radius: var(--radius-s); font-size: var(--font-ui-small); }
+.gizmo .gz-more { margin-top: var(--size-4-2); }
+.gizmo .gz-loading .gz-empty { font-style: italic; }
 
-.note-app .na-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
-.note-app .na-pie-svg { flex: none; }
-.note-app .na-slice { fill: var(--na-c); stroke: var(--background-secondary); stroke-width: 2; }
-.note-app .na-ring { fill: none; stroke: var(--na-c); }
-.note-app .na-pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-ui-small); color: var(--text-normal); }
-.note-app .na-pie-value { color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
+.gizmo .gz-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.gizmo .gz-pie-svg { flex: none; }
+.gizmo .gz-slice { fill: var(--gz-c); stroke: var(--background-secondary); stroke-width: 2; }
+.gizmo .gz-ring { fill: none; stroke: var(--gz-c); }
+.gizmo .gz-pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-ui-small); color: var(--text-normal); }
+.gizmo .gz-pie-value { color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
 
-.note-app .na-inputs { display: flex; flex-wrap: wrap; gap: var(--size-4-2) var(--size-4-4); margin-bottom: var(--size-4-3); }
-.note-app .na-input { display: flex; align-items: center; gap: var(--size-4-1); }
-.note-app .na-input-name { color: var(--text-muted); font-size: var(--font-ui-small); margin-right: var(--size-4-1); }
-.note-app .na-stale { opacity: 0.55; transition: opacity 0.15s; }
+.gizmo .gz-inputs { display: flex; flex-wrap: wrap; gap: var(--size-4-2) var(--size-4-4); margin-bottom: var(--size-4-3); }
+.gizmo .gz-input { display: flex; align-items: center; gap: var(--size-4-1); }
+.gizmo .gz-input-name { color: var(--text-muted); font-size: var(--font-ui-small); margin-right: var(--size-4-1); }
+.gizmo .gz-stale { opacity: 0.55; transition: opacity 0.15s; }
 
-.note-app .na-new {
+.gizmo .gz-new {
   font-size: var(--font-ui-smaller);
   font-weight: var(--font-semibold);
   color: var(--text-on-accent);
@@ -192,58 +192,58 @@
 }
 
 /* Selection, row actions, edit in place */
-.note-app .na-waiting { color: var(--text-muted); font-size: var(--font-ui-small); font-style: italic; }
-.note-app .na-search { min-width: 180px; }
-.note-app .na-selectable { cursor: pointer; }
-.note-app .na-selectable:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.note-app li.na-selectable { border-radius: var(--radius-s); padding: 1px var(--size-4-1); }
-.note-app li.na-selected, .note-app tr.na-selected td, .note-app .na-legend-item.na-selected {
+.gizmo .gz-waiting { color: var(--text-muted); font-size: var(--font-ui-small); font-style: italic; }
+.gizmo .gz-search { min-width: 180px; }
+.gizmo .gz-selectable { cursor: pointer; }
+.gizmo .gz-selectable:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.gizmo li.gz-selectable { border-radius: var(--radius-s); padding: 1px var(--size-4-1); }
+.gizmo li.gz-selected, .gizmo tr.gz-selected td, .gizmo .gz-legend-item.gz-selected {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
-.note-app .na-legend-item.na-selected { border-radius: var(--radius-s); font-weight: var(--font-semibold); }
-.note-app .na-chart-svg:has(.na-selected) .na-bar.na-selectable:not(.na-selected),
-.note-app .na-pie:has(.na-selected) .na-selectable:not(.na-selected) { opacity: 0.35; }
-.note-app .na-bar.na-selected, .note-app .na-slice.na-selected { stroke: var(--text-normal); stroke-width: 1.5; }
-.note-app .na-row-action { margin-left: var(--size-4-2); }
-.note-app td.na-row-actions { text-align: right; white-space: nowrap; }
-.note-app .na-table .na-edit { width: 100%; min-width: 4em; }
-.note-app .na-table input.na-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
+.gizmo .gz-legend-item.gz-selected { border-radius: var(--radius-s); font-weight: var(--font-semibold); }
+.gizmo .gz-chart-svg:has(.gz-selected) .gz-bar.gz-selectable:not(.gz-selected),
+.gizmo .gz-pie:has(.gz-selected) .gz-selectable:not(.gz-selected) { opacity: 0.35; }
+.gizmo .gz-bar.gz-selected, .gizmo .gz-slice.gz-selected { stroke: var(--text-normal); stroke-width: 1.5; }
+.gizmo .gz-row-action { margin-left: var(--size-4-2); }
+.gizmo td.gz-row-actions { text-align: right; white-space: nowrap; }
+.gizmo .gz-table .gz-edit { width: 100%; min-width: 4em; }
+.gizmo .gz-table input.gz-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
 
 /* Views: calendar, board, scatter, timeline */
 /* A five-step single-hue scale: the first chart colour mixed into the panel background. */
-.note-app .na-step-1 { --na-shade: color-mix(in srgb, var(--na-s1) 24%, var(--background-secondary)); }
-.note-app .na-step-2 { --na-shade: color-mix(in srgb, var(--na-s1) 42%, var(--background-secondary)); }
-.note-app .na-step-3 { --na-shade: color-mix(in srgb, var(--na-s1) 60%, var(--background-secondary)); }
-.note-app .na-step-4 { --na-shade: color-mix(in srgb, var(--na-s1) 80%, var(--background-secondary)); }
-.note-app .na-step-5 { --na-shade: var(--na-s1); }
-.note-app .na-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
-.note-app .na-cal-title { font-size: var(--font-ui-small); font-weight: var(--font-semibold); min-width: 6em; text-align: center; }
-.note-app .na-cal-today { margin-left: auto; }
-.note-app .na-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
-.note-app .na-cal-dow { color: var(--text-muted); font-size: var(--font-ui-smaller); text-align: center; }
-.note-app .na-cal-grid .na-cal-day {
+.gizmo .gz-step-1 { --gz-shade: color-mix(in srgb, var(--gz-s1) 24%, var(--background-secondary)); }
+.gizmo .gz-step-2 { --gz-shade: color-mix(in srgb, var(--gz-s1) 42%, var(--background-secondary)); }
+.gizmo .gz-step-3 { --gz-shade: color-mix(in srgb, var(--gz-s1) 60%, var(--background-secondary)); }
+.gizmo .gz-step-4 { --gz-shade: color-mix(in srgb, var(--gz-s1) 80%, var(--background-secondary)); }
+.gizmo .gz-step-5 { --gz-shade: var(--gz-s1); }
+.gizmo .gz-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
+.gizmo .gz-cal-title { font-size: var(--font-ui-small); font-weight: var(--font-semibold); min-width: 6em; text-align: center; }
+.gizmo .gz-cal-today { margin-left: auto; }
+.gizmo .gz-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
+.gizmo .gz-cal-dow { color: var(--text-muted); font-size: var(--font-ui-smaller); text-align: center; }
+.gizmo .gz-cal-grid .gz-cal-day {
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 3.2em;
   padding: 3px 5px;
   border-radius: var(--radius-s);
-  background: var(--na-shade, var(--background-primary));
+  background: var(--gz-shade, var(--background-primary));
   font-size: var(--font-ui-smaller);
 }
-.note-app .na-cal-val { align-self: flex-end; font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
-.note-app .na-cal-grid .na-step-4, .note-app .na-cal-grid .na-step-5 { color: var(--text-on-accent); }
-.note-app .na-cal-grid .na-today { box-shadow: inset 0 0 0 2px var(--text-normal); }
-.note-app .na-cal-scroll { overflow-x: auto; }
-.note-app .na-cal-year { display: block; }
-.note-app .na-cal-year .na-cal-day { fill: var(--na-shade, var(--background-primary)); stroke: var(--background-modifier-border); stroke-width: 1; }
-.note-app .na-cal-year .na-cal-day.na-today { stroke: var(--text-normal); stroke-width: 2; }
-.note-app .na-cal-year .na-cal-day.na-selected { stroke: var(--interactive-accent); stroke-width: 2; }
-.note-app .na-cal-grid .na-cal-day.na-selected { box-shadow: 0 0 0 2px var(--interactive-accent); }
-.note-app .na-cal-grid .na-cal-day.na-today.na-selected { box-shadow: inset 0 0 0 2px var(--text-normal), 0 0 0 2px var(--interactive-accent); }
-.note-app .na-board { display: flex; align-items: flex-start; gap: var(--size-4-3); overflow-x: auto; padding-bottom: var(--size-4-1); }
-.note-app .na-board-col {
+.gizmo .gz-cal-val { align-self: flex-end; font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+.gizmo .gz-cal-grid .gz-step-4, .gizmo .gz-cal-grid .gz-step-5 { color: var(--text-on-accent); }
+.gizmo .gz-cal-grid .gz-today { box-shadow: inset 0 0 0 2px var(--text-normal); }
+.gizmo .gz-cal-scroll { overflow-x: auto; }
+.gizmo .gz-cal-year { display: block; }
+.gizmo .gz-cal-year .gz-cal-day { fill: var(--gz-shade, var(--background-primary)); stroke: var(--background-modifier-border); stroke-width: 1; }
+.gizmo .gz-cal-year .gz-cal-day.gz-today { stroke: var(--text-normal); stroke-width: 2; }
+.gizmo .gz-cal-year .gz-cal-day.gz-selected { stroke: var(--interactive-accent); stroke-width: 2; }
+.gizmo .gz-cal-grid .gz-cal-day.gz-selected { box-shadow: 0 0 0 2px var(--interactive-accent); }
+.gizmo .gz-cal-grid .gz-cal-day.gz-today.gz-selected { box-shadow: inset 0 0 0 2px var(--text-normal), 0 0 0 2px var(--interactive-accent); }
+.gizmo .gz-board { display: flex; align-items: flex-start; gap: var(--size-4-3); overflow-x: auto; padding-bottom: var(--size-4-1); }
+.gizmo .gz-board-col {
   flex: 1 0 180px;
   min-width: 180px;
   background: var(--background-primary);
@@ -251,11 +251,11 @@
   border-radius: var(--radius-m);
   padding: var(--size-4-2);
 }
-.note-app .na-board-col.na-over { outline: 2px dashed var(--interactive-accent); outline-offset: -2px; }
-.note-app .na-board-head { display: flex; justify-content: space-between; gap: var(--size-4-2); margin-bottom: var(--size-4-2); font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
-.note-app .na-board-count { color: var(--text-muted); font-weight: var(--font-normal); font-variant-numeric: tabular-nums; }
-.note-app .na-board-cards { display: flex; flex-direction: column; gap: var(--size-4-2); min-height: 2.5em; }
-.note-app .na-board-card {
+.gizmo .gz-board-col.gz-over { outline: 2px dashed var(--interactive-accent); outline-offset: -2px; }
+.gizmo .gz-board-head { display: flex; justify-content: space-between; gap: var(--size-4-2); margin-bottom: var(--size-4-2); font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
+.gizmo .gz-board-count { color: var(--text-muted); font-weight: var(--font-normal); font-variant-numeric: tabular-nums; }
+.gizmo .gz-board-cards { display: flex; flex-direction: column; gap: var(--size-4-2); min-height: 2.5em; }
+.gizmo .gz-board-card {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
@@ -266,37 +266,37 @@
   font-size: var(--font-ui-small);
   cursor: grab;
 }
-.note-app .na-board-text { overflow-wrap: anywhere; }
-.note-app .na-board-card.na-dragging { opacity: 0.4; }
-.note-app .na-board-card.na-busy { opacity: 0.5; pointer-events: none; }
-.note-app .na-board-card.na-selected { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
-.note-app select.na-move { font-size: var(--font-ui-smaller); color: var(--text-muted); height: auto; padding: 1px var(--size-4-2); }
-.note-app .na-scatter-dot { fill: var(--na-c); fill-opacity: 0.7; stroke: none; }
-.note-app .na-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.note-app .na-scatter-dot.na-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
-.note-app .na-chart-svg:has(.na-scatter-dot.na-selected) .na-scatter-dot:not(.na-selected) { opacity: 0.35; }
-.note-app .na-timeline { --na-tl-label: 140px; font-size: var(--font-ui-small); }
-.note-app .na-tl-axis { position: relative; height: 1.6em; margin-left: var(--na-tl-label); }
-.note-app .na-tl-tick { position: absolute; transform: translateX(-50%); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; }
-.note-app .na-tl-body { position: relative; }
-.note-app .na-tl-grid { position: absolute; top: 0; bottom: 0; left: var(--na-tl-label); right: 0; pointer-events: none; }
-.note-app .na-tl-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--background-modifier-border); }
-.note-app .na-tl-today { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--color-red); }
-.note-app .na-tl-row { display: grid; grid-template-columns: var(--na-tl-label) minmax(0, 1fr); align-items: center; }
-.note-app .na-tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: var(--size-4-2); }
-.note-app .na-tl-track { position: relative; height: 1.9em; }
-.note-app .na-tl-bar { position: absolute; top: 22%; bottom: 22%; min-width: 4px; border-radius: 4px; background: var(--na-s1); }
-.note-app .na-tl-dot { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--na-s1); }
-.note-app .na-tl-bar:focus-visible, .note-app .na-tl-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.note-app .na-tl-bar.na-selected, .note-app .na-tl-dot.na-selected { outline: 2px solid var(--text-normal); outline-offset: 1px; }
-.note-app .na-tl-body:has(.na-selected) .na-tl-bar:not(.na-selected), .note-app .na-tl-body:has(.na-selected) .na-tl-dot:not(.na-selected) { opacity: 0.45; }
+.gizmo .gz-board-text { overflow-wrap: anywhere; }
+.gizmo .gz-board-card.gz-dragging { opacity: 0.4; }
+.gizmo .gz-board-card.gz-busy { opacity: 0.5; pointer-events: none; }
+.gizmo .gz-board-card.gz-selected { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
+.gizmo select.gz-move { font-size: var(--font-ui-smaller); color: var(--text-muted); height: auto; padding: 1px var(--size-4-2); }
+.gizmo .gz-scatter-dot { fill: var(--gz-c); fill-opacity: 0.7; stroke: none; }
+.gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
+.gizmo .gz-chart-svg:has(.gz-scatter-dot.gz-selected) .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
+.gizmo .gz-timeline { --gz-tl-label: 140px; font-size: var(--font-ui-small); }
+.gizmo .gz-tl-axis { position: relative; height: 1.6em; margin-left: var(--gz-tl-label); }
+.gizmo .gz-tl-tick { position: absolute; transform: translateX(-50%); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; }
+.gizmo .gz-tl-body { position: relative; }
+.gizmo .gz-tl-grid { position: absolute; top: 0; bottom: 0; left: var(--gz-tl-label); right: 0; pointer-events: none; }
+.gizmo .gz-tl-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--background-modifier-border); }
+.gizmo .gz-tl-today { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--color-red); }
+.gizmo .gz-tl-row { display: grid; grid-template-columns: var(--gz-tl-label) minmax(0, 1fr); align-items: center; }
+.gizmo .gz-tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: var(--size-4-2); }
+.gizmo .gz-tl-track { position: relative; height: 1.9em; }
+.gizmo .gz-tl-bar { position: absolute; top: 22%; bottom: 22%; min-width: 4px; border-radius: 4px; background: var(--gz-s1); }
+.gizmo .gz-tl-dot { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--gz-s1); }
+.gizmo .gz-tl-bar:focus-visible, .gizmo .gz-tl-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.gizmo .gz-tl-bar.gz-selected, .gizmo .gz-tl-dot.gz-selected { outline: 2px solid var(--text-normal); outline-offset: 1px; }
+.gizmo .gz-tl-body:has(.gz-selected) .gz-tl-bar:not(.gz-selected), .gizmo .gz-tl-body:has(.gz-selected) .gz-tl-dot:not(.gz-selected) { opacity: 0.45; }
 /* Display: format, cells, cards, compare, goal */
-.note-app .na-cell-bar { height: 8px; min-width: 56px; border-radius: 4px; background: var(--background-modifier-border); overflow: hidden; }
-.note-app .na-cell-fill { height: 100%; background: var(--interactive-accent); }
-.note-app .na-spark { display: block; overflow: visible; }
-.note-app .na-spark-line { fill: none; stroke: var(--na-c); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
-.note-app .na-spark-dot { fill: var(--na-c); }
-.note-app .na-check {
+.gizmo .gz-cell-bar { height: 8px; min-width: 56px; border-radius: 4px; background: var(--background-modifier-border); overflow: hidden; }
+.gizmo .gz-cell-fill { height: 100%; background: var(--interactive-accent); }
+.gizmo .gz-spark { display: block; overflow: visible; }
+.gizmo .gz-spark-line { fill: none; stroke: var(--gz-c); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.gizmo .gz-spark-dot { fill: var(--gz-c); }
+.gizmo .gz-check {
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -307,12 +307,12 @@
   font-size: var(--font-ui-smaller);
   line-height: 1;
 }
-.note-app .na-check.is-on { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
-.note-app .na-cell-img { display: block; height: 40px; width: auto; max-width: 100%; border-radius: var(--radius-s); object-fit: cover; }
-.note-app .na-table td a.external-link { display: inline-block; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+.gizmo .gz-check.is-on { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
+.gizmo .gz-cell-img { display: block; height: 40px; width: auto; max-width: 100%; border-radius: var(--radius-s); object-fit: cover; }
+.gizmo .gz-table td a.external-link { display: inline-block; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
 
-.note-app .na-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--size-4-3); }
-.note-app .na-rowcard {
+.gizmo .gz-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--size-4-3); }
+.gizmo .gz-rowcard {
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
@@ -323,22 +323,22 @@
   border-radius: var(--radius-m);
   font-size: var(--font-ui-small);
 }
-.note-app .na-rowcard.na-selected { background: var(--background-modifier-hover); border-color: var(--interactive-accent); }
-.note-app .na-rowcard-image .na-cell-img { height: 120px; width: 100%; }
-.note-app .na-rowcard-title { font-weight: var(--font-semibold); overflow-wrap: anywhere; }
-.note-app .na-rowcard-line { display: flex; justify-content: space-between; gap: var(--size-4-2); }
-.note-app .na-rowcard-label { color: var(--text-muted); }
-.note-app .na-rowcard-value { min-width: 0; text-align: right; overflow-wrap: anywhere; }
-.note-app .na-rowcard-value .na-edit { max-width: 100%; }
-.note-app .na-rowcard-actions { margin-top: auto; text-align: right; }
-.note-app .na-compare { margin-top: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
-.note-app .na-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
-.note-app .na-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); }
-.note-app .na-stacked:not(.na-selected) { stroke: var(--background-secondary); stroke-width: 1; }
+.gizmo .gz-rowcard.gz-selected { background: var(--background-modifier-hover); border-color: var(--interactive-accent); }
+.gizmo .gz-rowcard-image .gz-cell-img { height: 120px; width: 100%; }
+.gizmo .gz-rowcard-title { font-weight: var(--font-semibold); overflow-wrap: anywhere; }
+.gizmo .gz-rowcard-line { display: flex; justify-content: space-between; gap: var(--size-4-2); }
+.gizmo .gz-rowcard-label { color: var(--text-muted); }
+.gizmo .gz-rowcard-value { min-width: 0; text-align: right; overflow-wrap: anywhere; }
+.gizmo .gz-rowcard-value .gz-edit { max-width: 100%; }
+.gizmo .gz-rowcard-actions { margin-top: auto; text-align: right; }
+.gizmo .gz-compare { margin-top: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+.gizmo .gz-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
+.gizmo .gz-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); }
+.gizmo .gz-stacked:not(.gz-selected) { stroke: var(--background-secondary); stroke-width: 1; }
 /* Authoring: suggestions, error links, inspector */
-.suggestion-item .na-suggest-key { color: var(--text-normal); }
-.suggestion-item .na-suggest-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); }
-.note-app button.na-error-link {
+.suggestion-item .gz-suggest-key { color: var(--text-normal); }
+.suggestion-item .gz-suggest-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.gizmo button.gz-error-link {
   background: none;
   box-shadow: none;
   border: none;
@@ -352,17 +352,17 @@
   text-decoration: underline;
   cursor: pointer;
 }
-.note-app button.na-error-link:hover { color: var(--text-accent-hover); }
-.note-app .na-inspector { max-height: 60vh; overflow: auto; }
-.note-app .na-inspect-source + .na-inspect-source { margin-top: var(--size-4-3); padding-top: var(--size-4-3); border-top: 1px solid var(--background-modifier-border); }
-.note-app .na-inspect-head { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
-.note-app .na-inspect-kind { color: var(--text-muted); font-weight: var(--font-normal); }
-.note-app .na-inspect-url { color: var(--text-faint); font-size: var(--font-ui-smaller); word-break: break-all; margin-bottom: var(--size-4-1); }
-.note-app .na-inspect-error { color: var(--text-error); font-size: var(--font-ui-small); }
-.note-app .na-tree { font-family: var(--font-monospace); font-size: var(--font-ui-smaller); line-height: 1.6; }
-.note-app .na-tree .na-children { margin-left: var(--size-4-3); padding-left: var(--size-4-2); border-left: 1px solid var(--background-modifier-border); }
-.note-app .na-tree summary { cursor: pointer; }
-.note-app .na-tree button.na-key {
+.gizmo button.gz-error-link:hover { color: var(--text-accent-hover); }
+.gizmo .gz-inspector { max-height: 60vh; overflow: auto; }
+.gizmo .gz-inspect-source + .gz-inspect-source { margin-top: var(--size-4-3); padding-top: var(--size-4-3); border-top: 1px solid var(--background-modifier-border); }
+.gizmo .gz-inspect-head { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
+.gizmo .gz-inspect-kind { color: var(--text-muted); font-weight: var(--font-normal); }
+.gizmo .gz-inspect-url { color: var(--text-faint); font-size: var(--font-ui-smaller); word-break: break-all; margin-bottom: var(--size-4-1); }
+.gizmo .gz-inspect-error { color: var(--text-error); font-size: var(--font-ui-small); }
+.gizmo .gz-tree { font-family: var(--font-monospace); font-size: var(--font-ui-smaller); line-height: 1.6; }
+.gizmo .gz-tree .gz-children { margin-left: var(--size-4-3); padding-left: var(--size-4-2); border-left: 1px solid var(--background-modifier-border); }
+.gizmo .gz-tree summary { cursor: pointer; }
+.gizmo .gz-tree button.gz-key {
   background: none;
   box-shadow: none;
   border: none;
@@ -372,36 +372,36 @@
   color: var(--text-normal);
   cursor: pointer;
 }
-.note-app .na-tree button.na-key::after { content: ":"; color: var(--text-faint); }
-.note-app .na-tree button.na-key:hover { color: var(--text-accent); text-decoration: underline; }
-.note-app .na-tree .na-t-string { color: var(--color-green); }
-.note-app .na-tree .na-t-number { color: var(--color-blue); }
-.note-app .na-tree .na-t-bool { color: var(--color-orange); }
-.note-app .na-tree .na-t-null, .note-app .na-tree .na-t-meta { color: var(--text-muted); }
-.note-app .na-tree .na-copied { color: var(--text-accent); margin-right: var(--size-4-2); font-family: var(--font-interface); }
-.note-app .na-tree .na-inspect-more { color: var(--text-faint); }
+.gizmo .gz-tree button.gz-key::after { content: ":"; color: var(--text-faint); }
+.gizmo .gz-tree button.gz-key:hover { color: var(--text-accent); text-decoration: underline; }
+.gizmo .gz-tree .gz-t-string { color: var(--color-green); }
+.gizmo .gz-tree .gz-t-number { color: var(--color-blue); }
+.gizmo .gz-tree .gz-t-bool { color: var(--color-orange); }
+.gizmo .gz-tree .gz-t-null, .gizmo .gz-tree .gz-t-meta { color: var(--text-muted); }
+.gizmo .gz-tree .gz-copied { color: var(--text-accent); margin-right: var(--size-4-2); font-family: var(--font-interface); }
+.gizmo .gz-tree .gz-inspect-more { color: var(--text-faint); }
 /* Embeds and lenses */
 /* In a note the app sits at the text's width, not in the 960px shell of an app tab. */
-.na-embed .note-app,
-.na-lens .note-app { padding: 0; max-width: none; margin: 0; }
-.na-embed { margin: var(--size-4-2) 0; }
+.gz-embed .gizmo,
+.gz-lens .gizmo { padding: 0; max-width: none; margin: 0; }
+.gz-embed { margin: var(--size-4-2) 0; }
 /* The lens sits above the editor and the preview, which share what is left of the view's height. */
-.view-content:has(> .na-lens) { display: flex; flex-direction: column; }
-.view-content:has(> .na-lens) > .markdown-source-view,
-.view-content:has(> .na-lens) > .markdown-reading-view { flex: 1 1 0; min-height: 0; }
-.na-lens {
+.view-content:has(> .gz-lens) { display: flex; flex-direction: column; }
+.view-content:has(> .gz-lens) > .markdown-source-view,
+.view-content:has(> .gz-lens) > .markdown-reading-view { flex: 1 1 0; min-height: 0; }
+.gz-lens {
   flex: none;
   max-height: 50%;
   overflow-y: auto;
   padding: var(--size-4-2) var(--size-4-4);
   border-bottom: 1px solid var(--background-modifier-border);
 }
-.na-lens-item { max-width: var(--file-line-width); margin: 0 auto; }
-.na-lens-item + .na-lens-item { margin-top: var(--size-4-2); }
-.na-lens-head { display: flex; align-items: center; gap: var(--size-4-1); font-size: var(--font-ui-small); }
-.na-lens-head .na-lens-name { color: var(--text-muted); text-decoration: none; }
-.na-lens-head .na-lens-name:hover { color: var(--text-normal); }
-button.na-lens-toggle {
+.gz-lens-item { max-width: var(--file-line-width); margin: 0 auto; }
+.gz-lens-item + .gz-lens-item { margin-top: var(--size-4-2); }
+.gz-lens-head { display: flex; align-items: center; gap: var(--size-4-1); font-size: var(--font-ui-small); }
+.gz-lens-head .gz-lens-name { color: var(--text-muted); text-decoration: none; }
+.gz-lens-head .gz-lens-name:hover { color: var(--text-normal); }
+button.gz-lens-toggle {
   background: none;
   box-shadow: none;
   border: none;
@@ -409,26 +409,26 @@ button.na-lens-toggle {
   padding: 0 var(--size-4-1);
   color: var(--text-faint);
 }
-.na-lens-body .note-app { padding-top: var(--size-4-2); }
-.na-lens-item.is-folded .na-lens-body { display: none; }
+.gz-lens-body .gizmo { padding-top: var(--size-4-2); }
+.gz-lens-item.is-folded .gz-lens-body { display: none; }
 /* Background: as-of badge, alerts */
-.note-app .na-panel.na-asof::after {
+.gizmo .gz-panel.gz-asof::after {
   content: attr(data-asof);
   display: block;
   color: var(--text-faint);
   font-size: var(--font-ui-smaller);
   margin-top: var(--size-4-1);
 }
-.note-app .na-alerts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--size-4-1); }
-.note-app .na-alerts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--size-4-2); }
-.note-app .na-alert-title { color: var(--text-normal); }
-.note-app .na-alert-value { margin-left: auto; color: var(--text-accent); font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+.gizmo .gz-alerts { list-style: none; margin: 0; padding: 0; display: flex; flex-direction: column; gap: var(--size-4-1); }
+.gizmo .gz-alerts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--size-4-2); }
+.gizmo .gz-alert-title { color: var(--text-normal); }
+.gizmo .gz-alert-value { margin-left: auto; color: var(--text-accent); font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
 
 /* Background: status bar items stay on one line in a narrow window, cut short rather than stacked. */
-.status-bar .na-status { white-space: nowrap; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+.status-bar .gz-status { white-space: nowrap; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
 
 /* Detail: a sentence about the picked row, under the panel's rows */
-.note-app .na-detail {
+.gizmo .gz-detail {
   display: flex;
   flex-wrap: wrap;
   align-items: baseline;
@@ -440,7 +440,7 @@ button.na-lens-toggle {
   background: var(--background-modifier-hover);
   font-size: var(--font-ui-small);
 }
-.note-app .na-detail-text { flex: 1 1 16em; }
+.gizmo .gz-detail-text { flex: 1 1 16em; }
 
 /* Edit in place: a dropdown in an edited column is as wide as its longest choice, never cut short. */
-.note-app .na-table select.na-edit { width: auto; min-width: max-content; }
+.gizmo .gz-table select.gz-edit { width: auto; min-width: max-content; }

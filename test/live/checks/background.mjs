@@ -20,7 +20,7 @@ export default async function background(t) {
       const doses = () => na.fm("Apps/Meds data.md")?.doses?.length ?? 0;
       const before = { doses: doses(), lines: ((await na.read("Daily.md")).match(/Took meds/g) ?? []).length, status: na.status().find((s) => s.startsWith("Doses today")) };
       const mark = na.notices.length;
-      app.commands.executeCommandById("note-apps:Apps/Meds.md:took-meds");
+      app.commands.executeCommandById("gizmo:Apps/Meds.md:took-meds");
       const notices = await na.noticesSince(mark, "Logged");
       await na.until(() => doses() === before.doses + 1, 3000);
       const status = await na.until(() => na.status().find((s) => s.startsWith("Doses today") && s !== before.status), 3000);
@@ -33,7 +33,7 @@ export default async function background(t) {
   await check("Space weather: one recorded Kp row, the NOAA answer cached on disk, Kp now in the status bar", async () => {
     const r = await run(`
       const log = await na.until(() => na.fm("Apps/Space weather data.md")?.kp_log, 5000);
-      const dir = ".obsidian/plugins/note-apps/cache";
+      const dir = ".obsidian/plugins/gizmo/cache";
       const files = (await app.vault.adapter.exists(dir)) ? (await app.vault.adapter.list(dir)).files.filter((f) => f.endsWith(".json")) : [];
       let noaa = false;
       for (const f of files) if ((await app.vault.adapter.read(f)).includes("services.swpc.noaa.gov/json/planetary_k_index_1m.json")) noaa = true;
@@ -48,7 +48,7 @@ export default async function background(t) {
       const count = () => na.fm("Apps/Space weather data.md")?.sightings?.length ?? 0;
       const before = count();
       const mark = na.notices.length;
-      app.workspace.protocolHandler.dispatch({ action: "note-apps", app: "Space weather", do: "saw-aurora" });
+      app.workspace.protocolHandler.dispatch({ action: "gizmo", app: "Space weather", do: "saw-aurora" });
       const notices = await na.noticesSince(mark, "Sighting saved");
       await na.until(() => count() === before + 1, 3000);
       return { before, after: count(), notices };`);
@@ -64,7 +64,7 @@ export default async function background(t) {
       await app.vault.modify(file, original.replace('alert: ">= 5"', 'alert: ">= 0"'));
       const notices = await na.noticesSince(mark, "Space weather: Kp now", 8000);
       await na.open("Apps/Attention");
-      const panel = () => na.view().contentEl.querySelector(".na-view-alerts");
+      const panel = () => na.view().contentEl.querySelector(".gz-view-alerts");
       const listed = await na.until(() => panel() && na.text(panel()).includes("Kp now") && { text: na.text(panel()), links: [...panel().querySelectorAll("a")].map((a) => a.textContent) }, 5000);
       await app.vault.modify(file, original);
       const cleared = await na.until(() => na.text(panel()).includes("Nothing needs attention.") && na.text(panel()), 8000);
@@ -77,17 +77,17 @@ export default async function background(t) {
   await check("clicking a status bar item opens its app; turning the plugin off takes the items and app commands away", async () => {
     const r = await run(`
       await na.openMd("Daily.md", "preview");
-      const item = [...document.querySelectorAll(".status-bar .na-status")].find((e) => e.textContent.startsWith("Doses today"));
+      const item = [...document.querySelectorAll(".status-bar .gz-status")].find((e) => e.textContent.startsWith("Doses today"));
       item.click();
       await na.sleep(1000);
       const opened = na.state();
-      await app.plugins.disablePlugin("note-apps");
+      await app.plugins.disablePlugin("gizmo");
       await na.sleep(800);
-      const off = { status: document.querySelectorAll(".na-status").length, commands: Object.keys(app.commands.commands).filter((id) => id.startsWith("note-apps:")) };
-      await app.plugins.enablePlugin("note-apps");
+      const off = { status: document.querySelectorAll(".gz-status").length, commands: Object.keys(app.commands.commands).filter((id) => id.startsWith("gizmo:")) };
+      await app.plugins.enablePlugin("gizmo");
       await na.until(() => na.status().length > 0, 5000);
       return { opened, off, on: { status: na.status().length, commands: na.commands().length } };`);
-    expect(r.opened === "note-app:Apps/Meds.md" && r.off.status === 0 && r.off.commands.length === 0 && r.on.status > 0 && r.on.commands > 1, r);
+    expect(r.opened === "gizmo:Apps/Meds.md" && r.off.status === 0 && r.off.commands.length === 0 && r.on.status > 0 && r.on.commands > 1, r);
     return `opened ${r.opened}; off: no items, no commands; on again: ${r.on.status} items, ${r.on.commands} commands`;
   });
 
@@ -101,17 +101,17 @@ export default async function background(t) {
       [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Reload data").click();
       const el = na.view().contentEl;
       // Every panel that reads the forecast; the walks are in the data note, not on the web.
-      const panels = () => [...el.querySelectorAll(".na-panel")].filter((p) => p.querySelector(".na-title")?.textContent !== "My walks");
+      const panels = () => [...el.querySelectorAll(".gz-panel")].filter((p) => p.querySelector(".gz-title")?.textContent !== "My walks");
       await na.until(() => panels().every((p) => p.hasAttribute("data-asof")), 8000);
-      return { marked: panels().map((p) => p.getAttribute("data-asof")), errors: el.querySelectorAll(".na-error").length };`);
+      return { marked: panels().map((p) => p.getAttribute("data-asof")), errors: el.querySelectorAll(".gz-error").length };`);
     let after;
     try {
       await page.send("Emulation.setDeviceMetricsOverride", { width: 760, height: 800, deviceScaleFactor: 1, mobile: false });
       after = await run(`
         await na.sleep(1200);
         const el = na.view().contentEl;
-        const web = [...el.querySelectorAll(".na-panel")].filter((p) => p.querySelector(".na-title")?.textContent !== "My walks");
-        return { width: el.clientWidth, marked: web.map((p) => p.getAttribute("data-asof")), lines: el.querySelectorAll(".na-view-line path.na-line").length, errors: el.querySelectorAll(".na-error").length };`);
+        const web = [...el.querySelectorAll(".gz-panel")].filter((p) => p.querySelector(".gz-title")?.textContent !== "My walks");
+        return { width: el.clientWidth, marked: web.map((p) => p.getAttribute("data-asof")), lines: el.querySelectorAll(".gz-view-line path.gz-line").length, errors: el.querySelectorAll(".gz-error").length };`);
     } finally {
       await page.send("Emulation.clearDeviceMetricsOverride");
       await run(`if (window.__naFetch) na.plugin().dataLayer.host.fetch = window.__naFetch; delete window.__naFetch;`);
@@ -127,13 +127,13 @@ export default async function background(t) {
       const added = await na.until(() => na.commands().find((c) => c.includes("Coffee")), 3000);
       await app.fileManager.renameFile(na.file("Scratch/Coffee.md"), "Scratch/Coffee log.md");
       const renamed = await na.until(() => na.commands().find((c) => c.includes("Coffee log")), 3000);
-      const old = !(await na.until(() => !na.commands().includes("note-apps:Scratch/Coffee.md:coffee"), 3000));
+      const old = !(await na.until(() => !na.commands().includes("gizmo:Scratch/Coffee.md:coffee"), 3000));
       const name = app.commands.commands[renamed]?.name;
       const text = await na.read("Scratch/Coffee log.md");
       await na.write("Scratch/Coffee log.md", text.replace("shortcut: coffee\\n", ""));
       const gone = await na.until(() => !na.commands().some((c) => c.includes("Coffee")), 3000);
       return { added, renamed, old, name, gone: !!gone, left: na.commands().filter((c) => c.includes("Coffee")) };`);
-    expect(r.added === "note-apps:Scratch/Coffee.md:coffee" && r.renamed === "note-apps:Scratch/Coffee log.md:coffee" && !r.old && r.gone, r);
+    expect(r.added === "gizmo:Scratch/Coffee.md:coffee" && r.renamed === "gizmo:Scratch/Coffee log.md:coffee" && !r.old && r.gone, r);
     return `${r.added} → ${r.renamed} (“${r.name}”) → gone`;
   });
 }

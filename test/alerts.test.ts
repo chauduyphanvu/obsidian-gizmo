@@ -118,12 +118,12 @@ test("view: alerts lists what needs attention across the vault and follows it", 
   document.body.appendChild(root);
   new AppController(root, "Apps/Attention.md", t.env).load();
   await settle();
-  assert.equal(text(root.querySelector(".na-view-alerts .na-empty")), "Nothing needs attention.");
+  assert.equal(text(root.querySelector(".gz-view-alerts .gz-empty")), "Nothing needs attention.");
 
   kp.now = 6;
   t.advance(MIN);
   await t.bg.tick();
-  const items = [...root.querySelectorAll(".na-alerts li")];
+  const items = [...root.querySelectorAll(".gz-alerts li")];
   assert.deepEqual(items.map((li) => [...li.children].map((c) => text(c))), [["Kp", "Kp now", "6"]]);
   (items[0].querySelector("a") as HTMLElement).click();
   assert.deepEqual(t.opened, ["Apps/Kp.md"]);
@@ -131,7 +131,7 @@ test("view: alerts lists what needs attention across the vault and follows it", 
   kp.now = 1;
   t.advance(MIN);
   await t.bg.tick();
-  assert.equal(text(root.querySelector(".na-view-alerts .na-empty")), "Nothing needs attention.");
+  assert.equal(text(root.querySelector(".gz-view-alerts .gz-empty")), "Nothing needs attention.");
 });
 
 test("the status bar and an alert's notice say a value as its view does: values, format, unit and decimals", async () => {
@@ -218,7 +218,7 @@ test("a pinned compare panel's status says the number its view shows, the curren
   document.body.appendChild(root);
   new AppController(root, "Apps/Spend.md", t.env).load();
   await settle(8);
-  const shown = root.querySelector(".na-big")?.textContent;
+  const shown = root.querySelector(".gz-big")?.textContent;
   assert.equal(shown, "20");
   assert.deepEqual(t.out.status.map((s) => s.text), [`This week: ${shown}`]);
   assert.deepEqual(t.notices, [], "120 across both weeks would have been told");

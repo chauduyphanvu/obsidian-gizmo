@@ -17,7 +17,7 @@ export const SPEC_VERSION = 1;
 export function checkVersion(value: unknown): string | undefined {
   if (value === undefined || value === null || value === SPEC_VERSION) return undefined;
   if (typeof value === "number" && Number.isInteger(value) && value > SPEC_VERSION) {
-    return `spec: ${value} needs a newer Note Apps (this one reads spec ${SPEC_VERSION})`;
+    return `spec: ${value} needs a newer Gizmo (this one reads spec ${SPEC_VERSION})`;
   }
   return `spec must be ${SPEC_VERSION}`;
 }
@@ -338,7 +338,7 @@ export interface Entry {
 }
 
 /**
- * The panels an app, a component or a `note-app` block lists: its `panels` items, then the items of
+ * The panels an app, a component or a `gizmo` block lists: its `panels` items, then the items of
  * each tab in `tabs`, in the order typed, each given `tab:` with its tab's name. `tab:` typed on a
  * panel inside `tabs` is an error (the tab it is listed under wins), as is a `tabs` that isn't
  * names with lists of panels.

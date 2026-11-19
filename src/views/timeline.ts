@@ -34,10 +34,10 @@ function when(t: number): string {
 function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, width: number): void {
   const { rows, items, skipped } = itemsOf(p, rowsOf(data));
   const skippedNote = () => {
-    if (skipped) el.createDiv({ cls: "na-label", text: `${skipped} without a date` });
+    if (skipped) el.createDiv({ cls: "gz-label", text: `${skipped} without a date` });
   };
   if (rows.length === 0) {
-    el.createDiv({ cls: "na-empty", text: "Nothing here yet." });
+    el.createDiv({ cls: "gz-empty", text: "Nothing here yet." });
     skippedNote();
     return;
   }
@@ -47,25 +47,25 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
   const left = (t: number) => `left: ${(((t - from) / (to - from)) * 100).toFixed(3)}%`;
   const ticks = timeTicks(from, to, Math.max(2, Math.floor((width - LABEL) / 80)));
 
-  const root = el.createDiv({ cls: "na-timeline" });
-  const axis = root.createDiv({ cls: "na-tl-axis" });
-  for (const t of ticks) axis.createSpan({ cls: "na-tl-tick", text: t.label, attr: { style: left(t.at) } });
-  const body = root.createDiv({ cls: "na-tl-body" });
-  const lines = body.createDiv({ cls: "na-tl-grid", attr: { "aria-hidden": "true" } });
-  for (const t of ticks) lines.createDiv({ cls: "na-tl-line", attr: { style: left(t.at) } });
-  const list = body.createDiv({ cls: "na-tl-rows" });
+  const root = el.createDiv({ cls: "gz-timeline" });
+  const axis = root.createDiv({ cls: "gz-tl-axis" });
+  for (const t of ticks) axis.createSpan({ cls: "gz-tl-tick", text: t.label, attr: { style: left(t.at) } });
+  const body = root.createDiv({ cls: "gz-tl-body" });
+  const lines = body.createDiv({ cls: "gz-tl-grid", attr: { "aria-hidden": "true" } });
+  for (const t of ticks) lines.createDiv({ cls: "gz-tl-line", attr: { style: left(t.at) } });
+  const list = body.createDiv({ cls: "gz-tl-rows" });
 
   shownRows(el, rows, (row) => {
     const { start, end } = items.get(row)!;
     const text = itemText(p, row, ctx.now);
-    const line = list.createDiv({ cls: "na-tl-row" });
-    const label = line.createDiv({ cls: "na-tl-label", attr: { title: text } });
+    const line = list.createDiv({ cls: "gz-tl-row" });
+    const label = line.createDiv({ cls: "gz-tl-label", attr: { title: text } });
     const note = rowNote(p, row);
     if (note) noteLink(label, text, note, ctx);
     else label.setText(text);
     const detail = `${text}: ${end === undefined ? when(start) : `${when(start)} to ${when(end)}`}`;
-    const mark = line.createDiv({ cls: "na-tl-track" }).createDiv({
-      cls: end === undefined ? "na-tl-dot" : "na-tl-bar",
+    const mark = line.createDiv({ cls: "gz-tl-track" }).createDiv({
+      cls: end === undefined ? "gz-tl-dot" : "gz-tl-bar",
       attr: { style: end === undefined ? left(start) : `${left(start)}; width: ${(((end - start) / (to - from)) * 100).toFixed(3)}%`, title: detail, tabindex: 0 },
     });
     if (picks(p)) {
@@ -78,7 +78,7 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
 
   const today = periodStart(ctx.now.getTime(), "day");
   if (today >= from && today <= to) {
-    body.createDiv({ cls: "na-tl-grid", attr: { "aria-hidden": "true" } }).createDiv({ cls: "na-tl-today", attr: { style: left(today) } });
+    body.createDiv({ cls: "gz-tl-grid", attr: { "aria-hidden": "true" } }).createDiv({ cls: "gz-tl-today", attr: { style: left(today) } });
   }
   skippedNote();
 }

@@ -16,19 +16,19 @@ export default async function fresh(t) {
     const r = await run(`
       const mark = na.notices.length;
       const daily = await na.read("Daily.md");
-      const ok = app.commands.executeCommandById("note-apps:Apps/Meds.md:took-meds");
+      const ok = app.commands.executeCommandById("gizmo:Apps/Meds.md:took-meds");
       const notices = await na.noticesSince(mark, "Open Meds");
       return { ok, notices, data: na.exists("Apps/Meds data.md"), dailySame: (await na.read("Daily.md")) === daily };`);
     expect(r.ok && r.notices.includes("Open Meds once to allow it") && !r.data && r.dailySame, r);
     return r.notices.join(" | ");
   });
 
-  await check("obsidian://note-apps links: an unknown app, an unknown shortcut", async () => {
+  await check("obsidian://gizmo links: an unknown app, an unknown shortcut", async () => {
     const r = await run(`
       const mark = na.notices.length;
-      app.workspace.protocolHandler.dispatch({ action: "note-apps", app: "Vitamins", do: "took-meds" });
+      app.workspace.protocolHandler.dispatch({ action: "gizmo", app: "Vitamins", do: "took-meds" });
       await na.noticesSince(mark, "Vitamins");
-      app.workspace.protocolHandler.dispatch({ action: "note-apps", app: "Meds", do: "Took meds" });
+      app.workspace.protocolHandler.dispatch({ action: "gizmo", app: "Meds", do: "Took meds" });
       return await na.noticesSince(mark, "no shortcut");`);
     expect(r.includes("No app called “Vitamins”") && r.includes("Meds has no shortcut “Took meds”"), r);
     return r.join(" | ");
@@ -71,7 +71,7 @@ export default async function fresh(t) {
       app.workspace.setActiveLeaf(today, { focus: true });
       await na.sleep(800);
       const block = na.embeds(today)[0];
-      const shown = { buttons: [...block.querySelectorAll("button")].map((b) => b.textContent), panels: block.querySelectorAll(".na-panel").length, text: na.text(block) };
+      const shown = { buttons: [...block.querySelectorAll("button")].map((b) => b.textContent), panels: block.querySelectorAll(".gz-panel").length, text: na.text(block) };
       const statusBefore = na.status();
       const mark = na.notices.length;
       na.button("Took meds", block).click();

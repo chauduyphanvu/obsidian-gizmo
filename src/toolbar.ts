@@ -13,7 +13,7 @@ export const TYPING_PAUSE_MS = 300;
 
 /** A search box: starts empty, reports its text after a pause in typing or on Enter. */
 function searchBox(field: HTMLElement, name: string, value: InputValue | undefined, onChange: (name: string, value: InputValue) => void): void {
-  const input = field.createEl("input", { type: "search", cls: "na-search" });
+  const input = field.createEl("input", { type: "search", cls: "gz-search" });
   input.setAttr("aria-label", name);
   input.value = value === undefined ? "" : String(value);
   let pending: ReturnType<typeof setTimeout> | undefined;
@@ -37,10 +37,10 @@ export function renderInputBar(
   today: () => string,
   onChange: (name: string, value: InputValue) => void,
 ): HTMLElement {
-  const bar = parent.createDiv({ cls: "na-inputs" });
+  const bar = parent.createDiv({ cls: "gz-inputs" });
   for (const def of defs) {
-    const field = bar.createDiv({ cls: "na-input" });
-    field.createSpan({ cls: "na-input-name", text: def.name });
+    const field = bar.createDiv({ cls: "gz-input" });
+    field.createSpan({ cls: "gz-input-name", text: def.name });
     if (def.kind === "text") {
       searchBox(field, def.name, values[def.name], onChange);
       continue;
@@ -56,14 +56,14 @@ export function renderInputBar(
       select.addEventListener("change", () => onChange(def.name, def.options[Number(select.value)]));
       continue;
     }
-    const prev = field.createEl("button", { cls: "na-small", text: "‹" });
+    const prev = field.createEl("button", { cls: "gz-small", text: "‹" });
     prev.setAttr("aria-label", "Previous day");
     const input = field.createEl("input", { type: "date" });
     input.setAttr("aria-label", def.name);
     input.value = String(values[def.name]);
-    const next = field.createEl("button", { cls: "na-small", text: "›" });
+    const next = field.createEl("button", { cls: "gz-small", text: "›" });
     next.setAttr("aria-label", "Next day");
-    const now = field.createEl("button", { cls: "na-small", text: "Today" });
+    const now = field.createEl("button", { cls: "gz-small", text: "Today" });
     const set = (date: string) => {
       input.value = date;
       onChange(def.name, date);

@@ -93,7 +93,7 @@ test("spec 1 or none is read; anything else draws nothing", () => {
   assert.equal(readSpec({ app: "x", spec: 1, ...panel })?.spec?.panels.length, 1);
   const newer = readSpec({ app: "x", spec: 2, ...panel });
   assert.equal(newer?.spec, undefined);
-  assert.deepEqual(newer?.errors, ["spec: 2 needs a newer Note Apps (this one reads spec 1)"]);
+  assert.deepEqual(newer?.errors, ["spec: 2 needs a newer Gizmo (this one reads spec 1)"]);
   assert.deepEqual(readSpec({ app: "x", spec: "1", ...panel })?.errors, ["spec must be 1"]);
 });
 

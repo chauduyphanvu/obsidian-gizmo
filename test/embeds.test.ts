@@ -18,7 +18,7 @@ const HOST = "Journal/2026-11-18.md";
 
 type Notes = Parameters<typeof fakeEnv>[0];
 
-/** A note-app block in `host`, drawn; `grants` keeps what was allowed, by key, as the plugin does. */
+/** A gizmo block in `host`, drawn; `grants` keeps what was allowed, by key, as the plugin does. */
 function embed(value: unknown, notes: Notes, opts: { host?: string; grants?: Record<string, string[]>; responses?: Record<string, unknown> } = {}) {
   const host = opts.host ?? HOST;
   const t = fakeEnv({ [host]: { fm: {} }, ...notes }, opts.responses);
@@ -58,17 +58,17 @@ test("a block holds an app's keys, or a link to an app and the panels to show", 
   assert.deepEqual(parseHosted({ app: [["Meds"]], panels: ["Took meds", 2] }), { kind: "app", link: "Meds", panels: ["Took meds", "2"] });
   assert.deepEqual(parseHosted({ app: "[[Meds]]", view: "number" }), { error: 'beside app: "[[Meds]]" only panels can go' });
   assert.deepEqual(parseHosted({ app: "[[Meds]]", panels: "Took meds" }), { error: "panels must be a list of panel titles, e.g. panels: [Took meds]" });
-  assert.deepEqual(parseHosted("view: countdown"), { error: "a note-app block holds an app's keys, e.g. view: countdown" });
+  assert.deepEqual(parseHosted("view: countdown"), { error: "a gizmo block holds an app's keys, e.g. view: countdown" });
 });
 
 test("an embed draws its panels; its identity is its note and its block's text", async () => {
   const value = { panels: [{ view: "countdown", to: "2026-11-25", label: "Trip" }, { view: "checklist", items: ["Passport", "Tickets"], save: "packed" }] };
   const { root, f, key } = embed(value, {});
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
-  assert.equal(text(root.querySelector(".na-view-countdown .na-big")), "7days");
-  (root.querySelector(".na-checklist input") as HTMLInputElement).click();
-  change(root.querySelector(".na-checklist input")!);
+  assert.equal(root.querySelector(".gz-error"), null);
+  assert.equal(text(root.querySelector(".gz-view-countdown .gz-big")), "7days");
+  (root.querySelector(".gz-checklist input") as HTMLInputElement).click();
+  change(root.querySelector(".gz-checklist input")!);
   await settle();
   // Recorded data goes to the note's own data note, as an app note's does.
   assert.deepEqual(f.files.get("Journal/2026-11-18 data.md")!.fm, { packed: ["Passport"] });
@@ -83,22 +83,22 @@ test("an embed's grants are kept per block: asked once, and asked again when its
   const { root, key, asked, draw, app } = embed(value, {}, { grants });
   await settle();
   assert.deepEqual(asked, [key]);
-  assert.deepEqual([...root.querySelectorAll(".na-card li")].map(text), ["Fetch data from api.example.com"]);
-  assert.equal(root.querySelector(".na-card button:not(.mod-cta)"), null, "no Edit source button in an embed");
-  (root.querySelector(".na-card button.mod-cta") as HTMLButtonElement).click();
+  assert.deepEqual([...root.querySelectorAll(".gz-card li")].map(text), ["Fetch data from api.example.com"]);
+  assert.equal(root.querySelector(".gz-card button:not(.mod-cta)"), null, "no Edit source button in an embed");
+  (root.querySelector(".gz-card button.mod-cta") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(grants, { [key]: ["net:api.example.com"] });
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "7");
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "7");
   // The same block drawn again (as the editor does) isn't asked about again.
   app.dispose();
   draw();
   await settle();
-  assert.equal(text(root.querySelector(".na-view-number .na-big")), "7");
-  assert.equal(root.querySelector(".na-card"), null);
+  assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "7");
+  assert.equal(root.querySelector(".gz-card"), null);
   // The same keys in another block of another note are another app.
   const other = embed(value, {}, { grants, host: "Journal/2026-11-19.md" });
   await settle();
-  assert.ok(other.root.querySelector(".na-card button.mod-cta"));
+  assert.ok(other.root.querySelector(".gz-card button.mod-cta"));
 });
 
 test("$this reads the note the block is in, and follows it as it changes", async () => {
@@ -115,20 +115,20 @@ test("$this reads the note the block is in, and follows it as it changes", async
     "Health/Eye exam.md": { fm: { who: "Dr. Kim" } },
   });
   await settle();
-  const [about, countdown, visits] = [...t.root.querySelectorAll(".na-panel")];
+  const [about, countdown, visits] = [...t.root.querySelectorAll(".gz-panel")];
   // The note's name wins over a property called name.
-  assert.equal(text(about.querySelector(".na-text")), "2026-11-18: feeling ok, in Journal");
+  assert.equal(text(about.querySelector(".gz-text")), "2026-11-18: feeling ok, in Journal");
   assert.equal(text(visits.querySelector("ul")), "Dentist");
 
   await edit(t, HOST, { mood: "great", doctor: "Dr. Kim" });
-  assert.equal(text(t.root.querySelector(".na-text")), "2026-11-18: feeling great, in Journal");
-  assert.equal(text(t.root.querySelector(".na-view-list ul")), "Eye exam");
-  assert.equal(t.root.querySelector(".na-view-countdown"), countdown, "a panel that doesn't read $this stays as it is");
+  assert.equal(text(t.root.querySelector(".gz-text")), "2026-11-18: feeling great, in Journal");
+  assert.equal(text(t.root.querySelector(".gz-view-list ul")), "Eye exam");
+  assert.equal(t.root.querySelector(".gz-view-countdown"), countdown, "a panel that doesn't read $this stays as it is");
 
   // A property the note doesn't have is empty text, and a condition that matches nothing.
   await edit(t, HOST, {});
-  assert.equal(text(t.root.querySelector(".na-text")), "2026-11-18: feeling , in Journal");
-  assert.equal(text(t.root.querySelector(".na-view-list .na-empty")), "Nothing here yet.");
+  assert.equal(text(t.root.querySelector(".gz-text")), "2026-11-18: feeling , in Journal");
+  assert.equal(text(t.root.querySelector(".gz-view-list .gz-empty")), "Nothing here yet.");
 });
 
 test("a $this property is untrusted: a secret or a line break in it stops the panel; in a URL it is encoded", async () => {
@@ -142,7 +142,7 @@ test("a $this property is untrusted: a secret or a line break in it stops the pa
   await settle();
   assert.deepEqual(t.f.requests, ["https://api.example.com/q?city=S%C3%A3o%20Paulo%20%26%20Rio"]);
   await edit(t, HOST, { city: "x{secret:demo}", greeting: "two\nlines" });
-  const [lookup, hello] = [...t.root.querySelectorAll(".na-panel")];
+  const [lookup, hello] = [...t.root.querySelectorAll(".gz-panel")];
   assert.match(text(lookup), /\$this\.city can't hold a secret or a line break/);
   assert.match(text(hello), /\$this\.greeting can't hold a secret or a line break/);
   assert.equal(t.f.requests.length, 1);
@@ -191,8 +191,8 @@ test("an app note opened on its own is its own $this, and save: this is an error
   const root = document.createElement("div");
   new AppController(root, "Apps/W.md", t.env).load();
   await settle();
-  assert.equal(text(root.querySelector(".na-text")), "This is W, owned by me");
-  assert.equal(root.querySelectorAll(".na-panel").length, 1);
+  assert.equal(text(root.querySelector(".gz-text")), "This is W, owned by me");
+  assert.equal(root.querySelectorAll(".gz-panel").length, 1);
 });
 
 test("save: this: a form holds the note's properties and writes each change back to the note", async () => {
@@ -203,7 +203,7 @@ test("save: this: a form holds the note's properties and writes each change back
   const r = readSpec({ ...value, app: "" }, { path: host, host: {} })!;
   assert.deepEqual(r.errors, []);
   assert.deepEqual(permissionsOf(r.spec!, host), [], "an embed writing its own note needs no grant");
-  const form = t.root.querySelector("form.na-form")!;
+  const form = t.root.querySelector("form.gz-form")!;
   assert.equal(form.querySelector("button"), null, "no submit button");
   const [page, note] = [...form.querySelectorAll("input")] as HTMLInputElement[];
   const status = form.querySelector("select") as HTMLSelectElement;
@@ -217,7 +217,7 @@ test("save: this: a form holds the note's properties and writes each change back
   assert.equal(page.disabled, false);
   assert.equal(document.activeElement, page);
   assert.deepEqual(t.f.files.get(host)!.fm, { page: 135, status: "reading", pages: 412 });
-  assert.equal(t.root.querySelector("form.na-form"), form, "updated in place, not redrawn");
+  assert.equal(t.root.querySelector("form.gz-form"), form, "updated in place, not redrawn");
 
   choose(status, "done");
   await settle();
@@ -238,10 +238,10 @@ test("a save: this form is drawn once, with no Loading… line left beside it on
   const host = "Books/Dune.md";
   const t = embed(value, { [host]: { fm: { page: 120 } } }, { host });
   await settle();
-  const panel = t.root.querySelector(".na-view-form")!;
-  assert.deepEqual([...panel.querySelectorAll(".na-title")].map(text), ["Update"]);
-  assert.equal(panel.querySelector(".na-empty"), null);
-  assert.equal(panel.classList.contains("na-loading"), false);
+  const panel = t.root.querySelector(".gz-view-form")!;
+  assert.deepEqual([...panel.querySelectorAll(".gz-title")].map(text), ["Update"]);
+  assert.equal(panel.querySelector(".gz-empty"), null);
+  assert.equal(panel.classList.contains("gz-loading"), false);
   assert.equal((panel.querySelector("input") as HTMLInputElement).value, "120");
 });
 
@@ -268,9 +268,9 @@ test("source: this is one row, the note's properties, and follows the note", asy
   const host = "Books/Dune.md";
   const t = embed(value, { [host]: { fm: { page: 120, pages: 400 } } }, { host });
   await settle();
-  assert.equal(text(t.root.querySelector(".na-big")), "120/ 400 pages");
+  assert.equal(text(t.root.querySelector(".gz-big")), "120/ 400 pages");
   await edit(t, host, { page: 200, pages: 400 });
-  assert.equal(text(t.root.querySelector(".na-big")), "200/ 400 pages");
+  assert.equal(text(t.root.querySelector(".gz-big")), "200/ 400 pages");
   const r = readSpec({ app: "", ...value }, { path: host, host: {} })!;
   assert.deepEqual(permissionsOf(r.spec!, host), []);
   assert.equal(resolvePanel(r.spec!.panels[0], { this: { pages: 10 } }).panel!.max, 10);
@@ -288,42 +288,42 @@ test("an embed of an app runs as that app: its grants, its data note, only the p
   const t = embed({ app: "[[Meds]]", panels: ["Took meds"] }, { "Apps/Meds.md": { fm: meds } }, { grants });
   await settle();
   assert.deepEqual(t.asked, ["Apps/Meds.md"]);
-  assert.equal(text(t.root.querySelector(".na-waiting")), "Open [[Meds]] once to allow it");
+  assert.equal(text(t.root.querySelector(".gz-waiting")), "Open [[Meds]] once to allow it");
   assert.equal(t.root.querySelector("button"), null, "no prompt here");
-  (t.root.querySelector(".na-waiting a") as HTMLElement).click();
+  (t.root.querySelector(".gz-waiting a") as HTMLElement).click();
   assert.deepEqual(t.opened, ["Apps/Meds.md"]);
 
   // Allowed in the app itself; the embed looks again when asked to.
   grants["Apps/Meds.md"] = ["write:Daily.md"];
   t.app.recheck();
   await settle();
-  assert.deepEqual([...t.root.querySelectorAll(".na-panel")].map((p) => p.className.split(" ")[1]), ["na-view-button"]);
-  (t.root.querySelector("button.na-button") as HTMLButtonElement).click();
+  assert.deepEqual([...t.root.querySelectorAll(".gz-panel")].map((p) => p.className.split(" ")[1]), ["gz-view-button"]);
+  (t.root.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.equal((t.f.files.get("Apps/Meds data.md")!.fm!.doses as unknown[]).length, 1);
   assert.deepEqual(t.writes, ["Daily.md", "Apps/Meds data.md"]);
 
   const all = embed({ app: "[[Meds]]" }, { "Apps/Meds.md": { fm: meds } });
   await settle();
-  assert.equal(all.root.querySelectorAll(".na-panel").length, 2);
-  assert.equal(text(all.root.querySelector(".na-description")), "Log when I take my meds");
+  assert.equal(all.root.querySelectorAll(".gz-panel").length, 2);
+  assert.equal(text(all.root.querySelector(".gz-description")), "Log when I take my meds");
 
   const unknown = embed({ app: "[[Meds]]", panels: ["Took meds", "Refills"] }, { "Apps/Meds.md": { fm: meds } });
   await settle();
-  assert.deepEqual([...unknown.root.querySelectorAll(".na-error li")].map(text),
+  assert.deepEqual([...unknown.root.querySelectorAll(".gz-error li")].map(text),
     ['panels: [[Meds]] has no panel called "Refills" (it has Took meds, Doses today)']);
-  assert.equal(unknown.root.querySelectorAll(".na-panel").length, 1);
+  assert.equal(unknown.root.querySelectorAll(".gz-panel").length, 1);
 });
 
 test("an embed of an app that can't be found says so, and draws once the note appears", async () => {
   const t = embed({ app: "[[Later]]" }, {});
   await settle();
-  assert.equal(text(t.root.querySelector(".na-error")), "Can't find [[Later]]");
+  assert.equal(text(t.root.querySelector(".gz-error")), "Can't find [[Later]]");
   t.f.files.set("Apps/Later.md", { fm: { app: "Later", view: "countdown", to: "2026-11-25" } });
   t.changed("Apps/Later.md");
   await settle();
-  assert.equal(t.root.querySelector(".na-error"), null);
-  assert.equal(text(t.root.querySelector(".na-big")), "7days");
+  assert.equal(t.root.querySelector(".gz-error"), null);
+  assert.equal(text(t.root.querySelector(".gz-big")), "7days");
   t.app.dispose();
   assert.equal(t.root.children.length, 0);
 });
@@ -340,20 +340,20 @@ test("an embed drawn again keeps its input values and selections while its note 
   t.app.dispose();
   const first = t.draw("k");
   await settle();
-  choose(t.root.querySelector(".na-inputs select")!, "month");
-  (t.root.querySelectorAll(".na-view-list li")[1] as HTMLElement).click();
+  choose(t.root.querySelector(".gz-inputs select")!, "month");
+  (t.root.querySelectorAll(".gz-view-list li")[1] as HTMLElement).click();
   await settle();
-  assert.equal(text(t.root.querySelector(".na-text")), "swam this month");
+  assert.equal(text(t.root.querySelector(".gz-text")), "swam this month");
   first.dispose();
   t.draw("k");
   await settle();
-  assert.equal(text(t.root.querySelector(".na-text")), "swam this month");
+  assert.equal(text(t.root.querySelector(".gz-text")), "swam this month");
   // Once the note is closed, its embeds start afresh.
   t.memories.keepOnly(new Set(["Other.md"]));
   t.root.empty();
   t.draw("k");
   await settle();
-  assert.equal(text(t.root.querySelector(".na-waiting")), "Pick a row in “Log”");
+  assert.equal(text(t.root.querySelector(".gz-waiting")), "Pick a row in “Log”");
 });
 
 test("a renamed or deleted note takes its embeds' grants along", () => {
@@ -369,9 +369,9 @@ test("an embed's panels are drawn 32 px wider than the same panel in an app's ow
   const panel = { view: "line", source: "weights", x: "at", y: "kg" };
   const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
   const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
-  const viewBox = (root: HTMLElement) => root.querySelector(".na-chart-svg")!.getAttribute("viewBox");
+  const viewBox = (root: HTMLElement) => root.querySelector(".gz-chart-svg")!.getAttribute("viewBox");
   const widen = async (root: HTMLElement, resize: () => void) => {
-    Object.defineProperty(root.querySelector(".note-app"), "clientWidth", { value: 700, configurable: true });
+    Object.defineProperty(root.querySelector(".gizmo"), "clientWidth", { value: 700, configurable: true });
     resize();
     for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 10));
   };
@@ -425,7 +425,7 @@ test("save: this doesn't bring back a note that has gone", async () => {
   const t = embed(value, { [host]: { fm: { page: 120 } } }, { host });
   await settle();
   t.f.files.delete(host);
-  const page = t.root.querySelector("form.na-form input") as HTMLInputElement;
+  const page = t.root.querySelector("form.gz-form input") as HTMLInputElement;
   page.value = "135";
   change(page);
   await settle();
@@ -438,9 +438,9 @@ test("an embed wider than an app's tab draws its panels at its own width; an app
   const panel = { view: "line", source: "weights", x: "at", y: "kg" };
   const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
   const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
-  const viewBox = (root: HTMLElement) => root.querySelector(".na-chart-svg")!.getAttribute("viewBox");
+  const viewBox = (root: HTMLElement) => root.querySelector(".gz-chart-svg")!.getAttribute("viewBox");
   const widen = async (root: HTMLElement, resize: () => void) => {
-    Object.defineProperty(root.querySelector(".note-app"), "clientWidth", { value: 1400, configurable: true });
+    Object.defineProperty(root.querySelector(".gizmo"), "clientWidth", { value: 1400, configurable: true });
     resize();
     for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 10));
   };

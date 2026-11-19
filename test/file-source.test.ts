@@ -99,12 +99,12 @@ test("a missing file is the panel's error, and the panel loads once the file app
   document.body.appendChild(root);
   new AppController(root, "Apps/Bank.md", t.env).load();
   await settle();
-  assert.equal(text(root.querySelector(".na-panel.na-error")), "tableCan't find Finance/bank.csv");
+  assert.equal(text(root.querySelector(".gz-panel.gz-error")), "tableCan't find Finance/bank.csv");
 
   t.f.files.set("Finance/bank.csv", { raw: CSV });
   t.changed("Finance/bank.csv");
   await settle();
-  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(root.querySelector(".gz-error"), null);
   assert.equal(root.querySelectorAll("tbody tr").length, 4);
 });
 
@@ -121,7 +121,7 @@ test("an app's panel on a file follows the file, and leaves the panels on other 
   document.body.appendChild(root);
   new AppController(root, "Apps/Money.md", t.env).load();
   await settle();
-  const [bank, cards] = [...root.querySelectorAll(".na-panel")];
+  const [bank, cards] = [...root.querySelectorAll(".gz-panel")];
   assert.equal(bank.querySelectorAll("tbody tr").length, 4);
 
   t.f.files.get("Finance/bank.csv")!.raw = `${CSV}2026-11-06,Gym,-30,Health\n`;

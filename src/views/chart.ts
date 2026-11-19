@@ -88,8 +88,8 @@ function stackRange(values: Map<number, number>[]): [number, number] {
 
 /** A colour swatch and name; text keeps the text colour, the swatch carries the series colour. */
 export function legendItem(parent: HTMLElement, colour: string, name: string): HTMLElement {
-  const item = parent.createSpan({ cls: "na-legend-item" });
-  item.createSpan({ cls: `na-swatch ${colour}` });
+  const item = parent.createSpan({ cls: "gz-legend-item" });
+  item.createSpan({ cls: `gz-swatch ${colour}` });
   item.createSpan({ text: name });
   return item;
 }
@@ -98,7 +98,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const W = Math.max(280, Math.round(opts.width));
   const all = series.flatMap((s) => s.points);
   if (all.length === 0) {
-    parent.createDiv({ cls: "na-empty", text: "No data to chart yet." });
+    parent.createDiv({ cls: "gz-empty", text: "No data to chart yet." });
     return;
   }
   // One shared x axis: times in order, or categories in the order they first appear.
@@ -138,15 +138,15 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : opts.category?.(label.get(keys[i])) ?? String(label.get(keys[i]) ?? ""));
   const name = (s: number) => series[s].label ?? series[s].name;
   // One series wears the theme accent; several take the chart palette in a fixed order.
-  const colour = (s: number) => (series.length === 1 ? "na-accent" : `na-s${s + 1}`);
+  const colour = (s: number) => (series.length === 1 ? "gz-accent" : `gz-s${s + 1}`);
 
-  const wrap = parent.createDiv({ cls: "na-chart" });
-  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "na-chart-svg", role: "img" }, wrap);
+  const wrap = parent.createDiv({ cls: "gz-chart" });
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg", role: "img" }, wrap);
 
   for (const t of niceTicks(yMin, yMax)) {
     const y = sy(t);
-    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "na-gridline" }, root);
-    svg("text", { x: L - 8, y: y + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = opts.format?.(t, 0) ?? formatValue(t);
+    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "gz-gridline" }, root);
+    svg("text", { x: L - 8, y: y + 4, class: "gz-axis", "text-anchor": "end" }, root).textContent = opts.format?.(t, 0) ?? formatValue(t);
   }
   // Categories each get a label while they fit; a time axis gets its ends and middle.
   const labelIdx = !isTime && opts.kind === "bar" && n <= 12 ? keys.map((_, i) => i)
@@ -154,7 +154,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const every = labelIdx.length > 3;
   for (const i of new Set(labelIdx)) {
     const anchor = every ? "middle" : i === 0 ? "start" : i === n - 1 ? "end" : "middle";
-    svg("text", { x: sx(i), y: H - 6, class: "na-axis", "text-anchor": anchor }, root).textContent = xLabel(i);
+    svg("text", { x: sx(i), y: H - 6, class: "gz-axis", "text-anchor": anchor }, root).textContent = xLabel(i);
   }
 
   if (opts.kind === "line") {
@@ -165,11 +165,11 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       if (series.length === 1) {
         const base = sy(yMin);
         const [first, last] = [pts[0][0], pts[pts.length - 1][0]];
-        svg("path", { d: `${d}L${sx(last).toFixed(1)},${base}L${sx(first).toFixed(1)},${base}Z`, class: `na-area ${colour(s)}` }, root);
+        svg("path", { d: `${d}L${sx(last).toFixed(1)},${base}L${sx(first).toFixed(1)},${base}Z`, class: `gz-area ${colour(s)}` }, root);
       }
-      svg("path", { d, class: `na-line ${colour(s)}` }, root);
+      svg("path", { d, class: `gz-line ${colour(s)}` }, root);
       const [li, ly] = pts[pts.length - 1];
-      svg("circle", { cx: sx(li), cy: sy(ly), r: 4, class: `na-dot ${colour(s)}` }, root);
+      svg("circle", { cx: sx(li), cy: sy(ly), r: 4, class: `gz-dot ${colour(s)}` }, root);
     });
   } else if (stacked) {
     const w = Math.max(1, Math.min(BAR_MAX, bandW - GAP));
@@ -184,7 +184,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
         const from = run[side].get(i) ?? 0;
         run[side].set(i, from + y);
         const d = barPath(sx(i) - w / 2, w, sy(from), sy(from + y), outer[side].get(i) === s);
-        const bar = svg("path", { d, class: `na-bar na-stacked ${colour(s)}` }, root);
+        const bar = svg("path", { d, class: `gz-bar gz-stacked ${colour(s)}` }, root);
         opts.mark?.(bar, label.get(keys[i]));
       }
     });
@@ -196,7 +196,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       for (const [i, y] of byIndex) {
         if (y === 0) continue;
         const x = sx(i) - (m * w + (m - 1) * GAP) / 2 + s * (w + GAP);
-        const bar = svg("path", { d: barPath(x, w, zero, sy(y)), class: `na-bar ${colour(s)}` }, root);
+        const bar = svg("path", { d: barPath(x, w, zero, sy(y)), class: `gz-bar ${colour(s)}` }, root);
         opts.mark?.(bar, label.get(keys[i]));
       }
     });
@@ -204,19 +204,19 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
 
   if (opts.goal !== undefined) {
     const y = sy(opts.goal);
-    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "na-goal" }, root);
-    svg("text", { x: W - R, y: y - 4, class: "na-goal-label", "text-anchor": "end" }, root).textContent = `goal ${fmt(opts.goal)}`;
+    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "gz-goal" }, root);
+    svg("text", { x: W - R, y: y - 4, class: "gz-goal-label", "text-anchor": "end" }, root).textContent = `goal ${fmt(opts.goal)}`;
     root.setAttribute("aria-label", `goal ${fmt(opts.goal)}`);
   }
 
   // One series needs no legend unless the panel names it.
   if (series.length > 1 || series[0].label !== undefined) {
-    const legend = wrap.createDiv({ cls: "na-legend" });
+    const legend = wrap.createDiv({ cls: "gz-legend" });
     series.forEach((_, i) => legendItem(legend, colour(i), name(i)));
   }
 
-  const cursor = svg("line", { y1: T, y2: H - B, class: "na-cursor", visibility: "hidden" }, root);
-  const readout = wrap.createDiv({ cls: "na-readout" });
+  const cursor = svg("line", { y1: T, y2: H - B, class: "gz-cursor", visibility: "hidden" }, root);
+  const readout = wrap.createDiv({ cls: "gz-readout" });
   const showPoint = (i: number) => {
     readout.empty();
     readout.createSpan({ text: xLabel(i) });

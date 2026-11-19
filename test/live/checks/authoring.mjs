@@ -55,7 +55,7 @@ export default async function authoring(t) {
   await check("the problems card makes panel, block and input errors links", async () => {
     const r = await run(`
       await na.open("Scratch/Authoring");
-      return [...na.view().contentEl.querySelectorAll(".na-error li")].map((li) => [li.textContent, !!li.querySelector("button.na-error-link")]);`);
+      return [...na.view().contentEl.querySelectorAll(".gz-error li")].map((li) => [li.textContent, !!li.querySelector("button.gz-error-link")]);`);
     const linked = r.filter(([, l]) => l).map(([text]) => text.split(":")[0]);
     expect(linked.some((x) => x.startsWith("panel 2")) && linked.some((x) => x.startsWith("data.doses")) && linked.some((x) => x.startsWith('input "unused"')), r);
     return linked.join(", ");
@@ -64,7 +64,7 @@ export default async function authoring(t) {
   await check("a panel error link opens the source as text with the cursor on that panel and focus in the editor", async () => {
     const r = await run(`
       await na.open("Scratch/Authoring");
-      [...na.view().contentEl.querySelectorAll("button.na-error-link")].find((b) => b.textContent.startsWith("panel 2")).click();
+      [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith("panel 2")).click();
       await na.sleep(1500);
       const v = na.view();
       const ed = v.editor;
@@ -79,8 +79,8 @@ export default async function authoring(t) {
       // The link left this tab on the source; the command turns it back into the app.
       const r = await run(`
         await na.open("Scratch/Authoring");
-        if (na.view().getViewType() === "markdown") { app.commands.executeCommandById("note-apps:open-as-app"); await na.settle(); }
-        [...na.view().contentEl.querySelectorAll("button.na-error-link")].find((b) => b.textContent.startsWith(${JSON.stringify(prefix)})).click();
+        if (na.view().getViewType() === "markdown") { app.commands.executeCommandById("gizmo:open-as-app"); await na.settle(); }
+        [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith(${JSON.stringify(prefix)})).click();
         await na.sleep(1500);
         const ed = na.view().editor;
         return { c: ed.getCursor(), l: ed.getLine(ed.getCursor().line) };`);
@@ -93,7 +93,7 @@ export default async function authoring(t) {
   await check("Broken: the panel 2 link lands on panel 2", async () => {
     const r = await run(`
       await na.open("Apps/Broken");
-      const link = [...na.view().contentEl.querySelectorAll("button.na-error-link")].find((b) => b.textContent.startsWith("panel 2"));
+      const link = [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith("panel 2"));
       link.click();
       await na.sleep(1500);
       const ed = na.view().editor;
@@ -108,28 +108,28 @@ export default async function authoring(t) {
       const action = () => [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data");
       action().click();
       const el = na.view().contentEl;
-      const pane = await na.until(() => el.querySelector(".na-inspector .na-inspect-source") && el.querySelector(".na-inspector"), 10000);
-      const shell = el.querySelector(".note-app");
-      const above = [...shell.children].indexOf(pane) < [...shell.children].indexOf(shell.querySelector(".na-grid"));
-      const urls = [...pane.querySelectorAll(".na-inspect-url")].map((u) => u.textContent);
-      const quakes = [...pane.querySelectorAll(".na-inspect-source")].find((s) => s.textContent.includes("earthquake.usgs.gov"));
-      const features = [...quakes.querySelectorAll(".na-tree details")].find((d) => d.querySelector(":scope > summary .na-key")?.textContent === "features");
+      const pane = await na.until(() => el.querySelector(".gz-inspector .gz-inspect-source") && el.querySelector(".gz-inspector"), 10000);
+      const shell = el.querySelector(".gizmo");
+      const above = [...shell.children].indexOf(pane) < [...shell.children].indexOf(shell.querySelector(".gz-grid"));
+      const urls = [...pane.querySelectorAll(".gz-inspect-url")].map((u) => u.textContent);
+      const quakes = [...pane.querySelectorAll(".gz-inspect-source")].find((s) => s.textContent.includes("earthquake.usgs.gov"));
+      const features = [...quakes.querySelectorAll(".gz-tree details")].find((d) => d.querySelector(":scope > summary .gz-key")?.textContent === "features");
       features.querySelector(":scope > summary").click();
       await na.sleep(300);
-      const zero = features.querySelector(":scope > .na-children > details");
+      const zero = features.querySelector(":scope > .gz-children > details");
       zero.querySelector(":scope > summary").click();
       await na.sleep(300);
-      const props = [...zero.querySelectorAll(":scope > .na-children > details")].find((d) => d.querySelector(":scope > summary .na-key")?.textContent === "properties");
+      const props = [...zero.querySelectorAll(":scope > .gz-children > details")].find((d) => d.querySelector(":scope > summary .gz-key")?.textContent === "properties");
       props.querySelector(":scope > summary").click();
       await na.sleep(300);
-      const mag = [...props.querySelectorAll(".na-leaf button.na-key")].find((b) => b.textContent === "mag");
+      const mag = [...props.querySelectorAll(".gz-leaf button.gz-key")].find((b) => b.textContent === "mag");
       mag.click();
       await na.sleep(300);
       const copied = await navigator.clipboard.readText();
-      const badge = !!props.querySelector(".na-copied");
+      const badge = !!props.querySelector(".gz-copied");
       action().click();
       await na.sleep(300);
-      return { above, urls, copied, badge, gone: !el.querySelector(".na-inspector") };`);
+      return { above, urls, copied, badge, gone: !el.querySelector(".gz-inspector") };`);
     const hosts = new Set(r.urls.map((u) => new URL(u).host));
     expect(r.above && r.urls.length === new Set(r.urls).size && ["earthquake.usgs.gov", "services.swpc.noaa.gov", "api.open-meteo.com"].every((h) => hosts.has(h)), r);
     expect(r.copied === "features.0.properties.mag" && r.badge && r.gone, r);
@@ -144,9 +144,9 @@ export default async function authoring(t) {
       const { prompt } = await na.open("Scratch/Parcel");
       [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data").click();
       const el = na.view().contentEl;
-      const pane = await na.until(() => el.querySelector(".na-inspector .na-inspect-source") && el.querySelector(".na-inspector"), 10000);
+      const pane = await na.until(() => el.querySelector(".gz-inspector .gz-inspect-source") && el.querySelector(".gz-inspector"), 10000);
       await na.sleep(500);
-      return { prompt, html: pane.outerHTML, page: el.innerHTML.includes("pk-live-0123456789"), url: pane.querySelector(".na-inspect-url")?.textContent, error: pane.querySelector(".na-inspect-error")?.textContent };`);
+      return { prompt, html: pane.outerHTML, page: el.innerHTML.includes("pk-live-0123456789"), url: pane.querySelector(".gz-inspect-url")?.textContent, error: pane.querySelector(".gz-inspect-error")?.textContent };`);
     expect(r.prompt?.includes('Use your saved secret "parcel-key"'), r.prompt);
     expect(r.url === "https://parcels.example.invalid/track?key={secret:parcel-key}" && !r.html.includes("pk-live-0123456789") && !r.page, { url: r.url, error: r.error, leaked: r.page });
     return `${r.url}; ${r.error ?? "no error"}`;
@@ -205,7 +205,7 @@ export default async function authoring(t) {
     const r = await run(`
       await na.open("Components/Ticker");
       const el = na.view().contentEl;
-      const usage = el.querySelector(".na-example").textContent;
+      const usage = el.querySelector(".gz-example").textContent;
       const copy = na.button("Copy");
       copy.click();
       await na.sleep(300);
@@ -234,9 +234,9 @@ export default async function authoring(t) {
       await na.sleep(800);
       leaf.view.editor.setCursor({ line: 0, ch: 0 });
       leaf.view.editor.focus();`);
-    const offered = await run(`const v = na.view(); return app.commands.commands["note-apps:insert-panel"].editorCheckCallback(true, v.editor, v);`);
+    const offered = await run(`const v = na.view(); return app.commands.commands["gizmo:insert-panel"].editorCheckCallback(true, v.editor, v);`);
     expect(offered === true, "not offered in an app note");
-    await run(`app.commands.executeCommandById("note-apps:insert-panel");`);
+    await run(`app.commands.executeCommandById("gizmo:insert-panel");`);
     const items = await picker("table");
     await t.shot("insert-panel.png");
     expect(items.length && items[0].startsWith("table"), items);
@@ -262,10 +262,10 @@ export default async function authoring(t) {
       await na.view().save();
       await na.until(async () => (await na.read("Scratch/Insert.md")) === ${JSON.stringify(WITH_TABLE)} && na.fm("Scratch/Insert.md")?.panels?.length === 3, 5000);
       await na.open("Scratch/Insert");
-      if (na.view().getViewType() === "markdown") { app.commands.executeCommandById("note-apps:open-as-app"); await na.settle(); }
-      await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 5000);
+      if (na.view().getViewType() === "markdown") { app.commands.executeCommandById("gizmo:open-as-app"); await na.settle(); }
+      await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 5000);
       return { state: na.state(), errors: na.errors(), problems: na.text().includes("keys have problems"), tables: na.view().contentEl.querySelectorAll("table").length, text: na.text() };`);
-    expect(r.state === "note-app:Scratch/Insert.md" && r.errors === 0 && !r.problems && r.tables === 1, r);
+    expect(r.state === "gizmo:Scratch/Insert.md" && r.errors === 0 && !r.problems && r.tables === 1, r);
     return `3 panels, one table; ${r.text.slice(0, 80)}`;
   });
 
@@ -283,8 +283,8 @@ export default async function authoring(t) {
         if (${name === "Part"}) await na.plugin().showSource(leaf, file); else await leaf.openFile(file);
         await na.sleep(600);
         const v = na.view();
-        const direct = app.commands.commands["note-apps:insert-panel"].editorCheckCallback(true, v.editor, v);
-        app.commands.executeCommandById("note-apps:insert-panel");
+        const direct = app.commands.commands["gizmo:insert-panel"].editorCheckCallback(true, v.editor, v);
+        app.commands.executeCommandById("gizmo:insert-panel");
         await na.sleep(300);
         return { direct, modal: !!document.querySelector(".prompt") };`);
     }
@@ -304,7 +304,7 @@ export default async function authoring(t) {
       await na.plugin().showSource(leaf, na.file("Scratch/OnePanel.md"));
       await na.sleep(800);
       const mark = na.notices.length;
-      app.commands.executeCommandById("note-apps:insert-panel");
+      app.commands.executeCommandById("gizmo:insert-panel");
       const notices = await na.noticesSince(mark, "one panel");
       return { notices, modal: !!document.querySelector(".prompt"), text: leaf.view.editor.getValue() };`);
     expect(r.notices.includes("This note has one panel typed at the top level; move it under panels: to add more") && !r.modal && r.text === ONE_PANEL, r);
@@ -317,7 +317,7 @@ export default async function authoring(t) {
   const copy = (name) => run(`
     const mark = na.notices.length;
     const before = app.vault.getMarkdownFiles().length;
-    app.commands.executeCommandById("note-apps:new-app-from-gallery");
+    app.commands.executeCommandById("gizmo:new-app-from-gallery");
     await na.until(() => document.querySelector(".prompt .prompt-input"), 3000);
     return { mark, before };`).then(async (r) => {
     const items = await picker(name);
@@ -331,13 +331,13 @@ export default async function authoring(t) {
     await t.shot("gallery-picker.png");
     const after = await run(`
       await na.until(() => na.exists("Budget.md"), 5000);
-      await na.until(() => na.state() === "note-app:Budget.md", 5000);
+      await na.until(() => na.state() === "gizmo:Budget.md", 5000);
       await na.settle();
       const { prompt } = await na.open("Budget", false);
       return { text: await na.read("Budget.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"), after: app.vault.getMarkdownFiles().length, modal: !!document.querySelector(".prompt") };`);
     expect(r.items.length && r.items[0].startsWith("Budget") && r.items[0].includes("Log what I spend"), r.items);
     expect(after.text === gallery("Apps/Budget.md"), "the copy differs from gallery/Apps/Budget.md");
-    expect(after.state === "note-app:Budget.md" && !after.problems && after.errors === 0 && after.after === r.before + 1 && !after.modal, after);
+    expect(after.state === "gizmo:Budget.md" && !after.problems && after.errors === 0 && after.after === r.before + 1 && !after.modal, after);
     return `${after.prompt ? `asks: ${after.prompt.join("; ")}` : "opens with no prompt"}; ${r.before} → ${after.after} notes`;
   });
 
@@ -345,14 +345,14 @@ export default async function authoring(t) {
     const r = await copy("Trip planner");
     const after = await run(`
       await na.until(() => na.exists("Trip planner.md") && na.exists("Destination weather.md"), 5000);
-      await na.until(() => na.state() === "note-app:Trip planner.md", 5000);
+      await na.until(() => na.state() === "gizmo:Trip planner.md", 5000);
       await na.settle();
       const { prompt } = await na.open("Trip planner", false);
       return { app: await na.read("Trip planner.md"), part: await na.read("Destination weather.md"), state: na.state(), prompt, after: app.vault.getMarkdownFiles().length,
-        allowed: app.plugins.plugins["note-apps"].granted("Trip planner.md") };`);
+        allowed: app.plugins.plugins["gizmo"].granted("Trip planner.md") };`);
     expect(r.items.length && r.items[0].startsWith("Trip planner"), r.items);
     expect(after.app === gallery("Apps/Trip planner.md") && after.part === gallery("Components/Destination weather.md"), "the copies differ from the gallery's");
-    expect(after.state === "note-app:Trip planner.md" && after.after === r.before + 2, after);
+    expect(after.state === "gizmo:Trip planner.md" && after.after === r.before + 2, after);
     expect(after.allowed === undefined && after.prompt?.some((p) => p.includes("api.open-meteo.com")), after);
     return `asks ${after.prompt.length} things; ${r.before} → ${after.after} notes`;
   });
@@ -361,15 +361,15 @@ export default async function authoring(t) {
     const r = await copy("Sleep");
     const after = await run(`
       await na.until(() => na.exists("Sleep.md") && na.exists("Tracker kit.md"), 5000);
-      await na.until(() => na.state() === "note-app:Sleep.md", 5000);
+      await na.until(() => na.state() === "gizmo:Sleep.md", 5000);
       await na.settle();
       const { prompt } = await na.open("Sleep");
-      await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 5000);
+      await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 5000);
       return { app: await na.read("Sleep.md"), kit: await na.read("Tracker kit.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"),
-        titles: [...na.view().contentEl.querySelectorAll(".na-panel .na-title")].map((t) => t.textContent), after: app.vault.getMarkdownFiles().length };`);
+        titles: [...na.view().contentEl.querySelectorAll(".gz-panel .gz-title")].map((t) => t.textContent), after: app.vault.getMarkdownFiles().length };`);
     expect(r.items.length && r.items[0].startsWith("Sleep"), r.items);
     expect(after.app === gallery("Apps/Sleep.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
-    expect(after.state === "note-app:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
+    expect(after.state === "gizmo:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
     expect(JSON.stringify(after.titles) === JSON.stringify(["Log my sleep", "This week", "Latest", "My sleep against my goal", "Entries"]), after.titles);
     await run(`for (const p of ["Sleep.md", "Tracker kit.md"]) await na.remove(p); await na.sleep(500);`);
     return `${r.before} → ${after.after} notes; ${after.titles.join(", ")}`;

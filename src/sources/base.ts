@@ -93,10 +93,10 @@ function compare(v: unknown, op: string, lit: Literal): boolean {
 
 const bare = (tag: string) => tag.replace(/^#/, "").toLowerCase();
 
-/** Parses one filter string into a test, or throws naming what Note Apps doesn't read. */
+/** Parses one filter string into a test, or throws naming what Gizmo doesn't read. */
 function compileLeaf(leaf: string, source: string): Test {
-  const unreadable = (what: string) => new Error(`${source} uses ${what}, which Note Apps can't read`);
-  const odd = () => new Error(`${source} has a filter Note Apps can't read: ${leaf}`);
+  const unreadable = (what: string) => new Error(`${source} uses ${what}, which Gizmo can't read`);
+  const odd = () => new Error(`${source} has a filter Gizmo can't read: ${leaf}`);
   const tokens = tokenize(leaf);
   let i = 0;
   const peek = () => tokens[i];
@@ -211,7 +211,7 @@ function compileFilter(f: unknown, source: string): Test {
     if (key === "or") return (n) => tests.some((t) => t(n));
     return (n) => !tests.some((t) => t(n));
   }
-  throw new Error(`${source} has a filter Note Apps can't read: ${JSON.stringify(f)}`);
+  throw new Error(`${source} has a filter Gizmo can't read: ${JSON.stringify(f)}`);
 }
 
 /**
@@ -237,7 +237,7 @@ export function compileBase(config: unknown, source: string): Test {
   (Array.isArray(config.views) ? config.views : []).forEach((view, i) => {
     if (!isMap(view) || view.filters === undefined || view.filters === null) return;
     const name = typeof view.name === "string" && view.name.trim() ? view.name : `view ${i + 1}`;
-    throw new Error(`${source} filters its view "${name}"; Note Apps reads only the base's own filters`);
+    throw new Error(`${source} filters its view "${name}"; Gizmo reads only the base's own filters`);
   });
   return test;
 }

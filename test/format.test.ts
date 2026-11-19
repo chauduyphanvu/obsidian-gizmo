@@ -219,59 +219,59 @@ const text_ = (el: Element | null) => el?.textContent ?? "";
 
 test("number: format, and format wins over unit; until and relative take a date as it is", () => {
   const sum = draw(number, { source: "s", field: "amount", agg: "sum", format: "$0,0.00", unit: "USD" }, [{ amount: 1000 }, { amount: 234.5 }]);
-  assert.equal(text_(sum.querySelector(".na-big")), "$1,234.50");
-  assert.equal(sum.querySelector(".na-unit"), null);
+  assert.equal(text_(sum.querySelector(".gz-big")), "$1,234.50");
+  assert.equal(sum.querySelector(".gz-unit"), null);
   const unit = draw(number, { source: "s", field: "amount", agg: "sum", unit: "kg" }, [{ amount: 1000 }, { amount: 234.5 }]);
-  assert.equal(text_(unit.querySelector(".na-big")), "1,235kg");
-  assert.equal(text_(draw(number, { source: "s", field: "due", agg: "first", format: "until" }, [{ due: "2026-11-30" }]).querySelector(".na-big")), "12 days");
-  assert.equal(text_(draw(number, { source: "s", field: "due", format: "relative" }, { due: "2026-11-15" }).querySelector(".na-big")), "3 days ago");
-  assert.equal(text_(draw(number, { source: "s", field: "due", format: "until" }, [{ due: "2026-11-18" }]).querySelector(".na-big")), "today");
-  assert.equal(text_(draw(number, { source: "s", field: "secs", format: "duration" }, { secs: 3900 }).querySelector(".na-big")), "1h 05m");
-  assert.equal(text_(draw(number, { source: "s", field: "w", format: { w: "0.0 kg" } }, { w: 71.26 }).querySelector(".na-big")), "71.3 kg");
-  assert.equal(text_(draw(number, { source: "s", field: "w" }, { w: "1234.5" }).querySelector(".na-big")), "1,235");
+  assert.equal(text_(unit.querySelector(".gz-big")), "1,235kg");
+  assert.equal(text_(draw(number, { source: "s", field: "due", agg: "first", format: "until" }, [{ due: "2026-11-30" }]).querySelector(".gz-big")), "12 days");
+  assert.equal(text_(draw(number, { source: "s", field: "due", format: "relative" }, { due: "2026-11-15" }).querySelector(".gz-big")), "3 days ago");
+  assert.equal(text_(draw(number, { source: "s", field: "due", format: "until" }, [{ due: "2026-11-18" }]).querySelector(".gz-big")), "today");
+  assert.equal(text_(draw(number, { source: "s", field: "secs", format: "duration" }, { secs: 3900 }).querySelector(".gz-big")), "1h 05m");
+  assert.equal(text_(draw(number, { source: "s", field: "w", format: { w: "0.0 kg" } }, { w: 71.26 }).querySelector(".gz-big")), "71.3 kg");
+  assert.equal(text_(draw(number, { source: "s", field: "w" }, { w: "1234.5" }).querySelector(".gz-big")), "1,235");
 });
 
 test("progress: both ends in the format", () => {
   const el = draw(progress, { source: "s", field: "amount", agg: "sum", max: 500, format: "$0", unit: "USD" }, [{ amount: 120 }]);
-  assert.equal(text_(el.querySelector(".na-big")), "$120/ $500");
+  assert.equal(text_(el.querySelector(".gz-big")), "$120/ $500");
 });
 
 test("text: a text format is for every placeholder, a map for its fields", () => {
   const row = { n: 1234.5, due: "2026-11-30", year: 1965 };
-  assert.equal(text_(draw(text, { text: "{n} due {due}", format: { n: "$0,0.00", due: "until" } }, row).querySelector(".na-text")), "$1,234.50 due 12 days");
-  assert.equal(text_(draw(text, { text: "{due}", format: "until" }, row).querySelector(".na-text")), "12 days");
-  assert.equal(text_(draw(text, { text: "In {year}: {n}" }, row).querySelector(".na-text")), "In 1965: 1235");
-  assert.equal(text_(draw(text, { source: "s", text: "{count} entries" }, [{}, {}]).querySelector(".na-text")), "2 entries");
+  assert.equal(text_(draw(text, { text: "{n} due {due}", format: { n: "$0,0.00", due: "until" } }, row).querySelector(".gz-text")), "$1,234.50 due 12 days");
+  assert.equal(text_(draw(text, { text: "{due}", format: "until" }, row).querySelector(".gz-text")), "12 days");
+  assert.equal(text_(draw(text, { text: "In {year}: {n}" }, row).querySelector(".gz-text")), "In 1965: 1235");
+  assert.equal(text_(draw(text, { source: "s", text: "{count} entries" }, [{}, {}]).querySelector(".gz-text")), "2 entries");
 });
 
 const hourly = { time: ["2026-11-18T00:00", "2026-11-18T01:00", "2026-11-18T02:00"], t: [4, 5, 6], h: [0.5, 0.6, 0.7] };
 
 test("line: axis ticks and the readout take the format; a map is per series", () => {
   const one = draw(line, { source: "s", x: "time", y: "t", format: "0.0 °C" }, hourly);
-  const ticks = [...one.querySelectorAll("text.na-axis")].filter((t) => t.getAttribute("x") === "44").map((t) => text_(t));
+  const ticks = [...one.querySelectorAll("text.gz-axis")].filter((t) => t.getAttribute("x") === "44").map((t) => text_(t));
   assert.ok(ticks.length > 1);
   assert.ok(ticks.every((t) => /^\d+\.\d °C$/.test(t)), ticks.join("|"));
-  assert.match(text_(one.querySelector(".na-readout")), /6\.0 °C$/);
+  assert.match(text_(one.querySelector(".gz-readout")), /6\.0 °C$/);
 
   const many = draw(line, { source: "s", x: "time", y: ["t", "h"], format: { t: "0.0 °C", h: "0%" } }, hourly);
-  assert.match(plain(text_(many.querySelector(".na-readout"))), /t 6\.0 °C *h 70%/);
+  assert.match(plain(text_(many.querySelector(".gz-readout"))), /t 6\.0 °C *h 70%/);
   const plainOne = draw(line, { source: "s", x: "time", y: "t", unit: "°C" }, hourly);
-  assert.match(text_(plainOne.querySelector(".na-readout")), /6 °C$/);
+  assert.match(text_(plainOne.querySelector(".gz-readout")), /6 °C$/);
 });
 
 test("bar: tooltips take the format of their series", () => {
   const rows = [{ g: "a", spent: 1234.5, budget: 2000 }, { g: "b", spent: 800, budget: 2000 }];
   const el = draw(bar, { source: "s", x: "g", y: ["spent", "budget"], format: { spent: "$0,0.00", budget: "$0,0" } }, rows);
-  assert.match(plain(text_(el.querySelector(".na-readout"))), /b.*spent \$800\.00.*budget \$2,000/);
+  assert.match(plain(text_(el.querySelector(".gz-readout"))), /b.*spent \$800\.00.*budget \$2,000/);
   const group = draw(bar, { source: "s", group: "genre", format: "0 books" }, [{ genre: "x", count: 2 }]);
-  assert.match(text_(group.querySelector(".na-readout")), /2 books$/);
+  assert.match(text_(group.querySelector(".gz-readout")), /2 books$/);
 });
 
 test("pie: legend values and the total follow the format", () => {
   const rows = [{ c: "food", v: 30 }, { c: "rent", v: 1200.5 }];
   const el = draw(pie, { source: "s", x: "c", y: "v", format: "$0,0.00" }, rows);
-  assert.match(text_(el.querySelector(".na-pie-legend")), /rent\$1,200\.50 · 98%.*food\$30\.00 · 2%/);
-  assert.equal(text_(el.querySelector(".na-readout")), "Total · $1,230.50");
+  assert.match(text_(el.querySelector(".gz-pie-legend")), /rent\$1,200\.50 · 98%.*food\$30\.00 · 2%/);
+  assert.equal(text_(el.querySelector(".gz-readout")), "Total · $1,230.50");
 });
 
 test("table: a map is per column, a text format is for numeric columns; grouping stays without a format", () => {

@@ -58,19 +58,19 @@ test("editing a component redraws the apps that use it", async () => {
     "Components/C.md": { fm: COUNTDOWN },
   });
   await settle();
-  assert.match(text(root.querySelector(".na-label")), /^until 2027-01-01/);
+  assert.match(text(root.querySelector(".gz-label")), /^until 2027-01-01/);
   await change("Components/C.md", { ...COUNTDOWN, params: { when: "2027-02-01" } });
-  assert.match(text(root.querySelector(".na-label")), /^until 2027-02-01/);
+  assert.match(text(root.querySelector(".gz-label")), /^until 2027-02-01/);
 });
 
 test("creating a missing component clears its error", async () => {
   const { root, change } = setup({ "Apps/W.md": { fm: { app: "x", panels: [{ use: "[[Later]]" }, { view: "countdown", to: "2026-11-25" }] } } });
   await settle();
-  assert.match(text(root.querySelector(".na-card.na-error")), /can't find \[\[Later\]\]/);
-  assert.equal(root.querySelectorAll(".na-panel").length, 1);
+  assert.match(text(root.querySelector(".gz-card.gz-error")), /can't find \[\[Later\]\]/);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 1);
   await change("Components/Later.md", COUNTDOWN);
-  assert.equal(root.querySelector(".na-card.na-error"), null);
-  assert.equal(root.querySelectorAll(".na-panel").length, 2);
+  assert.equal(root.querySelector(".gz-card.gz-error"), null);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 2);
 });
 
 test("a component that adds a host asks again, naming itself and marking what's new", async () => {
@@ -80,32 +80,32 @@ test("a component that adds a host asks again, naming itself and marking what's 
     { "Apps/W.md": ["net:a.example.com"] },
   );
   await settle();
-  assert.equal(root.querySelectorAll(".na-panel").length, 2);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 2);
   await change("T.md", { ...ticker, panels: [...ticker.panels, { view: "number", source: "https://b.example.com/q" }] });
-  assert.equal(root.querySelectorAll(".na-panel").length, 0);
-  assert.deepEqual([...root.querySelectorAll(".na-card li")].map((li) => text(li)), [
+  assert.equal(root.querySelectorAll(".gz-panel").length, 0);
+  assert.deepEqual([...root.querySelectorAll(".gz-card li")].map((li) => text(li)), [
     "Fetch data from a.example.com — for this note, [[T]]",
     "NewFetch data from b.example.com — for [[T]]",
   ]);
-  (root.querySelector(".na-card button.mod-cta") as HTMLButtonElement).click();
+  (root.querySelector(".gz-card button.mod-cta") as HTMLButtonElement).click();
   await settle();
-  assert.equal(root.querySelectorAll(".na-panel").length, 3);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 3);
 });
 
 test("a component opened on its own shows how to use it and previews with its defaults", async () => {
   const { root } = setup({ "Components/C.md": { fm: COUNTDOWN } }, {}, "Components/C.md");
   await settle();
-  assert.equal(text(root.querySelector(".na-example")), 'panels:\n  - use: "[[C]]"\n    with: {when: 2027-01-01}');
-  assert.equal(root.querySelectorAll(".na-panel").length, 1);
-  assert.match(text(root.querySelector(".na-label")), /^until 2027-01-01/);
+  assert.equal(text(root.querySelector(".gz-example")), 'panels:\n  - use: "[[C]]"\n    with: {when: 2027-01-01}');
+  assert.equal(root.querySelectorAll(".gz-panel").length, 1);
+  assert.match(text(root.querySelector(".gz-label")), /^until 2027-01-01/);
 });
 
 test("a component with a required param isn't drawn, but its problems are shown", async () => {
   const fm = { component: "t", params: ["symbol"], panels: [{ view: "number", source: "https://a.example.com/$symbol", colour: "red" }] };
   const { root } = setup({ "T.md": { fm } }, {}, "T.md");
   await settle();
-  assert.equal(text(root.querySelector(".na-example")), 'panels:\n  - use: "[[T]]"\n    with: {symbol: …}');
-  assert.match(text(root.querySelector(".na-card")), /Give every param a default to preview it here\./);
-  assert.deepEqual([...root.querySelectorAll(".na-card.na-error li")].map((li) => text(li)), ['[[T]] panel 1: unknown key "colour"']);
-  assert.equal(root.querySelectorAll(".na-panel").length, 0);
+  assert.equal(text(root.querySelector(".gz-example")), 'panels:\n  - use: "[[T]]"\n    with: {symbol: …}');
+  assert.match(text(root.querySelector(".gz-card")), /Give every param a default to preview it here\./);
+  assert.deepEqual([...root.querySelectorAll(".gz-card.gz-error li")].map((li) => text(li)), ['[[T]] panel 1: unknown key "colour"']);
+  assert.equal(root.querySelectorAll(".gz-panel").length, 0);
 });

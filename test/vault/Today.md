@@ -2,12 +2,12 @@
 
 My day at a glance, with the things I log.
 
-```note-app
+```gizmo
 app: "[[Meds]]"
 panels: [Took meds]
 ```
 
-```note-app
+```gizmo
 panels:
   - view: button
     label: Drank a glass of water

@@ -49,15 +49,15 @@ export const alerts: ViewDef = {
       heading(el, p);
       const items = ctx.alerts?.list() ?? [];
       if (items.length === 0) {
-        el.createDiv({ cls: "na-empty", text: "Nothing needs attention." });
+        el.createDiv({ cls: "gz-empty", text: "Nothing needs attention." });
         return;
       }
-      const ul = el.createEl("ul", { cls: "na-alerts" });
+      const ul = el.createEl("ul", { cls: "gz-alerts" });
       for (const a of items) {
         const li = ul.createEl("li");
         noteLink(li, a.app, a.appPath, ctx);
-        li.createSpan({ cls: "na-alert-title", text: a.title });
-        li.createSpan({ cls: "na-alert-value", text: a.text });
+        li.createSpan({ cls: "gz-alert-title", text: a.title });
+        li.createSpan({ cls: "gz-alert-value", text: a.text });
       }
     };
     const stop = ctx.alerts?.subscribe(draw);

@@ -1,6 +1,6 @@
 /**
  * Grid arithmetic, kept in step with styles.css: in its own tab the app is at most 960 px wide
- * with 16 px padding each side; in an embed or a lens (`.na-embed .note-app`, `.na-lens .note-app`)
+ * with 16 px padding each side; in an embed or a lens (`.gz-embed .gizmo`, `.gz-lens .gizmo`)
  * it has neither cap nor padding. Columns are at least 200 px with 12 px gaps; a panel has 16 px
  * padding and a 1 px border. Widths are worked out here rather than measured, so a chart in a
  * hidden tab is still drawn at its real size.

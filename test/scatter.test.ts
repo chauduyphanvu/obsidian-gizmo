@@ -44,8 +44,8 @@ const CARS = [
   { name: "No mileage", w: 1000 },
   { name: "No weight", mpg: 20 },
 ];
-const dots = (el: Element) => [...el.querySelectorAll("circle.na-scatter-dot")] as HTMLElement[];
-const axisLabels = (el: Element) => [...el.querySelectorAll("text.na-axis")].map((t) => text(t));
+const dots = (el: Element) => [...el.querySelectorAll("circle.gz-scatter-dot")] as HTMLElement[];
+const axisLabels = (el: Element) => [...el.querySelectorAll("text.gz-axis")].map((t) => text(t));
 
 test("time ticks are hours, days or months, the finest step that fits", () => {
   assert.deepEqual(timeTicks(at(2026, 11, 1), at(2026, 11, 11), 8).map((t) => t.label), ["Nov 1", "Nov 3", "Nov 5", "Nov 7", "Nov 9", "Nov 11"]);
@@ -72,7 +72,7 @@ test("one dot per row that has numbers for x and y, r=4 in the first chart colou
   assert.equal(dots(el).length, 3);
   for (const d of dots(el)) {
     assert.equal(d.getAttribute("r"), "4");
-    assert.ok(d.classList.contains("na-s1"));
+    assert.ok(d.classList.contains("gz-s1"));
   }
   // Heavier cars sit further right and use less fuel, so lower.
   const [mini, golf, volvo] = dots(el).map((d) => [Number(d.getAttribute("cx")), Number(d.getAttribute("cy"))]);
@@ -93,7 +93,7 @@ test("a dot's title is item, or x and y with the unit, and it is focusable with 
 
 test("hovering or focusing a dot reads it out under the chart; leaving puts the axes back", () => {
   const { el } = mount({ item: "{name}" }, CARS);
-  const readout = el.querySelector(".na-readout")!;
+  const readout = el.querySelector(".gz-readout")!;
   assert.equal(text(readout), "x: w · y: mpg");
   dots(el)[1].dispatchEvent(new window.Event("pointerover", { bubbles: true }));
   assert.equal(text(readout), "Golf");
@@ -127,7 +127,7 @@ test("with select a dot is a button that picks its data row", () => {
   const click = () => golf.dispatchEvent(new window.Event("click", { bubbles: true }));
   click();
   assert.deepEqual(picked, [CARS[1]]);
-  assert.ok(golf.classList.contains("na-selected"));
+  assert.ok(golf.classList.contains("gz-selected"));
   click();
   assert.equal(picked.at(-1), undefined);
 });
@@ -136,8 +136,8 @@ test("past 2,000 dots the first 2,000 are drawn and a note says how many there a
   const many = Array.from({ length: MAX_DOTS + 500 }, (_, i) => ({ w: i, mpg: i % 50 }));
   const { el } = mount({}, many);
   assert.equal(dots(el).length, MAX_DOTS);
-  assert.equal(text(el.querySelector(".na-label")), `Showing ${(2000).toLocaleString()} of ${(2500).toLocaleString()}`);
-  assert.equal(mount({}, many.slice(0, 10)).el.querySelector(".na-label"), null);
+  assert.equal(text(el.querySelector(".gz-label")), `Showing ${(2000).toLocaleString()} of ${(2500).toLocaleString()}`);
+  assert.equal(mount({}, many.slice(0, 10)).el.querySelector(".gz-label"), null);
 });
 
 test("it draws at the panel's width, redraws on resize, and never narrower than 280", () => {
@@ -151,7 +151,7 @@ test("it draws at the panel's width, redraws on resize, and never narrower than 
 });
 
 test("nothing to plot says so; one dot still draws", () => {
-  assert.equal(text(mount({}, [{ name: "x" }]).el.querySelector(".na-empty")), "No data to chart yet.");
+  assert.equal(text(mount({}, [{ name: "x" }]).el.querySelector(".gz-empty")), "No data to chart yet.");
   assert.equal(dots(mount({}, [{ w: 3, mpg: 3 }]).el).length, 1);
 });
 
@@ -161,9 +161,9 @@ test("format sets the axis ticks, the default title and the readout; labels name
   assert.ok(axisLabels(el).includes("30.0 mpg"));
   assert.equal(text(dots(el)[0].querySelector("title")), "1,200 lb, 38.2 mpg");
   assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "Efficiency by Weight");
-  assert.equal(text(el.querySelector(".na-readout")), "x: Weight · y: Efficiency");
+  assert.equal(text(el.querySelector(".gz-readout")), "x: Weight · y: Efficiency");
   dots(el)[1].dispatchEvent(new window.Event("pointerover", { bubbles: true }));
-  assert.equal(text(el.querySelector(".na-readout")), "1,500 lb, 31.0 mpg");
+  assert.equal(text(el.querySelector(".gz-readout")), "1,500 lb, 31.0 mpg");
   // format wins over unit and decimals, as it does in the other views.
   assert.equal(text(mount({ format: { mpg: "0 mpg" }, unit: "kg", decimals: 3 }, CARS).el.querySelector("title")), "1,200, 38 mpg");
 

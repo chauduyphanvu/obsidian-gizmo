@@ -238,7 +238,7 @@ export function seriesNames(p: Pick<Panel, "y">): string[] {
 
 export function heading(el: HTMLElement, p: Panel, fallback?: string): void {
   const text = p.title ?? fallback;
-  if (text) el.createDiv({ cls: "na-title", text });
+  if (text) el.createDiv({ cls: "gz-title", text });
 }
 
 export function rowsOf(data: unknown): Row[] {
@@ -275,7 +275,7 @@ export const ROW_CAP = 200;
 export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void): void {
   rows.slice(0, ROW_CAP).forEach(draw);
   if (rows.length <= ROW_CAP) return;
-  const more = el.createEl("button", { cls: "na-small na-more", text: `Show all ${rows.length}` });
+  const more = el.createEl("button", { cls: "gz-small gz-more", text: `Show all ${rows.length}` });
   more.addEventListener("click", () => {
     more.remove();
     rows.slice(ROW_CAP).forEach(draw);
@@ -325,17 +325,17 @@ function pickedIn(p: Panel, ctx: PanelCtx, root: Element | undefined): Row | und
  */
 function drawDetail(root: Element): void {
   const d = DETAILED.get(root)!;
-  for (const old of [...root.children]) if (old.classList.contains("na-detail")) old.remove();
+  for (const old of [...root.children]) if (old.classList.contains("gz-detail")) old.remove();
   const want = pickedIn(d.p, d.ctx, root);
   // Each element compares as it was made selectable: a board's cards are rows of their own, not its groups.
-  const picks = [...root.querySelectorAll(".na-selectable")].map((item) => PICKS.get(item));
+  const picks = [...root.querySelectorAll(".gz-selectable")].map((item) => PICKS.get(item));
   const row = want && picks.find((pick) => pick && sameRow(pick.p, want, pick.row))?.row;
   if (!row) {
     d.pick = undefined;
     return;
   }
-  const area = (root as HTMLElement).createDiv({ cls: "na-detail", attr: { role: "status" } });
-  area.createSpan({ cls: "na-detail-text", text: fillWith(d.p.detail!, row, (path, v) => display(d.p, path, v, d.ctx.now, "text")) });
+  const area = (root as HTMLElement).createDiv({ cls: "gz-detail", attr: { role: "status" } });
+  area.createSpan({ cls: "gz-detail-text", text: fillWith(d.p.detail!, row, (path, v) => display(d.p, path, v, d.ctx.now, "text")) });
   const note = rowNote(d.p, row);
   if (note) noteLink(area, "Open", note, d.ctx);
 }
@@ -379,7 +379,7 @@ export function sameRow(p: Panel, a: Row | undefined, b: Row): boolean {
 }
 
 function mark(el: Element, on: boolean): void {
-  el.classList.toggle("na-selected", on);
+  el.classList.toggle("gz-selected", on);
   el.setAttribute("aria-pressed", String(on));
 }
 
@@ -392,9 +392,9 @@ function fromControl(e: Event, el: Element): boolean {
 /** Marks every selectable element in `el`'s panel against the current selections. */
 function markAll(el: Element): void {
   // Outside an app (a view drawn on its own) the whole tree it hangs in stands in for the panel.
-  let scope: Element = el.closest(".na-panel") ?? el;
+  let scope: Element = el.closest(".gz-panel") ?? el;
   if (scope === el) while (scope.parentElement) scope = scope.parentElement;
-  for (const item of scope.querySelectorAll(".na-selectable")) {
+  for (const item of scope.querySelectorAll(".gz-selectable")) {
     const pick = PICKS.get(item);
     if (pick) mark(item, sameRow(pick.p, pickedIn(pick.p, pick.ctx, pick.root), pick.row));
   }
@@ -408,7 +408,7 @@ export function picks(p: Panel): boolean {
 /**
  * Makes `el` (a list item, a table row, a bar, a slice, a legend entry) pick `row` as the panel's
  * `select`, and for its `detail`: a button for the mouse and keyboard (Enter or Space), marked
- * `na-selected` while its row is the one picked. Picking it again clears the pick. Every element
+ * `gz-selected` while its row is the one picked. Picking it again clears the pick. Every element
  * of the panel is marked again in place, so the panel isn't redrawn; its detail area is drawn
  * again. Does nothing when the panel has neither `select` nor `detail`.
  * Returns what a view that updates rows in place calls with the row's new values: the element then
@@ -420,7 +420,7 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
   const root = detailedOf(el);
   const pick: Picker = { p, ctx, row, root };
   PICKS.set(el, pick);
-  el.classList.add("na-selectable");
+  el.classList.add("gz-selectable");
   el.setAttribute("role", "button");
   el.setAttribute("tabindex", "0");
   if (label) el.setAttribute("aria-label", label);

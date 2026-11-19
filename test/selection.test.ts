@@ -147,10 +147,10 @@ test("master and detail: picking a row loads the panels that read it; picking it
   const { root, start, f } = open(MASTER_DETAIL);
   start();
   await settle();
-  const [list, detail, number] = [...root.querySelectorAll(".na-panel")];
-  assert.equal(text(detail.querySelector(".na-waiting")), "Pick a row in “Strongest”");
-  assert.equal(text(number.querySelector(".na-waiting")), "Pick a row in “Strongest”");
-  assert.equal(text(detail.querySelector(".na-title")), "Detail");
+  const [list, detail, number] = [...root.querySelectorAll(".gz-panel")];
+  assert.equal(text(detail.querySelector(".gz-waiting")), "Pick a row in “Strongest”");
+  assert.equal(text(number.querySelector(".gz-waiting")), "Pick a row in “Strongest”");
+  assert.equal(text(detail.querySelector(".gz-title")), "Detail");
   assert.deepEqual(f.requests, [QUAKES]);
 
   const ul = list.querySelector("ul")!;
@@ -158,23 +158,23 @@ test("master and detail: picking a row loads the panels that read it; picking it
   assert.deepEqual([lima.getAttribute("role"), lima.getAttribute("tabindex"), lima.getAttribute("aria-pressed")], ["button", "0", "false"]);
   (lima as HTMLElement).click();
   await settle();
-  assert.equal(text(detail.querySelector(".na-text")), "M6.1 at Lima");
-  assert.equal(text(number.querySelector(".na-big")), "7");
+  assert.equal(text(detail.querySelector(".gz-text")), "M6.1 at Lima");
+  assert.equal(text(number.querySelector(".gz-big")), "7");
   assert.equal(f.requests.at(-1), "https://detail.example.com/q?id=a1");
   // The list highlights in place: same elements, nothing redrawn.
   assert.equal(list.querySelector("ul"), ul);
-  assert.ok(lima.classList.contains("na-selected"));
+  assert.ok(lima.classList.contains("gz-selected"));
   assert.equal(lima.getAttribute("aria-pressed"), "true");
 
   key(oslo, "Enter");
   await settle();
-  assert.equal(text(detail.querySelector(".na-text")), "M4.2 at Oslo");
-  assert.deepEqual([lima.classList.contains("na-selected"), oslo.classList.contains("na-selected")], [false, true]);
+  assert.equal(text(detail.querySelector(".gz-text")), "M4.2 at Oslo");
+  assert.deepEqual([lima.classList.contains("gz-selected"), oslo.classList.contains("gz-selected")], [false, true]);
 
   key(oslo, " ");
   await settle();
-  assert.equal(text(detail.querySelector(".na-waiting")), "Pick a row in “Strongest”");
-  assert.equal(list.querySelectorAll(".na-selected").length, 0);
+  assert.equal(text(detail.querySelector(".gz-waiting")), "Pick a row in “Strongest”");
+  assert.equal(list.querySelectorAll(".gz-selected").length, 0);
 });
 
 test("a selection survives its panel reloading and is gone when the note is reopened", async () => {
@@ -190,19 +190,19 @@ test("a selection survives its panel reloading and is gone when the note is reop
   await settle();
   (root.querySelectorAll("tbody tr")[1] as HTMLElement).click();
   await settle();
-  assert.equal(text(root.querySelector(".na-text")), "Reading Emma");
+  assert.equal(text(root.querySelector(".gz-text")), "Reading Emma");
   f.files.get("Apps/W data.md")!.fm = { books: [{ title: "Dune" }, { title: "Emma" }, { title: "Ulysses" }] };
   data.fileChanged("Apps/W data.md");
   f.flush();
   await settle();
   assert.equal(root.querySelectorAll("tbody tr").length, 3);
-  assert.ok(root.querySelectorAll("tbody tr")[1].classList.contains("na-selected"));
-  assert.equal(text(root.querySelector(".na-text")), "Reading Emma");
+  assert.ok(root.querySelectorAll("tbody tr")[1].classList.contains("gz-selected"));
+  assert.equal(text(root.querySelector(".gz-text")), "Reading Emma");
   first.dispose();
   new AppController(root, APP, env).load();
   await settle();
-  assert.ok(root.querySelector(".na-waiting"));
-  assert.equal(root.querySelectorAll(".na-selected").length, 0);
+  assert.ok(root.querySelector(".gz-waiting"));
+  assert.equal(root.querySelectorAll(".gz-selected").length, 0);
 });
 
 test("a search box waits for typing, applies after a pause or on Enter, and keeps focus and text", async () => {
@@ -217,11 +217,11 @@ test("a search box waits for typing, applies after a pause or on Enter, and keep
   const { root, start, f } = open(fm);
   start();
   await settle();
-  const box = root.querySelector('.na-inputs input[type="search"]') as HTMLInputElement;
-  const number = root.querySelector(".na-view-number")!;
+  const box = root.querySelector('.gz-inputs input[type="search"]') as HTMLInputElement;
+  const number = root.querySelector(".gz-view-number")!;
   assert.equal(box.getAttribute("aria-label"), "q");
-  assert.equal(text(number.querySelector(".na-waiting")), "Type in “q”");
-  assert.equal(text(number.querySelector(".na-title")), "Results");
+  assert.equal(text(number.querySelector(".gz-waiting")), "Type in “q”");
+  assert.equal(text(number.querySelector(".gz-title")), "Results");
 
   box.focus();
   box.value = "war & p";
@@ -233,8 +233,8 @@ test("a search box waits for typing, applies after a pause or on Enter, and keep
   await new Promise((r) => setTimeout(r, 350));
   await settle();
   assert.deepEqual(f.requests, ["https://search.example.com/s?q=war%20%26%20peace"]);
-  assert.equal(text(number.querySelector(".na-big")), "7");
-  assert.equal(root.querySelector('.na-inputs input[type="search"]'), box);
+  assert.equal(text(number.querySelector(".gz-big")), "7");
+  assert.equal(root.querySelector('.gz-inputs input[type="search"]'), box);
   assert.equal(box.value, "war & peace");
   assert.equal(document.activeElement, box);
 
@@ -252,7 +252,7 @@ test("a search box waits for typing, applies after a pause or on Enter, and keep
   box.value = "";
   key(box, "Enter");
   await settle();
-  assert.equal(text(number.querySelector(".na-waiting")), "Type in “q”");
+  assert.equal(text(number.querySelector(".gz-waiting")), "Type in “q”");
 });
 
 test("a grouped bar picks the group's row; marks are buttons and the picked one is marked", async () => {
@@ -266,14 +266,14 @@ test("a grouped bar picks the group's row; marks are buttons and the picked one 
   const { root, start } = open(fm, { "Apps/W data.md": { fm: { log: [{ mood: "ok" }, { mood: "good" }, { mood: "good" }] } } });
   start();
   await settle();
-  const bars = [...root.querySelectorAll(".na-bar")];
+  const bars = [...root.querySelectorAll(".gz-bar")];
   assert.equal(bars.length, 2);
   assert.deepEqual(bars.map((b) => [b.getAttribute("role"), b.getAttribute("tabindex"), b.getAttribute("aria-label")]),
     [["button", "0", "good"], ["button", "0", "ok"]]);
   bars[0].dispatchEvent(new window.Event("click", { bubbles: true }));
   await settle();
-  assert.equal(text(root.querySelector(".na-text")), "good: 2");
-  assert.deepEqual(bars.map((b) => b.classList.contains("na-selected")), [true, false]);
+  assert.equal(text(root.querySelector(".gz-text")), "good: 2");
+  assert.deepEqual(bars.map((b) => b.classList.contains("gz-selected")), [true, false]);
 });
 
 test("an ungrouped bar picks the data row behind it", async () => {
@@ -289,12 +289,12 @@ test("an ungrouped bar picks the data row behind it", async () => {
   start();
   await settle();
   // Drawn series by series: planned food, planned rent, spent food, spent rent.
-  const bars = [...root.querySelectorAll(".na-bar")];
+  const bars = [...root.querySelectorAll(".gz-bar")];
   assert.equal(bars.length, 4);
   bars[3].dispatchEvent(new window.Event("click", { bubbles: true }));
   await settle();
-  assert.equal(text(root.querySelector(".na-text")), "rent monthly");
-  assert.deepEqual(bars.map((b) => b.classList.contains("na-selected")), [false, true, false, true]);
+  assert.equal(text(root.querySelector(".gz-text")), "rent monthly");
+  assert.deepEqual(bars.map((b) => b.classList.contains("gz-selected")), [false, true, false, true]);
 });
 
 test("a pie's slices and legend rows pick the same row; Other picks nothing", () => {
@@ -309,13 +309,13 @@ test("a pie's slices and legend rows pick the same row; Other picks nothing", ()
   const el = document.createElement("div");
   const rows = ["a", "b", "c", "d", "e", "f", "g"].map((g, i) => ({ g, count: 10 - i }));
   pie.mount(el, p, ctx, "k").update(rows);
-  const items = [...el.querySelectorAll(".na-legend-item")];
-  assert.equal(el.querySelectorAll(".na-slice.na-selectable").length, 5);
+  const items = [...el.querySelectorAll(".gz-legend-item")];
+  assert.equal(el.querySelectorAll(".gz-slice.gz-selectable").length, 5);
   assert.equal(items.length, 6);
-  assert.ok(!items[5].classList.contains("na-selectable"), "Other");
+  assert.ok(!items[5].classList.contains("gz-selectable"), "Other");
   items[1].dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(picked, [{ g: "b", count: 9 }]);
-  assert.deepEqual([...el.querySelectorAll(".na-selected")].map((e) => e.tagName.toLowerCase()), ["path", "span"]);
+  assert.deepEqual([...el.querySelectorAll(".gz-selected")].map((e) => e.tagName.toLowerCase()), ["path", "span"]);
 });
 
 test("two uses of one component keep their selections apart", async () => {
@@ -333,12 +333,12 @@ test("two uses of one component keep their selections apart", async () => {
   const { root, start } = open({ app: "x", panels: [{ use: "[[Picker]]", with: { list: "a" } }, { use: "[[Picker]]", with: { list: "b" } }] }, notes);
   start();
   await settle();
-  const [, textA, listB, textB] = [...root.querySelectorAll(".na-panel")];
-  assert.equal(text(textB.querySelector(".na-waiting")), "Pick a row in “Pick from b”");
+  const [, textA, listB, textB] = [...root.querySelectorAll(".gz-panel")];
+  assert.equal(text(textB.querySelector(".gz-waiting")), "Pick a row in “Pick from b”");
   (listB.querySelector("li") as HTMLElement).click();
   await settle();
-  assert.equal(text(textB.querySelector(".na-text")), "Picked b1");
-  assert.ok(textA.querySelector(".na-waiting"));
+  assert.equal(text(textB.querySelector(".gz-text")), "Picked b1");
+  assert.ok(textA.querySelector(".gz-waiting"));
 });
 
 test("typing that is applied after the app was closed does nothing", async () => {
@@ -346,7 +346,7 @@ test("typing that is applied after the app was closed does nothing", async () =>
   const { root, start, f, data, env } = open(fm);
   const app = start();
   await settle();
-  const box = root.querySelector('.na-inputs input[type="search"]') as HTMLInputElement;
+  const box = root.querySelector('.gz-inputs input[type="search"]') as HTMLInputElement;
   box.value = "late";
   box.dispatchEvent(new window.Event("input"));
   app.dispose();

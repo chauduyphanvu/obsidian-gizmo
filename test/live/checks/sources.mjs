@@ -18,16 +18,16 @@ export default async function sources(t) {
     const r = await run(`
       await na.open("Apps/Bank");
       const el = na.view().contentEl;
-      const bars = el.querySelectorAll(".na-view-bar path.na-bar").length;
-      const row = el.querySelector(".na-view-table tbody tr.na-selectable");
+      const bars = el.querySelectorAll(".gz-view-bar path.gz-bar").length;
+      const row = el.querySelector(".gz-view-table tbody tr.gz-selectable");
       row.click();
       await na.sleep(500);
-      const form = el.querySelector(".na-view-form");
+      const form = el.querySelector(".gz-view-form");
       na.fill(form.querySelector("input"), "Rent went up?");
       na.button("Flag it", form).click();
-      await na.until(() => na.text(el.querySelector(".na-view-list")).includes("Rent went up?"), 3000);
+      await na.until(() => na.text(el.querySelector(".gz-view-list")).includes("Rent went up?"), 3000);
       const flagged = na.fm("Apps/Bank data.md")?.flagged;
-      return { bars, row: row.textContent, list: na.text(el.querySelector(".na-view-list")), flagged, type: typeof flagged?.[0]?.amount };`);
+      return { bars, row: row.textContent, list: na.text(el.querySelector(".gz-view-list")), flagged, type: typeof flagged?.[0]?.amount };`);
     expect(r.bars === 4, r);
     expect(r.list.includes("Rent went up?") && r.flagged?.length === 1 && r.type === "number" && r.flagged[0].description && r.flagged[0].date, r);
     return `4 bars; flagged ${JSON.stringify(r.flagged[0])}`;
@@ -37,16 +37,16 @@ export default async function sources(t) {
     const r = await run(`
       await na.open("Apps/Bank");
       const el = na.view().contentEl;
-      const top = () => el.querySelector(".na-view-table tbody tr")?.textContent;
+      const top = () => el.querySelector(".gz-view-table tbody tr")?.textContent;
       const before = top();
       const csv = app.vault.getFileByPath("Finance/bank.csv");
       const text = await app.vault.read(csv);
       await app.vault.modify(csv, text.replace(/\\n?$/, "\\n") + "2026-11-18,Big TV,-2000.00,Shopping\\n");
       const appended = await na.until(() => top()?.includes("Big TV") && top(), 3000);
       await app.fileManager.renameFile(csv, "Finance/bank-old.csv");
-      const gone = await na.until(() => el.querySelector(".na-panel.na-error") && na.text(el.querySelector(".na-panel.na-error")), 3000);
+      const gone = await na.until(() => el.querySelector(".gz-panel.gz-error") && na.text(el.querySelector(".gz-panel.gz-error")), 3000);
       await app.fileManager.renameFile(app.vault.getFileByPath("Finance/bank-old.csv"), "Finance/bank.csv");
-      const back = await na.until(() => !el.querySelector(".na-panel.na-error") && top()?.includes("Big TV") && top(), 3000);
+      const back = await na.until(() => !el.querySelector(".gz-panel.gz-error") && top()?.includes("Big TV") && top(), 3000);
       return { before, appended, gone, back, errors: na.errors() };`);
     expect(r.appended && !r.before.includes("Big TV"), r);
     expect(typeof r.gone === "string" && r.gone.includes("Can't find Finance/bank.csv"), r);
@@ -58,7 +58,7 @@ export default async function sources(t) {
     const r = await run(`
       await na.open("Apps/Reading list");
       const el = na.view().contentEl;
-      const feed = el.querySelector(".na-view-list");
+      const feed = el.querySelector(".gz-view-list");
       const item = feed.querySelector("li");
       const title = item.textContent.replace(/Save$/, "");
       const mark = na.notices.length;
@@ -66,7 +66,7 @@ export default async function sources(t) {
       const note = await na.until(() => app.vault.getFiles().find((f) => f.path.startsWith("Reading/")), 4000);
       await na.sleep(800);
       const fm = note && na.fm(note.path);
-      const row = () => [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.includes(note.basename));
+      const row = () => [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.includes(note.basename));
       const listed = !!(await na.until(row, 3000));
       row().querySelector('input[type="checkbox"]').click();
       const read = await na.until(() => na.fm(note.path)?.read === true, 3000);
@@ -82,7 +82,7 @@ export default async function sources(t) {
     const r = await run(`
       await na.open("Apps/Week");
       const el = na.view().contentEl;
-      const [agenda, , done] = el.querySelectorAll(".na-panel");
+      const [agenda, , done] = el.querySelectorAll(".gz-panel");
       const items = () => [...agenda.querySelectorAll("li")].map((li) => li.textContent);
       const first = items();
       const bins = [...agenda.querySelectorAll("li")].find((li) => li.textContent.includes("Bins out"));
@@ -108,7 +108,7 @@ export default async function sources(t) {
       await na.write("Scratch/Echo.md", ${JSON.stringify(POST)});
       await na.sleep(800);
       const { prompt } = await na.open("Scratch/Echo");
-      await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 10000);
+      await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 10000);
       return { prompt, text: na.text(), errors: na.errors() };`);
     expect(r.prompt?.includes("Send a request body to httpbin.org") && r.prompt.includes("Fetch data from httpbin.org"), r);
     expect(r.errors === 0 && r.text.includes("x sent as application/json"), r);

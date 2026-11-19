@@ -243,7 +243,7 @@ test("a row's Add button saves it as a note, and a notes panel on that folder sh
   document.body.appendChild(root);
   new AppController(root, "Apps/W.md", env).load();
   await settle();
-  const buttons = [...root.querySelectorAll("button.na-row-action")] as HTMLButtonElement[];
+  const buttons = [...root.querySelectorAll("button.gz-row-action")] as HTMLButtonElement[];
   assert.deepEqual(buttons.map((b) => b.textContent), ["Add", "Add"]);
   buttons[1].click();
   assert.equal(buttons[1].disabled, true);
@@ -251,7 +251,7 @@ test("a row's Add button saves it as a note, and a notes panel on that folder sh
   assert.equal(buttons[1].disabled, false);
   assert.deepEqual(f.files.get("Books/Emma.md"), { fm: { title: "Emma", author: "Austen", at: "2026-11-18T12:00" }, body: "" });
   assert.deepEqual(notices, ["Added Emma"]);
-  assert.deepEqual([...root.querySelectorAll(".na-view-table tbody tr")].map((tr) => text(tr)), ["MiddlemarchEliot", "EmmaAusten"]);
+  assert.deepEqual([...root.querySelectorAll(".gz-view-table tbody tr")].map((tr) => text(tr)), ["MiddlemarchEliot", "EmmaAusten"]);
   buttons[1].click();
   await settle();
   assert.deepEqual(notices, ["Added Emma", "“Emma” already exists"]);

@@ -14,13 +14,13 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 export async function launch({ repo, dir, port, fill }) {
   const vault = join(dir, "vault");
   const userData = join(dir, "userdata");
-  const pluginDir = join(vault, ".obsidian/plugins/note-apps");
+  const pluginDir = join(vault, ".obsidian/plugins/gizmo");
   mkdirSync(vault, { recursive: true });
   mkdirSync(userData, { recursive: true });
   fill(vault);
   mkdirSync(pluginDir, { recursive: true });
   for (const f of ["main.js", "manifest.json", "styles.css"]) cpSync(join(repo, f), join(pluginDir, f));
-  writeFileSync(join(vault, ".obsidian/community-plugins.json"), '["note-apps"]');
+  writeFileSync(join(vault, ".obsidian/community-plugins.json"), '["gizmo"]');
   writeFileSync(join(userData, "obsidian.json"), JSON.stringify({
     vaults: { c3d4e5f607182930: { path: vault, ts: Date.now(), open: true } },
   }));

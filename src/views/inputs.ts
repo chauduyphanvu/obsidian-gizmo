@@ -21,7 +21,7 @@ export const button: ViewDef = {
   ],
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
-    const b = el.createEl("button", { cls: "mod-cta na-button", text: p.label ?? "Log" });
+    const b = el.createEl("button", { cls: "mod-cta gz-button", text: p.label ?? "Log" });
     busy(b, () => ctx.runActions(p, {}));
   }),
 };
@@ -80,10 +80,10 @@ function propertyField(label: HTMLElement, type: string | string[], write: (valu
 /** A form with `save: this`: its fields hold the properties of the note the app sits in, saved as they change. */
 function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
   heading(el, p);
-  const f = el.createEl("form", { cls: "na-form" });
+  const f = el.createEl("form", { cls: "gz-form" });
   f.addEventListener("submit", (e) => e.preventDefault());
   const fields = Object.entries(p.fields!).map(([name, type]) => {
-    const label = f.createEl("label", { cls: "na-field" });
+    const label = f.createEl("label", { cls: "gz-field" });
     label.createSpan({ text: labelOf(p, name) });
     return [name, propertyField(label, type, (value) => ctx.setProperty?.(name, value) ?? Promise.resolve())] as const;
   });
@@ -122,10 +122,10 @@ export const form: ViewDef = {
   ],
   mount: (el, p, ctx) => (p.target?.kind === "this" ? propertyForm(el, p, ctx) : redraw(el, () => {
     heading(el, p);
-    const f = el.createEl("form", { cls: "na-form" });
+    const f = el.createEl("form", { cls: "gz-form" });
     const inputs: [string, string | string[], HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement][] = [];
     for (const [name, type] of Object.entries(p.fields ?? p.schema!)) {
-      const label = f.createEl("label", { cls: "na-field" });
+      const label = f.createEl("label", { cls: "gz-field" });
       label.createSpan({ text: labelOf(p, name) });
       // Set as the field's default, so the form's reset after a save brings it back.
       const start = startOf(p.fieldInfo?.[name], ctx.now) ?? (type === "date" ? stampParts(ctx.now).date : undefined);
@@ -192,11 +192,11 @@ export const checklist: ViewDef = {
     const checked = new Set((Array.isArray(saved) ? saved : []).map(String));
     const items = p.items!.map(String);
     const done = items.filter((i) => checked.has(i)).length;
-    const top = el.createDiv({ cls: "na-row" });
-    top.createDiv({ cls: "na-title", text: `${p.title ?? p.label ?? "Checklist"} · ${done}/${items.length}` });
-    const clear = top.createEl("button", { cls: "na-small", text: "Clear" });
+    const top = el.createDiv({ cls: "gz-row" });
+    top.createDiv({ cls: "gz-title", text: `${p.title ?? p.label ?? "Checklist"} · ${done}/${items.length}` });
+    const clear = top.createEl("button", { cls: "gz-small", text: "Clear" });
     busy(clear, () => ctx.clearChecked(key));
-    const ul = el.createEl("ul", { cls: "na-checklist" });
+    const ul = el.createEl("ul", { cls: "gz-checklist" });
     for (const item of items) {
       const label = ul.createEl("li").createEl("label");
       const box = label.createEl("input", { type: "checkbox" });

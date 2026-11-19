@@ -228,8 +228,8 @@ test("an input used in a block above the named one is filled, checked and reload
   document.body.appendChild(root);
   new AppController(root, "Apps/Q.md", env).load();
   await settle();
-  const list = root.querySelector(".na-view-list")!;
-  assert.equal(text(list.querySelector(".na-list")), "FDBE");
+  const list = root.querySelector(".gz-view-list")!;
+  assert.equal(text(list.querySelector(".gz-list")), "FDBE");
   const select = root.querySelector('select[aria-label="min"]')!;
   for (const o of select.querySelectorAll("option")) {
     if (o.textContent === "6") o.setAttribute("selected", "");
@@ -237,8 +237,8 @@ test("an input used in a block above the named one is filled, checked and reload
   }
   select.dispatchEvent(new window.Event("change"));
   await settle();
-  assert.equal(root.querySelector(".na-view-list"), list);
-  assert.equal(text(list.querySelector(".na-list")), "F");
+  assert.equal(root.querySelector(".gz-view-list"), list);
+  assert.equal(text(list.querySelector(".gz-list")), "F");
 });
 
 test("a stage is checked again for each choice an input can take", () => {

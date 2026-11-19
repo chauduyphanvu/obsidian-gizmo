@@ -6,5 +6,5 @@ VAULT="$1"
 export NOTE_APPS_TEST_VAULT="$VAULT"
 npx tsc
 node esbuild.config.mjs production
-cp main.js manifest.json styles.css "$VAULT/.obsidian/plugins/note-apps/"
-node test/live/cdp.mjs eval '(async () => { await app.plugins.disablePlugin("note-apps"); await app.plugins.enablePlugin("note-apps"); return "reloaded"; })()'
+cp main.js manifest.json styles.css "$VAULT/.obsidian/plugins/gizmo/"
+node test/live/cdp.mjs eval '(async () => { await app.plugins.disablePlugin("gizmo"); await app.plugins.enablePlugin("gizmo"); return "reloaded"; })()'

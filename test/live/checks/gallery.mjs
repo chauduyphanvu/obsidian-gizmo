@@ -13,7 +13,7 @@ const NET = {
 };
 
 /** In the page: a panel of the open app by its title. */
-const PANEL = `(title) => [...na.view().contentEl.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title)`;
+const PANEL = `(title) => [...na.view().contentEl.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title)`;
 
 export default async function gallery(t) {
   const { check, run, expect, type, press } = t;
@@ -22,7 +22,7 @@ export default async function gallery(t) {
   await check("Medication log, never opened: its command says to open it once", async () => {
     const r = await run(`
       const mark = na.notices.length;
-      app.commands.executeCommandById("note-apps:Apps/Medication log.md:took-meds");
+      app.commands.executeCommandById("gizmo:Apps/Medication log.md:took-meds");
       return { notices: await na.noticesSince(mark, "Open"), data: na.exists("Apps/Medication log data.md") };`);
     expect(r.notices.includes("Open Medication log once to allow it") && !r.data, r);
     return r.notices.join(" | ");
@@ -33,9 +33,9 @@ export default async function gallery(t) {
     await check(`opens ${name} with no problems`, async () => {
       const r = await run(`
         const { prompt } = await na.open("${folder}/${name}");
-        await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 8000);
+        await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 8000);
         return { prompt, state: na.state(), errors: na.errors(), text: na.text() };`);
-      expect(r.state === `note-app:${folder}/${name}.md` && r.errors === 0 && !r.text.includes("keys have problems"), r);
+      expect(r.state === `gizmo:${folder}/${name}.md` && r.errors === 0 && !r.text.includes("keys have problems"), r);
       if (folder === "Components") expect(r.text.includes("A component. Use it in an app's panels:"), r.text);
       return `${r.prompt ? `asked ${r.prompt.length}; ` : ""}${r.text.slice(0, 70)}`;
     }, { net: NET[name] });
@@ -69,7 +69,7 @@ export default async function gallery(t) {
       const status = () => na.status().find((s) => s.startsWith("Doses today"));
       const before = { doses: doses(), status: await na.until(status, 5000) };
       const mark = na.notices.length;
-      app.commands.executeCommandById("note-apps:Apps/Medication log.md:took-meds");
+      app.commands.executeCommandById("gizmo:Apps/Medication log.md:took-meds");
       const notices = await na.noticesSince(mark, "Dose logged");
       await na.until(() => doses() === before.doses + 1, 3000);
       const after = await na.until(() => status() !== before.status && status(), 3000);
@@ -83,26 +83,26 @@ export default async function gallery(t) {
       await na.open("Apps/Project board");
       const el = na.view().contentEl;
       const board = (${PANEL})("Projects");
-      const card = () => [...el.querySelectorAll(".na-board-card")].find((c) => c.textContent.includes("Tax return"));
-      const from = card().closest(".na-board-col").getAttribute("aria-label");
+      const card = () => [...el.querySelectorAll(".gz-board-card")].find((c) => c.textContent.includes("Tax return"));
+      const from = card().closest(".gz-board-col").getAttribute("aria-label");
       const to = from === "doing" ? "done" : "doing";
-      na.choose(card().querySelector("select.na-move"), to);
+      na.choose(card().querySelector("select.gz-move"), to);
       await na.until(() => na.fm("Projects/Tax return.md")?.status === to, 3000);
-      await na.until(() => card()?.closest(".na-board-col")?.getAttribute("aria-label") === to, 3000);
+      await na.until(() => card()?.closest(".gz-board-col")?.getAttribute("aria-label") === to, 3000);
       // Tax return now shares its column with another project: the detail must be its own.
-      const neighbours = card().closest(".na-board-col").querySelectorAll(".na-board-card").length;
+      const neighbours = card().closest(".gz-board-col").querySelectorAll(".gz-board-card").length;
       card().scrollIntoView({ block: "center" });
       await na.sleep(300);
-      const line = card().querySelector(".na-board-text").getBoundingClientRect();
-      const title = card().querySelector(".na-board-text a").getBoundingClientRect();
-      return { from, to, status: na.fm("Projects/Tax return.md")?.status, neighbours, at: [Math.min(title.right + 8, line.right - 2), line.top + line.height / 2], waiting: !board.querySelector(".na-detail") };`);
+      const line = card().querySelector(".gz-board-text").getBoundingClientRect();
+      const title = card().querySelector(".gz-board-text a").getBoundingClientRect();
+      return { from, to, status: na.fm("Projects/Tax return.md")?.status, neighbours, at: [Math.min(title.right + 8, line.right - 2), line.top + line.height / 2], waiting: !board.querySelector(".gz-detail") };`);
     expect(r.status === r.to && r.waiting, r);
     // A real click on the card, beside its title (the title itself is a link to the note).
     await t.click(r.at);
     const after = await run(`
       const board = (${PANEL})("Projects");
-      const detail = await na.until(() => board.querySelector(".na-detail"), 3000);
-      const picked = detail?.querySelector(".na-detail-text")?.textContent;
+      const detail = await na.until(() => board.querySelector(".gz-detail"), 3000);
+      const picked = detail?.querySelector(".gz-detail-text")?.textContent;
       const link = detail?.querySelector("a");
       const label = link?.textContent;
       link?.click();
@@ -118,11 +118,11 @@ export default async function gallery(t) {
     const before = await run(`
       await na.open("Apps/Decision journal");
       const panel = ${PANEL};
-      const number = (title) => panel(title).querySelector(".na-big").textContent;
+      const number = (title) => panel(title).querySelector(".gz-big").textContent;
       const form = panel("A decision I'm making");
       const name = ${at('input[type="text"]', "form")};
       await na.sleep(200);
-      return { ready: Number(number("Ready to score")), right: number("Right so far"), name, captions: [...form.querySelectorAll(".na-field > span")].map((s) => s.textContent) };`);
+      return { ready: Number(number("Ready to score")), right: number("Right so far"), name, captions: [...form.querySelectorAll(".gz-field > span")].map((s) => s.textContent) };`);
     expect(JSON.stringify(before.captions) === JSON.stringify(["Decision", "I expected", "% sure", "Due"]), before);
     await t.click(before.name);
     await type(DECISION);
@@ -134,9 +134,9 @@ export default async function gallery(t) {
       const panel = ${PANEL};
       const path = "Decisions/${DECISION}.md";
       const fm = await na.until(() => na.fm(path), 5000);
-      const ready = await na.until(() => Number(panel("Ready to score").querySelector(".na-big").textContent) === ${before.ready} + 1, 3000);
+      const ready = await na.until(() => Number(panel("Ready to score").querySelector(".gz-big").textContent) === ${before.ready} + 1, 3000);
       const notices = await na.noticesSince(${write.mark}, "Written down");
-      const tab = [...na.view().contentEl.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Score");
+      const tab = [...na.view().contentEl.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Score");
       tab.scrollIntoView({ block: "center" });
       await na.sleep(200);
       const r = tab.getBoundingClientRect();
@@ -151,20 +151,20 @@ export default async function gallery(t) {
       const row = await na.until(() => [...panel("How did these turn out?").querySelectorAll("tbody tr")].find((tr) => tr.textContent.startsWith("${DECISION}")), 3000);
       na.choose(row.querySelector("select"), "right");
       const fm = await na.until(() => na.fm("Decisions/${DECISION}.md")?.outcome === "right" && na.fm("Decisions/${DECISION}.md"), 3000);
-      await na.until(() => Number(panel("Ready to score").querySelector(".na-big").textContent) === ${before.ready}, 3000);
+      await na.until(() => Number(panel("Ready to score").querySelector(".gz-big").textContent) === ${before.ready}, 3000);
       await na.sleep(300);
       const gone = ![...panel("How did these turn out?").querySelectorAll("tbody tr")].some((tr) => tr.textContent.startsWith("${DECISION}"));
-      return { fm, ready: Number(panel("Ready to score").querySelector(".na-big").textContent), right: panel("Right so far").querySelector(".na-big").textContent, gone };`);
+      return { fm, ready: Number(panel("Ready to score").querySelector(".gz-big").textContent), right: panel("Right so far").querySelector(".gz-big").textContent, gone };`);
     expect(scored.fm?.outcome === "right" && scored.ready === before.ready && scored.gone && /^\d+%$/.test(scored.right) && scored.right !== before.right, { before, scored });
     // The lens asks once to change notes in Decisions; allowed, it reads the decision back.
     const lens = await run(`
       await app.workspace.openLinkText("Decisions/${DECISION}", "", false);
       await na.sleep(1200);
-      const el = () => na.view().contentEl.querySelector(".na-lens");
+      const el = () => na.view().contentEl.querySelector(".gz-lens");
       const asked = na.text(el());
       na.button("Allow", el())?.click();
-      const line = await na.until(() => el()?.querySelector(".na-view-text .na-text")?.textContent, 5000);
-      const out = { state: na.state(), name: el()?.querySelector(".na-lens-name")?.textContent, asked, text: el() && na.text(el()), line };
+      const line = await na.until(() => el()?.querySelector(".gz-view-text .gz-text")?.textContent, 5000);
+      const out = { state: na.state(), name: el()?.querySelector(".gz-lens-name")?.textContent, asked, text: el() && na.text(el()), line };
       await na.remove("Decisions/${DECISION}.md");
       return out;`);
     expect(lens.state === `markdown:Decisions/${DECISION}.md` && lens.name === "Decision review" && lens.asked.includes("Change properties of notes in Decisions"), lens);
@@ -173,12 +173,12 @@ export default async function gallery(t) {
   });
 
   await check("Task inbox: a task added through the form shows in Open; ticking it ticks its line", async () => {
-    await run(`await na.open("Apps/Task inbox"); na.view().contentEl.querySelector('.na-form input[type="text"]').focus();`);
+    await run(`await na.open("Apps/Task inbox"); na.view().contentEl.querySelector('.gz-form input[type="text"]').focus();`);
     await type("Call the plumber");
     await press("Enter");
     const r = await run(`
       const el = na.view().contentEl;
-      const row = () => [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.includes("Call the plumber"));
+      const row = () => [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.includes("Call the plumber"));
       await na.until(row, 3000);
       const added = await na.read("Tasks/Inbox.md");
       row().querySelector('input[type="checkbox"]').click();
@@ -199,9 +199,9 @@ export default async function gallery(t) {
     await press("Enter");
     const r = await run(`
       const saved = await na.until(() => na.fm("Apps/Sleep data.md")?.sleep?.at(-1), 3000);
-      const latest = await na.until(() => (${PANEL})("Latest").querySelector(".na-big")?.textContent === "7.5hours" && "7.5hours", 3000);
+      const latest = await na.until(() => (${PANEL})("Latest").querySelector(".gz-big")?.textContent === "7.5hours" && "7.5hours", 3000);
       const row = (${PANEL})("Entries").querySelector("tbody tr");
-      return { saved, latest, row: row && [...row.querySelectorAll("td")].map((td) => td.querySelector("input")?.value ?? td.textContent), goal: (${PANEL})("My sleep against my goal").querySelector(".na-goal-label")?.textContent, errors: na.errors() };`);
+      return { saved, latest, row: row && [...row.querySelectorAll("td")].map((td) => td.querySelector("input")?.value ?? td.textContent), goal: (${PANEL})("My sleep against my goal").querySelector(".gz-goal-label")?.textContent, errors: na.errors() };`);
     expect(r.saved?.value === 7.5 && typeof r.saved.at === "string" && r.latest === "7.5hours" && r.row?.[1] === "7.5" && r.goal === "goal 8 hours" && r.errors === 0, r);
     return `saved ${JSON.stringify(r.saved)}; latest ${r.latest}; ${r.goal}`;
   });
@@ -211,8 +211,8 @@ export default async function gallery(t) {
       await na.open("Apps/Trip planner");
       const el = na.view().contentEl;
       const panel = ${PANEL};
-      const tab = (name) => [...el.querySelectorAll("button.na-tab")].find((b) => b.textContent === name).click();
-      const days = panel("Days to go").querySelector(".na-big").textContent;
+      const tab = (name) => [...el.querySelectorAll("button.gz-tab")].find((b) => b.textContent === name).click();
+      const days = panel("Days to go").querySelector(".gz-big").textContent;
       tab("Itinerary");
       await na.sleep(300);
       const itinerary = [...panel("Itinerary").querySelectorAll("tbody tr")].map((tr) => tr.textContent);
@@ -222,7 +222,7 @@ export default async function gallery(t) {
       na.fill(form.querySelector('input[type="text"]'), "Ramen");
       na.fill(form.querySelector('input[type="number"]'), "1500");
       na.button("Add", form).click();
-      const spent = () => panel("Spent so far").querySelector(".na-big").textContent;
+      const spent = () => panel("Spent so far").querySelector(".gz-big").textContent;
       const at150 = await na.until(() => spent() === "$10.00" && spent(), 3000);
       const file = na.file("Apps/Trip planner.md");
       const original = await app.vault.read(file);
@@ -241,13 +241,13 @@ export default async function gallery(t) {
     await press("Enter");
     const searched = await run(`
       const el = na.view().contentEl;
-      const results = await na.until(() => el.querySelectorAll(".na-view-list li").length > 2 && !el.querySelector(".na-stale, .na-loading"), 30000);
-      return { results: !!results, pending: !!el.querySelector(".na-stale, .na-loading") };`);
+      const results = await na.until(() => el.querySelectorAll(".gz-view-list li").length > 2 && !el.querySelector(".gz-stale, .gz-loading"), 30000);
+      return { results: !!results, pending: !!el.querySelector(".gz-stale, .gz-loading") };`);
     // Still waiting for its answer says nothing about the plugin; an answer that is wrong does.
     if (!searched.results && searched.pending) t.skip("Open Library hasn't answered in 30 s");
     const r = await run(`
       const el = na.view().contentEl;
-      const item = [...el.querySelectorAll(".na-view-list li")].find((li) => {
+      const item = [...el.querySelectorAll(".gz-view-list li")].find((li) => {
         const title = li.textContent.split(" · ")[0];
         return !/[\\\\/:*?"<>|#^\\[\\]]/.test(title) && !na.exists("Books/" + title + ".md");
       });
@@ -256,8 +256,8 @@ export default async function gallery(t) {
       const fm = await na.until(() => na.fm("Books/" + title + ".md"), 5000);
       await app.workspace.openLinkText("Books/" + title, "", false);
       await na.sleep(1200);
-      const lens = na.view().contentEl.querySelector(".na-lens");
-      return { title, fm, state: na.state(), name: lens?.querySelector(".na-lens-name")?.textContent, lens: lens && na.text(lens) };`);
+      const lens = na.view().contentEl.querySelector(".gz-lens");
+      return { title, fm, state: na.state(), name: lens?.querySelector(".gz-lens-name")?.textContent, lens: lens && na.text(lens) };`);
     expect(r.fm && r.fm.status === "to read" && typeof r.fm.year === "number" && r.state === `markdown:Books/${r.title}.md`, r);
     expect(r.name === "Reading progress" && r.lens.includes("Change properties of notes in Books"), r);
     return `Books/${r.title}.md; lens: ${r.lens.slice(0, 80)}`;
@@ -267,13 +267,13 @@ export default async function gallery(t) {
   for (const theme of ["light", "dark"]) {
     await t.theme(theme);
     for (const name of APPS) {
-      await run(`await na.open("Apps/${name}"); await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 6000); await na.sleep(600);`);
+      await run(`await na.open("Apps/${name}"); await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 6000); await na.sleep(600);`);
       await t.shot(`gallery-${name.replace(/ /g, "-")}-${theme}.png`, 1280, 900);
     }
   }
   await run(`app.workspace.leftSplit.collapse(); app.workspace.rightSplit.collapse();`);
   for (const name of APPS) {
-    await run(`await na.open("Apps/${name}"); await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 6000); await na.sleep(600);`);
+    await run(`await na.open("Apps/${name}"); await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 6000); await na.sleep(600);`);
     await t.shot(`gallery-${name.replace(/ /g, "-")}-phone.png`, 390, 844, 2);
   }
   await run(`await na.openMd("Today.md", "live"); await na.sleep(800);`);

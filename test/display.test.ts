@@ -33,19 +33,19 @@ const SKY = { weathercode: { 0: "Clear", 1: "Mostly clear", 3: "Overcast" } };
 test("labels name series in a chart's legend and readout; one labelled series gets a legend, an unlabelled one none", () => {
   for (const def of [line, bar]) {
     const two = draw(def, { source: "s", x: "time", y: ["hi", "lo"], labels: { hi: "High", lo: "Low" } }, daily);
-    assert.equal(text_(two.querySelector(".na-legend")), "HighLow");
-    assert.match(text_(two.querySelector(".na-readout")), /High 10 *Low 3/);
+    assert.equal(text_(two.querySelector(".gz-legend")), "HighLow");
+    assert.match(text_(two.querySelector(".gz-readout")), /High 10 *Low 3/);
     const part = draw(def, { source: "s", x: "time", y: ["hi", "lo"], labels: { hi: "High" } }, daily);
-    assert.equal(text_(part.querySelector(".na-legend")), "Highlo");
+    assert.equal(text_(part.querySelector(".gz-legend")), "Highlo");
     const one = draw(def, { source: "s", x: "time", y: "hi", labels: { hi: "High" } }, daily);
-    assert.equal(text_(one.querySelector(".na-legend")), "High");
-    assert.equal(draw(def, { source: "s", x: "time", y: "hi" }, daily).querySelector(".na-legend"), null);
+    assert.equal(text_(one.querySelector(".gz-legend")), "High");
+    assert.equal(draw(def, { source: "s", x: "time", y: "hi" }, daily).querySelector(".gz-legend"), null);
   }
 });
 
 test("labels on a grouped chart name the count", () => {
   const el = draw(bar, { source: "s", group: "genre", labels: { count: "Books" } }, [{ genre: "a", count: 2 }, { genre: "b", count: 1 }]);
-  assert.equal(text_(el.querySelector(".na-legend")), "Books");
+  assert.equal(text_(el.querySelector(".gz-legend")), "Books");
 });
 
 test("labels are the table's column headers", () => {
@@ -64,8 +64,8 @@ test("a grouped list's default item counts what the count label says", () => {
 
 test("a pie's total is named after the field it totals, when the panel labels it", () => {
   const rows = [{ c: "food", v: 30 }, { c: "rent", v: 70 }];
-  assert.equal(text_(draw(pie, { source: "s", x: "c", y: "v", labels: { v: "Spent" } }, rows).querySelector(".na-readout")), "Spent · 100");
-  assert.equal(text_(draw(pie, { source: "s", x: "c", y: "v" }, rows).querySelector(".na-readout")), "Total · 100");
+  assert.equal(text_(draw(pie, { source: "s", x: "c", y: "v", labels: { v: "Spent" } }, rows).querySelector(".gz-readout")), "Spent · 100");
+  assert.equal(text_(draw(pie, { source: "s", x: "c", y: "v" }, rows).querySelector(".gz-readout")), "Total · 100");
 });
 
 // ---- values ---------------------------------------------------------------------------------------
@@ -99,29 +99,29 @@ test("values win over format; an unmapped value is shown as usual", () => {
 
 test("a number shown as words sits on the left; a column of numbers is right-aligned, its heading too", () => {
   const el = draw(table, { source: "s", columns: ["time", "weathercode", "hi"], values: SKY }, daily);
-  const head = [...el.querySelectorAll("th")].map((th) => th.classList.contains("na-num"));
-  const first = [...el.querySelector("tbody tr")!.querySelectorAll("td")].map((td) => [text_(td), td.classList.contains("na-num")]);
+  const head = [...el.querySelectorAll("th")].map((th) => th.classList.contains("gz-num"));
+  const first = [...el.querySelector("tbody tr")!.querySelectorAll("td")].map((td) => [text_(td), td.classList.contains("gz-num")]);
   assert.deepEqual(head, [false, false, true]);
   assert.deepEqual(first, [["2026-11-16", false], ["Clear", false], ["12", true]]);
 });
 
 test("values apply to the field of a number panel and the placeholders of a text panel", () => {
   const n = draw(number, { source: "s", field: "weathercode", values: SKY, unit: "code" }, { weathercode: 3 });
-  assert.equal(text_(n.querySelector(".na-big")), "Overcast");
-  assert.equal(n.querySelector(".na-unit"), null);
+  assert.equal(text_(n.querySelector(".gz-big")), "Overcast");
+  assert.equal(n.querySelector(".gz-unit"), null);
   const unmapped = draw(number, { source: "s", field: "weathercode", values: SKY, unit: "code" }, { weathercode: 45 });
-  assert.equal(text_(unmapped.querySelector(".na-big")), "45code");
+  assert.equal(text_(unmapped.querySelector(".gz-big")), "45code");
   const t = draw(text, { source: "s", text: "{weathercode} today", values: SKY }, { weathercode: 0 });
-  assert.equal(text_(t.querySelector(".na-text")), "Clear today");
+  assert.equal(text_(t.querySelector(".gz-text")), "Clear today");
 });
 
 test("values name the group keys on a chart's axis, in its readout, and a pie's slices", () => {
   const grouped = [{ weathercode: 0, count: 5 }, { weathercode: 3, count: 2 }];
   const b = draw(bar, { source: "s", group: "weathercode", values: SKY }, grouped);
-  assert.deepEqual([...b.querySelectorAll("text.na-axis")].map((t) => text_(t)).filter((t) => /[A-Za-z]/.test(t)), ["Clear", "Overcast"]);
-  assert.match(text_(b.querySelector(".na-readout")), /^Overcast · 2$/);
+  assert.deepEqual([...b.querySelectorAll("text.gz-axis")].map((t) => text_(t)).filter((t) => /[A-Za-z]/.test(t)), ["Clear", "Overcast"]);
+  assert.match(text_(b.querySelector(".gz-readout")), /^Overcast · 2$/);
   const p = draw(pie, { source: "s", group: "weathercode", values: SKY }, grouped);
-  assert.match(text_(p.querySelector(".na-pie-legend")), /Clear5 · 71%.*Overcast2 · 29%/);
+  assert.match(text_(p.querySelector(".gz-pie-legend")), /Clear5 · 71%.*Overcast2 · 29%/);
 });
 
 test("a selectable bar or slice is named by what it shows", () => {
@@ -129,7 +129,7 @@ test("a selectable bar or slice is named by what it shows", () => {
   const picked: unknown[] = [];
   const c = { ...ctx, select: (_: string, row: unknown) => picked.push(row), selected: () => undefined } as unknown as PanelCtx;
   const p = draw(pie, { source: "s", group: "weathercode", values: SKY, select: "w" }, grouped, c);
-  assert.deepEqual([...p.querySelectorAll("path.na-slice")].map((s) => s.getAttribute("aria-label")), ["Clear", "Overcast"]);
-  (p.querySelector("path.na-slice") as HTMLElement).dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.deepEqual([...p.querySelectorAll("path.gz-slice")].map((s) => s.getAttribute("aria-label")), ["Clear", "Overcast"]);
+  (p.querySelector("path.gz-slice") as HTMLElement).dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(picked, [{ weathercode: 0, count: 5 }]);
 });
