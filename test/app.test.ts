@@ -4,6 +4,7 @@ import { test } from "node:test";
 import { AppController, panelIds, type AppEnv } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { checkPanel, type Panel } from "../src/spec.ts";
+import { seriesNames } from "../src/views/common.ts";
 import { VIEW_DEFS, type PanelCtx } from "../src/views/registry.ts";
 import { fakeHost } from "./support/fakes.ts";
 
@@ -55,8 +56,11 @@ test("every view's examples draw", () => {
   for (const def of VIEW_DEFS) {
     for (const ex of def.examples.filter((e) => !e.errors)) {
       const p = checkPanel(ex.panel, true).panel as Panel;
-      const rows = p.x && p.y
-        ? [{ [p.x]: "2026-11-17", [p.y]: 1 }, { [p.x]: "2026-11-18", [p.y]: 2 }]
+      const xField = p.group ?? p.x;
+      const ys = seriesNames(p).length ? seriesNames(p) : ["count"];
+      const row = (x: string, v: number) => ({ [xField!]: x, ...Object.fromEntries(ys.map((y) => [y, v])) });
+      const rows = xField
+        ? [row("2026-11-17", 1), row("2026-11-18", 2)]
         : def.id === "checklist" ? ["Passport"] : [{ weight: 80, name: "Dentist", path: "Health/Dentist.md", date: "2026-12-04", temp: 7 }];
       const el = document.createElement("div");
       def.mount(el, p, ctx, "k").update(def.needsSource || p.source || def.implicitSource ? rows : undefined);

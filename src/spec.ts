@@ -17,7 +17,7 @@ export interface Panel {
   group?: string;
   per?: Per;
   x?: string;
-  y?: string;
+  y?: string | string[];
   field?: string;
   agg?: Agg;
   label?: string;

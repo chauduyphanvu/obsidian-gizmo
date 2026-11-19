@@ -2,6 +2,7 @@ import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import { bar, line } from "./chart.ts";
 import { button, checklist, form } from "./inputs.ts";
+import { pie } from "./pie.ts";
 import { list, table } from "./rows.ts";
 import { timer } from "./timer.ts";
 import { countdown, number, progress, text } from "./value.ts";
@@ -50,7 +51,7 @@ export interface ViewDef {
 }
 
 export const VIEW_DEFS: readonly ViewDef[] = [
-  number, text, line, bar, table, list, button, form, checklist, countdown, progress, timer,
+  number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));

@@ -77,10 +77,30 @@
 .note-app .na-chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
 .note-app .na-gridline { stroke: var(--background-modifier-border); stroke-width: 1; }
 .note-app .na-axis { stroke: none; fill: var(--text-faint); font-size: 11px; font-family: var(--font-interface); }
-.note-app .na-line { fill: none; stroke: var(--interactive-accent); stroke-width: 2; stroke-linejoin: round; }
-.note-app .na-area { fill: var(--interactive-accent); opacity: 0.12; }
-.note-app .na-dot { fill: var(--interactive-accent); }
-.note-app .na-bar { fill: var(--interactive-accent); opacity: 0.85; }
+/* Series colours: one series wears the theme accent; several take a fixed, colour-blind-checked
+   order (validated against Obsidian's default panel colours in both themes). */
+.note-app {
+  --na-s1: #2a78d6; --na-s2: #eb6834; --na-s3: #1baf7a; --na-s4: #eda100; --na-s5: #e87ba4; --na-s6: #008300;
+}
+.theme-dark .note-app {
+  --na-s1: #3987e5; --na-s2: #d95926; --na-s3: #199e70; --na-s4: #c98500; --na-s5: #d55181; --na-s6: #0ca30c;
+}
+.note-app .na-accent { --na-c: var(--interactive-accent); }
+.note-app .na-s1 { --na-c: var(--na-s1); }
+.note-app .na-s2 { --na-c: var(--na-s2); }
+.note-app .na-s3 { --na-c: var(--na-s3); }
+.note-app .na-s4 { --na-c: var(--na-s4); }
+.note-app .na-s5 { --na-c: var(--na-s5); }
+.note-app .na-s6 { --na-c: var(--na-s6); }
+.note-app .na-other { --na-c: var(--text-faint); }
+.note-app .na-line { fill: none; stroke: var(--na-c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
+.note-app .na-area { fill: var(--na-c); opacity: 0.1; }
+.note-app .na-dot { fill: var(--na-c); stroke: var(--background-secondary); stroke-width: 2; }
+.note-app .na-bar { fill: var(--na-c); }
+.note-app .na-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+.note-app .na-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.note-app .na-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--na-c); flex: none; }
+.note-app .na-readout .na-legend-item { margin-left: 12px; }
 .note-app .na-cursor { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
 .note-app .na-readout {
   font-size: var(--font-ui-smaller);
@@ -123,3 +143,10 @@
 .note-app .na-example { margin: var(--size-4-2) 0; padding: var(--size-4-2) var(--size-4-3); background: var(--background-primary); border-radius: var(--radius-s); font-size: var(--font-ui-small); }
 .note-app .na-more { margin-top: var(--size-4-2); }
 .note-app .na-loading .na-empty { font-style: italic; }
+
+.note-app .na-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
+.note-app .na-pie-svg { flex: none; }
+.note-app .na-slice { fill: var(--na-c); stroke: var(--background-secondary); stroke-width: 2; }
+.note-app .na-ring { fill: none; stroke: var(--na-c); }
+.note-app .na-pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-ui-small); color: var(--text-normal); }
+.note-app .na-pie-value { color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }

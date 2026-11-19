@@ -3,7 +3,7 @@ app: London weather now and for the next 24 hours
 refresh: 30m
 data:
   forecast:
-    source: https://api.open-meteo.com/v1/forecast?latitude=51.51&longitude=-0.13&current=temperature_2m,apparent_temperature,wind_speed_10m&hourly=temperature_2m&forecast_days=1&timezone=auto
+    source: https://api.open-meteo.com/v1/forecast?latitude=51.51&longitude=-0.13&current=temperature_2m,apparent_temperature,wind_speed_10m&hourly=temperature_2m,apparent_temperature&forecast_days=1&timezone=auto
 panels:
   - view: number
     title: Now
@@ -22,6 +22,6 @@ panels:
     source: forecast
     pick: hourly
     x: time
-    y: temperature_2m
+    y: [temperature_2m, apparent_temperature]
     unit: °C
 ---

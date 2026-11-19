@@ -120,13 +120,23 @@ try {
       const panel = (cls) => na.view().contentEl.querySelector(cls);
       const streak = () => panel(".na-view-number .na-big")?.textContent;
       const before = streak();
-      const bars = panel(".na-view-bar").querySelectorAll("rect.na-bar").length;
+      const bars = panel(".na-view-bar").querySelectorAll("path.na-bar").length;
+      const slices = panel(".na-view-pie").querySelectorAll("path.na-slice").length;
       const groups = panel(".na-view-list").innerText;
       na.button("Stretched").click(); await na.sleep(1200);
-      return { before, after: streak(), bars, groups };`);
+      return { before, after: streak(), bars, slices, groups };`);
     if (r.before !== "0days" || r.after !== "1days") throw new Error(JSON.stringify(r));
-    if (r.bars !== 8 || !r.groups.includes("good · 6\nstiff · 2\nsore · 1")) throw new Error(JSON.stringify(r));
-    return `streak 0 → 1, ${r.bars} weekly bars`;
+    if (r.bars !== 3 || r.slices !== 3 || !r.groups.includes("good · 6\nstiff · 2\nsore · 1")) throw new Error(JSON.stringify(r));
+    return `streak 0 → 1, ${r.bars} weekly bars, ${r.slices} slices`;
+  });
+
+  await check("Weather draws two series from one request", async () => {
+    const r = await run(`
+      await na.open("Apps/Weather");
+      const chart = na.view().contentEl.querySelector(".na-view-line");
+      return { lines: chart.querySelectorAll("path.na-line").length, legend: chart.querySelector(".na-legend")?.innerText };`);
+    if (r.lines !== 2 || !r.legend?.includes("apparent_temperature")) throw new Error(JSON.stringify(r));
+    return "2 lines and a legend";
   });
 
   await check("Meds button logs twice", async () => {

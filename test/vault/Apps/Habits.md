@@ -17,6 +17,10 @@ panels:
     group: at
     per: week
     where: {at: last 8 weeks}
+  - view: pie
+    title: Moods
+    source: stretches
+    group: mood
   - view: list
     title: How it felt
     source: stretches

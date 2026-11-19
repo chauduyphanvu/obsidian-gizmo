@@ -2,13 +2,14 @@ import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import type { PanelCtx } from "./registry.ts";
 
-export type KeyType = "string" | "number" | "strings" | "stringMap" | "fieldMap" | "where";
+/** `names` is one field name or a list of them (several chart series). */
+export type KeyType = "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where";
 
 /** Every panel key and the YAML shape it takes. Which views accept which keys is in each ViewDef. */
 export const KEY_TYPES: Record<keyof Panel, KeyType> = {
   view: "string", title: "string", source: "string", headers: "stringMap", pick: "string",
   from: "string", where: "where", sort: "string", limit: "number", group: "string", per: "string",
-  x: "string", y: "string",
+  x: "string", y: "names",
   field: "string", agg: "string", label: "string", unit: "string", decimals: "number",
   text: "string", item: "string", columns: "strings", max: "number", to: "string",
   minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
@@ -25,6 +26,9 @@ function checkType(value: unknown, type: KeyType): boolean {
     case "string": return typeof value === "string" || typeof value === "number";
     case "number": return typeof value === "number";
     case "strings": return Array.isArray(value) && value.every(scalar);
+    case "names":
+      return typeof value === "string" || typeof value === "number"
+        || (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string" || typeof v === "number"));
     case "stringMap":
     case "where":
       return isPlainObject(value) && Object.values(value).every(scalar);
@@ -40,6 +44,7 @@ export function readValue(key: keyof Panel, value: unknown): { value: unknown } 
   const type = KEY_TYPES[key];
   if (value instanceof Date && type === "string") return { value: value.toISOString().slice(0, 10) };
   if (!checkType(value, type)) return { error: `"${key}" has the wrong type (expected ${type})` };
+  if (type === "names") return { value: Array.isArray(value) ? value.map(String) : String(value) };
   return { value: type === "string" ? String(value) : value };
 }
 
@@ -65,6 +70,11 @@ export function groupedTotals(p: Panel, fields: readonly string[], what: string)
   if (p.agg === "streak") return ["agg: streak only works on number and progress"];
   const totalled = fields.filter((f) => f !== p.group && f !== "count");
   return totalled.length && !p.agg ? [`group with ${what} needs agg (sum, avg, min, max, first or last)`] : [];
+}
+
+/** The fields a chart draws as series: `y` as one name or a list. */
+export function seriesNames(p: Pick<Panel, "y">): string[] {
+  return Array.isArray(p.y) ? p.y : p.y ? [p.y] : [];
 }
 
 export function heading(el: HTMLElement, p: Panel, fallback?: string): void {
