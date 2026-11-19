@@ -657,6 +657,12 @@ export class AppController {
     const card = header.createDiv({ cls: "na-card" });
     card.createDiv({ text: "A component. Use it in an app's panels:" });
     card.createEl("pre", { cls: "na-example", text: c.usage });
+    const copy = card.createDiv({ cls: "na-actions" }).createEl("button", { text: "Copy" });
+    copy.addEventListener("click", () => {
+      this.env.copy(c.usage);
+      copy.setText("Copied");
+      setTimeout(() => copy.setText("Copy"), 1000);
+    });
     if (c.missing.length) card.createDiv({ cls: "na-label", text: "Give every param a default to preview it here." });
   }
 

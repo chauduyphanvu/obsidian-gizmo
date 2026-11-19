@@ -1,6 +1,6 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
-import { test } from "node:test";
+import { mock, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { checkPanel } from "../src/spec.ts";
@@ -247,6 +247,28 @@ test("an app with nothing to read says so, and the pane goes with the app", asyn
   assert.match(text(t.root.querySelector(".na-inspector")), /No data to inspect/);
   t.app.dispose();
   assert.equal(t.root.querySelector(".na-inspector"), null);
+});
+
+// ---- Component usage ----------------------------------------------------------------------------------
+
+test("a component's usage hint has a Copy button that copies the snippet", () => {
+  mock.timers.enable({ apis: ["setTimeout"] });
+  try {
+    const fm = { component: "Price and chart", params: { symbol: null, range: "6mo" }, panels: [{ view: "text", text: "x" }] };
+    const { root, copied } = open("Components/Ticker.md", { "Components/Ticker.md": { fm } });
+    const snippet = text(root.querySelector("pre.na-example"));
+    assert.equal(snippet, 'panels:\n  - use: "[[Ticker]]"\n    with: {symbol: …, range: 6mo}');
+    const button = [...root.querySelectorAll("button")].find((b) => text(b) === "Copy") as HTMLButtonElement;
+    assert.ok(button);
+    assert.equal(button.closest(".na-card")?.querySelector("pre.na-example")?.textContent, snippet);
+    button.click();
+    assert.deepEqual(copied, [snippet]);
+    assert.equal(text(button), "Copied");
+    mock.timers.tick(1000);
+    assert.equal(text(button), "Copy");
+  } finally {
+    mock.timers.reset();
+  }
 });
 
 test("rawData is what a source returns before the pipeline, and shares the cache panelData reads", async () => {
