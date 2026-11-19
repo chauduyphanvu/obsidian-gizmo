@@ -2,6 +2,7 @@ import type { AppEnv } from "../../src/app.ts";
 import { Background } from "../../src/background.ts";
 import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
+import { isAllowed } from "../../src/hosted.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
 import { parseYaml } from "./yaml.ts";
@@ -103,7 +104,8 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
 }
 
 /**
- * An AppEnv on a fake vault with every permission granted. Writes change the vault the way
+ * An AppEnv on a fake vault with every permission granted; what the app stores as granted (an app
+ * opened in its own tab leaves an entry) is kept in `grants`. Writes change the vault the way
  * Obsidian would and deliver the change; what the app writes, notifies and opens is recorded.
  * `responses` answers web requests by the start of their URL: a value is sent as JSON, or as
  * it is when wrapped in `raw(text, contentType)` (a feed, a calendar).
@@ -128,6 +130,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
   /** The app note's text, which `sourceLines` gives back, and the lines `showSourceAt` was asked for. */
   const source = { lines: [] as string[], shownAt: [] as number[] };
   const copied: string[] = [];
+  const grants: Record<string, string> = {};
   const changed = (path: string) => {
     data.fileChanged(path);
     f.flush();
@@ -138,8 +141,8 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     frontmatter: (path) => f.files.get(path)?.fm,
     notes: { resolve, frontmatter: (path) => f.files.get(path)?.fm },
     isGranted: () => true,
-    granted: () => [],
-    grant: async () => {},
+    granted: (path) => (Object.hasOwn(grants, path) ? (grants[path] ? grants[path].split("\n") : []) : undefined),
+    grant: async (path, wanted) => { grants[path] = wanted.join("\n"); },
     storePath: (store) => `${storeTarget(store)}.md`,
     writeFrontmatter: async (path, fn) => {
       writes.push(path);
@@ -180,16 +183,17 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     copy: (text) => { copied.push(text); },
     now: () => new Date(2026, 10, 18, 12, 0),
   };
-  return { env, f, data, writes, notices, opened, changed, source, copied };
+  return { env, f, data, writes, notices, opened, changed, source, copied, grants };
 }
 
 /**
  * The background service on a fake vault (see fakeEnv), with a clock that starts at 2026-11-18
  * 12:00 and moves only with `advance` (the data layer's clock moves with it). Every app is
- * allowed except those in `denied`. What it notifies goes to `notices`; the commands and status
- * items it publishes, and the apps it opens, are kept.
+ * allowed except those in `denied`; with `seen`, only apps whose grants (fakeEnv's `grants`) say
+ * they were opened and allowed, as in Obsidian. What it notifies goes to `notices`; the commands
+ * and status items it publishes, and the apps it opens, are kept.
  */
-export function fakeBackground(notes: Notes = {}, responses: Record<string, unknown> = {}) {
+export function fakeBackground(notes: Notes = {}, responses: Record<string, unknown> = {}, opts: { seen?: boolean } = {}) {
   const t = fakeEnv(notes, responses);
   let clock = new Date(2026, 10, 18, 12, 0).getTime();
   const now = () => new Date(clock);
@@ -205,7 +209,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     frontmatter: t.env.frontmatter,
     notes: t.env.notes,
     appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined).map(([path]) => path),
-    isGranted: (path) => !denied.has(path),
+    isGranted: (path, wanted) => !denied.has(path) && (!opts.seen || isAllowed(t.grants, path, wanted, true)),
     storePath: t.env.storePath,
     actionDeps: (appPath, dataPath) => ({
       now, dataPath, appPath,

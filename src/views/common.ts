@@ -2,6 +2,7 @@ import type { Row } from "../data.ts";
 import { ROW_INDEX } from "../sources/list.ts";
 import { sourceDef } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
+import { definitionReason } from "../store.ts";
 import type { PanelCtx } from "./registry.ts";
 
 /**
@@ -280,8 +281,9 @@ export function editableSource(p: Panel): "notes" | "list" | "tasks" | undefined
 
 /**
  * Problems with changing these fields of a panel's rows where they came from (a table's `edit`;
- * a board's group field). The source is decided by the root of its chain; computed columns and a
- * note's file fields can't be written.
+ * a board's group field). The source is decided by the root of its chain; computed columns, a
+ * note's file fields and the properties that would make a note an app or a component can't be
+ * written.
  */
 export function editErrors(p: Panel, fields: readonly string[]): string[] {
   const kind = editableSource(p);
@@ -290,6 +292,7 @@ export function editErrors(p: Panel, fields: readonly string[]): string[] {
   const computed = new Set([p, ...(p.upstream ?? [])].flatMap((s) => Object.keys(s.compute ?? {})));
   return fields.flatMap((f) => (computed.has(f) ? [`edit: "${f}" is computed`]
     : kind === "notes" && FILE_FIELDS.includes(f) ? [`edit: "${f}" comes from the note's file, not its properties`]
+    : kind === "notes" && definitionReason(f) ? [`edit can't change "${f}", ${definitionReason(f)}`]
     : []));
 }
 

@@ -33,7 +33,7 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
     frontmatter,
     notes: { resolve: (link, from) => app.metadataCache.getFirstLinkpathDest(link, from)?.path, frontmatter },
     appPaths: () => app.vault.getMarkdownFiles().filter((f) => isSet(frontmatter(f.path)?.app)).map((f) => f.path),
-    isGranted: (path, wanted) => plugin.isGranted(path, wanted),
+    isGranted: (path, wanted) => plugin.isGranted(path, wanted, true),
     storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
     actionDeps(appPath, dataPath) {
       const env = envFor(appPath);

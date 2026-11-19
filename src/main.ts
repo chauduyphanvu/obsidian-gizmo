@@ -4,7 +4,7 @@ import {
 import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
-import { dropGrants, moveGrants } from "./hosted.ts";
+import { dropGrants, isAllowed, moveGrants } from "./hosted.ts";
 import { obsidianHost } from "./host.ts";
 import { registerLenses } from "./lens.ts";
 import { defaultDataPath } from "./store.ts";
@@ -12,7 +12,7 @@ import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
 interface StoredData {
-  /** Note path → the permissions the user allowed, joined. */
+  /** Note path → the permissions the user allowed, joined; empty for an app opened that asks for none. */
   grants: Record<string, string>;
   /** Lens component paths the user folded away. */
   folded?: Record<string, true>;
@@ -161,12 +161,14 @@ export default class NoteAppsPlugin extends Plugin {
     view.editor.focus();
   }
 
-  isGranted(path: string, wanted: string[]): boolean {
-    return wanted.length === 0 || this.store.grants[path] === wanted.join("\n");
+  /** `opened`: the app must also have been opened in its own tab (see isAllowed). */
+  isGranted(path: string, wanted: string[], opened = false): boolean {
+    return isAllowed(this.store.grants, path, wanted, opened);
   }
 
-  granted(path: string): string[] {
-    return this.store.grants[path]?.split("\n") ?? [];
+  granted(path: string): string[] | undefined {
+    const entry = this.store.grants[path];
+    return entry === undefined ? undefined : entry ? entry.split("\n") : [];
   }
 
   async grant(path: string, wanted: string[]): Promise<void> {

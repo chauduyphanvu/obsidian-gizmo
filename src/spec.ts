@@ -1,7 +1,7 @@
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { RESERVED, SOURCE_WORDS, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, definitionReason, storeTarget } from "./store.ts";
 import {
   InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, type InputDef, type InputValue,
 } from "./template.ts";
@@ -290,9 +290,26 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(p.save && SOURCE_WORDS.includes(p.save) ? [`save can't use "${p.save}", which names a kind of source`] : []),
     ...(p.target?.kind === "this" && def.id !== "form" ? ["save: this works on a form"] : []),
     ...(p.target?.kind === "folder" && !p.target.folder ? ["save needs a folder before the /, e.g. save: Books/"] : []),
+    ...definitionProblems(p, def.id),
     ...backgroundKeyErrors(p),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
+}
+
+/**
+ * Properties a save would write into a note (a new one, or the note an embed or lens sits in) that
+ * would make it run: `row`'s keys, else a form's fields. A row action without `row` saves whatever
+ * the row holds, so those keys are dropped when the note is written instead.
+ */
+function definitionProblems(p: Panel, view: string): string[] {
+  const kind = p.target?.kind;
+  if (kind !== "folder" && kind !== "this") return [];
+  const keys = p.row ? Object.keys(p.row) : view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
+  const what = p.row ? "row can't set" : kind === "this" ? "save: this can't change" : "save can't set";
+  return keys.flatMap((k) => {
+    const why = definitionReason(k);
+    return why ? [`${what} "${k}", ${why}`] : [];
+  });
 }
 
 /** A source that names a list in the data note or app note (not a URL, not `notes`). */
@@ -473,6 +490,14 @@ export function readSpec(
   if (fm.store !== undefined && fm.store !== null) {
     if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
     else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
+  }
+  // Data is written into the store's properties; an app's or component's own keys are no place for it.
+  const stored = store === undefined ? undefined : opts.notes?.resolve(storeTarget(store), opts.path ?? "");
+  const storedFm = stored === undefined ? undefined : opts.notes!.frontmatter(stored);
+  const isSet = (v: unknown) => v !== undefined && v !== null && v !== false;
+  if (storedFm && (isSet(storedFm.app) || isSet(storedFm.component))) {
+    errors.push(`store can't be an app or a component note; name a note that only holds data, e.g. store: "[[Weight log]]"`);
+    store = undefined;
   }
   const spec = {
     description, panels, refreshMs, store, inputs, selections,

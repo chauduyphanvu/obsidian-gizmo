@@ -1,5 +1,5 @@
 import { Notice, getAllTags, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
-import { bodyOf } from "./actions.ts";
+import { bodyOf, noteText, withLine } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
 import { DiskCache } from "./cache.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
@@ -108,19 +108,18 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | und
     appendLine: (path, line) => queued(path, async () => {
       const target = app.vault.getFileByPath(normalizePath(path));
       if (target) {
-        await app.vault.process(target, (text) => `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${line}\n`);
+        await app.vault.process(target, (text) => withLine(text, line));
         return;
       }
       await ensureFolder(app, path);
-      await app.vault.create(normalizePath(path), `${line}\n`);
+      await app.vault.create(normalizePath(path), withLine("", line));
     }),
     async createNote(path, frontmatter, body) {
       const target = normalizePath(path);
       if (app.vault.getAbstractFileByPath(target)) return false;
       await ensureFolder(app, target);
-      const yaml = Object.keys(frontmatter).length ? `---\n${stringifyYaml(frontmatter)}---\n` : "";
       try {
-        await app.vault.create(target, `${yaml}${body}`);
+        await app.vault.create(target, noteText(Object.keys(frontmatter).length ? stringifyYaml(frontmatter) : "", body));
       } catch (e) {
         // Created in the meantime (a double click): it already exists, as above.
         if (app.vault.getAbstractFileByPath(target)) return false;

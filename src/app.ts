@@ -33,8 +33,8 @@ export interface AppEnv {
   /** Reads the component notes an app uses. */
   notes: NoteReader;
   isGranted(path: string, wanted: string[]): boolean;
-  /** What the app was allowed last time, to mark what's new. */
-  granted(path: string): string[];
+  /** What the app was allowed last time, to mark what's new; undefined when it was never allowed or opened. */
+  granted(path: string): string[] | undefined;
   grant(path: string, wanted: string[]): Promise<void>;
   /** Path of the note a `store:` value points at. */
   storePath(store: string, fromPath: string): string;
@@ -433,6 +433,8 @@ export class AppController {
       return this.showOnly(header);
     }
 
+    // An app opened in its own tab has been seen; the background acts only for those, even when they ask for nothing.
+    if (!h && !component && wanted.length === 0 && this.env.granted(this.appPath)?.length !== 0) void this.env.grant(this.appPath, []);
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });

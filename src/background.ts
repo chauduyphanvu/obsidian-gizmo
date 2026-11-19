@@ -45,6 +45,7 @@ export interface BackgroundEnv {
   notes: NoteReader;
   /** Notes whose frontmatter has `app`, from the metadata cache. */
   appPaths(): string[];
+  /** Whether the app was opened in its own tab and is allowed exactly `wanted`, even when that is nothing. */
   isGranted(path: string, wanted: string[]): boolean;
   storePath(store: string, fromPath: string): string;
   actionDeps(appPath: string, dataPath: string): ActionDeps;

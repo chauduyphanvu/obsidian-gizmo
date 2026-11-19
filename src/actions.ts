@@ -1,5 +1,6 @@
-import { fillTemplate, getPath, stampParts, type Row } from "./data.ts";
+import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
 import { notePath, saveTarget, type Panel } from "./spec.ts";
+import { withoutDefinition } from "./store.ts";
 
 /**
  * What running a panel's actions needs, and nothing more: an open app passes its env; something
@@ -36,6 +37,34 @@ export function fileName(text: string): string {
   return text.replace(FORBIDDEN, " ").replace(/\s+/g, " ").trim().replace(/^\.+\s*/, "");
 }
 
+/** Line breaks in filled text, which would split a line, a file name or a notice in two. */
+const oneLine = (text: string) => text.replace(/\r\n|\r|\n/g, " ");
+
+/** A template filled from a row where one line is wanted: each value's line breaks become spaces. */
+function fillLine(template: string, ctx: Row): string {
+  return fillWith(template, ctx, (_, v) => oneLine(formatValue(v, undefined, false)));
+}
+
+/**
+ * A note's text with a line added at the end. Nothing from data ever starts a note with `---`,
+ * which Obsidian would read as the start of its properties: a first line that would is put after a
+ * blank one.
+ */
+export function withLine(text: string, line: string): string {
+  if (text === "") return `${/^---/.test(line) ? "\n" : ""}${line}\n`;
+  return `${text}${text.endsWith("\n") ? "" : "\n"}${line}\n`;
+}
+
+/**
+ * A new note's text: its properties as a YAML block (`yaml` as stringified, empty for none), then
+ * its body. A body that would start the note with `---` is put after a blank line, so a filled
+ * template can't make properties of its own.
+ */
+export function noteText(yaml: string, body: string): string {
+  if (yaml) return `---\n${yaml}---\n${body}`;
+  return /^---/.test(body) ? `\n${body}` : body;
+}
+
 /** A note's text after its frontmatter block. */
 export function bodyOf(text: string): string {
   const m = text.match(/^---\r?\n(?:[\s\S]*?\r?\n)?---[ \t]*(?:\r?\n|$)/);
@@ -69,9 +98,9 @@ const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim()
 async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps): Promise<string | undefined> {
   const template = p.name ?? (filled(ctx.name) ? "{name}" : filled(ctx.title) ? "{title}" : "");
   const at = String(saved.at);
-  const name = fileName(template ? fillTemplate(template, ctx) : "") || at.replace("T", " ").replace(":", ".");
-  // A row's name that only names the file isn't kept as a property too.
-  const frontmatter = template === "{name}" ? Object.fromEntries(Object.entries(saved).filter(([k]) => k !== "name")) : saved;
+  const name = fileName(template ? fillLine(template, ctx) : "") || at.replace("T", " ").replace(":", ".");
+  // A row's name that only names the file isn't kept as a property too; nor is anything that would make the note run.
+  const frontmatter = withoutDefinition(template === "{name}" ? Object.fromEntries(Object.entries(saved).filter(([k]) => k !== "name")) : saved);
   const body = p.template ? fillBody(await deps.readBody(p.template), ctx) : "";
   const path = `${folder ? `${folder}/` : ""}${name}.md`;
   if (await deps.createNote(path, frontmatter, body)) return path;
@@ -94,8 +123,9 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
   let path: string | undefined;
   try {
     if (p.append) {
-      const fields = Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(", ");
-      const line = fillTemplate(p.line ?? `- {date} {time}${fields ? ` ${fields}` : ""}`, ctx);
+      // The row's values are added after filling, so they are never read as placeholders themselves.
+      const fields = Object.entries(row).map(([k, v]) => `${k}: ${oneLine(String(v))}`).join(", ");
+      const line = p.line !== undefined ? fillLine(p.line, ctx) : `${fillLine("- {date} {time}", ctx)}${fields ? ` ${fields}` : ""}`;
       await deps.appendLine(notePath(p.append), line);
     }
     if (target?.kind === "list") {
@@ -108,8 +138,8 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       if (!path) return { ok: false };
       ctx.path = path;
     }
-    if (p.notify) deps.notify(fillTemplate(p.notify, ctx));
-    if (p.open) deps.openNote(fillTemplate(p.open, ctx), deps.appPath);
+    if (p.notify) deps.notify(fillLine(p.notify, ctx));
+    if (p.open) deps.openNote(fillLine(p.open, ctx), deps.appPath);
     return { ok: true, path };
   } catch (e) {
     deps.notify(`Couldn't save: ${(e as Error).message}`);

@@ -53,6 +53,17 @@ export function blockKey(hostPath: string, source: string): string {
   return `${hostPath}#${(h >>> 0).toString(36)}`;
 }
 
+/**
+ * Whether `wanted` is allowed under a grant key: exactly these were allowed, or there are none to
+ * allow. With `opened`, wanting nothing isn't enough: the app must have been opened in its own tab,
+ * which leaves an entry even when it asks for nothing. The background acts only for such apps, so
+ * a note that became an app without the user looking at it never runs unseen.
+ */
+export function isAllowed(grants: Record<string, string>, key: string, wanted: readonly string[], opened = false): boolean {
+  const entry = Object.hasOwn(grants, key) ? grants[key] : undefined;
+  return (wanted.length === 0 && !opened) || entry === wanted.join("\n");
+}
+
 /** The grant keys that belong to a note: its own (an app's) and its embeds' (`<path>#<hash>`). */
 function grantKeysOf(grants: Record<string, string>, path: string): string[] {
   return Object.keys(grants).filter((k) => k === path || k.startsWith(`${path}#`));

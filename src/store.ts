@@ -7,6 +7,26 @@
 /** Top-level keys that define an app or component; lists may never be named after them. */
 export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params", "for", "this"];
 
+/**
+ * Top-level keys that make a note an app, a component or a lens, or say what one shows. What the
+ * plugin writes into a note's properties from data (a saved row, a field, a moved card) never sets
+ * one, so data can't turn a note into something that runs.
+ */
+export const DEFINITION_KEYS = [...RESERVED, "view"];
+
+/** Why a note's property can't be written from data: the end of a sentence, or undefined when it can. */
+export function definitionReason(key: string): string | undefined {
+  if (!DEFINITION_KEYS.includes(key)) return undefined;
+  if (key === "app") return "which would make the note an app";
+  if (key === "component") return "which would make the note a component";
+  return "which is one of an app's own keys";
+}
+
+/** A row as a note's properties: without the keys that would make the note an app or a component. */
+export function withoutDefinition<T extends Record<string, unknown>>(row: T): T {
+  return Object.fromEntries(Object.entries(row).filter(([k]) => !DEFINITION_KEYS.includes(k))) as T;
+}
+
 /** Kinds of source that are one word (`this` is in RESERVED): `source:` reads the kind, so a list can't be named after one. */
 export const SOURCE_WORDS = ["notes", "tasks"];
 
