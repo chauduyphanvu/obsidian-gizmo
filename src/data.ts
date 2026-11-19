@@ -248,24 +248,31 @@ export function valueOf(p: Panel, data: unknown): unknown {
   return data;
 }
 
-export function formatValue(v: unknown, decimals?: number): string {
+/** A value as text. Numbers get thousands separators unless `group` is false (inside a sentence, a year stays 1965). */
+export function formatValue(v: unknown, decimals?: number, group = true): string {
   if (v === undefined || v === null) return "—";
   const n = typeof v === "number" ? v : undefined;
   if (n !== undefined) {
     const d = decimals ?? (Number.isInteger(n) ? 0 : Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 1 ? 1 : 2);
-    return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d });
+    return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: group });
   }
-  if (Array.isArray(v)) return v.map((x) => formatValue(x, decimals)).join(", ");
+  if (Array.isArray(v)) return v.map((x) => formatValue(x, decimals, group)).join(", ");
   if (typeof v === "object") return JSON.stringify(v);
   return String(v);
 }
 
-/** Fills {path} placeholders from ctx. Unknown paths become empty strings. */
-export function fillTemplate(template: string, ctx: unknown, decimals?: number): string {
-  return template.replace(/\{([^{}]+)\}/g, (_, path: string) => {
-    const v = getPath(ctx, path.trim());
-    return v === undefined || v === null ? "" : formatValue(v, decimals);
+/** Fills {path} placeholders from ctx, each value shown by `show`. Unknown paths become empty strings. */
+export function fillWith(template: string, ctx: unknown, show: (path: string, value: unknown) => string): string {
+  return template.replace(/\{([^{}]+)\}/g, (_, raw: string) => {
+    const path = raw.trim();
+    const v = getPath(ctx, path);
+    return v === undefined || v === null ? "" : show(path, v);
   });
+}
+
+/** Fills {path} placeholders from ctx. Numbers stay free of thousands separators. */
+export function fillTemplate(template: string, ctx: unknown, decimals?: number): string {
+  return fillWith(template, ctx, (_, v) => formatValue(v, decimals, false));
 }
 
 function pad(n: number): string {

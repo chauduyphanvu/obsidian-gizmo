@@ -1,4 +1,5 @@
-import { fillTemplate, formatValue, getPath, type Row } from "../data.ts";
+import { fillWith, getPath, type Row } from "../data.ts";
+import { display, formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import {
   ACTION_KEYS, DATA_KEYS, GROUP_KEYS, busy, editErrors, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowsOf,
@@ -33,7 +34,7 @@ function columnsOf(p: Panel, rows: Row[]): string[] {
 /** A cell's value as text; a note's name links to the note. */
 function fillCell(td: HTMLElement, p: Panel, ctx: PanelCtx, r: Row, c: string): void {
   const v = getPath(r, c);
-  const text = formatValue(v, p.decimals);
+  const text = display(p, c, v, ctx.now, "cell");
   if (c === "name" && typeof r.path === "string") noteLink(td, text, r.path, ctx);
   else td.setText(text);
   td.classList.toggle("na-num", typeof v === "number");
@@ -154,11 +155,13 @@ function drawTable(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals", "select", "action", ...ACTION_KEYS, "edit"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals", "format", "select", "action", ...ACTION_KEYS, "edit"],
   span: 4,
   needsSource: true,
-  validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p)],
+  validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p)],
   examples: [
+    { panel: { view: "table", source: "spending", columns: ["at", "amount", "category"], format: { amount: "$0,0.00", at: "date" } } },
+    { panel: { view: "table", source: "spending", format: "0.0.0" }, errors: ['format "0.0.0" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "table", source: "notes", from: "Books", group: "genre", columns: ["genre", "count", "pages"], agg: "sum", sort: "-count" } },
     { panel: { view: "table", source: "sessions", group: "at", per: "month", columns: ["at", "minutes"] }, errors: ["group with columns needs agg (sum, avg, min, max, first or last)"] },
     { panel: { view: "table", source: "notes", from: "Health", sort: "-date", columns: ["name", "date", "who"] } },
@@ -198,11 +201,13 @@ export const table: ViewDef = {
 
 export const list: ViewDef = {
   id: "list",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "select", "action", ...ACTION_KEYS],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "select", "action", ...ACTION_KEYS],
   span: 4,
   needsSource: true,
-  validate: (p) => rowActionErrors("list", p),
+  validate: (p) => [...rowActionErrors("list", p), ...formatErrors(p)],
   examples: [
+    { panel: { view: "list", source: "spending", item: "{note} · {amount}", format: { amount: "$0,0.00" } } },
+    { panel: { view: "list", source: "spending", item: "{amount}", format: { amount: "dollars" } }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "list", source: "notes", from: "#health/appointment", where: { date: "upcoming" }, sort: "date", item: "{date} · {name}" } },
     { panel: { view: "list", source: "http://example.com/feed.json" }, errors: ["source must use https"] },
     { panel: { view: "list", source: "notes", from: "#book", group: "tags", sort: "-count", limit: 5 } },
@@ -223,7 +228,7 @@ export const list: ViewDef = {
     const ul = el.createEl("ul", { cls: "na-list" });
     shownRows(el, rows, (r) => {
       const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
-      const text = item ? fillTemplate(item, r, p.decimals) : String(r.name ?? r.title ?? r.value ?? JSON.stringify(r));
+      const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) : String(r.name ?? r.title ?? r.value ?? JSON.stringify(r));
       const li = ul.createEl("li");
       if (typeof r.path === "string") noteLink(li, text, r.path, ctx);
       else li.setText(text);

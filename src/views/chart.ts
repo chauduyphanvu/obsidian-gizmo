@@ -1,4 +1,5 @@
 import { extent, formatValue, getPath, seriesOf, toTime, type Per, type Point, type Row } from "../data.ts";
+import { formatErrors, formatFor, formatWith } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, selectable, seriesNames } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
@@ -52,6 +53,8 @@ export interface ChartOptions {
   width: number;
   unit?: string;
   decimals?: number;
+  /** A series' value as text in the panel's `format`; undefined leaves it to `unit` and `decimals`. */
+  format?(value: number, series: number): string | undefined;
   /** Grouped by period: axis labels name the period. */
   per?: Per;
   /** Selection hook: called with each bar drawn and the x value it stands for. */
@@ -97,7 +100,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const pos = (i: number) => (isTime ? (keys[i] as number) - (keys[0] as number) : i);
   const sx = (i: number) => opts.kind === "bar" || span === 0 ? L + bandW * (i + 0.5) : L + (pos(i) / span) * (W - L - R);
   const sy = (y: number) => T + (1 - (y - yMin) / (yMax - yMin)) * (H - T - B);
-  const fmt = (v: number) => formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
+  const fmt = (v: number, s = 0) => opts.format?.(v, s) ?? formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
   const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : String(label.get(keys[i]) ?? ""));
   // One series wears the theme accent; several take the chart palette in a fixed order.
   const colour = (s: number) => (series.length === 1 ? "na-accent" : `na-s${s + 1}`);
@@ -108,7 +111,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   for (const t of niceTicks(yMin, yMax)) {
     const y = sy(t);
     svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "na-gridline" }, root);
-    svg("text", { x: L - 8, y: y + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = formatValue(t);
+    svg("text", { x: L - 8, y: y + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = opts.format?.(t, 0) ?? formatValue(t);
   }
   // Categories each get a label while they fit; a time axis gets its ends and middle.
   const labelIdx = !isTime && opts.kind === "bar" && n <= 12 ? keys.map((_, i) => i)
@@ -168,7 +171,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       const y = byIndex.get(i);
       if (y === undefined) return;
       if (series.length === 1) readout.createSpan({ text: ` · ${fmt(y)}` });
-      else legendItem(readout, colour(s), `${series[s].name} ${fmt(y)}`);
+      else legendItem(readout, colour(s), `${series[s].name} ${fmt(y, s)}`);
     });
     cursor.setAttribute("x1", String(sx(i)));
     cursor.setAttribute("x2", String(sx(i)));
@@ -197,17 +200,20 @@ function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", ...(kind === "bar" ? ["select"] : [])],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", ...(kind === "bar" ? ["select"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {
       const ys = seriesNames(p);
       const many = ys.length > MAX_SERIES ? [`at most ${MAX_SERIES} series in y`] : [];
-      if (p.group) return [...(p.x ? ["leave out x: the x axis is the group"] : []), ...groupedTotals(p, ys, "y"), ...many];
-      return [...(p.x && ys.length ? [] : [`${kind} needs x and y`]), ...groupedTotals(p, [], "y"), ...many];
+      const format = formatErrors(p);
+      if (p.group) return [...(p.x ? ["leave out x: the x axis is the group"] : []), ...groupedTotals(p, ys, "y"), ...many, ...format];
+      return [...(p.x && ys.length ? [] : [`${kind} needs x and y`]), ...groupedTotals(p, [], "y"), ...many, ...format];
     },
     examples: [
       { panel: { view: kind, source: "weights", x: "at", y: "weight", unit: "kg" } },
+      { panel: { view: kind, source: "https://api.example.com/hourly", pick: "hourly", x: "time", y: ["temperature_2m", "humidity"], format: { temperature_2m: "0.0 °C", humidity: "0 %" } } },
+      { panel: { view: kind, source: "weights", x: "at", y: "weight", format: "kilos" }, errors: ['format "kilos" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
       { panel: { view: kind, source: "https://api.example.com/hourly", pick: "hourly", x: "time", y: ["temperature_2m", "apparent_temperature"] } },
       { panel: { view: kind, source: "sessions", group: "at", per: "week", y: "minutes", agg: "sum", where: { at: "last 8 weeks" } } },
       { panel: { view: kind, source: "notes", from: "Books", group: "genre" } },
@@ -229,7 +235,11 @@ function chartView(kind: "line" | "bar"): ViewDef {
         const ys = seriesNames(p);
         const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, points: seriesOf(last, x, y) }));
         const mark = p.select ? (bar: SVGElement, at: unknown) => selectable(bar, p, ctx, rowAt(last, x, at, series), String(at)) : undefined;
-        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, width: width ?? ctx.width(key), per: p.per, mark });
+        const format = (v: number, s: number) => {
+          const f = formatFor(p, series[s].name);
+          return f === undefined ? undefined : formatWith(v, f, ctx.now);
+        };
+        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, format, width: width ?? ctx.width(key), per: p.per, mark });
       };
       return {
         update(data) { last = data; draw(); },
