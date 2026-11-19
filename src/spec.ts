@@ -1,6 +1,7 @@
 import type { Agg } from "./data.ts";
 import { storeTarget } from "./store.ts";
-import { COMMON_KEYS, KEY_TYPES, type KeyType } from "./views/common.ts";
+import { expandPanel, readBlocks } from "./expand.ts";
+import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 
 export interface Panel {
@@ -78,26 +79,6 @@ export function parseDuration(value: unknown): number | undefined {
   return Number(m[1]) * unit;
 }
 
-function checkType(value: unknown, type: KeyType): boolean {
-  const scalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v);
-  switch (type) {
-    case "string": return typeof value === "string" || typeof value === "number";
-    case "number": return typeof value === "number";
-    case "strings": return Array.isArray(value) && value.every(scalar);
-    case "stringMap":
-    case "where":
-      return isPlainObject(value) && Object.values(value).every(scalar);
-    case "fieldMap":
-      return isPlainObject(value) && Object.values(value).every(
-        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)),
-      );
-  }
-}
-
-function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
 /**
  * Checks one panel. `strict` (panels in a `panels` list) reports keys that are unknown or don't
  * apply to the view; a single panel written at the top level shares the frontmatter with ordinary
@@ -117,15 +98,9 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
       continue;
     }
     if (value === null || value === undefined) continue;
-    if (value instanceof Date && type === "string") {
-      panel[key] = value.toISOString().slice(0, 10);
-      continue;
-    }
-    if (!checkType(value, type)) {
-      errors.push(`"${key}" has the wrong type (expected ${type})`);
-      continue;
-    }
-    panel[key] = type === "string" ? String(value) : value;
+    const read = readValue(key as keyof Panel, value);
+    if ("error" in read) errors.push(read.error);
+    else panel[key] = read.value;
   }
   const p = panel as unknown as Panel;
   const problems = [
@@ -163,22 +138,26 @@ export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | 
   if (versionError) return { errors: [versionError], empty: false };
   const errors: string[] = [];
   const panels: PanelSpec[] = [];
+  const blocks = readBlocks(fm.data, errors);
+  const add = (raw: Record<string, unknown>, label: string, strict: boolean) => {
+    const at = (e: string) => (label ? `${label}: ${e}` : e);
+    const expanded = expandPanel(raw, blocks);
+    errors.push(...expanded.errors.map(at));
+    const r = checkPanel(expanded.template, strict);
+    errors.push(...r.errors.map(at));
+    if (r.panel) panels.push({ template: expanded.template, panel: r.panel, label });
+  };
 
   if (Array.isArray(fm.panels)) {
     fm.panels.forEach((raw, i) => {
       const label = `panel ${i + 1}`;
       if (!isPlainObject(raw)) return errors.push(`${label}: must be a set of keys`);
-      const r = checkPanel(raw, true);
-      errors.push(...r.errors.map((e) => `${label}: ${e}`));
-      if (r.panel) panels.push({ template: raw, panel: r.panel, label });
+      add(raw, label, true);
     });
     if (fm.panels.length === 0) return { errors, empty: true };
   } else if (fm.view !== undefined) {
-    const r = checkPanel(fm, false);
-    errors.push(...r.errors);
     // The note's other properties aren't part of the panel.
-    const template = Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES));
-    if (r.panel) panels.push({ template, panel: r.panel, label: "" });
+    add(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES)), "", false);
   } else {
     return { errors, empty: true };
   }

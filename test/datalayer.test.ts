@@ -102,3 +102,19 @@ test("500 changes reach a listener as one batch", () => {
   assert.equal(f.flush(), 1);
   assert.equal(calls, 1);
 });
+
+test("three panels on one data block make one request", async () => {
+  const f = fakeHost();
+  const dl = new DataLayer(f.host);
+  const spec = readSpec({
+    app: "Weather",
+    data: { forecast: { source: WEATHER } },
+    panels: [
+      { view: "number", source: "forecast", pick: "current", field: "t" },
+      { view: "text", source: "forecast", pick: "current", text: "{t}" },
+      { view: "line", source: "forecast", pick: "hourly", x: "time", y: "t" },
+    ],
+  })!.spec!;
+  await Promise.all(spec.panels.map(({ panel: p }) => dl.panelData(p.source, p, FILES, { ttlMs: 60_000, now: NOW })));
+  assert.equal(f.requests.length, 1);
+});

@@ -160,3 +160,23 @@ test("broken keys show the problems and redraw once fixed", async () => {
   assert.equal(root.querySelector(".na-error"), null);
   assert.equal(text(root.querySelector(".na-big")), "7days");
 });
+
+test("editing a data block remounts only the panels that use it", async () => {
+  const panels = [
+    { view: "number", source: "weekly", field: "weight" },
+    { view: "number", source: "weights", field: "weight", agg: "max" },
+  ];
+  const { app, root, edit } = setup({
+    "Apps/W.md": { fm: { app: "x", data: { weekly: { source: "weights", limit: 1 } }, panels } },
+    "Apps/W data.md": { fm: { weights: [{ weight: 80 }, { weight: 82 }] } },
+  });
+  app.load();
+  await settle();
+  const [first, second] = [...root.querySelectorAll(".na-view-number")];
+  assert.equal(text(first.querySelector(".na-big")), "80");
+  await edit("Apps/W.md", (fm) => { fm.data = { weekly: { source: "weights", sort: "-weight", limit: 1 } }; });
+  const [first2, second2] = [...root.querySelectorAll(".na-view-number")];
+  assert.notEqual(first2, first);
+  assert.equal(second2, second);
+  assert.equal(text(first2.querySelector(".na-big")), "82");
+});

@@ -14,6 +14,34 @@ export const KEY_TYPES: Record<keyof Panel, KeyType> = {
   line: "string", notify: "string",
 };
 
+export function isPlainObject(v: unknown): v is Record<string, unknown> {
+  return typeof v === "object" && v !== null && !Array.isArray(v);
+}
+
+function checkType(value: unknown, type: KeyType): boolean {
+  const scalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v);
+  switch (type) {
+    case "string": return typeof value === "string" || typeof value === "number";
+    case "number": return typeof value === "number";
+    case "strings": return Array.isArray(value) && value.every(scalar);
+    case "stringMap":
+    case "where":
+      return isPlainObject(value) && Object.values(value).every(scalar);
+    case "fieldMap":
+      return isPlainObject(value) && Object.values(value).every(
+        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)),
+      );
+  }
+}
+
+/** Checks one known key's value against its type; text keys take numbers and dates as text. */
+export function readValue(key: keyof Panel, value: unknown): { value: unknown } | { error: string } {
+  const type = KEY_TYPES[key];
+  if (value instanceof Date && type === "string") return { value: value.toISOString().slice(0, 10) };
+  if (!checkType(value, type)) return { error: `"${key}" has the wrong type (expected ${type})` };
+  return { value: type === "string" ? String(value) : value };
+}
+
 /** Keys every view accepts. */
 export const COMMON_KEYS = ["view", "title"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */
