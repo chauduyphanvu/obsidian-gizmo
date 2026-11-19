@@ -157,6 +157,41 @@ export default async function apps(t) {
     return `${r.picked.items[0]} on ${r.picked.title.slice(3)}; booked for ${r.tomorrow}, told and pinned; ticked done`;
   });
 
+  await check("Renewals: asks for nothing; two deadlines added, soonest first; one five days out tells me; ticking it done moves it to Done", async () => {
+    expect(prompts.Renewals === undefined, prompts.Renewals);
+    const r = await run(`
+      await na.open("Apps/Renewals");
+      const el = na.view().contentEl;
+      const panel = (title) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title);
+      const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
+      const empty = { next: panel("Next deadline").querySelector(".na-big").textContent, coming: na.text(panel("Coming up")) };
+      const form = panel("Add a deadline");
+      const add = async (what, due) => {
+        const [a, b] = form.querySelectorAll("input");
+        na.fill(a, what); na.fill(b, due);
+        na.button("Add", form).click();
+        await na.until(() => na.fm("Apps/Renewals data.md")?.deadlines?.some((d) => d.what === what), 3000);
+        await na.sleep(500);
+      };
+      const mark = na.notices.length;
+      await add("Passport", day(100));
+      await add("Car insurance", day(5));
+      const notices = await na.noticesSince(mark, "Renewals: Coming up", 5000);
+      const rows = () => [...panel("Coming up").querySelectorAll("tbody tr")];
+      const listed = rows().map((tr) => [tr.querySelector("td").textContent, tr.querySelector('input[type="date"]').value, tr.querySelectorAll("td")[2].textContent]);
+      const next = panel("Next deadline").querySelector(".na-big").textContent;
+      rows()[0].querySelector('input[type="checkbox"]').click();
+      await na.until(() => na.fm("Apps/Renewals data.md")?.deadlines?.find((d) => d.what === "Car insurance")?.done === true, 3000);
+      await na.sleep(800);
+      return { empty, notices, listed, next, days: [day(5), day(100)], after: rows().map((tr) => tr.querySelector("td").textContent),
+        nextAfter: panel("Next deadline").querySelector(".na-big").textContent, done: na.text(panel("Done")), errors: na.errors() };`);
+    expect(r.empty.next === "—" && r.empty.coming.includes("Nothing here yet."), r.empty);
+    expect(JSON.stringify(r.listed) === JSON.stringify([["Car insurance", r.days[0], "5"], ["Passport", r.days[1], "100"]]) && r.next === "5 days", r);
+    expect(r.notices.includes("Renewals: Coming up (1 row)"), r.notices);
+    expect(JSON.stringify(r.after) === '["Passport"]' && r.nextAfter === "100 days" && r.done.includes(`Car insurance, due ${r.days[0]}`) && r.errors === 0, r);
+    return `told: ${r.notices.find((n) => n.startsWith("Renewals"))}; done moves it; next ${r.nextAfter}`;
+  });
+
   await check("AAPL: a whole note from one component, its price pinned to the status bar", async () => {
     const r = await run(`
       await na.open("Apps/AAPL");

@@ -737,3 +737,62 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   assert.deepEqual(items(panelsOf(root)[0]), ["in 32 days · Dentist with Dr. Lee", "in 58 days · Eye exam with Dr. Patel"]);
   assert.equal(t.out.status[0].text, "Next appointment: 32 days");
 });
+
+test("Renewals: add a deadline, see the days left soonest first, get told two weeks out, tick it done or move it", async () => {
+  const path = "Apps/Renewals.md";
+  const spec = readSpec(vaultNote(path).fm, { path })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), []);
+
+  const t = fakeBackground({ [path]: { fm: vaultNote(path).fm } });
+  await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  mount(root, path, t.env);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [form, next, coming, done] = panelsOf(root);
+  assert.equal(text(next.querySelector(".na-big")), "—");
+  assert.equal(text(coming.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(done.querySelector(".na-empty")), "Nothing here yet.");
+
+  const add = async (what: string, due: string) => {
+    const [a, b] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
+    [a.value, b.value] = [what, due];
+    form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+    await settle();
+  };
+  await add("Passport", "2027-03-01");
+  assert.deepEqual(t.notices, []);
+  await add("Car insurance", "2026-11-25");
+  assert.deepEqual(t.f.files.get("Apps/Renewals data.md")!.fm!.deadlines, [
+    { what: "Passport", due: "2027-03-01", at: "2026-11-18T12:00" },
+    { what: "Car insurance", due: "2026-11-25", at: "2026-11-18T12:00" },
+  ]);
+  const rows = () => [...coming.querySelectorAll("tbody tr")];
+  assert.deepEqual([...coming.querySelectorAll("th")].map((th) => text(th)), ["What", "Due", "Days left", "Done"]);
+  assert.deepEqual(rows().map((tr) => [text(tr.querySelector("td")), (tr.querySelector('input[type="date"]') as HTMLInputElement).value, text(tr.querySelectorAll("td")[2])]),
+    [["Car insurance", "2026-11-25", "7"], ["Passport", "2027-03-01", "103"]]);
+  assert.equal(text(next.querySelector(".na-big")), "7 days");
+  // A week away: told once.
+  assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)"]);
+
+  const tick = rows()[0].querySelector('input[type="checkbox"]') as HTMLInputElement;
+  tick.checked = true;
+  tick.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal((t.f.files.get("Apps/Renewals data.md")!.fm!.deadlines as { done?: boolean }[])[1].done, true);
+  assert.deepEqual(rows().map((tr) => text(tr.querySelector("td"))), ["Passport"]);
+  assert.equal(text(next.querySelector(".na-big")), "103 days");
+  assert.equal(text(done.querySelector("li")), "Car insurance, due 2026-11-25");
+
+  // The passport office wants it sooner: within two weeks again, so told again.
+  const due = rows()[0].querySelector('input[type="date"]') as HTMLInputElement;
+  due.value = "2026-12-01";
+  due.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal((t.f.files.get("Apps/Renewals data.md")!.fm!.deadlines as { due: string }[])[0].due, "2026-12-01");
+  assert.equal(text(next.querySelector(".na-big")), "13 days");
+  assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)", "Renewals: Coming up (1 row)"]);
+});
