@@ -8,7 +8,7 @@ import {
 } from "./template.ts";
 import { namesIn } from "./template.ts";
 import {
-  Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, readBlocks, readFor, selectOf, typedName,
+  Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, panelEntries, readBlocks, readFor, selectOf, typedName,
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
@@ -551,15 +551,17 @@ export function readSpec(
     }
   };
   if (fm.use !== undefined) {
-    if (fm.panels !== undefined) errors.push("put - use: … inside panels to mix a component with other panels");
+    if (fm.panels !== undefined || fm.tabs !== undefined) errors.push("put - use: … inside panels to mix a component with other panels");
     else entry({ use: fm.use, with: fm.with }, "", true);
     if (!description) description = expander.describe(fm.use);
-  } else if (Array.isArray(fm.panels)) {
-    if (fm.panels.length === 0) return { errors, empty: true };
-    fm.panels.forEach((raw, i) => {
-      if (isPlainObject(raw)) entry(raw, `panel ${i + 1}`, true);
-      else errors.push(`panel ${i + 1}: must be a set of keys`);
-    });
+  } else if (Array.isArray(fm.panels) || (fm.tabs !== undefined && fm.tabs !== null)) {
+    const before = errors.length;
+    const entries = panelEntries(fm, errors);
+    if (entries.length === 0 && errors.length === before) return { errors, empty: true };
+    for (const { raw, label } of entries) {
+      if (isPlainObject(raw)) entry(raw, label, true);
+      else errors.push(`${label}: must be a set of keys`);
+    }
   } else if (fm.view !== undefined) {
     // The note's other properties aren't part of the panel.
     entry(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES)), "", false);
@@ -604,13 +606,14 @@ export function readSpec(
 
 /** The names an app's own panel entries select (beside `use` too), checked. */
 function appSelects(fm: Record<string, unknown>, inputs: ReadonlySet<string>, errors: string[]): Set<string> {
-  const listed = Array.isArray(fm.panels);
-  const entries: unknown[] = fm.use !== undefined ? [] : listed ? fm.panels as unknown[] : fm.view !== undefined ? [fm] : [];
+  // A tabs problem is told once, where the panels are read.
+  const listed = Array.isArray(fm.panels) || (fm.tabs !== undefined && fm.tabs !== null);
+  const entries = fm.use !== undefined ? [] : listed ? panelEntries(fm, []) : fm.view !== undefined ? [{ raw: fm, label: "" }] : [];
   const out = new Set<string>();
-  entries.forEach((entry, i) => {
+  entries.forEach(({ raw: entry, label }) => {
     const name = selectOf(entry);
     if (name === undefined || out.has(name)) return;
-    const at = listed ? `panel ${i + 1}: ` : "";
+    const at = label ? `${label}: ` : "";
     if (!NAME.test(name)) errors.push(`${at}select: "${name}" can only use letters, digits and _`);
     else if (name === THIS) errors.push(`${at}select: ${TAKEN}`);
     else if (inputs.has(name)) errors.push(`${at}select: "${name}" is already an input`);

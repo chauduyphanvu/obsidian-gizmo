@@ -309,7 +309,40 @@ interface Component {
   /** Declared params; a value of undefined means the app must give it. */
   params: Map<string, unknown>;
   data: unknown;
-  panels: unknown[];
+  panels: Entry[];
+}
+
+/** One panel as a note lists it, and where it is written, for messages: "panel 2", "tabs.Score panel 1". */
+export interface Entry {
+  raw: unknown;
+  label: string;
+}
+
+/**
+ * The panels an app, a component or a `note-app` block lists: its `panels` items, then the items of
+ * each tab in `tabs`, in the order typed, each given `tab:` with its tab's name. `tab:` typed on a
+ * panel inside `tabs` is an error (the tab it is listed under wins), as is a `tabs` that isn't
+ * names with lists of panels.
+ */
+export function panelEntries(fm: Record<string, unknown>, errors: string[]): Entry[] {
+  const out: Entry[] = Array.isArray(fm.panels) ? fm.panels.map((raw, i) => ({ raw, label: `panel ${i + 1}` })) : [];
+  if (fm.tabs === undefined || fm.tabs === null) return out;
+  if (!isPlainObject(fm.tabs)) {
+    errors.push("tabs must be tab names, each with a list of panels, e.g. tabs: {Score: [{view: table, source: due}]}");
+    return out;
+  }
+  for (const [tab, list] of Object.entries(fm.tabs)) {
+    if (!Array.isArray(list)) {
+      errors.push(`tabs.${tab} must be a list of panels`);
+      continue;
+    }
+    list.forEach((raw, i) => {
+      const label = `tabs.${tab} panel ${i + 1}`;
+      if (isPlainObject(raw) && raw.tab !== undefined && raw.tab !== null) errors.push(`${label}: leave out tab; this panel is in the tab "${tab}" it is listed under`);
+      out.push({ raw: isPlainObject(raw) ? { ...raw, tab } : raw, label });
+    });
+  }
+  return out;
 }
 
 export function linkOf(value: unknown): string | undefined {
@@ -349,11 +382,14 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
     else if (n === THIS) errors.push(`${name}: ${TAKEN}`);
     if (v !== undefined && unsafeValue(v)) errors.push(`${name}: param "${n}" can't hold a secret or a line break`);
   }
-  if (!Array.isArray(fm.panels) || fm.panels.length === 0) {
+  const entryErrors: string[] = [];
+  const panels = panelEntries(fm, entryErrors);
+  errors.push(...entryErrors.map((e) => `${name} ${e}`));
+  if (panels.length === 0) {
     errors.push(`${name} needs panels`);
     return undefined;
   }
-  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels: fm.panels };
+  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels };
 }
 
 /** Why a param, input or selection can't be called `this`. */
@@ -550,8 +586,8 @@ export class Expander {
 
     const blockErrors: string[] = [];
     const names = new Set(component.params.keys());
-    const stepOf = (j: number) => [...trail, `${name} panel ${j + 1}`];
-    const selects = this.ownSelects(component.panels, names, (j, e) => this.errors.push(`${stepLabel(base, stepOf(j))}: ${e}`));
+    const stepOf = (j: number) => [...trail, `${name} ${component.panels[j].label}`];
+    const selects = this.ownSelects(component.panels.map((e) => e.raw), names, (j, e) => this.errors.push(`${stepLabel(base, stepOf(j))}: ${e}`));
     for (const [typed, own] of selects) {
       names.add(typed);
       params.set(typed, new InputRef(own));
@@ -564,7 +600,7 @@ export class Expander {
       path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params, selects: refusedAsInput,
     };
     blockErrors.forEach((e) => at(`${name} ${e}`));
-    const produced = component.panels.flatMap((entry, j) => {
+    const produced = component.panels.flatMap(({ raw: entry }, j) => {
       const step = stepOf(j);
       if (!isPlainObject(entry)) {
         this.errors.push(`${stepLabel(base, step)}: must be a set of keys`);

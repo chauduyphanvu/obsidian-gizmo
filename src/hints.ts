@@ -14,6 +14,7 @@ export const KEY_HINTS: Record<string, string> = {
   data: "Named sources panels share: data: {name: {source: https://…}}",
   inputs: "Controls above the panels: a list of choices, date, or text for a search box",
   panels: "The panels this app shows, one list item each",
+  tabs: "Panels grouped in tabs: tabs: {Score: [ …panels… ], Waiting: [ … ]}",
   use: "Use a component note here, e.g. use: \"[[Ticker]]\"",
   with: "Give the component its params, e.g. with: {symbol: AAPL}",
   component: "Makes this note a reusable component; the text says what it is",
@@ -162,8 +163,8 @@ export interface Suggestion {
 }
 
 const TOP_KEYS = {
-  app: ["app", "spec", "refresh", "store", "data", "inputs", "panels", "use", "with", "view"],
-  component: ["component", "params", "data", "panels", "for", "spec"],
+  app: ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view"],
+  component: ["component", "params", "data", "panels", "tabs", "for", "spec"],
 };
 
 /** Keys a panel with this view takes. */

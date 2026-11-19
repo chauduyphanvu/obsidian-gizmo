@@ -5,7 +5,7 @@
  */
 
 /** Top-level keys that define an app or component; lists may never be named after them. */
-export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params", "for", "this"];
+export const RESERVED = ["app", "panels", "tabs", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params", "for", "this"];
 
 /**
  * Top-level keys that make a note an app, a component or a lens, or say what one shows. What the
