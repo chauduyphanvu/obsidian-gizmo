@@ -1,0 +1,11 @@
+filters:
+  and:
+    - file.inFolder("Books")
+    - 'file.ext == "md"'
+views:
+  - type: table
+    name: Books
+    order:
+      - file.name
+      - note.status
+      - note.finished

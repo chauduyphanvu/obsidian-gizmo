@@ -24,6 +24,10 @@ export interface Host {
   schedule(cb: () => void): void;
   /** The whole text of a file in the vault, a note's frontmatter included. */
   readText(path: string): Promise<string>;
+  /** The path of the file a link or path names, seen from the note at `from`; undefined when none does. */
+  resolveFile(link: string, from: string): string | undefined;
+  /** YAML text as data; throws when it isn't YAML. */
+  parseYaml(text: string): unknown;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -119,6 +123,11 @@ export class DataLayer {
     return rows;
   }
 
+  /** Every markdown note in the vault. */
+  allNotes(): Row[] {
+    return [...this.rows().values()];
+  }
+
   /**
    * What `parse` makes of a note's text. Each note is read and parsed once and kept until it
    * changes, so a scope of many notes re-reads only the ones that changed.
@@ -188,6 +197,8 @@ export class DataLayer {
     this.pending.add(`file:${path}`);
     // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
     this.pending.add(`name:${path.split("/").pop()!.replace(/\.md$/i, "")}`);
+    // Heard by whatever reads every note, such as a base.
+    if (before || after) this.pending.add("notes:*");
     for (const [key] of this.queries) {
       const scopes = splitScopes(key);
       if ((before && inScopes(before, scopes)) || (after && inScopes(after, scopes))) {

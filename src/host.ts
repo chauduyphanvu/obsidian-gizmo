@@ -1,4 +1,4 @@
-import { Notice, getAllTags, normalizePath, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
+import { Notice, getAllTags, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
 import { bodyOf } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
@@ -41,6 +41,8 @@ export function obsidianHost(app: App): Host {
       if (!f) throw new Error(`can't find ${path}`);
       return app.vault.cachedRead(f);
     },
+    resolveFile: (link, from) => app.metadataCache.getFirstLinkpathDest(link, from)?.path,
+    parseYaml: (text) => parseYaml(text) as unknown,
   };
 }
 

@@ -157,3 +157,27 @@ test("Tasks: what's open across project notes, ticked off in the note itself", a
   assert.equal(text(soon.querySelector(".na-big")), "3");
   assert.equal(text(done.querySelectorAll("li")[2]), "Download bank statements 📅 2026-11-19 · Tax return");
 });
+
+test("Shelf: the books Books.base picks, by status, set in place", async () => {
+  const spec = readSpec(vaultNote("Apps/Shelf.md").fm, { path: "Apps/Shelf.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Shelf.md"), ["edit:*", "read:*"]);
+
+  // A note outside Books, which the base leaves out.
+  const t = fakeEnv({ "Apps/Shelf.md": { fm: vaultNote("Apps/Shelf.md").fm }, ...books(), "Inbox/Dune notes.md": { fm: { status: "reading" } } });
+  t.f.others.set("Books.base", readFileSync(new URL("./vault/Books.base", import.meta.url), "utf8"));
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  new AppController(root, "Apps/Shelf.md", t.env).load();
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [shelf, byStatus] = [...root.querySelectorAll(".na-panel")];
+  const rows = [...shelf.querySelectorAll("tbody tr")];
+  assert.deepEqual(rows.map((tr) => text(tr.querySelector("td"))), ["Dune", "Middlemarch", "Piranesi", "The Overstory"]);
+  assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["(none) · 4"]);
+
+  choose(rows[0].querySelector("select")!, "reading");
+  await settle();
+  assert.deepEqual(t.f.files.get("Books/Dune.md")!.fm, { finished: "2026-02-10", status: "reading" });
+  assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["(none) · 3", "reading · 1"]);
+});

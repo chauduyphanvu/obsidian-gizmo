@@ -491,6 +491,8 @@ export function notePath(path: string): string {
 }
 
 export function describePermission(perm: string): string {
+  if (perm === "read:*") return "Read any note in the vault";
+  if (perm === "edit:*") return "Change properties of notes anywhere in the vault";
   const [kind, ...rest] = perm.split(":");
   const what = rest.join(":");
   switch (kind) {

@@ -11,6 +11,7 @@ import type { InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
+import { sourceDef } from "./sources/registry.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
 import { editErrors, editableSource } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
@@ -606,9 +607,9 @@ export class AppController {
 
   /**
    * Writes one field of a row a panel shows back where it came from, as far as the panel's checked
-   * keys allow: a note in its `from` (granted as edit:<from>), a task line in a note in its `from`
-   * (tasks:<from>), or the row's place in the list it reads, which must still hold the row that
-   * was shown.
+   * keys allow: a note in its `from` (granted as edit:<from>; any note for a base, edit:*), a task
+   * line in a note in its `from` (tasks:<from>), or the row's place in the list it reads, which
+   * must still hold the row that was shown.
    */
   private async editRow(id: string, row: Row, field: string, value: unknown): Promise<void> {
     const m = this.mounted.get(id);
@@ -617,7 +618,8 @@ export class AppController {
       if (editableSource(m.p) === "tasks") return await this.tickTask(m, row, value);
       if (editableSource(m.p) === "notes") {
         const path = row.path;
-        if (typeof path !== "string" || !this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
+        const scope = sourceDef(m.p.source!).id === "base" ? this.env.data.allNotes() : this.env.data.notes(m.p.from ?? "");
+        if (typeof path !== "string" || !scope.some((r) => r.path === path)) return;
         await this.env.writeFrontmatter(path, (fm) => { fm[field] = value; });
         return;
       }

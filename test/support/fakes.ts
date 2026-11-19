@@ -2,12 +2,15 @@ import type { AppEnv } from "../../src/app.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
+import { parseYaml } from "./yaml.ts";
 
 type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string }>;
 
 /** An in-memory vault and network. `flush()` delivers batched change notifications. */
 export function fakeHost(notes: Notes = {}) {
   const files = new Map(Object.entries(notes));
+  /** Files that aren't notes (a .base, say): path → text. */
+  const others = new Map<string, string>();
   const requests: string[] = [];
   let queued: (() => void)[] = [];
   let clock = 1_000_000;
@@ -30,13 +33,17 @@ export function fakeHost(notes: Notes = {}) {
     schedule: (cb) => { queued.push(cb); },
     // A fake note keeps its frontmatter apart, so its text is its body and lines count from there.
     async readText(path) {
-      if (!files.has(path)) throw new Error(`can't find ${path}`);
-      return files.get(path)!.body ?? "";
+      const text = files.has(path) ? files.get(path)!.body ?? "" : others.get(path);
+      if (text === undefined) throw new Error(`can't find ${path}`);
+      return text;
     },
+    resolveFile: (link) => [...files.keys(), ...others.keys()].find((p) => p === link || p.endsWith(`/${link}`) || p === `${link}.md`),
+    parseYaml,
   };
   return {
     host,
     files,
+    others,
     requests,
     advance: (ms: number) => { clock += ms; },
     flush: () => { const q = queued; queued = []; q.forEach((cb) => cb()); return q.length; },
