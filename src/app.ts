@@ -17,7 +17,7 @@ import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, span
 import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
-import { editErrors, editableSource } from "./views/common.ts";
+import { editErrors, editableSource, mountView } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";
 import { formatClock } from "./views/timer.ts";
@@ -670,7 +670,7 @@ export class AppController {
       this.halt(m, r.waiting, r.errors);
       return m;
     }
-    m.handle = def.mount(el, p, this.ctxFor(id), id);
+    m.handle = mountView(def, el, p, this.ctxFor(id), id);
     if (source) {
       el.addClass("na-loading");
       // A view that draws itself at once (a save: this form) fills in its values in place, so a
@@ -719,7 +719,7 @@ export class AppController {
     if (m.remount) {
       m.handle.destroy?.();
       m.el.empty();
-      m.handle = m.def.mount(m.el, m.p, this.ctxFor(m.id), m.id);
+      m.handle = mountView(m.def, m.el, m.p, this.ctxFor(m.id), m.id);
       m.remount = false;
     }
     m.el.removeClass("na-loading", "na-error", "na-stale");

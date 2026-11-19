@@ -426,3 +426,18 @@ button.na-lens-toggle {
 
 /* Background: status bar items stay on one line in a narrow window, cut short rather than stacked. */
 .status-bar .na-status { white-space: nowrap; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
+
+/* Detail: a sentence about the picked row, under the panel's rows */
+.note-app .na-detail {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: var(--size-4-1) var(--size-4-3);
+  margin-top: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
+  border-left: 3px solid var(--interactive-accent);
+  border-radius: var(--radius-s);
+  background: var(--background-modifier-hover);
+  font-size: var(--font-ui-small);
+}
+.note-app .na-detail-text { flex: 1 1 16em; }

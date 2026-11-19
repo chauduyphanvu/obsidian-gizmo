@@ -3,7 +3,7 @@ import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { itemText } from "./board.ts";
-import { DATA_KEYS, heading, noteLink, rowNote, rowsOf, selectable, shownRows } from "./common.ts";
+import { DATA_KEYS, heading, noteLink, picks, rowNote, rowsOf, selectable, shownRows } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /** Width of the label column, kept in step with styles.css. */
@@ -68,7 +68,7 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
       cls: end === undefined ? "na-tl-dot" : "na-tl-bar",
       attr: { style: end === undefined ? left(start) : `${left(start)}; width: ${(((end - start) / (to - from)) * 100).toFixed(3)}%`, title: detail, tabindex: 0 },
     });
-    if (p.select) {
+    if (picks(p)) {
       selectable(mark, p, ctx, row, detail);
     } else {
       mark.setAttribute("role", "img");
@@ -85,13 +85,14 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
 
 export const timeline: ViewDef = {
   id: "timeline",
-  keys: [...DATA_KEYS, "start", "end", "item", "label", "format", "values", "select"],
+  keys: [...DATA_KEYS, "start", "end", "item", "label", "format", "values", "select", "detail"],
   span: 4,
   needsSource: true,
   validate: (p) => [...(p.start ? [] : ["timeline needs start (a date field)"]), ...formatErrors(p)],
   examples: [
     { panel: { view: "timeline", source: "notes", from: "Projects", start: "start", end: "due", item: "{name}", select: "project" } },
     { panel: { view: "timeline", source: "trips", start: "date", sort: "date" } },
+    { panel: { view: "timeline", source: "notes", from: "Decisions", start: "made", end: "review", detail: "I expected: {expect}. I'll know by {review}." } },
     { panel: { view: "timeline", source: "notes", from: "Projects", start: "start", end: "due", item: "{name} · {status} · {budget}", format: { budget: "$0,0" }, values: { status: { doing: "In progress" } } } },
     { panel: { view: "timeline", source: "trips", start: "date", format: "dollars" }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "timeline", source: "notes", from: "Projects" }, errors: ["timeline needs start (a date field)"] },

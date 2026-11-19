@@ -1,7 +1,7 @@
 import { extent, formatValue, getPath, seriesOf, toTime, type Per, type Point, type Row } from "../data.ts";
 import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -253,7 +253,7 @@ function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", ...(kind === "bar" ? ["select", "stack"] : [])],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", ...(kind === "bar" ? ["select", "detail", "stack"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {
@@ -287,8 +287,10 @@ function chartView(kind: "line" | "bar"): ViewDef {
         { panel: { view: kind, source: "spending", group: "at", per: "week", y: ["food", "rent"], agg: "sum", stack: true } },
         { panel: { view: kind, source: "spending", group: "at", per: "week", y: "food", agg: "sum", stack: true }, errors: ["stack needs two or more y series"] },
         { panel: { view: kind, source: "spending", group: "category", stack: true }, errors: ["stack needs two or more y series"] },
+        { panel: { view: kind, source: "spending", group: "category", y: "amount", agg: "sum", detail: "{category}: {amount} over {count} entries" } },
       ] : [
         { panel: { view: kind, source: "weights", x: "at", y: ["a", "b"], stack: true }, errors: ['"stack" doesn\'t apply to line'] },
+        { panel: { view: kind, source: "weights", x: "at", y: "weight", detail: "{weight} on {at}" }, errors: ['"detail" doesn\'t apply to line'] },
       ]),
     ],
     mount(el, p, ctx, key): PanelHandle {
@@ -300,7 +302,7 @@ function chartView(kind: "line" | "bar"): ViewDef {
         const x = p.group ?? p.x!;
         const ys = seriesNames(p);
         const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, label: labelFor(p, y), points: seriesOf(last, x, y) }));
-        const mark = p.select ? (bar: SVGElement, at: unknown) => selectable(bar, p, ctx, rowAt(last, x, at, series), String(at)) : undefined;
+        const mark = picks(p) ? (bar: SVGElement, at: unknown) => selectable(bar, p, ctx, rowAt(last, x, at, series), String(at)) : undefined;
         const format = (v: number, s: number) => {
           const f = formatFor(p, series[s].name);
           return f === undefined ? undefined : formatWith(v, f, ctx.now);

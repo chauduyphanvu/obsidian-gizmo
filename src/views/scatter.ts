@@ -4,7 +4,7 @@ import { rowsFromArrays } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { B, H, L, R, T, niceTicks, svg } from "./chart.ts";
-import { DATA_KEYS, heading, rowsOf, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS, heading, picks, rowsOf, selectable, seriesNames } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 const RADIUS = 4;
@@ -76,7 +76,7 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
     const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "na-scatter-dot na-s1", tabindex: 0 }, root);
     svg("title", {}, dot).textContent = text;
     texts.set(dot, text);
-    if (p.select) {
+    if (picks(p)) {
       selectable(dot, p, ctx, d.row, text);
     } else {
       dot.setAttribute("role", "img");
@@ -100,7 +100,7 @@ function pad([min, max]: [number, number], flat: number, by: number): [number, n
 
 export const scatter: ViewDef = {
   id: "scatter",
-  keys: [...DATA_KEYS, "x", "y", "item", "label", "unit", "decimals", "format", "labels", "values", "select"],
+  keys: [...DATA_KEYS, "x", "y", "item", "label", "unit", "decimals", "format", "labels", "values", "select", "detail"],
   span: 2,
   needsSource: true,
   validate(p: Panel) {

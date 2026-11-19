@@ -75,6 +75,8 @@ export interface Panel {
   shortcut?: string;
   pin?: string;
   alert?: string | Record<string, string | number | boolean>;
+  /** A sentence about the row picked in the panel, drawn under its rows. */
+  detail?: string;
   /** Internal: the pipelines of the blocks above the one the panel names, root first. */
   upstream?: PipelineKeys[];
   /** Internal: the fields of the nearest block with `fields` up the panel's chain. */

@@ -1,10 +1,10 @@
-import { stampParts, type Row } from "../data.ts";
-import { checkFormat } from "../format.ts";
+import { fillWith, stampParts, type Row } from "../data.ts";
+import { checkFormat, display } from "../format.ts";
 import { ROW_INDEX } from "../sources/list.ts";
 import { sourceDef } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import { definitionReason } from "../store.ts";
-import type { PanelCtx } from "./registry.ts";
+import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /**
  * `names` is one field name or a list of them (several chart series); `json` is text or any set of
@@ -33,7 +33,7 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
   open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
-  end: "string", shortcut: "string", pin: "string", alert: "alert",
+  end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string",
 };
 
 /** What a wrong value should have been, for the types whose names don't say it plainly. */
@@ -282,8 +282,82 @@ export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void):
 
 // ---- Selection -----------------------------------------------------------------------------------
 
-/** What each selectable element picks, so picking one can mark the others in its panel again. */
-const PICKS = new WeakMap<Element, { p: Panel; ctx: PanelCtx; row: Row }>();
+/**
+ * What each selectable element picks, so picking one can mark the others in its panel again;
+ * `root` is the element of its panel when that panel shows `detail`.
+ */
+const PICKS = new WeakMap<Element, Picker>();
+
+interface Picker {
+  p: Panel;
+  ctx: PanelCtx;
+  row: Row;
+  root?: Element;
+}
+
+/** A panel drawn with `detail`, and the row picked in it when it has no `select` to keep that in. */
+interface Detailed {
+  p: Panel;
+  ctx: PanelCtx;
+  pick?: Row;
+}
+
+/** Panels that show `detail`, by the element the panel is drawn in. */
+const DETAILED = new WeakMap<Element, Detailed>();
+
+/** The element of the panel `el` is drawn in, when that panel shows `detail`. */
+function detailedOf(el: Element): Element | undefined {
+  for (let x: Element | null = el; x; x = x.parentElement) if (DETAILED.has(x)) return x;
+  return undefined;
+}
+
+/** The row picked in a panel: its selection, or with `detail` and no `select`, the panel's own pick. */
+function pickedIn(p: Panel, ctx: PanelCtx, root: Element | undefined): Row | undefined {
+  return p.select !== undefined ? ctx.selected(p.select) : root ? DETAILED.get(root)?.pick : undefined;
+}
+
+/**
+ * Draws a panel's detail area, last in the panel, for the row picked in it as the panel shows that
+ * row now; takes it away when nothing is picked or the row isn't shown any more. A note's row gets
+ * an Open link.
+ */
+function drawDetail(root: Element): void {
+  const d = DETAILED.get(root)!;
+  for (const old of [...root.children]) if (old.classList.contains("na-detail")) old.remove();
+  const want = pickedIn(d.p, d.ctx, root);
+  const rows = [...root.querySelectorAll(".na-selectable")].map((item) => PICKS.get(item)?.row);
+  const row = want && rows.find((r): r is Row => !!r && sameRow(d.p, want, r));
+  if (!row) {
+    d.pick = undefined;
+    return;
+  }
+  const area = (root as HTMLElement).createDiv({ cls: "na-detail", attr: { role: "status" } });
+  area.createSpan({ cls: "na-detail-text", text: fillWith(d.p.detail!, row, (path, v) => display(d.p, path, v, d.ctx.now, "text")) });
+  const note = rowNote(d.p, row);
+  if (note) noteLink(area, "Open", note, d.ctx);
+}
+
+/**
+ * Mounts a view in its panel's element. A panel with `detail` gets its detail area drawn again,
+ * under the rows, each time the view draws them; a row it picked stays picked across those draws.
+ */
+export function mountView(def: ViewDef, el: HTMLElement, p: Panel, ctx: PanelCtx, key: string): PanelHandle {
+  if (p.detail === undefined) {
+    DETAILED.delete(el);
+    return def.mount(el, p, ctx, key);
+  }
+  DETAILED.set(el, { p, ctx, pick: DETAILED.get(el)?.pick });
+  const handle = def.mount(el, p, ctx, key);
+  const resize = handle.resize;
+  return {
+    ...handle,
+    update(data) {
+      handle.update(data);
+      drawDetail(el);
+    },
+    ...(resize ? { resize(width: number) { resize.call(handle, width); drawDetail(el); } } : {}),
+  };
+}
 
 /** What tells a row apart from the others of its panel across reloads: its place in a saved list, or its note. */
 export function rowKey(r: Row): unknown {
@@ -319,31 +393,41 @@ function markAll(el: Element): void {
   if (scope === el) while (scope.parentElement) scope = scope.parentElement;
   for (const item of scope.querySelectorAll(".na-selectable")) {
     const pick = PICKS.get(item);
-    if (pick) mark(item, sameRow(pick.p, pick.ctx.selected(pick.p.select!), pick.row));
+    if (pick) mark(item, sameRow(pick.p, pickedIn(pick.p, pick.ctx, pick.root), pick.row));
   }
+}
+
+/** Whether a panel's rows can be picked: it names a selection, or shows a detail of the picked row. */
+export function picks(p: Panel): boolean {
+  return p.select !== undefined || p.detail !== undefined;
 }
 
 /**
  * Makes `el` (a list item, a table row, a bar, a slice, a legend entry) pick `row` as the panel's
- * `select`: a button for the mouse and keyboard (Enter or Space), marked `na-selected` while its
- * row is the selection. Picking it again clears the selection. Every element of the panel is marked
- * again in place, so the panel isn't redrawn. Does nothing when the panel has no `select`.
+ * `select`, and for its `detail`: a button for the mouse and keyboard (Enter or Space), marked
+ * `na-selected` while its row is the one picked. Picking it again clears the pick. Every element
+ * of the panel is marked again in place, so the panel isn't redrawn; its detail area is drawn
+ * again. Does nothing when the panel has neither `select` nor `detail`.
  * Returns what a view that updates rows in place calls with the row's new values: the element then
  * picks those, and a selection of this row takes them too.
  */
 export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string): (row: Row) => void {
-  if (!p.select) return () => {};
+  if (!picks(p)) return () => {};
   const name = p.select;
-  const pick = { p, ctx, row };
+  const root = detailedOf(el);
+  const pick: Picker = { p, ctx, row, root };
   PICKS.set(el, pick);
   el.classList.add("na-selectable");
   el.setAttribute("role", "button");
   el.setAttribute("tabindex", "0");
   if (label) el.setAttribute("aria-label", label);
-  mark(el, sameRow(p, ctx.selected(name), row));
+  mark(el, sameRow(p, pickedIn(p, ctx, root), row));
   const toggle = () => {
-    ctx.select(name, sameRow(p, ctx.selected(name), pick.row) ? undefined : pick.row);
+    const next = sameRow(p, pickedIn(p, ctx, root), pick.row) ? undefined : pick.row;
+    if (name !== undefined) ctx.select(name, next);
+    else if (root) DETAILED.get(root)!.pick = next;
     markAll(el);
+    if (root) drawDetail(root);
   };
   el.addEventListener("click", (e) => { if (!fromControl(e, el)) toggle(); });
   el.addEventListener("keydown", (e) => {
@@ -354,6 +438,7 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
   });
   return (next) => {
     pick.row = next;
+    if (name === undefined) return;
     const current = ctx.selected(name);
     if (current && current !== next && sameRow(p, current, next) && JSON.stringify(current) !== JSON.stringify(next)) ctx.select(name, next);
   };
