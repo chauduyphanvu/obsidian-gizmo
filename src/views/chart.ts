@@ -1,4 +1,5 @@
 import { extent, formatValue, getPath, seriesOf, toTime, type Per, type Point, type Row } from "../data.ts";
+import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, selectable, seriesNames } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
@@ -37,14 +38,19 @@ function formatTime(t: number, span: number, per?: Per): string {
   return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
-/** A bar from the baseline y0 to the value at y1, square at the baseline and rounded at the value. */
-function barPath(x: number, w: number, y0: number, y1: number): string {
+/**
+ * A bar from the baseline y0 to the value at y1, square at the baseline and rounded at the value;
+ * square at both ends when `round` is false (a segment inside a stack).
+ */
+function barPath(x: number, w: number, y0: number, y1: number, round = true): string {
+  if (!round) return `M${x},${y0}V${y1}H${x + w}V${y0}Z`;
   const r = Math.min(RADIUS, w / 2, Math.abs(y1 - y0));
   const s = y1 <= y0 ? 1 : -1;
   return `M${x},${y0}V${y1 + s * r}Q${x},${y1} ${x + r},${y1}H${x + w - r}Q${x + w},${y1} ${x + w},${y1 + s * r}V${y0}Z`;
 }
 
-export interface Series { name: string; points: Point[] }
+/** `name` is the field; `label` is what to call it when the panel says so. */
+export interface Series { name: string; label?: string; points: Point[] }
 
 export interface ChartOptions {
   kind: "line" | "bar";
@@ -52,10 +58,30 @@ export interface ChartOptions {
   width: number;
   unit?: string;
   decimals?: number;
+  /** A series' value as text in the panel's `format`; undefined leaves it to `unit` and `decimals`. */
+  format?(value: number, series: number): string | undefined;
   /** Grouped by period: axis labels name the period. */
   per?: Per;
-  /** Selection hook: called with each bar drawn and the x value it stands for. */
+  /** The text of a category on the x axis (not a time axis). */
+  category?(x: unknown): string;
+  /** Selection hook: called with each bar drawn (each segment, when stacked) and the x value it stands for. */
   mark?(el: SVGElement, x: unknown): void;
+  /** A dashed line at this value, labelled, inside the axis range. */
+  goal?: number;
+  /** Bars of several series stack instead of sitting side by side. */
+  stack?: boolean;
+}
+
+/** The lowest and highest a stack of these series reaches: positive values pile up, negative ones down. */
+function stackRange(values: Map<number, number>[]): [number, number] {
+  const up = new Map<number, number>(), down = new Map<number, number>();
+  for (const byIndex of values) {
+    for (const [i, y] of byIndex) {
+      const total = y < 0 ? down : up;
+      total.set(i, (total.get(i) ?? 0) + y);
+    }
+  }
+  return [extent([0, ...down.values()])[0], extent([0, ...up.values()])[1]];
 }
 
 /** A colour swatch and name; text keeps the text colour, the swatch carries the series colour. */
@@ -86,7 +112,16 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const index = new Map(keys.map((k, i) => [k, i]));
   const n = keys.length;
 
-  let [yMin, yMax] = extent(all.map((p) => p.y));
+  // Each series' values by x position; a missing value leaves a gap (bars) or is joined across (lines).
+  const values = series.map((s) => {
+    const byIndex = new Map<number, number>();
+    for (const p of s.points) byIndex.set(index.get(keyOf(p.x))!, p.y);
+    return byIndex;
+  });
+  const stacked = opts.kind === "bar" && !!opts.stack && series.length > 1;
+
+  let [yMin, yMax] = stacked ? stackRange(values) : extent(all.map((p) => p.y));
+  if (opts.goal !== undefined) { yMin = Math.min(yMin, opts.goal); yMax = Math.max(yMax, opts.goal); }
   if (opts.kind === "bar") { yMin = Math.min(0, yMin); yMax = Math.max(0, yMax); }
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.08;
@@ -97,8 +132,9 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const pos = (i: number) => (isTime ? (keys[i] as number) - (keys[0] as number) : i);
   const sx = (i: number) => opts.kind === "bar" || span === 0 ? L + bandW * (i + 0.5) : L + (pos(i) / span) * (W - L - R);
   const sy = (y: number) => T + (1 - (y - yMin) / (yMax - yMin)) * (H - T - B);
-  const fmt = (v: number) => formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
-  const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : String(label.get(keys[i]) ?? ""));
+  const fmt = (v: number, s = 0) => opts.format?.(v, s) ?? formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
+  const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : opts.category?.(label.get(keys[i])) ?? String(label.get(keys[i]) ?? ""));
+  const name = (s: number) => series[s].label ?? series[s].name;
   // One series wears the theme accent; several take the chart palette in a fixed order.
   const colour = (s: number) => (series.length === 1 ? "na-accent" : `na-s${s + 1}`);
 
@@ -108,7 +144,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   for (const t of niceTicks(yMin, yMax)) {
     const y = sy(t);
     svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "na-gridline" }, root);
-    svg("text", { x: L - 8, y: y + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = formatValue(t);
+    svg("text", { x: L - 8, y: y + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = opts.format?.(t, 0) ?? formatValue(t);
   }
   // Categories each get a label while they fit; a time axis gets its ends and middle.
   const labelIdx = !isTime && opts.kind === "bar" && n <= 12 ? keys.map((_, i) => i)
@@ -118,13 +154,6 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     const anchor = every ? "middle" : i === 0 ? "start" : i === n - 1 ? "end" : "middle";
     svg("text", { x: sx(i), y: H - 6, class: "na-axis", "text-anchor": anchor }, root).textContent = xLabel(i);
   }
-
-  // Each series' values by x position; a missing value leaves a gap (bars) or is joined across (lines).
-  const values = series.map((s) => {
-    const byIndex = new Map<number, number>();
-    for (const p of s.points) byIndex.set(index.get(keyOf(p.x))!, p.y);
-    return byIndex;
-  });
 
   if (opts.kind === "line") {
     values.forEach((byIndex, s) => {
@@ -140,6 +169,23 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       const [li, ly] = pts[pts.length - 1];
       svg("circle", { cx: sx(li), cy: sy(ly), r: 4, class: `na-dot ${colour(s)}` }, root);
     });
+  } else if (stacked) {
+    const w = Math.max(1, Math.min(BAR_MAX, bandW - GAP));
+    // Only the segment that ends a stack is rounded, at its outer end.
+    const outer = [new Map<number, number>(), new Map<number, number>()];
+    values.forEach((byIndex, s) => { for (const [i, y] of byIndex) if (y !== 0) outer[y > 0 ? 0 : 1].set(i, s); });
+    const run = [new Map<number, number>(), new Map<number, number>()];
+    values.forEach((byIndex, s) => {
+      for (const [i, y] of byIndex) {
+        if (y === 0) continue;
+        const side = y > 0 ? 0 : 1;
+        const from = run[side].get(i) ?? 0;
+        run[side].set(i, from + y);
+        const d = barPath(sx(i) - w / 2, w, sy(from), sy(from + y), outer[side].get(i) === s);
+        const bar = svg("path", { d, class: `na-bar na-stacked ${colour(s)}` }, root);
+        opts.mark?.(bar, label.get(keys[i]));
+      }
+    });
   } else {
     const m = series.length;
     const w = Math.max(1, Math.min(BAR_MAX, (bandW - GAP * m) / m));
@@ -154,9 +200,17 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     });
   }
 
-  if (series.length > 1) {
+  if (opts.goal !== undefined) {
+    const y = sy(opts.goal);
+    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "na-goal" }, root);
+    svg("text", { x: W - R, y: y - 4, class: "na-goal-label", "text-anchor": "end" }, root).textContent = `goal ${fmt(opts.goal)}`;
+    root.setAttribute("aria-label", `goal ${fmt(opts.goal)}`);
+  }
+
+  // One series needs no legend unless the panel names it.
+  if (series.length > 1 || series[0].label !== undefined) {
     const legend = wrap.createDiv({ cls: "na-legend" });
-    series.forEach((s, i) => legendItem(legend, colour(i), s.name));
+    series.forEach((_, i) => legendItem(legend, colour(i), name(i)));
   }
 
   const cursor = svg("line", { y1: T, y2: H - B, class: "na-cursor", visibility: "hidden" }, root);
@@ -168,7 +222,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       const y = byIndex.get(i);
       if (y === undefined) return;
       if (series.length === 1) readout.createSpan({ text: ` · ${fmt(y)}` });
-      else legendItem(readout, colour(s), `${series[s].name} ${fmt(y)}`);
+      else legendItem(readout, colour(s), `${name(s)} ${fmt(y, s)}`);
     });
     cursor.setAttribute("x1", String(sx(i)));
     cursor.setAttribute("x2", String(sx(i)));
@@ -197,17 +251,26 @@ function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", ...(kind === "bar" ? ["select"] : [])],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "goal", ...(kind === "bar" ? ["select", "stack"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {
       const ys = seriesNames(p);
       const many = ys.length > MAX_SERIES ? [`at most ${MAX_SERIES} series in y`] : [];
-      if (p.group) return [...(p.x ? ["leave out x: the x axis is the group"] : []), ...groupedTotals(p, ys, "y"), ...many];
-      return [...(p.x && ys.length ? [] : [`${kind} needs x and y`]), ...groupedTotals(p, [], "y"), ...many];
+      const other = [...formatErrors(p), ...(p.stack && ys.length < 2 ? ["stack needs two or more y series"] : [])];
+      if (p.group) return [...(p.x ? ["leave out x: the x axis is the group"] : []), ...groupedTotals(p, ys, "y"), ...many, ...other];
+      return [...(p.x && ys.length ? [] : [`${kind} needs x and y`]), ...groupedTotals(p, [], "y"), ...many, ...other];
     },
     examples: [
       { panel: { view: kind, source: "weights", x: "at", y: "weight", unit: "kg" } },
+      { panel: { view: kind, source: "https://api.example.com/hourly", pick: "hourly", x: "time", y: ["temperature_2m", "humidity"], format: { temperature_2m: "0.0 °C", humidity: "0 %" } } },
+      { panel: { view: kind, source: "weights", x: "at", y: "weight", unit: "kg", goal: 70 } },
+      { panel: { view: kind, source: "weights", x: "at", y: "weight", goal: "light" }, errors: ['"goal" has the wrong type (expected number)'] },
+      { panel: { view: kind, source: "weights", x: "at", y: "weight", format: "kilos" }, errors: ['format "kilos" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
+      { panel: { view: kind, source: "https://api.example.com/daily", pick: "daily", x: "time", y: ["temperature_2m_max", "temperature_2m_min"], labels: { temperature_2m_max: "High", temperature_2m_min: "Low" } } },
+      { panel: { view: kind, source: "weights", x: "at", y: "weight", labels: "Weight" }, errors: ['"labels" has the wrong type (expected a set of name: text)'] },
+      { panel: { view: kind, source: "notes", from: "Health", group: "kind", values: { kind: { dr: "Doctor" } } } },
+      { panel: { view: kind, source: "notes", from: "Health", group: "kind", values: { kind: "Doctor" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
       { panel: { view: kind, source: "https://api.example.com/hourly", pick: "hourly", x: "time", y: ["temperature_2m", "apparent_temperature"] } },
       { panel: { view: kind, source: "sessions", group: "at", per: "week", y: "minutes", agg: "sum", where: { at: "last 8 weeks" } } },
       { panel: { view: kind, source: "notes", from: "Books", group: "genre" } },
@@ -218,6 +281,13 @@ function chartView(kind: "line" | "bar"): ViewDef {
       kind === "bar"
         ? { panel: { view: kind, source: "notes", from: "Books", group: "genre", select: "genre" } }
         : { panel: { view: kind, source: "weights", x: "at", y: "weight", select: "day" }, errors: ['"select" doesn\'t apply to line'] },
+      ...(kind === "bar" ? [
+        { panel: { view: kind, source: "spending", group: "at", per: "week", y: ["food", "rent"], agg: "sum", stack: true } },
+        { panel: { view: kind, source: "spending", group: "at", per: "week", y: "food", agg: "sum", stack: true }, errors: ["stack needs two or more y series"] },
+        { panel: { view: kind, source: "spending", group: "category", stack: true }, errors: ["stack needs two or more y series"] },
+      ] : [
+        { panel: { view: kind, source: "weights", x: "at", y: ["a", "b"], stack: true }, errors: ['"stack" doesn\'t apply to line'] },
+      ]),
     ],
     mount(el, p, ctx, key): PanelHandle {
       let last: unknown;
@@ -227,9 +297,16 @@ function chartView(kind: "line" | "bar"): ViewDef {
         heading(el, p, p.label);
         const x = p.group ?? p.x!;
         const ys = seriesNames(p);
-        const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, points: seriesOf(last, x, y) }));
+        const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, label: labelFor(p, y), points: seriesOf(last, x, y) }));
         const mark = p.select ? (bar: SVGElement, at: unknown) => selectable(bar, p, ctx, rowAt(last, x, at, series), String(at)) : undefined;
-        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, width: width ?? ctx.width(key), per: p.per, mark });
+        const format = (v: number, s: number) => {
+          const f = formatFor(p, series[s].name);
+          return f === undefined ? undefined : formatWith(v, f, ctx.now);
+        };
+        const category = (at: unknown) => mapped(p, x, at) ?? String(at ?? "");
+        renderChart(el, series, {
+          kind, unit: p.unit, decimals: p.decimals, format, category, width: width ?? ctx.width(key), per: p.per, mark, goal: p.goal, stack: p.stack,
+        });
       };
       return {
         update(data) { last = data; draw(); },

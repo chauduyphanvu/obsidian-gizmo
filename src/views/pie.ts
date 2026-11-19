@@ -1,4 +1,5 @@
 import { formatValue, getPath, toNumber } from "../data.ts";
+import { display, formatErrors, formatFor, labelFor, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { legendItem, svg } from "./chart.ts";
@@ -35,19 +36,25 @@ function arc(a0: number, a1: number): string {
 
 export const pie: ViewDef = {
   id: "pie",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "select"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "select"],
   span: 2,
   needsSource: true,
   validate(p: Panel) {
     const ys = seriesNames(p);
     const one = ys.length > 1 ? ["pie takes one y"] : [];
-    if (p.group) return [...(p.x ? ["leave out x: the slices are the groups"] : []), ...groupedTotals(p, ys, "y"), ...one];
-    return [...(p.x && ys.length ? [] : ["pie needs x (slice names) and y (sizes), or group"]), ...groupedTotals(p, [], "y"), ...one];
+    const format = formatErrors(p);
+    if (p.group) return [...(p.x ? ["leave out x: the slices are the groups"] : []), ...groupedTotals(p, ys, "y"), ...one, ...format];
+    return [...(p.x && ys.length ? [] : ["pie needs x (slice names) and y (sizes), or group"]), ...groupedTotals(p, [], "y"), ...one, ...format];
   },
   examples: [
     { panel: { view: "pie", source: "notes", from: "Books", group: "genre" } },
     { panel: { view: "pie", source: "spending", group: "category", y: "amount", agg: "sum", unit: "$" } },
     { panel: { view: "pie", source: "budget", x: "category", y: "amount" } },
+    { panel: { view: "pie", source: "spending", group: "category", y: "amount", agg: "sum", format: "$0,0.00" } },
+    { panel: { view: "pie", source: "spending", group: "category", y: "amount", agg: "sum", format: "dollars" }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
+    { panel: { view: "pie", source: "spending", group: "category", y: "amount", agg: "sum", labels: { amount: "Spent" }, values: { category: { eat: "Food" } } } },
+    { panel: { view: "pie", source: "spending", group: "category", labels: "Spent" }, errors: ['"labels" has the wrong type (expected a set of name: text)'] },
+    { panel: { view: "pie", source: "spending", group: "category", values: { category: "Food" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
     { panel: { view: "pie", source: "budget", x: "category" }, errors: ["pie needs x (slice names) and y (sizes), or group"] },
     { panel: { view: "pie", source: "s", group: "g", y: ["a", "b"], agg: "sum" }, errors: ["pie takes one y"] },
     { panel: { view: "pie", source: "spending", group: "category", y: "amount", agg: "sum", select: "category" } },
@@ -56,18 +63,20 @@ export const pie: ViewDef = {
     heading(el, p, p.label);
     const rows = rowsOf(data);
     const nameField = p.group ?? p.x!;
-    const slices = slicesOf(rows, nameField, seriesNames(p)[0] ?? "count");
+    const sized = seriesNames(p)[0] ?? "count";
+    const slices = slicesOf(rows, nameField, sized);
     if (slices.length === 0) {
       el.createDiv({ cls: "na-empty", text: "Nothing to show yet." });
       return;
     }
     const total = slices.reduce((sum, s) => sum + s.value, 0);
-    const fmt = (v: number) => formatValue(v, p.decimals) + (p.unit ? ` ${p.unit}` : "");
+    const fmt = (v: number) => (formatFor(p, sized) !== undefined ? display(p, sized, v, ctx.now) : formatValue(v, p.decimals) + (p.unit ? ` ${p.unit}` : ""));
     const share = (v: number) => `${Math.round((v / total) * 100)}%`;
     const box = el.createDiv({ cls: "na-pie" });
     const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "na-pie-svg", role: "img", width: SIZE, height: SIZE }, box);
     const readout = el.createDiv({ cls: "na-readout" });
-    const showTotal = () => readout.setText(`Total · ${fmt(total)}`);
+    // The sized field's label, when the panel gives one, says what the total is of.
+    const showTotal = () => readout.setText(`${labelFor(p, sized) ?? "Total"} · ${fmt(total)}`);
     const shapes = slices.length === 1
       ? [svg("circle", { cx: SIZE / 2, cy: SIZE / 2, r: SIZE / 2 - 2 - RING / 2, "stroke-width": RING, class: `na-ring ${slices[0].colour}` }, root)]
       : (() => {
@@ -82,14 +91,15 @@ export const pie: ViewDef = {
     // Every slice's value and share is printed here too, so nothing depends on telling colours apart.
     const legend = box.createDiv({ cls: "na-pie-legend" });
     slices.forEach((s, i) => {
-      const item = legendItem(legend, s.colour, s.name);
+      const name = s.colour === "na-other" ? s.name : mapped(p, nameField, s.name) ?? s.name;
+      const item = legendItem(legend, s.colour, name);
       item.createSpan({ cls: "na-pie-value", text: `${fmt(s.value)} · ${share(s.value)}` });
-      shapes[i].addEventListener("pointerenter", () => readout.setText(`${s.name} · ${fmt(s.value)} · ${share(s.value)}`));
+      shapes[i].addEventListener("pointerenter", () => readout.setText(`${name} · ${fmt(s.value)} · ${share(s.value)}`));
       shapes[i].addEventListener("pointerleave", showTotal);
       // "Other" folds several rows together, so there is no one row to pick.
       const row = s.colour === "na-other" ? undefined : rows.find((r) => String(getPath(r, nameField) ?? NONE) === s.name);
       if (row) {
-        selectable(shapes[i], p, ctx, row, s.name);
+        selectable(shapes[i], p, ctx, row, name);
         selectable(item, p, ctx, row);
       }
     });

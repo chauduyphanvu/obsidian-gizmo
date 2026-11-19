@@ -376,3 +376,60 @@ test("Shelf: the books Books.base picks, by status, set in place", async () => {
   assert.deepEqual(t.f.files.get("Books/Dune.md")!.fm, { finished: "2026-02-10", status: "reading" });
   assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["(none) · 3", "reading · 1"]);
 });
+
+test("Spending: log a purchase, see the week against last, the stack against the budget, and fix a category", async () => {
+  const spec = readSpec(vaultNote("Apps/Spending.md").fm, { path: "Apps/Spending.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Spending.md"), []);
+
+  const spend = [
+    { amount: 40, category: "food", note: "groceries", at: "2026-11-02T09:00" },
+    { amount: 300, category: "rent", note: "", at: "2026-11-03T08:00" },
+    { amount: 80.5, category: "food", note: "market", at: "2026-11-10T12:30" },
+    { amount: 45, category: "fun", note: "cinema", at: "2026-11-12T19:00" },
+    { amount: 12, category: "transport", note: "bus pass", at: "2026-11-16T08:15" },
+    { amount: 30.25, category: "food", note: "lunch", at: "2026-11-17T13:00" },
+  ];
+  const { root, f } = openApp("Apps/Spending.md", { "Apps/Spending data.md": { fm: { spend } } });
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [form, week, chart, recent] = [...root.querySelectorAll(".na-panel")];
+
+  // This week ($42.25) against last week ($125.50).
+  assert.equal(text(week.querySelector(".na-big")), "$42.25");
+  assert.equal(text(week.querySelector(".na-compare")), "▼ $83.25 (66%) vs previous");
+  assert.equal(week.querySelector(".na-compare")!.getAttribute("aria-label"), "down $83.25, 66 percent, versus previous");
+
+  // Weekly totals stacked by category, with the budget line.
+  assert.equal(text(chart.querySelector(".na-goal-label")), "goal $400");
+  assert.equal(text(chart.querySelector(".na-legend")), "FoodRentTransportFunOther");
+  assert.ok(chart.querySelectorAll("path.na-bar.na-stacked").length >= 6);
+  assert.match(text(chart.querySelector(".na-readout")), /Food \$30.*Transport \$12/);
+
+  // Recent purchases, newest first, in the panel's formats; category is a dropdown.
+  assert.deepEqual([...recent.querySelectorAll("th")].map((th) => text(th)), ["When", "Spent", "category", "note"]);
+  const rows = [...recent.querySelectorAll("tbody tr")];
+  assert.deepEqual(rows.map((tr) => [text(tr.querySelectorAll("td")[0]), text(tr.querySelectorAll("td")[1])]).slice(0, 2), [["23 hours ago", "$30.25"], ["2 days ago", "$12.00"]]);
+  assert.deepEqual([...rows[0].querySelectorAll("select option")].map((o) => text(o)), ["food", "rent", "transport", "fun", "other"]);
+
+  // Log a purchase.
+  const [amount, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
+  amount.value = "20";
+  note.value = "movie";
+  choose(form.querySelector("select")!, "fun");
+  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  await settle();
+  const saved = f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[];
+  assert.deepEqual(saved.at(-1), { amount: 20, category: "fun", note: "movie", at: "2026-11-18T12:00" });
+  assert.equal(text(week.querySelector(".na-big")), "$62.25");
+  assert.equal(text(week.querySelector(".na-compare")), "▼ $63.25 (50%) vs previous");
+  assert.deepEqual([...recent.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelectorAll("td")[1])).slice(0, 2), ["$20.00", "$30.25"]);
+  assert.equal(text(recent.querySelector("tbody tr td")), "just now");
+
+  // The movie was food after all.
+  choose(recent.querySelector("tbody tr select")!, "food");
+  await settle();
+  assert.equal((f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[]).at(-1)!.category, "food");
+  assert.equal(text(week.querySelector(".na-big")), "$62.25");
+  assert.match(text(chart.querySelector(".na-readout")), /Food \$50/);
+});

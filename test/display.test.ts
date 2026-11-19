@@ -1,0 +1,127 @@
+import { document } from "./support/dom.ts";
+import assert from "node:assert/strict";
+import { test } from "node:test";
+import { checkPanel, type Panel } from "../src/spec.ts";
+import { bar, line } from "../src/views/chart.ts";
+import { pie } from "../src/views/pie.ts";
+import type { PanelCtx, ViewDef } from "../src/views/registry.ts";
+import { list, table } from "../src/views/rows.ts";
+import { number, text } from "../src/views/value.ts";
+
+const NOW = new Date(2026, 10, 18, 12, 0);
+const ctx = { now: NOW, width: () => 600 } as unknown as PanelCtx;
+const plain = (s: string) => s.replace(/[  ]/g, " ");
+const text_ = (el: Element | null | undefined) => plain(el?.textContent ?? "");
+
+function draw(def: ViewDef, keys: Record<string, unknown>, data: unknown, c: PanelCtx = ctx): HTMLElement {
+  const { panel, errors } = checkPanel({ view: def.id, ...keys }, true);
+  assert.deepEqual(errors, []);
+  const el = document.createElement("div");
+  def.mount(el, panel as Panel, c, "k").update(data);
+  return el;
+}
+
+const daily = [
+  { time: "2026-11-16", weathercode: 0, hi: 12, lo: 4 },
+  { time: "2026-11-17", weathercode: 3, hi: 9, lo: 2 },
+  { time: "2026-11-18", weathercode: 1, hi: 10, lo: 3 },
+];
+const SKY = { weathercode: { 0: "Clear", 1: "Mostly clear", 3: "Overcast" } };
+
+// ---- labels ---------------------------------------------------------------------------------------
+
+test("labels name series in a chart's legend and readout; one labelled series gets a legend, an unlabelled one none", () => {
+  for (const def of [line, bar]) {
+    const two = draw(def, { source: "s", x: "time", y: ["hi", "lo"], labels: { hi: "High", lo: "Low" } }, daily);
+    assert.equal(text_(two.querySelector(".na-legend")), "HighLow");
+    assert.match(text_(two.querySelector(".na-readout")), /High 10 *Low 3/);
+    const part = draw(def, { source: "s", x: "time", y: ["hi", "lo"], labels: { hi: "High" } }, daily);
+    assert.equal(text_(part.querySelector(".na-legend")), "Highlo");
+    const one = draw(def, { source: "s", x: "time", y: "hi", labels: { hi: "High" } }, daily);
+    assert.equal(text_(one.querySelector(".na-legend")), "High");
+    assert.equal(draw(def, { source: "s", x: "time", y: "hi" }, daily).querySelector(".na-legend"), null);
+  }
+});
+
+test("labels on a grouped chart name the count", () => {
+  const el = draw(bar, { source: "s", group: "genre", labels: { count: "Books" } }, [{ genre: "a", count: 2 }, { genre: "b", count: 1 }]);
+  assert.equal(text_(el.querySelector(".na-legend")), "Books");
+});
+
+test("labels are the table's column headers", () => {
+  const el = draw(table, { source: "s", columns: ["time", "hi", "lo"], labels: { hi: "High", lo: "Low" } }, daily);
+  assert.deepEqual([...el.querySelectorAll("th")].map((th) => text_(th)), ["time", "High", "Low"]);
+});
+
+test("a grouped list's default item counts what the count label says", () => {
+  const rows = [{ genre: "fantasy", count: 3 }, { genre: "poetry", count: 1 }];
+  assert.deepEqual([...draw(list, { source: "s", group: "genre", labels: { count: "books" } }, rows).querySelectorAll("li")].map((li) => text_(li)),
+    ["fantasy · 3 books", "poetry · 1 books"]);
+  assert.deepEqual([...draw(list, { source: "s", group: "genre" }, rows).querySelectorAll("li")].map((li) => text_(li)), ["fantasy · 3", "poetry · 1"]);
+  // An item of the panel's own is left as typed.
+  assert.equal(text_(draw(list, { source: "s", group: "genre", item: "{genre}: {count}", labels: { count: "books" } }, rows).querySelector("li")), "fantasy: 3");
+});
+
+test("a pie's total is named after the field it totals, when the panel labels it", () => {
+  const rows = [{ c: "food", v: 30 }, { c: "rent", v: 70 }];
+  assert.equal(text_(draw(pie, { source: "s", x: "c", y: "v", labels: { v: "Spent" } }, rows).querySelector(".na-readout")), "Spent · 100");
+  assert.equal(text_(draw(pie, { source: "s", x: "c", y: "v" }, rows).querySelector(".na-readout")), "Total · 100");
+});
+
+// ---- values ---------------------------------------------------------------------------------------
+
+test("values show a field's value as text in a table and in a list", () => {
+  const t = draw(table, { source: "s", columns: ["time", "weathercode", "hi"], values: SKY }, daily);
+  assert.deepEqual([...t.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].map((td) => text_(td)).join("|")),
+    ["2026-11-16|Clear|12", "2026-11-17|Overcast|9", "2026-11-18|Mostly clear|10"]);
+  const rows = [...daily, { time: "2026-11-19", weathercode: 99, hi: 1, lo: 0 }];
+  const l = draw(list, { source: "s", item: "{time}: {weathercode}, {hi}°", values: SKY }, rows);
+  assert.deepEqual([...l.querySelectorAll("li")].map((li) => text_(li)),
+    ["2026-11-16: Clear, 12°", "2026-11-17: Overcast, 9°", "2026-11-18: Mostly clear, 10°", "2026-11-19: 99, 1°"]);
+});
+
+test("a list with no item shows its name, title or value through values", () => {
+  const rows = [{ name: "a" }, { title: "b" }, { value: 3.14159 }, { value: "x" }];
+  const l = draw(list, { source: "s", values: { name: { a: "Alpha" }, value: { x: "Ex" } } }, rows);
+  assert.deepEqual([...l.querySelectorAll("li")].map((li) => text_(li)), ["Alpha", "b", "3.14159", "Ex"]);
+});
+
+test("values look a value up by its text: numbers, booleans and numbers typed as text alike", () => {
+  const rows = [{ ok: true, n: 1, s: "1", f: 1.5 }];
+  const el = draw(table, { source: "s", values: { ok: { true: "Yes" }, n: { 1: "One" }, s: { 1: "One" }, f: { "1.5": "One and a half" } } }, rows);
+  assert.deepEqual([...el.querySelectorAll("td")].map((td) => text_(td)), ["Yes", "One", "One", "One and a half"]);
+});
+
+test("values win over format; an unmapped value is shown as usual", () => {
+  const el = draw(table, { source: "s", columns: ["code"], values: { code: { 0: "Clear" } }, format: { code: "0.00" } }, [{ code: 0 }, { code: 2 }]);
+  assert.deepEqual([...el.querySelectorAll("td")].map((td) => text_(td)), ["Clear", "2.00"]);
+});
+
+test("values apply to the field of a number panel and the placeholders of a text panel", () => {
+  const n = draw(number, { source: "s", field: "weathercode", values: SKY, unit: "code" }, { weathercode: 3 });
+  assert.equal(text_(n.querySelector(".na-big")), "Overcast");
+  assert.equal(n.querySelector(".na-unit"), null);
+  const unmapped = draw(number, { source: "s", field: "weathercode", values: SKY, unit: "code" }, { weathercode: 45 });
+  assert.equal(text_(unmapped.querySelector(".na-big")), "45code");
+  const t = draw(text, { source: "s", text: "{weathercode} today", values: SKY }, { weathercode: 0 });
+  assert.equal(text_(t.querySelector(".na-text")), "Clear today");
+});
+
+test("values name the group keys on a chart's axis, in its readout, and a pie's slices", () => {
+  const grouped = [{ weathercode: 0, count: 5 }, { weathercode: 3, count: 2 }];
+  const b = draw(bar, { source: "s", group: "weathercode", values: SKY }, grouped);
+  assert.deepEqual([...b.querySelectorAll("text.na-axis")].map((t) => text_(t)).filter((t) => /[A-Za-z]/.test(t)), ["Clear", "Overcast"]);
+  assert.match(text_(b.querySelector(".na-readout")), /^Overcast · 2$/);
+  const p = draw(pie, { source: "s", group: "weathercode", values: SKY }, grouped);
+  assert.match(text_(p.querySelector(".na-pie-legend")), /Clear5 · 71%.*Overcast2 · 29%/);
+});
+
+test("a selectable bar or slice is named by what it shows", () => {
+  const grouped = [{ weathercode: 0, count: 5 }, { weathercode: 3, count: 2 }];
+  const picked: unknown[] = [];
+  const c = { ...ctx, select: (_: string, row: unknown) => picked.push(row), selected: () => undefined } as unknown as PanelCtx;
+  const p = draw(pie, { source: "s", group: "weathercode", values: SKY, select: "w" }, grouped, c);
+  assert.deepEqual([...p.querySelectorAll("path.na-slice")].map((s) => s.getAttribute("aria-label")), ["Clear", "Overcast"]);
+  (p.querySelector("path.na-slice") as HTMLElement).dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.deepEqual(picked, [{ weathercode: 0, count: 5 }]);
+});

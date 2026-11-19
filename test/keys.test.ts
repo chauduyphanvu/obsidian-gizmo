@@ -7,8 +7,8 @@ import { readValue } from "../src/views/common.ts";
 /** Every key declared ahead of the feature that uses it, with a value of the right type. */
 const DECLARED: Record<string, unknown> = {
   select: "quake", action: "Add", row: { title: "{title}" }, name: "{title}", template: "[[Book]]",
-  open: "{path}", edit: ["status"], format: "0.0", labels: { a: "A" }, values: { code: { 0: "Clear" } },
-  cells: { p: "progress" }, layout: "cards", compare: "previous", goal: 80, stack: true,
+  open: "{path}", edit: ["status"], labels: { a: "A" },
+  cells: { p: "progress" }, layout: "cards", goal: 80, stack: true,
   start: "start", end: "end", shortcut: "took-meds", pin: "status", alert: ">= 5",
 };
 
