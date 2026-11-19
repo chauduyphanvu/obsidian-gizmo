@@ -1,4 +1,5 @@
 import { runActions as runPanelActions } from "./actions.ts";
+import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { basename, typedName, type NoteReader } from "./expand.ts";
@@ -17,6 +18,8 @@ import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef
 import { formatClock } from "./views/timer.ts";
 
 const CACHE_MS = 5 * 60_000;
+/** How long a panel waits for the network before painting the disk copy. */
+const DISK_FIRST_MS = 50;
 
 /** What an app needs from Obsidian; the view passes the real thing, tests a fake. */
 export interface AppEnv {
@@ -484,20 +487,34 @@ export class AppController {
 
   private async loadPanel(m: Mounted): Promise<void> {
     const seq = ++m.seq;
+    const current = () => seq === m.seq && this.mounted.get(m.id) === m;
+    const now = this.env.now();
+    const fromDisk = () => this.env.data.cachedPanelData(m.source, m.p, this.files(), now);
+    let answered = false;
+    // A web response slow to come (memory is cold after a restart) is painted from disk meanwhile.
+    setTimeout(() => {
+      if (!answered && current()) void fromDisk().then((copy) => { if (copy && !answered && current()) this.show(m, copy.data, copy.at); });
+    }, DISK_FIRST_MS);
     try {
       const data = await this.env.data.panelData(m.source, m.p, this.files(), {
         ttlMs: this.spec?.refreshMs ?? CACHE_MS,
-        now: this.env.now(),
+        now,
       });
-      if (seq !== m.seq || this.mounted.get(m.id) !== m) return;
+      answered = true;
+      if (!current()) return;
       this.show(m, data);
     } catch (e) {
-      if (seq !== m.seq || this.mounted.get(m.id) !== m) return;
-      this.showPanelError(m, (e as Error).message);
+      answered = true;
+      if (!current()) return;
+      const copy = await fromDisk();
+      if (!current()) return;
+      if (copy) this.show(m, copy.data, copy.at);
+      else this.showPanelError(m, (e as Error).message);
     }
   }
 
-  private show(m: Mounted, data: unknown): void {
+  /** `asOf`: the data is a disk copy fetched then, and says so. */
+  private show(m: Mounted, data: unknown, asOf?: number): void {
     if (m.remount) {
       m.handle.destroy?.();
       m.el.empty();
@@ -506,6 +523,8 @@ export class AppController {
     }
     m.el.removeClass("na-loading", "na-error", "na-stale");
     m.handle.update(data);
+    for (const badge of m.el.querySelectorAll(".na-asof")) badge.remove();
+    if (asOf !== undefined) m.el.createDiv({ cls: "na-asof", text: asOfText(asOf, this.env.now().getTime()) });
   }
 
   private showPanelError(m: Mounted, message: string): void {

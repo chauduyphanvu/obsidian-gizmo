@@ -1,6 +1,7 @@
 import { Notice, getAllTags, normalizePath, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
 import { bodyOf } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
+import { DiskCache } from "./cache.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type NoteAppsPlugin from "./main.ts";
 import { notePath } from "./spec.ts";
@@ -10,8 +11,10 @@ function info(f: TFile): FileInfo {
   return { path: f.path, basename: f.basename, mtime: f.stat.mtime, ctime: f.stat.ctime };
 }
 
-export function obsidianHost(app: App): Host {
+/** `pluginDir` (the plugin's folder) turns on the disk copy of web responses, in its `cache` folder. */
+export function obsidianHost(app: App, pluginDir?: string): Host {
   const file = (path: string) => app.vault.getFileByPath(path);
+  const disk = pluginDir ? new DiskCache(app.vault.adapter, normalizePath(`${pluginDir}/cache`)) : undefined;
   return {
     async fetch(url, headers) {
       const res = await requestUrl({ url, headers, throw: false });
@@ -35,6 +38,8 @@ export function obsidianHost(app: App): Host {
     now: () => Date.now(),
     // A short timer rather than requestAnimationFrame, which stops while the window is hidden.
     schedule: (cb) => { window.setTimeout(cb, 30); },
+    cacheRead: async (key) => disk?.read(key),
+    cacheWrite: async (key, entry) => disk?.write(key, entry),
   };
 }
 

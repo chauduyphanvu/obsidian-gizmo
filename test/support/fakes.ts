@@ -1,15 +1,44 @@
 import type { AppEnv } from "../../src/app.ts";
+import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { storeTarget } from "../../src/store.ts";
 
 type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string }>;
 
-/** An in-memory vault and network. `flush()` delivers batched change notifications. */
-export function fakeHost(notes: Notes = {}) {
+/** An in-memory folder for the disk cache; files get the fake clock's time as written. */
+export function memoryAdapter(now: () => number = () => 0) {
+  const files = new Map<string, { text: string; mtime: number }>();
+  const folders = new Set<string>();
+  const adapter: CacheAdapter = {
+    exists: async (path) => folders.has(path) || files.has(path),
+    mkdir: async (path) => { folders.add(path); },
+    list: async (path) => ({ files: [...files.keys()].filter((p) => p.startsWith(`${path}/`)), folders: [] }),
+    stat: async (path) => {
+      const file = files.get(path);
+      return file ? { mtime: file.mtime, size: file.text.length } : null;
+    },
+    read: async (path) => {
+      const file = files.get(path);
+      if (!file) throw new Error(`no file ${path}`);
+      return file.text;
+    },
+    write: async (path, text) => { files.set(path, { text, mtime: now() }); },
+    remove: async (path) => { files.delete(path); },
+  };
+  return { adapter, files, folders };
+}
+
+/**
+ * An in-memory vault and network. `flush()` delivers batched change notifications. Web responses
+ * are kept in `disk` (pass one in to start "after a restart" with what an earlier run kept).
+ */
+export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapter>) {
   const files = new Map(Object.entries(notes));
   const requests: string[] = [];
   let queued: (() => void)[] = [];
   let clock = 1_000_000;
+  const kept = disk ?? memoryAdapter(() => clock);
+  const cache = new DiskCache(kept.adapter, "plugin/cache");
   const secrets: Record<string, string> = { demo: "s3cret" };
   const info = (path: string): FileInfo => ({ path, basename: path.split("/").pop()!.replace(/\.md$/, ""), mtime: 0, ctime: 0 });
   const host: Host = {
@@ -27,11 +56,14 @@ export function fakeHost(notes: Notes = {}) {
     secret: (id) => secrets[id] ?? null,
     now: () => clock,
     schedule: (cb) => { queued.push(cb); },
+    cacheRead: (key) => cache.read(key),
+    cacheWrite: (key, entry) => cache.write(key, entry),
   };
   return {
     host,
     files,
     requests,
+    disk: kept,
     advance: (ms: number) => { clock += ms; },
     flush: () => { const q = queued; queued = []; q.forEach((cb) => cb()); return q.length; },
   };

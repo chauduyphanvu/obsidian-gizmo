@@ -21,7 +21,7 @@ export default class NoteAppsPlugin extends Plugin {
 
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
-    this.dataLayer = new DataLayer(obsidianHost(this.app));
+    this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
 

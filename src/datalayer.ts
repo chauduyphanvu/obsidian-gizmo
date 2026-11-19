@@ -1,3 +1,4 @@
+import type { CacheEntry } from "./cache.ts";
 import { parseBody, stampParts, type Row } from "./data.ts";
 import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
@@ -22,6 +23,10 @@ export interface Host {
   now(): number;
   /** Runs cb once, soon; used to batch change notifications. */
   schedule(cb: () => void): void;
+  /** The disk copy of a web response, by its cache key (which holds secret placeholders, never secrets). */
+  cacheRead?(key: string): Promise<CacheEntry | undefined>;
+  /** Keeps a web response on disk; never rejects. */
+  cacheWrite?(key: string, entry: CacheEntry): Promise<void>;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -75,23 +80,58 @@ export class DataLayer {
     return compilePipeline(p, opts.now)(data);
   }
 
+  /**
+   * A panel's data from the disk copies of the web responses it reads, through its pipeline, and
+   * when the oldest of them was fetched. Undefined when it reads none, or one has no copy.
+   */
+  async cachedPanelData(source: string | undefined, p: Panel, files: AppFiles, now: Date): Promise<{ data: unknown; at: number } | undefined> {
+    if (!source) return undefined;
+    let at: number | undefined;
+    // The source loads as usual, with each web request answered from disk.
+    const offline = Object.create(this) as DataLayer;
+    offline.fetch = async (url, headers) => {
+      const copy = await this.cached(url, headers);
+      if (!copy) throw new Error("no copy");
+      at = Math.min(at ?? Infinity, copy.at);
+      return copy.data;
+    };
+    try {
+      const data = await sourceDef(source).load(withSource(p, source), files, offline, { ttlMs: 0, now });
+      return at === undefined ? undefined : { data: compilePipeline(p, now)(data), at };
+    } catch {
+      return undefined;
+    }
+  }
+
   // ---- Web ----------------------------------------------------------------------------------
 
   fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false): Promise<unknown> {
-    // The key holds the {secret:id} placeholders, never the secrets themselves.
-    const key = `${source}|${JSON.stringify(headers ?? {})}`;
+    const key = cacheKey(source, headers);
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
     const promise = (async () => {
       const filled = Object.fromEntries(Object.entries(headers ?? {}).map(([k, v]) => [k, this.withSecrets(String(v))]));
       const res = await this.host.fetch(this.withSecrets(source), filled);
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
-      return parseBody(res.text, res.contentType);
+      const data = parseBody(res.text, res.contentType);
+      void this.host.cacheWrite?.(key, { at: this.host.now(), text: res.text, contentType: res.contentType });
+      return data;
     })();
     this.http.set(key, { at: this.host.now(), promise });
     // A failure isn't cached: the next render tries again.
     promise.catch(() => { if (this.http.get(key)?.promise === promise) this.http.delete(key); });
     return promise;
+  }
+
+  /** The disk copy of one web request, parsed as a fresh response is; undefined when there is none. */
+  async cached(source: string, headers: Record<string, string> | undefined): Promise<{ data: unknown; at: number } | undefined> {
+    const entry = await this.host.cacheRead?.(cacheKey(source, headers));
+    if (!entry) return undefined;
+    try {
+      return { data: parseBody(entry.text, entry.contentType), at: entry.at };
+    } catch {
+      return undefined;
+    }
   }
 
   private withSecrets(text: string): string {
@@ -204,6 +244,11 @@ export class DataLayer {
       }
     });
   }
+}
+
+/** What a web response is cached under, in memory and on disk: its {secret:id} placeholders, never the secrets. */
+export function cacheKey(source: string, headers: Record<string, string> | undefined): string {
+  return `${source}|${JSON.stringify(headers ?? {})}`;
 }
 
 function withSource(p: Panel, source: string): Panel {
