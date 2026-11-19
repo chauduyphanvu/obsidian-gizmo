@@ -27,10 +27,12 @@ const textOf = (raw: string) => collapse(xmlText(raw));
 /** Elements that end a line when their tags are dropped; others (`<b>`, `<a>`) vanish without a gap. */
 const BLOCK_TAGS = /<\/?(?:p|br|div|li|ul|ol|h[1-6]|tr|td|table|blockquote|pre)\b[^>]*>/gi;
 const TAGS = /<\/?[A-Za-z!][^>]*>/g;
+/** Script and style elements are code, not text: dropped with their content (an unclosed one runs to the end). */
+const CODE = /<(script|style)(?=[\s/>])(?:[^>/]|\/(?!>))*>[\s\S]*?(?:<\/\1\s*>|$)|<(?:script|style)(?=[\s/>])[^>]*\/>/gi;
 
-/** A summary or description holds HTML: its markup goes, its entities are decoded a second time. */
+/** A summary or description holds HTML: its scripts, styles and markup go, its entities are decoded a second time. */
 function summaryOf(raw: string): string {
-  const text = collapse(decode(xmlText(raw).replace(BLOCK_TAGS, " ").replace(TAGS, "")));
+  const text = collapse(decode(xmlText(raw).replace(CODE, "").replace(BLOCK_TAGS, " ").replace(TAGS, "")));
   if (text.length <= SUMMARY_MAX) return text;
   let cut = SUMMARY_MAX - 1;
   // Never cut a character in half.

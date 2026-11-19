@@ -159,3 +159,14 @@ test("parseBody leaves other bodies to the JSON, CSV and text rules", () => {
   assert.deepEqual(parseBody('{"a":1}', "application/json"), { a: 1 });
   assert.deepEqual(parseBody("a,b\n1,2\n", "text/csv"), [{ a: 1, b: 2 }]);
 });
+
+test("a summary drops the text of script and style elements, not just their tags", () => {
+  const summary = (description: string) => String(parseFeed(`<rss><channel><item><title>t</title><description>${description}</description></item></channel></rss>`)[0].summary);
+  assert.equal(summary("&lt;p&gt;Hello&lt;/p&gt;&lt;script&gt;alert(1)&lt;/script&gt;&lt;p&gt;World&lt;/p&gt;"), "Hello World");
+  assert.equal(summary('<![CDATA[<p>Hi</p><SCRIPT type="text/javascript">var a = 1 < 2;\nfoo()</SCRIPT><style>p { color: red }</style><p>there</p>]]>'), "Hi there");
+  assert.equal(summary("<![CDATA[a<script>1</script>b<script>2</script>c]]>"), "abc");
+  // A script with no end runs to the end of the text; one that closes itself holds nothing; other tags that start alike stay.
+  assert.equal(summary("<![CDATA[Text <script>unclosed code]]>"), "Text");
+  assert.equal(summary('<![CDATA[Before <script src="x.js"/> after <style/> end]]>'), "Before after end");
+  assert.equal(summary("<![CDATA[<scripty>keep</scripty> <b>bold</b>]]>"), "keep bold");
+});
