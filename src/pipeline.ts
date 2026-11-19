@@ -2,6 +2,7 @@ import { compileWhere, getPath, sortRows } from "./data.ts";
 import { compileCompute } from "./formula.ts";
 import { groupRows, rowsFromArrays, rowsFromEqualArrays, totalFields } from "./group.ts";
 import type { Panel } from "./spec.ts";
+import { viewDef } from "./views/registry.ts";
 
 /** The keys that turn a source's data into what a panel draws; a chained block is one such stage. */
 export type PipelineKeys = Pick<Panel, "pick" | "compute" | "vars" | "where" | "sort" | "limit" | "group" | "per" | "agg" | "y" | "columns">;
@@ -10,8 +11,9 @@ export type PipelineKeys = Pick<Panel, "pick" | "compute" | "vars" | "where" | "
  * A panel's data steps as one function, with its conditions parsed up front: the stages of the
  * blocks above the one it names, root first, then its own keys.
  */
-export function compilePipeline(p: PipelineKeys & Pick<Panel, "upstream">, now: Date): (input: unknown) => unknown {
-  const stages = [...(p.upstream ?? []), p].map((s) => compileStage(s, now));
+export function compilePipeline(p: PipelineKeys & Pick<Panel, "upstream"> & Partial<Pick<Panel, "view">>, now: Date): (input: unknown) => unknown {
+  const own = { ...p, ...(p.view ? viewDef(p.view)?.pipeline : undefined) };
+  const stages = [...(p.upstream ?? []), own].map((s) => compileStage(s, now));
   return (input) => stages.reduce((data, run) => run(data), input);
 }
 

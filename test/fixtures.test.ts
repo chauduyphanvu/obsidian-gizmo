@@ -227,3 +227,82 @@ test("Week: the next seven days from a calendar file; log an item as done, or so
   assert.deepEqual([...agenda.querySelectorAll("li")].map((li) => text(li)),
     ["2026-11-18 · DentistDone", "2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
 });
+
+const event = (el: Element, type: string) => el.dispatchEvent(new window.Event(type, { bubbles: true, cancelable: true }));
+
+/** The Projects folder of the test vault, as notes. */
+function projects() {
+  const names = readdirSync(new URL("./vault/Projects", import.meta.url)).filter((n) => n.endsWith(".md")).sort();
+  return Object.fromEntries(names.map((n) => [`Projects/${n}`, { fm: vaultNote(`Projects/${n}`).fm }]));
+}
+
+test("Projects: drag projects along a board, see the schedule, pick one, see what is due", async () => {
+  const spec = readSpec(vaultNote("Apps/Projects.md").fm, { path: "Apps/Projects.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Projects.md"), ["edit:Projects", "read:Projects"]);
+
+  const { root, f } = openApp("Apps/Projects.md", projects());
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [board, schedule, picked, due] = [...root.querySelectorAll(".na-panel")];
+  const column = (name: string) => [...board.querySelectorAll(".na-board-col")].find((c) => text(c.querySelector(".na-board-name")) === name)!;
+  const cards = (name: string) => [...column(name).querySelectorAll(".na-board-text")].map((c) => text(c));
+  assert.deepEqual(cards("idea"), ["Japan trip · travel", "Learn Rust · learning"]);
+  assert.deepEqual(cards("doing"), ["Garden beds · home", "Kitchen remodel · home"]);
+  assert.deepEqual(cards("done"), ["Tax filing · money"]);
+
+  // The schedule runs by start date and shows today; nothing is picked yet.
+  assert.deepEqual([...schedule.querySelectorAll(".na-tl-label")].map((l) => text(l)), ["Tax filing", "Kitchen remodel", "Garden beds", "Japan trip", "Learn Rust"]);
+  assert.equal(schedule.querySelectorAll(".na-tl-today").length, 1);
+  assert.equal(text(picked.querySelector(".na-waiting")), "Pick a row in “Schedule”");
+
+  const bars = [...schedule.querySelectorAll(".na-tl-bar")] as HTMLElement[];
+  bars[2].click();
+  await settle();
+  assert.equal(text(picked.querySelector(".na-text")), "Garden beds is due 2026-11-30");
+
+  // November is shown: the garden is due on the 30th. December has the kitchen.
+  const day = (date: string) => due.querySelector(`[data-date="${date}"]`)!;
+  assert.equal(text(day("2026-11-30").querySelector(".na-cal-val")), "1");
+  assert.ok(day("2026-11-18").classList.contains("na-today"));
+  (due.querySelector('button[aria-label="Next month"]') as HTMLButtonElement).click();
+  assert.equal(text(day("2026-12-15").querySelector(".na-cal-val")), "1");
+
+  // Drag Japan trip to doing: its note's status changes and the board follows.
+  const trip = [...board.querySelectorAll(".na-board-card")].find((c) => text(c.querySelector(".na-board-text")).startsWith("Japan"))!;
+  event(trip, "dragstart");
+  event(column("doing"), "drop");
+  await settle();
+  assert.equal(f.files.get("Projects/Japan trip.md")!.fm!.status, "doing");
+  assert.deepEqual(cards("idea"), ["Learn Rust · learning"]);
+  assert.deepEqual(cards("doing"), ["Garden beds · home", "Japan trip · travel", "Kitchen remodel · home"]);
+  // The picked project survived the reload, and the calendar stayed on December.
+  assert.equal(text(picked.querySelector(".na-text")), "Garden beds is due 2026-11-30");
+  assert.equal(text(due.querySelector(".na-cal-title")), "December 2026");
+});
+
+test("Stretch year: log a stretch, and the streak and today's square follow", async () => {
+  const spec = readSpec(vaultNote("Apps/Stretch year.md").fm, { path: "Apps/Stretch year.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Stretch year.md"), []);
+
+  const { root, f } = openApp("Apps/Stretch year.md", { "Apps/Stretch year data.md": { fm: vaultNote("Apps/Stretch year data.md").fm } });
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const streak = () => text(root.querySelector(".na-view-number .na-big"));
+  const square = (date: string) => root.querySelector(`rect[data-date="${date}"]`)!;
+  assert.equal(root.querySelectorAll("rect").length, 365);
+  assert.equal(streak(), "3days");
+  // Two stretches on the 14th of March; none yet today.
+  assert.equal(square("2026-03-14").getAttribute("aria-label"), "2026-03-14: 2");
+  assert.equal(square("2026-11-18").getAttribute("aria-label"), "2026-11-18: 0");
+  assert.ok(square("2026-11-18").classList.contains("na-today"));
+  assert.ok(!/na-step/.test(square("2026-11-18").getAttribute("class")!));
+
+  (root.querySelector("button.na-button") as HTMLButtonElement).click();
+  await settle();
+  assert.deepEqual((f.files.get("Apps/Stretch year data.md")!.fm!.stretches as { at: string }[]).at(-1), { at: "2026-11-18T12:00" });
+  assert.equal(streak(), "4days");
+  assert.equal(square("2026-11-18").getAttribute("aria-label"), "2026-11-18: 1");
+  assert.ok(/na-step/.test(square("2026-11-18").getAttribute("class")!));
+});

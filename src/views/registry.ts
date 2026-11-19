@@ -1,9 +1,13 @@
 import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
+import { board } from "./board.ts";
+import { calendar } from "./calendar.ts";
 import { bar, line } from "./chart.ts";
 import { button, checklist, form } from "./inputs.ts";
 import { pie } from "./pie.ts";
 import { list, table } from "./rows.ts";
+import { scatter } from "./scatter.ts";
+import { timeline } from "./timeline.ts";
 import { timer } from "./timer.ts";
 import { countdown, number, progress, text } from "./value.ts";
 
@@ -52,6 +56,11 @@ export interface ViewDef {
   /** Columns the view takes by default, out of 4 on a wide pane; `span:` overrides it. */
   span: number;
   needsSource?: boolean;
+  /**
+   * Pipeline keys this view fixes whatever was typed: a calendar always groups per day, and a
+   * board (`group: undefined`) groups the raw rows itself.
+   */
+  pipeline?: Pick<Partial<Panel>, "group" | "per">;
   /** The list this view shows when it has no `source:` (a checklist's ticked items). */
   implicitSource?(p: Panel): string;
   /** Problems beyond key types and applicability, as plain sentences. */
@@ -62,6 +71,7 @@ export interface ViewDef {
 
 export const VIEW_DEFS: readonly ViewDef[] = [
   number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
+  calendar, board, scatter, timeline,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));
