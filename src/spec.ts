@@ -1,3 +1,5 @@
+import { storeTarget } from "./store.ts";
+
 export const VIEWS = [
   "number", "text", "line", "bar", "table", "list",
   "button", "form", "checklist", "countdown", "progress", "timer",
@@ -39,6 +41,8 @@ export interface Panel {
 }
 
 export interface AppSpec {
+  /** Link or path of the note that holds recorded data, when not the default `<App> data.md`. */
+  store?: string;
   description: string;
   panels: Panel[];
   refreshMs?: number;
@@ -182,7 +186,12 @@ export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | 
     if (!refreshMs) errors.push(`refresh must look like 30s, 5m, 1h`);
     else if (refreshMs < 10_000) refreshMs = 10_000;
   }
-  return { spec: { description, panels, refreshMs }, errors, empty: false };
+  let store: string | undefined;
+  if (fm.store !== undefined && fm.store !== null) {
+    if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
+    else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
+  }
+  return { spec: { description, panels, refreshMs, store }, errors, empty: false };
 }
 
 export function secretsIn(text: string | undefined): string[] {
@@ -206,6 +215,7 @@ export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
     if (p.source === "notes" && p.from) out.add(`read:${p.from}`);
     if (p.append && notePath(p.append) !== selfPath) out.add(`write:${notePath(p.append)}`);
   }
+  if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
   return [...out].sort();
 }
 
@@ -221,6 +231,7 @@ export function describePermission(perm: string): string {
     case "secret": return `Use your saved secret "${what}"`;
     case "read": return `Read notes in ${what}`;
     case "write": return `Add lines to ${what}`;
+    case "store": return `Save its data in ${what}`;
     default: return perm;
   }
 }

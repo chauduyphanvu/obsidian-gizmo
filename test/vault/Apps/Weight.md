@@ -22,10 +22,4 @@ panels:
     x: at
     y: weight
     unit: kg
-weights:
-  - {weight: 81.4, at: 2026-10-20T07:30}
-  - {weight: 81.0, at: 2026-10-27T07:30}
-  - {weight: 80.7, at: 2026-11-03T07:30}
-  - {weight: 80.9, at: 2026-11-10T07:30}
-  - {weight: 80.2, at: 2026-11-17T07:30}
 ---

@@ -9,6 +9,7 @@ import { formatClock, isWide, renderPanel, type RenderCtx, type TimerState } fro
 import {
   describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel,
 } from "./spec.ts";
+import { defaultDataPath, resolveList, storeTarget } from "./store.ts";
 import type NoteAppsPlugin from "./main.ts";
 
 export const VIEW_TYPE = "note-app";
@@ -21,6 +22,9 @@ export class AppView extends FileView {
   private refreshHandle: number | undefined;
   private tickHandle: number | undefined;
   private renderedWidth = 0;
+  private spec: AppSpec | undefined;
+  /** Writes to the data note run one after another so concurrent saves don't overwrite each other. */
+  private writes: Promise<void> = Promise.resolve();
 
   constructor(leaf: WorkspaceLeaf, private plugin: NoteAppsPlugin) {
     super(leaf);
@@ -34,7 +38,7 @@ export class AppView extends FileView {
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
     this.addAction("refresh-cw", "Reload data", () => { this.cache.clear(); void this.render(); });
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
-      if (file === this.file) void this.render();
+      if (file === this.file || file.path === this.dataPath()) void this.render();
     }));
   }
 
@@ -101,6 +105,7 @@ export class AppView extends FileView {
       if (!result.spec?.panels.length) return this.swap(root);
     }
     const spec = result.spec!;
+    this.spec = spec;
 
     const wanted = permissionsOf(spec, file.path);
     if (!this.plugin.isGranted(file.path, wanted)) {
@@ -166,7 +171,7 @@ export class AppView extends FileView {
     let data: unknown;
     if (isUrl(p.source)) data = await this.fetchJson(p);
     else if (p.source === "notes") data = this.queryNotes(p.from!);
-    else data = fm[p.source] ?? [];
+    else data = resolveList(p.source, this.dataFrontmatter(), fm);
     data = getPath(data, p.pick);
     if (Array.isArray(data)) {
       data = filterRows(data, p.where, now);
@@ -174,6 +179,40 @@ export class AppView extends FileView {
       if (p.limit) data = (data as unknown[]).slice(0, p.limit);
     }
     return data;
+  }
+
+  /** The note holding this app's recorded data (it may not exist yet). */
+  private dataPath(): string {
+    const file = this.file;
+    if (!file) return "";
+    const store = this.spec?.store;
+    if (!store) return defaultDataPath(file.path);
+    const target = storeTarget(store);
+    return this.app.metadataCache.getFirstLinkpathDest(target, file.path)?.path ?? notePath(normalizePath(target));
+  }
+
+  private dataFrontmatter(): Record<string, unknown> | undefined {
+    const data = this.app.vault.getFileByPath(this.dataPath());
+    return data ? this.app.metadataCache.getFileCache(data)?.frontmatter : undefined;
+  }
+
+  private writeData(fn: (fm: Record<string, unknown>) => void): Promise<void> {
+    const write = async () => {
+      const path = this.dataPath();
+      let data = this.app.vault.getFileByPath(path);
+      if (!data) {
+        await this.ensureFolder(path);
+        data = await this.app.vault.create(path, "");
+      }
+      await this.app.fileManager.processFrontMatter(data, fn);
+    };
+    this.writes = this.writes.then(write, write);
+    return this.writes;
+  }
+
+  private async ensureFolder(path: string): Promise<void> {
+    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+    if (folder && !this.app.vault.getFolderByPath(folder)) await this.app.vault.createFolder(folder);
   }
 
   private withSecrets(text: string): string {
@@ -231,18 +270,18 @@ export class AppView extends FileView {
 
   private renderCtx(fm: Record<string, unknown>, now: Date): RenderCtx {
     const file = this.file!;
-    const process = (fn: (fm: Record<string, unknown>) => void) => this.app.fileManager.processFrontMatter(file, fn);
+    const dataFm = this.dataFrontmatter();
     this.renderedWidth = this.chartWidth();
     return {
       now,
       chartWidth: this.renderedWidth,
-      fm,
+      list: (name) => resolveList(name, dataFm, fm),
       runActions: (p, row) => this.runActions(p, row),
-      toggleChecked: (key, item) => process((f) => {
+      toggleChecked: (key, item) => this.writeData((f) => {
         const list = Array.isArray(f[key]) ? (f[key] as unknown[]).map(String) : [];
         f[key] = list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
       }),
-      clearChecked: (key) => process((f) => { f[key] = []; }),
+      clearChecked: (key) => this.writeData((f) => { f[key] = []; }),
       openNote: (path) => void this.app.workspace.openLinkText(path, file.path),
       timer: (i, p) => this.timerState(i, p),
       startTimer: (i, p) => {
@@ -299,10 +338,9 @@ export class AppView extends FileView {
         await this.appendLine(notePath(p.append), line);
       }
       if (p.save) {
-        await this.app.fileManager.processFrontMatter(file, (fm) => {
-          const list = Array.isArray(fm[p.save!]) ? fm[p.save!] : [];
-          list.push(saved);
-          fm[p.save!] = list;
+        await this.writeData((fm) => {
+          const list = fm[p.save!];
+          fm[p.save!] = Array.isArray(list) ? [...list, saved] : [saved];
         });
       }
       if (p.notify) new Notice(fillTemplate(p.notify, ctx));
@@ -317,8 +355,7 @@ export class AppView extends FileView {
       await this.app.vault.process(target, (text) => `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${line}\n`);
       return;
     }
-    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-    if (folder && !this.app.vault.getFolderByPath(folder)) await this.app.vault.createFolder(folder);
+    await this.ensureFolder(path);
     await this.app.vault.create(normalizePath(path), `${line}\n`);
   }
 }

@@ -12,5 +12,4 @@ panels:
     source: doses
     where: {at: today}
     agg: count
-doses: []
 ---

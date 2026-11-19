@@ -205,6 +205,19 @@ try {
     return JSON.stringify(r);
   });
 
+  await check("renaming an app moves its data note", async () => {
+    const r = await run(`
+      await app.fileManager.renameFile(app.vault.getFileByPath("Apps/Meds.md"), "Apps/Medication.md");
+      await na.sleep(1200);
+      const moved = na.fm("Apps/Medication data.md")?.doses?.length;
+      const left = !!app.vault.getFileByPath("Apps/Meds data.md");
+      await app.fileManager.renameFile(app.vault.getFileByPath("Apps/Medication.md"), "Apps/Meds.md");
+      await na.sleep(1200);
+      return { moved, left, back: na.fm("Apps/Meds data.md")?.doses?.length };`);
+    if (r.moved !== 2 || r.left || r.back !== 2) throw new Error(JSON.stringify(r));
+    return "followed both renames";
+  });
+
   await run(`await na.open("Apps/Weather");`);
   await page.shot(join(work, "weather-desktop.png"), 1100, 760);
   await run(`app.workspace.leftSplit.collapse(); await na.open("Apps/Weight");`);

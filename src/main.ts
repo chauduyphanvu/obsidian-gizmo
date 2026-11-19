@@ -1,6 +1,7 @@
 import {
   MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
+import { defaultDataPath } from "./store.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
 interface StoredData {
@@ -26,6 +27,7 @@ export default class NoteAppsPlugin extends Plugin {
       void this.saveData(this.store);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      if (file instanceof TFile) void this.moveDataNote(file, oldPath);
       if (!(oldPath in this.store.grants)) return;
       this.store.grants[file.path] = this.store.grants[oldPath];
       delete this.store.grants[oldPath];
@@ -56,7 +58,15 @@ export default class NoteAppsPlugin extends Plugin {
     }
   }
 
-  isApp(file: TFile): boolean {
+  /** A renamed or moved app takes its default data note along, so its recorded data stays attached. */
+  private async moveDataNote(app: TFile, oldPath: string): Promise<void> {
+    const data = this.app.vault.getFileByPath(defaultDataPath(oldPath));
+    const target = defaultDataPath(app.path);
+    if (!data || data === app || this.app.vault.getAbstractFileByPath(target)) return;
+    await this.app.fileManager.renameFile(data, target);
+  }
+
+    isApp(file: TFile): boolean {
     const app = this.app.metadataCache.getFileCache(file)?.frontmatter?.app;
     return app !== undefined && app !== null && app !== false;
   }

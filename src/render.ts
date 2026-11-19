@@ -12,8 +12,8 @@ export interface TimerState {
 export interface RenderCtx {
   now: Date;
   chartWidth: number;
-  /** The note's frontmatter. */
-  fm: Record<string, unknown>;
+  /** A named list: the data note's if it has one, else the app note's. */
+  list(name: string): unknown;
   runActions(p: Panel, row: Row): Promise<void>;
   toggleChecked(key: string, item: string): Promise<void>;
   clearChecked(key: string): Promise<void>;
@@ -186,7 +186,8 @@ function renderForm(el: HTMLElement, p: Panel, ctx: RenderCtx): void {
 
 function renderChecklist(el: HTMLElement, p: Panel, ctx: RenderCtx): void {
   const key = p.save ?? "checked";
-  const checked = new Set((Array.isArray(ctx.fm[key]) ? ctx.fm[key] : []).map(String));
+  const saved = ctx.list(key);
+  const checked = new Set((Array.isArray(saved) ? saved : []).map(String));
   const items = p.items!.map(String);
   const done = items.filter((i) => checked.has(i)).length;
   const top = el.createDiv({ cls: "na-row" });
