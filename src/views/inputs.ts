@@ -7,7 +7,7 @@ import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 export const button: ViewDef = {
   id: "button",
-  keys: [...ACTION_KEYS, "label", "shortcut"],
+  keys: [...ACTION_KEYS, "label", "shortcut", "then"],
   span: 1,
   validate: (p) => needsAction("button", p),
   examples: [
@@ -97,7 +97,7 @@ function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
 
 export const form: ViewDef = {
   id: "form",
-  keys: [...ACTION_KEYS, "fields", "label", "shortcut"],
+  keys: [...ACTION_KEYS, "fields", "label", "shortcut", "then"],
   span: 4,
   implicitSource: (p) => (p.target?.kind === "this" ? THIS : undefined),
   validate(p) {

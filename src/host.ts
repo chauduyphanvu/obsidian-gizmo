@@ -2,6 +2,7 @@ import {
   Notice, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf,
 } from "obsidian";
 import { bodyOf, noteText, withLine } from "./actions.ts";
+import type { UndoIO } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import { DiskCache } from "./cache.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
@@ -84,6 +85,44 @@ async function ensureFolder(app: App, path: string): Promise<void> {
   if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
 }
 
+/** Changes an existing note's frontmatter; false, writing nothing, when the note is gone. */
+async function updateFrontmatterOf(app: App, path: string, fn: (fm: Record<string, unknown>) => void): Promise<boolean> {
+  let written = false;
+  await queued(path, async () => {
+    const target = app.vault.getFileByPath(path);
+    if (!target) return;
+    try {
+      await app.fileManager.processFrontMatter(target, fn);
+    } catch (e) {
+      if (await vanished(app, path)) return;
+      throw e;
+    }
+    written = true;
+  });
+  return written;
+}
+
+/** Ticks or unticks a task (see tickLine); false, writing nothing, when it can't be found for sure. */
+async function setTaskDoneIn(app: App, path: string, line: number, text: string, done: boolean): Promise<boolean> {
+  let ticked = false;
+  await queued(path, async () => {
+    const target = app.vault.getFileByPath(path);
+    if (!target) return;
+    // process reads and writes in one step, so an edit made meanwhile isn't lost or misread.
+    try {
+      await app.vault.process(target, (data) => {
+        const next = tickLine(data, line, text, done);
+        ticked = next !== undefined;
+        return next ?? data;
+      });
+    } catch (e) {
+      if (await vanished(app, path)) return;
+      throw e;
+    }
+  });
+  return ticked;
+}
+
 /** Without a leaf (an embed, a lens) there is no app tab to show the source in. */
 export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
   const app = plugin.app;
@@ -115,42 +154,34 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
       }
       await app.fileManager.processFrontMatter(target, fn);
     }),
-    async updateFrontmatter(path, fn) {
-      let written = false;
+    updateFrontmatter: (path, fn) => updateFrontmatterOf(app, path, fn),
+    async appendLine(path, line) {
+      let created = false;
       await queued(path, async () => {
-        const target = app.vault.getFileByPath(path);
-        if (!target) return;
-        try {
-          await app.fileManager.processFrontMatter(target, fn);
-        } catch (e) {
-          if (await vanished(app, path)) return;
-          throw e;
+        const target = app.vault.getFileByPath(normalizePath(path));
+        if (target) {
+          await app.vault.process(target, (text) => withLine(text, line));
+          return;
         }
-        written = true;
+        await ensureFolder(app, path);
+        await app.vault.create(normalizePath(path), withLine("", line));
+        created = true;
       });
-      return written;
+      return created;
     },
-    appendLine: (path, line) => queued(path, async () => {
-      const target = app.vault.getFileByPath(normalizePath(path));
-      if (target) {
-        await app.vault.process(target, (text) => withLine(text, line));
-        return;
-      }
-      await ensureFolder(app, path);
-      await app.vault.create(normalizePath(path), withLine("", line));
-    }),
     async createNote(path, frontmatter, body) {
       const target = normalizePath(path);
       if (app.vault.getAbstractFileByPath(target)) return false;
       await ensureFolder(app, target);
+      const text = noteText(Object.keys(frontmatter).length ? stringifyYaml(frontmatter) : "", body);
       try {
-        await app.vault.create(target, noteText(Object.keys(frontmatter).length ? stringifyYaml(frontmatter) : "", body));
+        await app.vault.create(target, text);
       } catch (e) {
         // Created in the meantime (a double click): it already exists, as above.
         if (app.vault.getAbstractFileByPath(target)) return false;
         throw e;
       }
-      return true;
+      return text;
     },
     async readBody(path) {
       const target = storeTarget(path);
@@ -158,25 +189,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
       if (!f) throw new Error(`can't find [[${target}]]`);
       return bodyOf(await app.vault.cachedRead(f));
     },
-    async setTaskDone(path, line, text, done) {
-      let ticked = false;
-      await queued(path, async () => {
-        const target = app.vault.getFileByPath(path);
-        if (!target) return;
-        // process reads and writes in one step, so an edit made meanwhile isn't lost or misread.
-        try {
-          await app.vault.process(target, (data) => {
-            const next = tickLine(data, line, text, done);
-            ticked = next !== undefined;
-            return next ?? data;
-          });
-        } catch (e) {
-          if (await vanished(app, path)) return;
-          throw e;
-        }
-      });
-      return ticked;
-    },
+    setTaskDone: (path, line, text, done) => setTaskDoneIn(app, path, line, text, done),
     notify: (message) => { new Notice(message); },
     // openLinkText creates a note when nothing matches, and the text may come from a row or a link.
     openNote(path, fromPath) {
@@ -189,8 +202,47 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     showSourceAt: (line) => { if (leaf) void plugin.showSourceAt(leaf, file, line); },
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
     copy: (text) => { void navigator.clipboard.writeText(text).catch(() => new Notice("Couldn't copy to the clipboard")); },
+    log: (entry) => void plugin.activity.add(entry),
+    trigger: async (from, then, ctx) => plugin.background?.runThen(from, then, ctx),
     now: () => new Date(),
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
+  };
+}
+
+/** Undoing in Obsidian: each write re-reads the note as it writes, in line with the app's own writes to it. */
+export function obsidianUndoIO(plugin: GizmoPlugin): UndoIO {
+  const app = plugin.app;
+  return {
+    frontmatter(path) {
+      const f = app.vault.getFileByPath(path);
+      return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
+    },
+    updateFrontmatter: (path, fn) => updateFrontmatterOf(app, path, fn),
+    setTaskDone: (path, line, text, done) => setTaskDoneIn(app, path, line, text, done),
+    async processText(path, fn) {
+      let written = false;
+      await queued(path, async () => {
+        const target = app.vault.getFileByPath(path);
+        if (!target) return;
+        await app.vault.process(target, fn);
+        written = true;
+      });
+      return written;
+    },
+    async trashIf(path, unchanged) {
+      let result: "trashed" | "changed" | "gone" = "gone";
+      await queued(path, async () => {
+        const target = app.vault.getFileByPath(path);
+        if (!target) return;
+        if (!unchanged(await app.vault.read(target))) {
+          result = "changed";
+          return;
+        }
+        await app.fileManager.trashFile(target);
+        result = "trashed";
+      });
+      return result;
+    },
   };
 }

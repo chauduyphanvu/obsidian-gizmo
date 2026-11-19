@@ -1,4 +1,5 @@
 import { runActions as runPanelActions } from "./actions.ts";
+import { stableJson, type Change, type NewEntry } from "./activity.ts";
 import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
@@ -6,7 +7,7 @@ import { basename, typedName, type NoteReader } from "./expand.ts";
 import {
   askersOf, describePermission, isComponent, isUrl, permissionsOf, pickPanels, readComponentPreview, readSpec,
   resolvePanel, startingValues, type ComponentPreview,
-  type AppSpec, type Panel, type PanelSpec,
+  type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
 import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
@@ -51,12 +52,14 @@ export interface AppEnv {
    * brought back as a stub.
    */
   updateFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<boolean>;
-  appendLine(path: string, line: string): Promise<void>;
+  /** Adds a line at the end of a note, creating it (and its folders) when there's none; true when it created it. */
+  appendLine(path: string, line: string): Promise<boolean | void>;
   /**
-   * Creates a note at `path` (and its folders) with this frontmatter and body; false, writing
-   * nothing, when a note is already there. The note reaches the data layer like any other change.
+   * Creates a note at `path` (and its folders) with this frontmatter and body: the text it wrote
+   * (or true), or false, writing nothing, when a note is already there. The note reaches the data
+   * layer like any other change.
    */
-  createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<boolean>;
+  createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<string | boolean>;
   /** The text after the frontmatter of the note a path or link names, resolved from the app as `store` is. */
   readBody(path: string): Promise<string>;
   /**
@@ -73,6 +76,10 @@ export interface AppEnv {
   sourceLines(): Promise<string[]>;
   /** Puts text on the clipboard. */
   copy(text: string): void;
+  /** Keeps what the app changed in the activity log. */
+  log?(entry: NewEntry): void;
+  /** Runs a panel's `then`: another app's shortcut, through the background service. */
+  trigger?(fromPath: string, then: Then, ctx: Row): Promise<void>;
   now(): Date;
   /** Tells the background service the app was opened, so what it records is sampled if due. */
   opened?(appPath: string): void;
@@ -145,16 +152,6 @@ function plainTitle(ps: PanelSpec): string | undefined {
 function holds(stored: unknown, shown: Row, field: string): stored is Row {
   if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return false;
   return Object.entries(stored).every(([k, v]) => k === field || JSON.stringify(v) === JSON.stringify(shown[k]));
-}
-
-/** JSON with object keys sorted, so the order keys were typed in doesn't matter. */
-function stableJson(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
-  if (v !== null && typeof v === "object" && !(v instanceof Date)) {
-    const o = v as Record<string, unknown>;
-    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(v) ?? "null";
 }
 
 /** A stable identity for a panel: its keys as written, plus a counter when two panels are identical. */
@@ -235,11 +232,23 @@ export class AppController {
       get now() { return self.env.now(); },
       width: (key) => this.widthOf(key),
       runActions: (p, row) => this.runActions(p, row),
-      toggleChecked: (key, item) => this.writeData((fm) => {
-        const list = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
-        fm[key] = list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
-      }),
-      clearChecked: (key) => this.writeData((fm) => { fm[key] = []; }),
+      toggleChecked: async (key, item) => {
+        let checked = false;
+        await this.writeData((fm) => {
+          const list = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
+          checked = !list.includes(item);
+          fm[key] = checked ? [...list, item] : list.filter((i) => i !== item);
+        });
+        this.log(this.checklistName(key), [{ kind: "checklist", path: this.dataPath, list: key, item, checked }]);
+      },
+      clearChecked: async (key) => {
+        let items: string[] = [];
+        await this.writeData((fm) => {
+          items = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
+          fm[key] = [];
+        });
+        if (items.length) this.log(this.checklistName(key), [{ kind: "cleared", path: this.dataPath, list: key, items }]);
+      },
       openNote: (path) => this.env.openNote(path, this.appPath),
       timer: (key, p) => this.timerState(key, p),
       startTimer: (key, p) => {
@@ -859,6 +868,28 @@ export class AppController {
     return this.env.writeFrontmatter(this.dataPath, fn);
   }
 
+  /** What the activity log calls a checklist: its panel's title, else the list it ticks into. */
+  private checklistName(key: string): string {
+    const m = [...this.mounted.values()].find((x) => x.p.view === "checklist" && (x.p.save ?? "checked") === key);
+    return m?.p.title ?? m?.p.label ?? key;
+  }
+
+  /** Keeps what the person just changed through the app, so the app's activity can show and undo it. */
+  private log(what: string, changes: Change[]): void {
+    if (changes.length) this.env.log?.({ app: this.appPath, actor: "you", what, changes });
+  }
+
+  /** Sets one property of an existing note and keeps what it was; false when the note is gone. */
+  private async setField(path: string, field: string, value: unknown, what: string): Promise<boolean> {
+    let change: Change | undefined;
+    const written = await this.env.updateFrontmatter(path, (fm) => {
+      change = { kind: "property", path, field, from: fm[field], to: value, had: Object.hasOwn(fm, field) };
+      fm[field] = value;
+    });
+    if (written && change) this.log(what, [change]);
+    return written;
+  }
+
   /** A panel's own view of the app: what every panel may ask, and edits that know whose rows they are. */
   private ctxFor(id: string): PanelCtx {
     return Object.assign(Object.create(this.ctx) as PanelCtx, {
@@ -877,7 +908,7 @@ export class AppController {
     if (!m || m.idle || target?.kind !== "this" || !Object.hasOwn(m.p.fields ?? {}, field)) return;
     if (target.scope && !this.env.data.notes(target.scope).some((r) => r.path === this.hostPath)) return;
     try {
-      if (!(await this.env.updateFrontmatter(this.hostPath, (fm) => { fm[field] = value; }))) this.env.notify(GONE);
+      if (!(await this.setField(this.hostPath, field, value, m.p.title ?? m.p.label ?? field))) this.env.notify(GONE);
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
@@ -898,13 +929,14 @@ export class AppController {
         const path = row.path;
         const scope = sourceDef(m.p.source!).id === "base" ? this.env.data.allNotes() : this.env.data.notes(m.p.from ?? "");
         if (typeof path !== "string" || !scope.some((r) => r.path === path)) return;
-        if (!(await this.env.updateFrontmatter(path, (fm) => { fm[field] = value; }))) this.env.notify(GONE);
+        if (!(await this.setField(path, field, value, m.p.title ?? field))) this.env.notify(GONE);
         return;
       }
       const index = (row as Record<symbol, unknown>)[ROW_INDEX];
       if (typeof index !== "number") return;
       const name = m.p.source!;
       let changed = false;
+      let edit: Change | undefined;
       await this.writeData((fm) => {
         const list = resolveList(name, fm, this.env.frontmatter(this.appPath) ?? {});
         const stored = Array.isArray(list) ? list[index] : undefined;
@@ -915,7 +947,9 @@ export class AppController {
         const next = [...list];
         next[index] = { ...stored, [field]: value };
         fm[name] = next;
+        edit = { kind: "row-edited", path: this.dataPath, list: name, row: next[index] as Row, field, from: stored[field], to: value };
       });
+      if (edit) this.log(m.p.title ?? field, [edit]);
       if (changed) {
         this.env.notify("That row has changed; reload");
         // Shows the list as it is now, putting back what the input claimed.
@@ -931,7 +965,10 @@ export class AppController {
     const { path, line, text } = row;
     if (typeof path !== "string" || typeof line !== "number" || typeof text !== "string" || typeof done !== "boolean") return;
     if (!this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
-    if (await this.env.setTaskDone(path, line, text, done)) return;
+    if (await this.env.setTaskDone(path, line, text, done)) {
+      this.log(m.p.title ?? "tasks", [{ kind: "task", path, line, text, done }]);
+      return;
+    }
     this.env.notify("That task has changed; reload");
     void this.loadPanel(m);
   }
@@ -948,6 +985,8 @@ export class AppController {
       readBody: (path) => env.readBody(path),
       notify: (message) => env.notify(message),
       openNote: (path, from) => env.openNote(path, from),
+      log: (what, changes) => this.log(what, changes),
+      then: async (panel, ctx) => { if (panel.then) await env.trigger?.(this.appPath, panel.then, ctx); },
     });
   }
 

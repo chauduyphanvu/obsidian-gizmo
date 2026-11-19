@@ -1,3 +1,4 @@
+import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
 import { notePath, saveTarget, type Panel } from "./spec.ts";
 import { withoutDefinition } from "./store.ts";
@@ -14,13 +15,18 @@ export interface ActionDeps {
   /** The app note: links in `open` resolve from it. */
   appPath: string;
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
-  appendLine(path: string, line: string): Promise<void>;
-  /** Creates a note; false, writing nothing, when one is already at that path. */
-  createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<boolean>;
+  /** Adds a line at the end of a note, creating it when there's none; true when it created it. */
+  appendLine(path: string, line: string): Promise<boolean | void>;
+  /** Creates a note; its text (or true), or false, writing nothing, when one is already at that path. */
+  createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<string | boolean>;
   /** The text after the frontmatter of the note a link or path names. */
   readBody(path: string): Promise<string>;
   notify(message: string): void;
   openNote(path: string, fromPath: string): void;
+  /** Keeps what a run changed in the activity log, named as the panel is. */
+  log?(what: string, changes: Change[]): void;
+  /** Runs the panel's `then` once its own actions are done, with the row they ran with; never rejects. */
+  then?(p: Panel, ctx: Row): Promise<void>;
 }
 
 /** How a run went: `ok` is false when it stopped on an error or a note that already exists. */
@@ -52,7 +58,7 @@ function written(v: unknown): string {
 }
 
 /** A template filled from a row where one line is wanted: each value's line breaks become spaces. */
-function fillLine(template: string, ctx: Row): string {
+export function fillLine(template: string, ctx: Row): string {
   return fillWith(template, ctx, (_, v) => oneLine(written(v)));
 }
 
@@ -114,7 +120,7 @@ function defaultsBeyond(p: Panel, now: Date): Row {
  * or the time), with the row as its frontmatter and the `template:` note's body, filled, as its
  * text. Undefined when the note already exists, which is never overwritten.
  */
-async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps): Promise<string | undefined> {
+async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps, changes: Change[]): Promise<string | undefined> {
   const template = p.name ?? (filled(ctx.name) ? "{name}" : filled(ctx.title) ? "{title}" : "");
   const at = String(saved.at);
   const name = fileName(template ? fillLine(template, ctx) : "") || at.replace("T", " ").replace(":", ".");
@@ -122,7 +128,11 @@ async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: Ac
   const frontmatter = withoutDefinition(template === "{name}" ? Object.fromEntries(Object.entries(saved).filter(([k]) => k !== "name")) : saved);
   const body = p.template ? fillBody(await deps.readBody(p.template), ctx) : "";
   const path = `${folder ? `${folder}/` : ""}${name}.md`;
-  if (await deps.createNote(path, frontmatter, body)) return path;
+  const made = await deps.createNote(path, frontmatter, body);
+  if (made !== false) {
+    if (typeof made === "string") changes.push({ kind: "note-created", path, hash: textHash(made) });
+    return path;
+  }
   deps.notify(`“${name}” already exists`);
   return undefined;
 }
@@ -144,28 +154,45 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
   const ctx: Row = { ...stamp, ...input, ...row };
   const target = p.target ?? (p.save ? saveTarget(p.save) : undefined);
   let path: string | undefined;
+  const changes: Change[] = [];
+  let logged = false;
+  const log = () => {
+    if (logged || !changes.length) return;
+    logged = true;
+    // A form's title says what it's for better than its button's label; a button has only its label.
+    deps.log?.(p.title ?? p.label ?? p.view, changes);
+  };
   try {
     if (p.append) {
       // The row's values are added after filling, so they are never read as placeholders themselves.
       const fields = Object.entries(row).map(([k, v]) => `${k}: ${oneLine(String(v))}`).join(", ");
       const line = p.line !== undefined ? fillLine(p.line, ctx) : `${fillLine("- {date} {time}", ctx)}${fields ? ` ${fields}` : ""}`;
-      await deps.appendLine(notePath(p.append), line);
+      const into = notePath(p.append);
+      const created = await deps.appendLine(into, line);
+      changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
       await deps.writeFrontmatter(deps.dataPath, (fm) => {
         const list = fm[target.name];
         fm[target.name] = Array.isArray(list) ? [...list, saved] : [saved];
       });
+      changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved });
     } else if (target?.kind === "folder") {
-      path = await saveNote(p, target.folder, saved, ctx, deps);
+      path = await saveNote(p, target.folder, saved, ctx, deps, changes);
       if (!path) return { ok: false };
       ctx.path = path;
     }
     if (p.notify) deps.notify(fillLine(p.notify, ctx));
     if (p.open) deps.openNote(fillLine(p.open, ctx), deps.appPath);
+    // Kept before what `then` runs is, in the order they happened.
+    log();
+    if (p.then) await deps.then?.(p, ctx);
     return { ok: true, path };
   } catch (e) {
     deps.notify(`Couldn't save: ${(e as Error).message}`);
     return { ok: false };
+  } finally {
+    // What was written before a failure is kept too, so it can be undone.
+    log();
   }
 }

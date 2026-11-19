@@ -1,3 +1,5 @@
+import { noteText, withLine } from "../../src/actions.ts";
+import { ActivityLog, type UndoIO } from "../../src/activity.ts";
 import type { AppEnv } from "../../src/app.ts";
 import { Background } from "../../src/background.ts";
 import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
@@ -161,14 +163,22 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
       changed(path);
       return true;
     },
-    appendLine: async (path) => { writes.push(path); },
+    // As Obsidian's: the line goes at the end of the note's text, which it creates when there's none.
+    appendLine: async (path, line) => {
+      writes.push(path);
+      const note = f.files.get(path);
+      const created = !note;
+      f.files.set(path, { ...note, body: withLine(note?.body ?? "", line) });
+      changed(path);
+      return created;
+    },
     // As in Obsidian, a new note reaches the data layer through the metadata cache's change event.
     createNote: async (path, fm, body) => {
       if (f.files.has(path)) return false;
       writes.push(path);
       f.files.set(path, { fm: structuredClone(fm), body });
       changed(path);
-      return true;
+      return noteTextOf(f.files.get(path)!);
     },
     readBody: async (link) => {
       const path = resolve(storeTarget(link));
@@ -190,9 +200,42 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     showSourceAt: (line) => { source.shownAt.push(line); },
     sourceLines: async () => source.lines,
     copy: (text) => { copied.push(text); },
+    log: (entry) => void activity.add(entry),
     now: () => new Date(2026, 10, 18, 12, 0),
   };
-  return { env, f, data, writes, notices, opened, changed, source, copied, grants };
+  /** The activity log, kept in memory, its clock the env's. */
+  const kept = { text: undefined as string | undefined };
+  const activity = new ActivityLog({ read: async () => kept.text, write: async (text) => { kept.text = text; } }, () => env.now().getTime());
+  /** Undoing on this fake vault, as Obsidian's undo does on the real one. */
+  const undoIO: UndoIO = {
+    frontmatter: (path) => f.files.get(path)?.fm,
+    updateFrontmatter: env.updateFrontmatter,
+    setTaskDone: env.setTaskDone,
+    processText: async (path, fn) => {
+      const note = f.files.get(path);
+      if (!note) return false;
+      writes.push(path);
+      note.body = fn(note.body ?? "");
+      changed(path);
+      return true;
+    },
+    trashIf: async (path, unchanged) => {
+      const note = f.files.get(path);
+      if (!note) return "gone";
+      if (!unchanged(noteTextOf(note))) return "changed";
+      f.files.delete(path);
+      data.fileDeleted(path);
+      f.flush();
+      return "trashed";
+    },
+  };
+  return { env, f, data, writes, notices, opened, changed, source, copied, grants, activity, undoIO };
+}
+
+/** A fake note's whole text, as Obsidian would have written it. */
+function noteTextOf(note: { fm?: Record<string, unknown>; body?: string }): string {
+  const fm = note.fm && Object.keys(note.fm).length ? JSON.stringify(note.fm) : "";
+  return noteText(fm ? `${fm}\n` : "", note.body ?? "");
 }
 
 /**
@@ -202,12 +245,14 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
  * they were opened and allowed, as in Obsidian. What it notifies goes to `notices`; the commands
  * and status items it publishes, and the apps it opens, are kept.
  */
-export function fakeBackground(notes: Notes = {}, responses: Record<string, unknown> = {}, opts: { seen?: boolean } = {}) {
+export function fakeBackground(notes: Notes = {}, responses: Record<string, unknown> = {}, opts: { seen?: boolean; triggers?: { text: string | undefined } } = {}) {
   const t = fakeEnv(notes, responses);
   let clock = new Date(2026, 10, 18, 12, 0).getTime();
   const now = () => new Date(clock);
   t.env.now = now;
   const denied = new Set<string>();
+  /** What alerts with `then` keep across restarts; pass it to a second fakeBackground to restart. */
+  const triggers = opts.triggers ?? { text: undefined as string | undefined };
   const out = {
     commands: [] as { id: string; name: string }[],
     status: [] as { appPath: string; text: string; title: string }[],
@@ -220,7 +265,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined).map(([path]) => path),
     isGranted: (path, wanted) => !denied.has(path) && (!opts.seen || isAllowed(t.grants, path, wanted, true)),
     storePath: t.env.storePath,
-    actionDeps: (appPath, dataPath) => ({
+    actionDeps: (appPath, dataPath, actor) => ({
       now, dataPath, appPath,
       writeFrontmatter: t.env.writeFrontmatter,
       appendLine: t.env.appendLine,
@@ -228,8 +273,10 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
       readBody: t.env.readBody,
       notify: t.env.notify,
       openNote: t.env.openNote,
+      log: actor ? (what, changes) => void t.activity.add({ app: appPath, actor, what, changes }) : undefined,
     }),
     now,
+    triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },
     sink: {
       notify: t.env.notify,
       setCommands: (list) => { out.commands = list; },
@@ -242,6 +289,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     bg,
     denied,
     out,
+    triggers,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },
   };
 }

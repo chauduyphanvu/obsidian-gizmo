@@ -79,7 +79,7 @@ const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert", "then"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p), ...checkCompare(p)],
@@ -122,7 +122,7 @@ export const number: ViewDef = {
 
 export const text: ViewDef = {
   id: "text",
-  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values", "pin", "alert"],
+  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values", "pin", "alert", "then"],
   span: 1,
   validate: (p) => [...(p.text ? [] : ["text needs a text template"]), ...formatErrors(p)],
   examples: [
@@ -145,7 +145,7 @@ export const text: ViewDef = {
 
 export const progress: ViewDef = {
   id: "progress",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert", "then"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p)],

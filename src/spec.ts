@@ -75,6 +75,8 @@ export interface Panel {
   shortcut?: string;
   pin?: string;
   alert?: string | Record<string, string | number | boolean>;
+  /** Another app's shortcut to run after this panel acts, or when its alert turns true. */
+  then?: Then;
   /** A sentence about the row picked in the panel, drawn under its rows. */
   detail?: string;
   /** With `agg: share`: the rows counted, as a `where`-style map. */
@@ -91,6 +93,13 @@ export interface Panel {
   secrets?: string[];
   /** Internal: what its fields (a form's own, and the schema's) say besides their types. */
   fieldInfo?: Record<string, FieldInfo>;
+}
+
+/** `then`: the app (a link or name) and shortcut to run, and the values to fill its form with, as text with `{placeholders}`. */
+export interface Then {
+  app: string;
+  do: string;
+  fill?: Record<string, string>;
 }
 
 /**
@@ -550,12 +559,15 @@ export function readSpec(
         break;
       }
     }
-    for (const key of ["shortcut", "pin", "alert"] as const) {
+    for (const key of ["shortcut", "pin", "alert", "then"] as const) {
       if (r.panel?.[key] === undefined) continue;
       const n = uses.find(late);
       if (opts.host) errors.push(at(notHere(key)));
-      else if (n !== undefined) errors.push(at(notLate(key, n)));
+      // A form's `then` runs with what was typed in it, which it reads like its other actions do.
+      else if (n !== undefined && key !== "then") errors.push(at(notLate(key, n)));
     }
+    // Where it can't run, it isn't asked for either; the rest of the panel still works.
+    if (opts.host && r.panel?.then) delete r.panel.then;
     const shortcut = r.panel?.shortcut;
     if (shortcut !== undefined && shortcuts.has(shortcut)) errors.push(at(`two panels use the shortcut "${shortcut}"`));
     if (shortcut !== undefined) shortcuts.add(shortcut);
@@ -733,6 +745,8 @@ export function pickPanels(spec: AppSpec, names: readonly string[], app: string)
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   const out: [string, keyof Panel][] = p.source ? sourceDef(p.source).permissions(p, selfPath) : [];
   if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
+  // Named as typed, like the notes it writes: the app it names is looked up when it runs.
+  if (p.then) out.push([`run:${storeTarget(p.then.app)}#${p.then.do}`, "then"]);
   // A lens writes the properties of whichever note in its scope it is shown on.
   if (p.target?.kind === "this" && p.target.scope) out.push([`edit:${p.target.scope}`, "save"]);
   if (p.target?.kind === "folder") {
@@ -825,6 +839,10 @@ export function describePermission(perm: string): string {
     case "create": return `Create notes in ${what}`;
     case "edit": return `Change properties of notes in ${what}`;
     case "tasks": return `Tick tasks in notes in ${what}`;
+    case "run": {
+      const cut = what.lastIndexOf("#");
+      return `Run “${what.slice(cut + 1)}” in ${what.slice(0, cut)}`;
+    }
     default: return perm;
   }
 }
