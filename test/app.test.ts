@@ -28,7 +28,12 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
   const env: AppEnv = {
     data,
     frontmatter: (path) => f.files.get(path)?.fm,
+    notes: {
+      resolve: (link) => [...f.files.keys()].find((p) => p === `${link}.md` || p.endsWith(`/${link}.md`)),
+      frontmatter: (path) => f.files.get(path)?.fm,
+    },
     isGranted: () => true,
+    granted: () => [],
     grant: async () => {},
     storePath: (store) => `${store}.md`,
     writeFrontmatter: async (path, fn) => { writes.push(path); await edit(path, fn); },

@@ -172,6 +172,8 @@ export class DataLayer {
 
   private touch(path: string, before: Row | undefined, after: Row | undefined): void {
     this.pending.add(`file:${path}`);
+    // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
+    this.pending.add(`name:${path.split("/").pop()!.replace(/\.md$/i, "")}`);
     for (const [key] of this.queries) {
       const scopes = splitScopes(key);
       if ((before && inScopes(before, scopes)) || (after && inScopes(after, scopes))) {

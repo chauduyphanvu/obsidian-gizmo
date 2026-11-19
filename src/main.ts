@@ -131,6 +131,10 @@ export default class NoteAppsPlugin extends Plugin {
     return wanted.length === 0 || this.store.grants[path] === wanted.join("\n");
   }
 
+  granted(path: string): string[] {
+    return this.store.grants[path]?.split("\n") ?? [];
+  }
+
   async grant(path: string, wanted: string[]): Promise<void> {
     this.store.grants[path] = wanted.join("\n");
     await this.saveData(this.store);

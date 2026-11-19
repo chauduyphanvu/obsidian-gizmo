@@ -8,4 +8,5 @@ panels:
   - view: countdown
     to: 2027-01-01
     colour: red
+  - use: "[[Loop A]]"
 ---

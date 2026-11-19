@@ -1,7 +1,8 @@
 import { fillTemplate, stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
+import { basename, type NoteReader } from "./expand.ts";
 import {
-  describePermission, isUrl, notePath, permissionsOf, readSpec, resolvePanel, startingValues,
+  askersOf, describePermission, isUrl, notePath, permissionsOf, readSpec, resolvePanel, startingValues,
   type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
 import type { InputValue } from "./template.ts";
@@ -17,7 +18,11 @@ const CACHE_MS = 5 * 60_000;
 export interface AppEnv {
   data: DataLayer;
   frontmatter(path: string): Record<string, unknown> | undefined;
+  /** Reads the component notes an app uses. */
+  notes: NoteReader;
   isGranted(path: string, wanted: string[]): boolean;
+  /** What the app was allowed last time, to mark what's new. */
+  granted(path: string): string[];
   grant(path: string, wanted: string[]): Promise<void>;
   /** Path of the note a `store:` value points at. */
   storePath(store: string, fromPath: string): string;
@@ -99,6 +104,8 @@ export class AppController {
   private activeTab: string | undefined;
   /** Input values; kept while the note is edited, back to their starts when it's reopened. */
   private values: Record<string, InputValue> = {};
+  /** Names of the component notes the app links to; a change to any of them redraws it. */
+  private links: string[] = [];
   private ctx: PanelCtx;
 
   constructor(root: HTMLElement, appPath: string, env: AppEnv) {
@@ -192,10 +199,12 @@ export class AppController {
   /** Brings the drawn app in line with the note's keys, keeping panels whose keys didn't change. */
   private reconcile(): void {
     const fm = this.env.frontmatter(this.appPath) ?? {};
-    const definition = JSON.stringify(fm);
+    const result = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path: this.appPath });
+    // The app is its own keys plus those of every component it uses.
+    const definition = JSON.stringify([fm, result?.spec?.read ?? null]);
     if (definition === this.definition) return;
     this.definition = definition;
-    const result = readSpec(fm, { now: this.env.now() });
+    this.links = result?.spec?.links ?? [];
     this.spec = result?.spec;
     this.dataPath = this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath);
 
@@ -224,7 +233,7 @@ export class AppController {
 
     const wanted = permissionsOf(spec, this.appPath);
     if (!this.env.isGranted(this.appPath, wanted)) {
-      this.renderPermissionPrompt(header, wanted);
+      this.renderPermissionPrompt(header, wanted, askersOf(spec, this.appPath));
       return this.showOnly(header);
     }
 
@@ -318,9 +327,14 @@ export class AppController {
   private showOnly(header: HTMLElement): void {
     this.destroyPanels();
     this.unsubscribe?.();
-    // Still listen to the app note so fixing its keys redraws the app.
-    this.unsubscribe = this.env.data.subscribe([`file:${this.appPath}`], () => this.reconcile());
+    // Still listen to the app note and its components, so fixing their keys redraws the app.
+    this.unsubscribe = this.env.data.subscribe(this.definitionDeps(), () => this.reconcile());
     if (header.parentElement !== this.shell) this.shell.prepend(header);
+  }
+
+  /** The notes the app's definition comes from: its own, and each component it links to by name. */
+  private definitionDeps(): string[] {
+    return [`file:${this.appPath}`, ...this.links.map((l) => `name:${l}`)];
   }
 
   private destroyPanels(): void {
@@ -339,13 +353,14 @@ export class AppController {
 
   private subscribe(): void {
     this.unsubscribe?.();
-    const deps = new Set([`file:${this.appPath}`]);
+    const definition = this.definitionDeps();
+    const deps = new Set(definition);
     for (const m of this.mounted.values()) for (const d of m.deps) deps.add(d);
     const self = `file:${this.appPath}`;
     this.unsubscribe = this.env.data.subscribe(deps, (changed) => {
       // Lists typed into the app note are part of its definition, so a change there is
       // handled by reconcile, which reloads the panels it keeps.
-      if (changed.has(self)) this.reconcile();
+      if (definition.some((d) => changed.has(d))) this.reconcile();
       for (const m of this.mounted.values()) {
         if (m.source && m.deps.some((d) => d !== self && changed.has(d))) void this.loadPanel(m);
       }
@@ -426,11 +441,19 @@ export class AppController {
 
   // ---- Cards --------------------------------------------------------------------------------
 
-  private renderPermissionPrompt(header: HTMLElement, wanted: string[]): void {
+  private renderPermissionPrompt(header: HTMLElement, wanted: string[], askers: Map<string, Set<string>>): void {
     const card = header.createDiv({ cls: "na-card" });
     card.createDiv({ cls: "na-title", text: "This app needs your OK to:" });
     const ul = card.createEl("ul");
-    for (const p of wanted) ul.createEl("li", { text: describePermission(p) });
+    const before = new Set(this.env.granted(this.appPath));
+    for (const p of wanted) {
+      const li = ul.createEl("li");
+      if (before.size && !before.has(p)) li.createSpan({ cls: "na-new", text: "New" });
+      const who = [...(askers.get(p) ?? [])];
+      const others = who.filter((path) => path !== this.appPath).map((path) => `[[${basename(path)}]]`);
+      const names = [...(others.length && who.includes(this.appPath) ? ["this note"] : []), ...others];
+      li.createSpan({ text: describePermission(p) + (others.length ? ` — for ${names.join(", ")}` : "") });
+    }
     const row = card.createDiv({ cls: "na-actions" });
     row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
       await this.env.grant(this.appPath, wanted);

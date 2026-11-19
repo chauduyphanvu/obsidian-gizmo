@@ -179,3 +179,13 @@
 .note-app .na-input { display: flex; align-items: center; gap: var(--size-4-1); }
 .note-app .na-input-name { color: var(--text-muted); font-size: var(--font-ui-small); margin-right: var(--size-4-1); }
 .note-app .na-stale { opacity: 0.55; transition: opacity 0.15s; }
+
+.note-app .na-new {
+  font-size: var(--font-ui-smaller);
+  font-weight: var(--font-semibold);
+  color: var(--text-on-accent);
+  background: var(--interactive-accent);
+  border-radius: var(--radius-s);
+  padding: 0 6px;
+  margin-right: 6px;
+}

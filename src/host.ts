@@ -60,7 +60,15 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
       const f = app.vault.getFileByPath(path);
       return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
     },
+    notes: {
+      resolve: (link, from) => app.metadataCache.getFirstLinkpathDest(link, from)?.path,
+      frontmatter(path) {
+        const f = app.vault.getFileByPath(path);
+        return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
+      },
+    },
     isGranted: (path, wanted) => plugin.isGranted(path, wanted),
+    granted: (path) => plugin.granted(path),
     grant: (path, wanted) => plugin.grant(path, wanted),
     storePath(store, fromPath) {
       const target = storeTarget(store);

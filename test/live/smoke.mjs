@@ -59,6 +59,12 @@ const check = async (name, fn) => {
   }
 };
 const run = (body) => page.evaluate(`(async () => { const na = window.__na; ${body} })()`);
+/** A screenshot of the app. Obsidian's first-open "trust the author" dialog can arrive at any
+ * point; plugins are already on, so it's accepted first. */
+const shot = async (name, width, height) => {
+  await run(`[...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Trust author and enable plugins")?.click(); await na.sleep(300);`);
+  await page.shot(join(work, name), width, height);
+};
 
 try {
   await page.evaluate(`(async () => {
@@ -105,6 +111,7 @@ try {
       if (!r.state.startsWith("note-app:")) throw new Error(`opened as ${r.state}`);
       if (name === "Broken") {
         if (!r.text.includes("keys have problems")) throw new Error("no problems card");
+        if (!r.text.includes("[[Loop A]] → [[Loop B]] → [[Loop A]] uses itself")) throw new Error("no cycle message");
       } else if (name === "Describe only") {
         if (!r.text.includes("No app keys yet")) throw new Error("no empty-state card");
       } else if (r.errors) {
@@ -187,6 +194,33 @@ try {
       return { title: el.querySelector(".na-view-list .na-title")?.textContent, items: [...el.querySelectorAll(".na-view-list li")].map((li) => li.textContent) };`);
     if (r.title !== "On 2027-01-15" || JSON.stringify(r.items) !== JSON.stringify(["Eye exam (Dr. Patel)"])) throw new Error(JSON.stringify(r));
     return "2027-01-15 → Eye exam";
+  });
+
+  await check("Watchlist: Ticker twice, in tabs, sharing an input", async () => {
+    const r = await run(`
+      await na.open("Apps/Watchlist");
+      const el = na.view().contentEl;
+      const titles = (cls) => [...el.querySelectorAll(cls + " .na-title")].map((t) => t.textContent);
+      const before = titles(".na-view-number");
+      const select = el.querySelector('select[aria-label="range"]');
+      select.value = "1";
+      select.dispatchEvent(new Event("change"));
+      for (let i = 0; i < 50 && el.querySelector(".na-stale, .na-loading"); i++) await na.sleep(100);
+      await na.sleep(300);
+      return { tabs: [...el.querySelectorAll("button.na-tab")].map((b) => b.textContent), before, charts: titles(".na-view-line"), errors: na.errors() };`);
+    const want = { tabs: ["Index", "Apple"], before: ["SPY", "AAPL"], charts: ["SPY, last 1y", "AAPL, last 1y"], errors: 0 };
+    if (JSON.stringify(r) !== JSON.stringify(want)) throw new Error(JSON.stringify(r));
+    await shot("watchlist-desktop.png", 1100, 760);
+    return "2 uses, range 6mo → 1y";
+  });
+
+  await check("AAPL: a whole note from one component", async () => {
+    const r = await run(`
+      await na.open("Apps/AAPL");
+      const el = na.view().contentEl;
+      return { description: el.querySelector(".na-description")?.textContent, title: el.querySelector(".na-view-number .na-title")?.textContent, errors: na.errors() };`);
+    if (r.description !== "Price and chart for one stock" || r.title !== "AAPL" || r.errors) throw new Error(JSON.stringify(r));
+    return "description and panels from [[Ticker]]";
   });
 
   await check("Meds button logs twice", async () => {
@@ -316,17 +350,29 @@ try {
     if (!r.includes("London weather")) throw new Error(r);
     return "Weather";
   });
-  // Obsidian's first-open "trust the author" dialog can arrive late; plugins are already on, so accept it.
-  await run(`[...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Trust author and enable plugins")?.click(); await na.sleep(300);`);
-  await page.shot(join(work, "weather-desktop.png"), 1100, 760);
+  await check("editing a component asks again, naming it", async () => {
+    const r = await run(`
+      await na.open("Apps/Watchlist");
+      await app.fileManager.processFrontMatter(app.vault.getFileByPath("Components/Ticker.md"), (fm) => {
+        fm.panels = [...fm.panels, { view: "text", text: "news", source: "https://news.example.org/v1/$symbol" }];
+      });
+      await na.sleep(1500);
+      return [...na.view().contentEl.querySelectorAll(".na-card li")].map((li) => li.textContent);`);
+    if (!r.includes("NewFetch data from news.example.org — for [[Ticker]]") || !r.includes("Fetch data from query1.finance.yahoo.com — for [[Ticker]]")) {
+      throw new Error(JSON.stringify(r));
+    }
+    return "prompt names [[Ticker]], marks the new host";
+  });
+
+  await shot("weather-desktop.png", 1100, 760);
   await run(`await na.open("Apps/Habits");`);
-  await page.shot(join(work, "habits-desktop.png"), 1100, 760);
+  await shot("habits-desktop.png", 1100, 760);
   await run(`await na.open("Apps/Stocks"); await na.sleep(1500);`);
-  await page.shot(join(work, "stocks-desktop.png"), 1100, 760);
+  await shot("stocks-desktop.png", 1100, 760);
   await run(`app.workspace.leftSplit.collapse(); await na.open("Apps/Weight");`);
-  await page.shot(join(work, "weight-phone.png"), 420, 900);
+  await shot("weight-phone.png", 420, 900);
   await run(`await na.open("Apps/Habits");`);
-  await page.shot(join(work, "habits-phone.png"), 420, 900);
+  await shot("habits-phone.png", 420, 900);
 } finally {
   page.close();
   quit();
