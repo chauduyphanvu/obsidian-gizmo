@@ -197,6 +197,27 @@ function parse(tokens: Token[]): Node {
   return tree;
 }
 
+function callsPrev(n: Node): boolean {
+  if (n.k === "call") return n.fn === "prev" || n.args.some(callsPrev);
+  if (n.k === "unary") return callsPrev(n.a);
+  if (n.k === "binary") return callsPrev(n.a) || callsPrev(n.b);
+  return false;
+}
+
+/**
+ * Whether a `compute` map's formulas read only their own row, so computing a row doesn't depend
+ * on which rows come before it: none calls prev. One that can't be read counts as not.
+ */
+export function computesRowByRow(compute: Record<string, string | number>): boolean {
+  return Object.values(compute).every((text) => {
+    try {
+      return !callsPrev(parse(tokenize(String(text))));
+    } catch {
+      return false;
+    }
+  });
+}
+
 function varsIn(n: Node, out: Set<string>): Set<string> {
   if (n.k === "var") out.add(n.name);
   else if (n.k === "unary") varsIn(n.a, out);
