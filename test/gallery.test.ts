@@ -70,6 +70,7 @@ const APPS: Record<string, string[]> = {
   "Apps/Project board.md": ["create:Projects", "edit:Projects", "read:Projects"],
   "Apps/Read later.md": ["create:Reading", "edit:Reading", "net:feeds.bbci.co.uk", "net:feeds.npr.org", "read:Reading"],
   "Apps/Task inbox.md": ["read:Tasks", "tasks:Tasks", "write:Tasks/Inbox.md"],
+  "Apps/Sleep.md": [],
   "Apps/Trip planner.md": ["net:api.frankfurter.dev", "net:api.open-meteo.com", "net:archive-api.open-meteo.com", "read:Trips/Tokyo.ics"],
   "Apps/Watchlist.md": ["net:query1.finance.yahoo.com"],
   "Apps/Weight.md": [],
@@ -77,6 +78,7 @@ const APPS: Record<string, string[]> = {
 const COMPONENTS: Record<string, string[]> = {
   "Components/Destination weather.md": ["net:api.open-meteo.com", "net:archive-api.open-meteo.com"],
   "Components/Reading progress.md": ["edit:Books"],
+  "Components/Tracker kit.md": [],
 };
 
 test("every gallery app reads without errors, asks for what it says it asks for, and has a way to act", () => {
@@ -218,27 +220,34 @@ test("Medication log: a dose from the button, a hotkey or a link; the count, str
   assert.equal(t.out.status[0].text, "Doses today: 3");
 });
 
-test("Weight: log a weight, see the week against the last, the goal line, and fix an entry in the table", async () => {
-  const weights = [
-    { weight: 81.2, at: "2026-11-10T07:30" }, { weight: 80.8, at: "2026-11-13T07:30" },
-    { weight: 80.6, at: "2026-11-16T07:30" }, { weight: 80.2, at: "2026-11-17T07:30" },
+const TRACKER = "Components/Tracker kit.md";
+
+test("Weight: the Tracker kit in three lines; log a weight, see the week against the last, the goal line, and fix an entry in the table", async () => {
+  assert.deepEqual(Object.keys(fm("Apps/Weight.md")), ["app", "use", "with"]);
+  const weight = [
+    { value: 81.2, at: "2026-11-10T07:30" }, { value: 80.8, at: "2026-11-13T07:30" },
+    { value: 80.6, at: "2026-11-16T07:30" }, { value: 80.2, at: "2026-11-17T07:30" },
   ];
-  const { root, f } = openApp("Apps/Weight.md", { "Apps/Weight data.md": { fm: { weights } } });
+  const { root, f } = openApp("Apps/Weight.md", { [TRACKER]: { fm: fm(TRACKER) }, "Apps/Weight data.md": { fm: { weight } } });
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
   const [form, week, latest, chart, entries] = panels(root);
+  assert.deepEqual(panels(root).map((p) => text(p.querySelector(".na-title"))), ["Log my weight", "This week", "Latest", "My weight against my goal", "Entries"]);
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["weight", "note"]);
   assert.equal(text(week.querySelector(".na-big")), "80.4kg");
   assert.equal(text(week.querySelector(".na-compare")), "▼ 0.6 kg (<1%) vs previous");
   assert.equal(text(latest.querySelector(".na-big")), "80.2kg");
   assert.equal(text(chart.querySelector(".na-goal-label")), "goal 75 kg");
+  assert.equal(chart.querySelector(".na-legend"), null);
+  assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "weight", "note"]);
 
-  const [weight, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  weight.value = "79.4";
+  const [value, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
+  value.value = "79.4";
   note.value = "after the trip";
   submit(form.querySelector("form")!);
   await settle();
-  const saved = f.files.get("Apps/Weight data.md")!.fm!.weights as Record<string, unknown>[];
-  assert.deepEqual(saved.at(-1), { weight: 79.4, note: "after the trip", at: "2026-11-18T12:00" });
+  const saved = f.files.get("Apps/Weight data.md")!.fm!.weight as Record<string, unknown>[];
+  assert.deepEqual(saved.at(-1), { value: 79.4, note: "after the trip", at: "2026-11-18T12:00" });
   assert.equal(text(latest.querySelector(".na-big")), "79.4kg");
   assert.equal(text(week.querySelector(".na-big")), "80.1kg");
   assert.equal(text(week.querySelector(".na-compare")), "▼ 0.9 kg (1%) vs previous");
@@ -248,8 +257,54 @@ test("Weight: log a weight, see the week against the last, the goal line, and fi
   assert.equal(text(first.querySelectorAll("td")[0]), new Date(2026, 10, 18, 12).toLocaleDateString());
   type(first.querySelectorAll("input")[0], "79.9");
   await settle();
-  assert.equal((f.files.get("Apps/Weight data.md")!.fm!.weights as { weight: number }[]).at(-1)!.weight, 79.9);
+  assert.equal((f.files.get("Apps/Weight data.md")!.fm!.weight as { value: number }[]).at(-1)!.value, 79.9);
   assert.equal(text(latest.querySelector(".na-big")), "79.9kg");
+});
+
+test("Sleep: the same kit for hours slept, against a goal of eight", async () => {
+  assert.deepEqual(Object.keys(fm("Apps/Sleep.md")), ["app", "use", "with"]);
+  const sleep = [{ value: 6, at: "2026-11-10T07:00" }, { value: 7, at: "2026-11-16T07:00" }, { value: 6, at: "2026-11-17T07:00" }];
+  const { root, f } = openApp("Apps/Sleep.md", { [TRACKER]: { fm: fm(TRACKER) }, "Apps/Sleep data.md": { fm: { sleep } } });
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [form, week, latest, chart, entries] = panels(root);
+  assert.equal(text(root.querySelector(".na-description")), "Log how long I sleep and see whether I'm getting my eight hours");
+  assert.deepEqual(panels(root).map((p) => text(p.querySelector(".na-title"))), ["Log my sleep", "This week", "Latest", "My sleep against my goal", "Entries"]);
+  assert.equal(text(week.querySelector(".na-big")), "6.5hours");
+  assert.equal(text(week.querySelector(".na-compare")), "▲ 0.5 hours (8%) vs previous");
+  assert.equal(text(chart.querySelector(".na-goal-label")), "goal 8 hours");
+
+  (form.querySelector("input") as HTMLInputElement).value = "8.5";
+  submit(form.querySelector("form")!);
+  await settle();
+  assert.deepEqual((f.files.get("Apps/Sleep data.md")!.fm!.sleep as unknown[]).at(-1), { value: 8.5, note: "", at: "2026-11-18T12:00" });
+  assert.equal(text(latest.querySelector(".na-big")), "8.5hours");
+  assert.equal(text(week.querySelector(".na-big")), "7.2hours");
+  assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "sleep", "note"]);
+});
+
+test("Tracker kit: one app may use it twice; each thing it tracks keeps its own list", async () => {
+  const both = {
+    app: "Weight and sleep together",
+    panels: [
+      { use: "[[Tracker kit]]", with: { what: "weight", unit: "kg", goal: 75 } },
+      { use: "[[Tracker kit]]", with: { what: "sleep", unit: "hours", goal: 8 } },
+    ],
+  };
+  const r = readSpec(both, { path: "Apps/Health.md", notes: reader })!;
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(permissionsOf(r.spec!, "Apps/Health.md"), []);
+  const { root, f } = openApp("Apps/Health.md", { [TRACKER]: { fm: fm(TRACKER) } }, {}, both);
+  await settle();
+  const forms = panels(root).filter((p) => p.querySelector("form"));
+  assert.equal(forms.length, 2);
+  for (const [form, v] of [[forms[0], "80"], [forms[1], "7.5"]] as const) {
+    (form.querySelector("input") as HTMLInputElement).value = v;
+    submit(form.querySelector("form")!);
+    await settle();
+  }
+  const data = f.files.get("Apps/Health data.md")!.fm!;
+  assert.deepEqual([data.weight, data.sleep], [[{ value: 80, note: "", at: "2026-11-18T12:00" }], [{ value: 7.5, note: "", at: "2026-11-18T12:00" }]]);
 });
 
 test("Budget: log an expense, see the month against last, the stacked weeks and a notice at the limit", async () => {

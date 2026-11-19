@@ -356,6 +356,24 @@ export default async function authoring(t) {
     return `asks ${after.prompt.length} things; ${r.before} → ${after.after} notes`;
   });
 
+  await check("New app from the gallery: Sleep, three lines on the Tracker kit, brings the kit and opens with no problems", async () => {
+    const r = await copy("Sleep");
+    const after = await run(`
+      await na.until(() => na.exists("Sleep.md") && na.exists("Tracker kit.md"), 5000);
+      await na.until(() => na.state() === "note-app:Sleep.md", 5000);
+      await na.settle();
+      const { prompt } = await na.open("Sleep");
+      await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 5000);
+      return { app: await na.read("Sleep.md"), kit: await na.read("Tracker kit.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"),
+        titles: [...na.view().contentEl.querySelectorAll(".na-panel .na-title")].map((t) => t.textContent), after: app.vault.getMarkdownFiles().length };`);
+    expect(r.items.length && r.items[0].startsWith("Sleep"), r.items);
+    expect(after.app === gallery("Apps/Sleep.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
+    expect(after.state === "note-app:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
+    expect(JSON.stringify(after.titles) === JSON.stringify(["Log my sleep", "This week", "Latest", "My sleep against my goal", "Entries"]), after.titles);
+    await run(`for (const p of ["Sleep.md", "Tracker kit.md"]) await na.remove(p); await na.sleep(500);`);
+    return `${r.before} → ${after.after} notes; ${after.titles.join(", ")}`;
+  });
+
   await check("New app from the gallery: the same app again says it exists and creates nothing, and keeps what the note now holds", async () => {
     const r = await run(`
       const f = na.file("Budget.md");

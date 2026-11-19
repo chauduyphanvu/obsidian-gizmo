@@ -103,5 +103,15 @@ test("every gallery app can be copied into an empty vault, with exactly the comp
     assert.deepEqual(links.filter((l) => !parts.some((p) => noteName(p.path) === l)), [], app.name);
   }
   assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Trip planner")!.note, gallery)), ["Destination weather"]);
-  assert.deepEqual(componentsNeeded(apps.find((a) => a.name === "Weight")!.note, gallery), []);
+  assert.deepEqual(componentsNeeded(apps.find((a) => a.name === "Medication log")!.note, gallery), []);
+});
+
+test("an app that is a whole kit brings the kit; a second app on the same kit reuses the copy already there", () => {
+  const apps = galleryApps(gallery);
+  const [weight, sleep] = ["Weight", "Sleep"].map((n) => apps.find((a) => a.name === n)!.note);
+  const kit = gallery.find((n) => n.path === "Components/Tracker kit.md")!;
+  assert.deepEqual(componentsNeeded(weight, gallery), [kit]);
+  assert.deepEqual(componentsNeeded(sleep, gallery), [kit]);
+  assert.deepEqual(planCopy(weight, [kit], {}), { create: [kit, weight], reuse: [] });
+  assert.deepEqual(planCopy(sleep, [kit], { "Tracker kit": [kit.text] }), { create: [sleep], reuse: ["Tracker kit"] });
 });

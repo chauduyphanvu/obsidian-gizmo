@@ -1,7 +1,7 @@
 // The gallery, copied over a copy of test/vault: every note opens, and each app's main use works.
 
-const APPS = ["Aurora watch", "Book finder", "Budget", "Medication log", "Project board", "Read later", "Task inbox", "Trip planner", "Watchlist", "Weight"];
-const COMPONENTS = ["Destination weather", "Reading progress"];
+const APPS = ["Aurora watch", "Book finder", "Budget", "Medication log", "Project board", "Read later", "Sleep", "Task inbox", "Trip planner", "Watchlist", "Weight"];
+const COMPONENTS = ["Destination weather", "Reading progress", "Tracker kit"];
 const NOAA = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
 const NET = {
   "Aurora watch": [NOAA, "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"],
@@ -128,6 +128,22 @@ export default async function gallery(t) {
       return { added, after: await na.read("Tasks/Inbox.md"), done };`);
     expect(r.added.includes("- [ ] Call the plumber") && r.after.includes("- [x] Call the plumber") && r.done.includes("Call the plumber · Inbox"), r);
     return JSON.stringify(r.after.trim());
+  });
+
+  await check("Sleep: the Tracker kit's form logs a night into Sleep data, and the latest and the table follow", async () => {
+    await run(`
+      await na.open("Apps/Sleep");
+      const form = (${PANEL})("Log my sleep");
+      form.querySelector('input[type="number"]').focus();`);
+    await type("7.5");
+    await press("Enter");
+    const r = await run(`
+      const saved = await na.until(() => na.fm("Apps/Sleep data.md")?.sleep?.at(-1), 3000);
+      const latest = await na.until(() => (${PANEL})("Latest").querySelector(".na-big")?.textContent === "7.5hours" && "7.5hours", 3000);
+      const row = (${PANEL})("Entries").querySelector("tbody tr");
+      return { saved, latest, row: row && [...row.querySelectorAll("td")].map((td) => td.querySelector("input")?.value ?? td.textContent), goal: (${PANEL})("My sleep against my goal").querySelector(".na-goal-label")?.textContent, errors: na.errors() };`);
+    expect(r.saved?.value === 7.5 && typeof r.saved.at === "string" && r.latest === "7.5hours" && r.row?.[1] === "7.5" && r.goal === "goal 8 hours" && r.errors === 0, r);
+    return `saved ${JSON.stringify(r.saved)}; latest ${r.latest}; ${r.goal}`;
   });
 
   await check("Trip planner: days to go, itinerary rows, and the dollars follow its rate property", async () => {
