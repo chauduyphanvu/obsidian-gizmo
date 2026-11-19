@@ -68,3 +68,11 @@ test("permissions come from the keys", () => {
     "write:Daily.md",
   ]);
 });
+
+test("save can't write over the app's own keys", () => {
+  const r = readSpec({ app: "x", panels: [{ view: "button", save: "panels" }, { view: "checklist", items: ["a"], save: "app" }] });
+  assert.deepEqual(r?.errors, [
+    'panel 1: save can\'t use "panels", which names part of the app',
+    'panel 2: save can\'t use "app", which names part of the app',
+  ]);
+});

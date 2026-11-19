@@ -145,8 +145,18 @@ export function aggregate(rows: unknown[], field: string | undefined, agg: Agg):
   if (nums.length === 0) return undefined;
   if (agg === "sum") return nums.reduce((a, b) => a + b, 0);
   if (agg === "avg") return nums.reduce((a, b) => a + b, 0) / nums.length;
-  if (agg === "min") return Math.min(...nums);
-  return Math.max(...nums);
+  const [min, max] = extent(nums);
+  return agg === "min" ? min : max;
+}
+
+/** Min and max without spreading, which overflows the call stack on very long arrays. */
+export function extent(nums: number[]): [number, number] {
+  let min = Infinity, max = -Infinity;
+  for (const n of nums) {
+    if (n < min) min = n;
+    if (n > max) max = n;
+  }
+  return [min, max];
 }
 
 /** The single value a number or progress panel shows. */

@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  aggregate, daysUntil, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
+  aggregate, daysUntil, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
 } from "../src/data.ts";
 
 const NOW = new Date(2026, 10, 18, 14, 30); // Wed 18 Nov 2026, local time
@@ -91,4 +91,10 @@ test("CSV and JSON bodies", () => {
   ]);
   assert.deepEqual(parseBody('{"a":1}', "text/plain"), { a: 1 });
   assert.equal(parseBody("hello", "text/plain"), "hello");
+});
+
+test("min and max work on arrays too long to spread", () => {
+  const big = Array.from({ length: 300_000 }, (_, i) => i - 1000);
+  assert.deepEqual(extent(big), [-1000, 298_999]);
+  assert.equal(aggregate(big.map((v) => ({ v })), "v", "max"), 298_999);
 });

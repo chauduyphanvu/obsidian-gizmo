@@ -1,4 +1,4 @@
-import { formatValue, toTime, type Point } from "./data.ts";
+import { extent, formatValue, toTime, type Point } from "./data.ts";
 
 const NS = "http://www.w3.org/2000/svg";
 const H = 220, L = 52, R = 14, T = 14, B = 26;
@@ -47,8 +47,7 @@ export function renderChart(parent: HTMLElement, points: Point[], opts: ChartOpt
   const order = xs.map((_, i) => i).sort((a, b) => xs[a] - xs[b]);
   const pts = order.map((i) => ({ x: xs[i], y: points[i].y, label: points[i].x }));
 
-  const ys = pts.map((p) => p.y);
-  let yMin = Math.min(...ys), yMax = Math.max(...ys);
+  let [yMin, yMax] = extent(pts.map((p) => p.y));
   if (opts.kind === "bar") { yMin = Math.min(0, yMin); yMax = Math.max(0, yMax); }
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.08;

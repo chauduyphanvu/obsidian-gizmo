@@ -19,6 +19,7 @@ export class AppView extends FileView {
   private timers = new Map<number, TimerState>();
   private renderToken = 0;
   private refreshHandle: number | undefined;
+  private tickHandle: number | undefined;
   private renderedWidth = 0;
 
   constructor(leaf: WorkspaceLeaf, private plugin: NoteAppsPlugin) {
@@ -35,7 +36,6 @@ export class AppView extends FileView {
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
       if (file === this.file) void this.render();
     }));
-    this.registerInterval(window.setInterval(() => this.tick(), 1000));
   }
 
   async onLoadFile(_file: TFile): Promise<void> {
@@ -46,7 +46,23 @@ export class AppView extends FileView {
 
   async onUnloadFile(): Promise<void> {
     this.stopRefresh();
+    this.stopTicking();
     this.contentEl.empty();
+  }
+
+  /** The 1-second tick runs only while a timer is counting down. */
+  private startTicking(): void {
+    if (this.tickHandle === undefined) this.tickHandle = window.setInterval(() => this.tick(), 1000);
+  }
+
+  private stopTicking(): void {
+    if (this.tickHandle !== undefined) window.clearInterval(this.tickHandle);
+    this.tickHandle = undefined;
+  }
+
+  async onClose(): Promise<void> {
+    this.stopTicking();
+    this.stopRefresh();
   }
 
   private stopRefresh(): void {
@@ -232,6 +248,7 @@ export class AppView extends FileView {
       startTimer: (i, p) => {
         const s = this.timerState(i, p);
         s.endsAt = Date.now() + s.remainingMs;
+        this.startTicking();
         void this.render();
       },
       pauseTimer: (i) => {
@@ -253,6 +270,7 @@ export class AppView extends FileView {
   }
 
   private tick(): void {
+    if (![...this.timers.values()].some((t) => t.endsAt)) return this.stopTicking();
     const spec = readSpec(this.frontmatter() ?? {})?.spec;
     for (const [i, s] of this.timers) {
       if (!s.endsAt) continue;

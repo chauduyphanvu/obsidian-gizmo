@@ -93,7 +93,7 @@ function renderTable(el: HTMLElement, p: Panel, data: unknown, ctx: RenderCtx): 
   const head = table.createEl("thead").createEl("tr");
   for (const c of columns) head.createEl("th", { text: c });
   const body = table.createEl("tbody");
-  for (const r of rows) {
+  shownRows(el, rows, (r) => {
     const tr = body.createEl("tr");
     for (const c of columns) {
       const td = tr.createEl("td");
@@ -103,7 +103,20 @@ function renderTable(el: HTMLElement, p: Panel, data: unknown, ctx: RenderCtx): 
       else td.setText(text);
       if (typeof v === "number") td.addClass("na-num");
     }
-  }
+  });
+}
+
+/** Rows drawn at first; the rest wait behind a "Show all" button so big queries stay cheap. */
+export const ROW_CAP = 200;
+
+function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void): void {
+  rows.slice(0, ROW_CAP).forEach(draw);
+  if (rows.length <= ROW_CAP) return;
+  const more = el.createEl("button", { cls: "na-small na-more", text: `Show all ${rows.length}` });
+  more.addEventListener("click", () => {
+    more.remove();
+    rows.slice(ROW_CAP).forEach(draw);
+  });
 }
 
 function renderList(el: HTMLElement, p: Panel, data: unknown, ctx: RenderCtx): void {
@@ -111,12 +124,12 @@ function renderList(el: HTMLElement, p: Panel, data: unknown, ctx: RenderCtx): v
   const rows = rowsOf(data);
   if (rows.length === 0) { el.createDiv({ cls: "na-empty", text: "Nothing here yet." }); return; }
   const ul = el.createEl("ul", { cls: "na-list" });
-  for (const r of rows) {
+  shownRows(el, rows, (r) => {
     const text = p.item ? fillTemplate(p.item, r, p.decimals) : String(r.name ?? r.title ?? r.value ?? JSON.stringify(r));
     const li = ul.createEl("li");
     if (typeof r.path === "string") noteLink(li, text, r.path, ctx);
     else li.setText(text);
-  }
+  });
 }
 
 function busy(button: HTMLButtonElement, work: () => Promise<void>): void {

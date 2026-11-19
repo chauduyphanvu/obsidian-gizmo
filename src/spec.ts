@@ -58,6 +58,8 @@ const PANEL_KEYS: Record<keyof Panel, KeyType> = {
 const NEEDS_SOURCE: ViewKind[] = ["number", "line", "bar", "table", "list", "progress"];
 const ACTION_VIEWS: ViewKind[] = ["button", "form", "checklist", "timer"];
 const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "textarea"];
+/** Top-level keys that define the app; recorded data may never be written under these names. */
+const RESERVED = ["app", "panels", "refresh", "store"];
 
 export interface SpecResult {
   spec?: AppSpec;
@@ -141,6 +143,7 @@ function readPanel(raw: Record<string, unknown>, where: string, strict: boolean,
     errors.push(`${at}save/append/notify only work on button, form, checklist, timer`);
   }
   if (p.line && !p.append) errors.push(`${at}"line" needs "append"`);
+  if (p.save && RESERVED.includes(p.save)) errors.push(`${at}save can't use "${p.save}", which names part of the app`);
   if (p.source === "notes" && !p.from) errors.push(`${at}source "notes" needs "from" (a #tag or folder)`);
   if (p.source && /^http:\/\//i.test(p.source)) errors.push(`${at}source must use https`);
   if (p.agg && !AGGS.includes(p.agg)) errors.push(`${at}agg must be one of ${AGGS.join(", ")}`);

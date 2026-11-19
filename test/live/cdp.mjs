@@ -1,19 +1,20 @@
 // Drives an isolated Obsidian started with --remote-debugging-port, without touching the user's window.
-//   node test/live/cdp.mjs eval '<js expression>'
-//   node test/live/cdp.mjs shot <file.png> [width height]
-import { writeFileSync } from "node:fs";
+//   NOTE_APPS_TEST_VAULT=<vault path> node test/live/cdp.mjs eval '<js expression>'
+//   NOTE_APPS_TEST_VAULT=<vault path> node test/live/cdp.mjs shot <file.png> [width height]
+// Refuses to act unless the instance on CDP_PORT has exactly that vault open, so it can never
+// drive a real vault by mistake.
+import { realpathSync, writeFileSync } from "node:fs";
 
-const PORT = process.env.CDP_PORT ?? "9333";
-
-async function target() {
-  const list = await (await fetch(`http://127.0.0.1:${PORT}/json`)).json();
+async function pageSocket(port) {
+  const list = await (await fetch(`http://127.0.0.1:${port}/json`)).json();
   const page = list.find((t) => t.type === "page" && t.url.startsWith("app://obsidian.md"));
   if (!page) throw new Error("no Obsidian page target");
   return page.webSocketDebuggerUrl;
 }
 
-async function session() {
-  const ws = new WebSocket(await target());
+export async function connect(port, vault) {
+  if (!vault) throw new Error("set NOTE_APPS_TEST_VAULT to the isolated test vault's path");
+  const ws = new WebSocket(await pageSocket(port));
   await new Promise((resolve, reject) => { ws.onopen = resolve; ws.onerror = reject; });
   let id = 0;
   const pending = new Map();
@@ -25,33 +26,38 @@ async function session() {
     pending.set(++id, resolve);
     ws.send(JSON.stringify({ id, method, params }));
   });
-  return { send, close: () => ws.close() };
-}
-
-const [cmd, ...args] = process.argv.slice(2);
-const s = await session();
-try {
-  if (cmd === "eval") {
-    const res = await s.send("Runtime.evaluate", { expression: args[0], awaitPromise: true, returnByValue: true });
-    if (res.result?.exceptionDetails) {
-      console.error(res.result.exceptionDetails.exception?.description ?? res.result.exceptionDetails.text);
-      process.exitCode = 1;
-    } else {
-      console.log(JSON.stringify(res.result?.result?.value, null, 2));
-    }
-  } else if (cmd === "shot") {
-    const [file, width, height] = args;
+  const evaluate = async (expression) => {
+    const res = await send("Runtime.evaluate", { expression, awaitPromise: true, returnByValue: true });
+    const ex = res.result?.exceptionDetails;
+    if (ex) throw new Error(ex.exception?.description ?? ex.text);
+    return res.result?.result?.value;
+  };
+  const open = await evaluate("app.vault.adapter.basePath").catch(() => undefined);
+  if (typeof open !== "string" || realpathSync(open) !== realpathSync(vault)) {
+    ws.close();
+    throw new Error(`refusing: the instance on port ${port} has ${open ?? "no vault"} open, not ${vault}`);
+  }
+  const shot = async (file, width, height) => {
     if (width) {
-      await s.send("Emulation.setDeviceMetricsOverride", { width: Number(width), height: Number(height), deviceScaleFactor: 2, mobile: false });
+      await send("Emulation.setDeviceMetricsOverride", { width, height, deviceScaleFactor: 2, mobile: false });
       await new Promise((r) => setTimeout(r, 600));
     }
-    const res = await s.send("Page.captureScreenshot", { format: "png" });
-    if (width) await s.send("Emulation.clearDeviceMetricsOverride");
+    const res = await send("Page.captureScreenshot", { format: "png" });
+    if (width) await send("Emulation.clearDeviceMetricsOverride");
     writeFileSync(file, Buffer.from(res.result.data, "base64"));
-    console.log(file);
-  } else {
-    throw new Error(`unknown command ${cmd}`);
+    return file;
+  };
+  return { evaluate, shot, close: () => ws.close() };
+}
+
+if (import.meta.main) {
+  const [cmd, ...args] = process.argv.slice(2);
+  const page = await connect(process.env.CDP_PORT ?? "9333", process.env.NOTE_APPS_TEST_VAULT);
+  try {
+    if (cmd === "eval") console.log(JSON.stringify(await page.evaluate(args[0]), null, 2));
+    else if (cmd === "shot") console.log(await page.shot(args[0], Number(args[1]) || 0, Number(args[2]) || 0));
+    else throw new Error(`unknown command ${cmd}`);
+  } finally {
+    page.close();
   }
-} finally {
-  s.close();
 }

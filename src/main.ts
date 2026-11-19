@@ -20,6 +20,11 @@ export default class NoteAppsPlugin extends Plugin {
 
     this.routeAppNotes();
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
+    this.registerEvent(this.app.vault.on("delete", (file) => {
+      if (!(file.path in this.store.grants)) return;
+      delete this.store.grants[file.path];
+      void this.saveData(this.store);
+    }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       if (!(oldPath in this.store.grants)) return;
       this.store.grants[file.path] = this.store.grants[oldPath];
@@ -75,11 +80,14 @@ export default class NoteAppsPlugin extends Plugin {
     const plugin = this;
     const proto = WorkspaceLeaf.prototype;
     const original = proto.setViewState;
-    proto.setViewState = function (this: WorkspaceLeaf, state: ViewState, eState?: unknown) {
+    const wrapper = function (this: WorkspaceLeaf, state: ViewState, eState?: unknown) {
       const next = plugin.wantsApp(this, state) ? { ...state, type: VIEW_TYPE } : state;
       return original.call(this, next, eState);
     };
-    this.register(() => { proto.setViewState = original; });
+    proto.setViewState = wrapper;
+    // If another plugin wrapped setViewState after us, putting ours back would drop theirs;
+    // our wrapper then stays in place and passes everything through once `unloading` is set.
+    this.register(() => { if (proto.setViewState === wrapper) proto.setViewState = original; });
   }
 
   /** For markdown views already open when the plugin loads. */

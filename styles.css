@@ -121,3 +121,4 @@
 .note-app .na-clock { margin-bottom: var(--size-4-2); }
 .note-app .na-actions { display: flex; gap: var(--size-4-2); margin-top: var(--size-4-2); }
 .note-app .na-example { margin: var(--size-4-2) 0; padding: var(--size-4-2) var(--size-4-3); background: var(--background-primary); border-radius: var(--radius-s); font-size: var(--font-ui-small); }
+.note-app .na-more { margin-top: var(--size-4-2); }
