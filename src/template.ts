@@ -188,6 +188,25 @@ export function secretIds(text: string): string[] {
   return [...text.matchAll(/\{secret:([a-z0-9-]+)\}/g)].map((m) => m[1]);
 }
 
+/** Every text in a filled value: the value itself, or each text at any depth of a list or map (never its keys). */
+export function stringsIn(v: unknown): string[] {
+  if (typeof v === "string") return [v];
+  if (Array.isArray(v)) return v.flatMap(stringsIn);
+  if (v !== null && typeof v === "object") return Object.values(v).flatMap(stringsIn);
+  return [];
+}
+
+/** The first reference in a parsed value, in the order it is written. */
+export function firstRef(v: unknown): InputRef | undefined {
+  if (v instanceof InputRef) return v;
+  const parts = v instanceof InputText ? v.parts : Array.isArray(v) ? v : isPlainObject(v) && !(v instanceof Date) ? Object.values(v) : [];
+  for (const p of parts) {
+    const ref = firstRef(p);
+    if (ref) return ref;
+  }
+  return undefined;
+}
+
 /** A value a param or input option may hold: no secrets and no line breaks, since headers take it raw. */
 export function unsafeValue(v: unknown): boolean {
   const text = typeof v === "string" ? v : JSON.stringify(v) ?? "";

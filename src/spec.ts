@@ -3,7 +3,8 @@ import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, definitionReason, storeTarget } from "./store.ts";
 import {
-  InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, type InputDef, type InputValue,
+  InputRef, InputText, NAME, THIS, firstRef, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
+  type InputDef, type InputValue,
 } from "./template.ts";
 import { namesIn } from "./template.ts";
 import {
@@ -152,7 +153,7 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unkn
   const template = ps.inputs.includes(THIS) ? absentThis(ps.template, values[THIS]) : ps.template;
   const filled = resolveInputs(template, values, problems) as Record<string, unknown>;
   if (problems.length) return { errors: problems };
-  const r = checkTemplate(filled, ps.strict);
+  const r = checkFilled(ps.template, filled, ps.strict);
   return r.panel ? { ...r, panel: keepRowTypes(r.panel, ps.template.row, filled.row) } : r;
 }
 
@@ -165,6 +166,20 @@ function keepRowTypes(p: Panel, written: unknown, filled: unknown): Panel {
   const typed = Object.keys(written).filter((k) => written[k] instanceof InputRef && k in p.row!);
   if (typed.length === 0) return p;
   return { ...p, row: { ...p.row, ...Object.fromEntries(typed.map((k) => [k, filled[k] as string | number | boolean])) } };
+}
+
+/**
+ * A filled template checked, once no value has completed a secret placeholder: text typed beside a
+ * literal `{` (`"{$q}"` holding `secret:demo}`) would otherwise name a secret the note never typed.
+ */
+function checkFilled(template: Record<string, unknown>, filled: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
+  const typed = (template.secrets ?? []) as string[];
+  for (const key of ["source", "headers", "body"]) {
+    if (!stringsIn(filled[key]).flatMap(secretIds).some((id) => !typed.includes(id))) continue;
+    const ref = firstRef(template[key]);
+    return { errors: [`${ref ? `$${typedName(ref.input)}` : "a value"} can't name a secret`] };
+  }
+  return checkTemplate(filled, strict);
 }
 
 /** A `where` condition no value meets: a comparison with nothing to compare against. */
@@ -360,7 +375,7 @@ export function readSpec(
   /** A panel's keys checked with these values; a name only typed or picked at run time is tried with stand-ins. */
   const checkAt = (template: Record<string, unknown>, uses: string[], values: Record<string, unknown>, strict: boolean) => (uses.some(late)
     ? checkStandIns(template, values, late, strict)
-    : checkTemplate(resolveInputs(template, values) as Record<string, unknown>, strict));
+    : checkFilled(template, resolveInputs(template, values) as Record<string, unknown>, strict));
   // A block that records is fetched while its app is closed, read exactly as a panel naming it reads
   // it, so what it may touch is asked for from the same keys that are sent.
   const recorded: Record<string, PanelSpec> = {};

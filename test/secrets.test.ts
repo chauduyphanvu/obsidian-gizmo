@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
-import { readSpec, type Panel } from "../src/spec.ts";
+import { readSpec, resolvePanel, type Panel } from "../src/spec.ts";
 import { fakeEnv, fakeHost } from "./support/fakes.ts";
 
 const API = "https://api.example.com/q";
@@ -66,4 +66,37 @@ test("typed text that completes a secret placeholder beside a literal brace is n
   await settle();
   assert.ok(!JSON.stringify(t.f.calls).includes("s3cret"), JSON.stringify(t.f.calls));
   assert.match(root.querySelector(".na-panel.na-error")?.textContent ?? "", /secret/);
+});
+
+test("text a value completes into a secret placeholder is the panel's error, in headers or a body, typed or picked", () => {
+  const read = (fm: Record<string, unknown>) => readSpec({ app: "Q", ...fm }, { path: "Apps/Q.md" })!;
+  const cases: [Record<string, unknown>, Record<string, unknown>, string][] = [
+    [{ inputs: { q: "text" }, panels: [{ view: "text", source: `${API}?x=$q`, headers: { "X-Filter": "{$q}" }, text: "x" }] }, { q: "secret:demo}" }, "$q"],
+    [{ inputs: { q: "text" }, panels: [{ view: "text", source: API, body: { filter: "{$q}" }, text: "x" }] }, { q: "secret:demo}" }, "$q"],
+    [{ inputs: { q: "text" }, panels: [{ view: "text", source: API, body: { deep: ["{$q}"] }, text: "x" }] }, { q: "secret:demo}" }, "$q"],
+    [{ panels: [
+      { view: "list", source: "books", select: "book" },
+      { view: "text", source: API, headers: { "X-Id": "{$book.id}" }, text: "x" },
+    ] }, { book: { id: "secret:demo}" } }, "$book"],
+    [{ panels: [
+      { view: "list", source: "books", select: "book" },
+      { view: "text", source: API, body: { id: "{$book.id}" }, text: "x" },
+    ] }, { book: { id: "secret:demo}" } }, "$book"],
+  ];
+  for (const [fm, values, name] of cases) {
+    const r = read(fm);
+    assert.deepEqual(r.errors, [], JSON.stringify(fm));
+    const ps = r.spec!.panels.at(-1)!;
+    assert.deepEqual(resolvePanel(ps, values), { errors: [`${name} can't name a secret`] }, JSON.stringify(fm));
+    // Other values are fine, a brace included.
+    const fine = Object.fromEntries(Object.entries(values).map(([k, v]) => [k, typeof v === "string" ? "dune}" : { id: "dune}" }]));
+    assert.deepEqual(resolvePanel(ps, fine).errors, []);
+  }
+  // A secret typed whole stays usable beside a value.
+  const typed = read({ inputs: { q: "text" }, panels: [{ view: "text", source: API, headers: { A: "Bearer {secret:demo}", F: "{$q}" }, text: "x" }] });
+  assert.deepEqual(resolvePanel(typed.spec!.panels[0], { q: "dune" }).errors, []);
+  assert.deepEqual(resolvePanel(typed.spec!.panels[0], { q: "secret:demo}" }).errors, []);
+  // A choice is checked before anything runs.
+  const choice = read({ inputs: { k: ["secret:demo}", "plain"] }, panels: [{ view: "text", source: API, headers: { F: "{$k}" }, text: "x" }] });
+  assert.deepEqual(choice.errors, ["panel 1: $k can't name a secret"]);
 });

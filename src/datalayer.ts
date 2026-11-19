@@ -4,7 +4,7 @@ import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
 import type { Panel } from "./spec.ts";
-import { secretIds } from "./template.ts";
+import { secretIds, stringsIn } from "./template.ts";
 
 export interface FileInfo {
   path: string;
@@ -331,14 +331,6 @@ export class DataLayer {
 /** What a web response is cached under, in memory and on disk: its {secret:id} placeholders, never the secrets. */
 export function cacheKey(source: string, headers: Record<string, string> | undefined, body?: string | Record<string, unknown>): string {
   return `${source}|${JSON.stringify(headers ?? {})}${body === undefined ? "" : `|${JSON.stringify(body)}`}`;
-}
-
-/** Every text in a request body: the body itself, or each text value at any depth of a map. */
-function stringsIn(v: unknown): string[] {
-  if (typeof v === "string") return [v];
-  if (Array.isArray(v)) return v.flatMap(stringsIn);
-  if (v !== null && typeof v === "object") return Object.values(v).flatMap(stringsIn);
-  return [];
 }
 
 function withSource(p: Panel, source: string): Panel {
