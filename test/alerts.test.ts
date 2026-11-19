@@ -2,6 +2,7 @@ import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
+import { readSpec } from "../src/spec.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
@@ -131,4 +132,50 @@ test("view: alerts lists what needs attention across the vault and follows it", 
   t.advance(MIN);
   await t.bg.tick();
   assert.equal(text(root.querySelector(".na-view-alerts .na-empty")), "Nothing needs attention.");
+});
+
+test("the status bar and an alert's notice say a value as its view does: values, format, unit and decimals", async () => {
+  const t = fakeBackground({
+    "Apps/Money.md": { fm: { app: "Money", panels: [
+      { view: "number", title: "Spent", source: "buys", field: "amount", agg: "sum", format: "$0,0.00", pin: "status", alert: "> 1000" },
+      { view: "number", title: "Weather", source: "now", field: "code", values: { code: { 1: "Mostly clear" } }, unit: "x", pin: "status" },
+      { view: "number", title: "Weight", source: "weights", field: "kg", unit: "kg", decimals: 1, pin: "status", alert: ">= 80" },
+      { view: "text", title: "Last buy", source: "buys", text: "{shop}: {amount}", format: { amount: "$0.00" }, values: { shop: { a: "Apple" } }, pin: "status" },
+      { view: "progress", title: "Budget", source: "buys", field: "amount", agg: "sum", max: 2000, format: "$0,0", alert: ">= 1000" },
+    ] } },
+    "Apps/Money data.md": { fm: { buys: [{ shop: "a", amount: 1234.5 }], now: [{ code: 1 }], weights: [{ kg: 80.25 }] } },
+  });
+  await t.bg.start();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Spent: $1,234.50", "Weather: Mostly clear", "Weight: 80.3 kg", "Last buy: Apple: $1234.50"]);
+  assert.deepEqual(t.notices, ["Money: Spent $1,234.50", "Money: Weight 80.3 kg", "Money: Budget $1,235"]);
+  assert.deepEqual(t.bg.alerts.list().map((a) => a.text), ["$1,234.50", "80.3 kg", "$1,235"]);
+});
+
+test("a compare panel that is pinned or alerting reads its current window, not the previous one too", async () => {
+  const fm = { app: "Doses", panels: [
+    { view: "number", title: "Doses", source: "doses", where: { at: "this week" }, agg: "count", compare: "previous", pin: "status", alert: ">= 3" },
+    { view: "number", title: "Late", source: "doses", where: { at: "this week", late: true }, agg: "count", compare: "previous", alert: { late: true } },
+  ] };
+  // 18 November 2026 is a Wednesday: this week starts on Monday the 16th.
+  const doses = [
+    { at: "2026-11-17T08:00" }, { at: "2026-11-18T08:00" },
+    { at: "2026-11-10T08:00", late: true }, { at: "2026-11-11T08:00" }, { at: "2026-11-12T08:00" },
+  ];
+  const t = fakeBackground({ "Apps/Doses.md": { fm }, "Apps/Doses data.md": { fm: { doses } } });
+  await t.bg.start();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 2"]);
+  assert.deepEqual(t.notices, []);
+  const [pinned, late] = readSpec(fm, { path: "Apps/Doses.md" })!.spec!.panels;
+  const r = await t.bg.evaluate("Apps/Doses.md", pinned);
+  assert.deepEqual("rows" in r && r.rows, [{ at: "2026-11-17T08:00" }, { at: "2026-11-18T08:00" }]);
+  // The earlier week's late dose is not this week's.
+  const l = await t.bg.evaluate("Apps/Doses.md", late);
+  assert.equal("value" in l && l.value, 0);
+
+  doses.push({ at: "2026-11-18T20:00" });
+  t.f.files.get("Apps/Doses data.md")!.fm = { doses };
+  t.changed("Apps/Doses data.md");
+  await settle();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 3"]);
+  assert.deepEqual(t.notices, ["Doses: Doses 3"]);
 });

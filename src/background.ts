@@ -1,11 +1,9 @@
 import { runActions, type ActionDeps } from "./actions.ts";
 import { panelIds } from "./app.ts";
-import {
-  compileWhere, fillTemplate, formatValue, matches, parseDuration, stampParts, toNumber, toTime, valueOf, type Row,
-} from "./data.ts";
+import { splitByWindow } from "./compare.ts";
+import { compileWhere, matches, parseDuration, stampParts, toTime, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
-import { streak } from "./group.ts";
 import { sourceDef } from "./sources/registry.ts";
 import {
   permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec,
@@ -15,6 +13,7 @@ import { InputRef, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { rowsOf } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
+import { panelValue } from "./views/value.ts";
 
 /** The plugin's one timer ticks this often; an app without `refresh` is checked this often. */
 export const TICK_MS = 60_000;
@@ -53,8 +52,11 @@ export interface BackgroundEnv {
   sink: BackgroundSink;
 }
 
-/** A panel worked out without drawing it: its value and rows, or why not. */
-export type Evaluation = { value: unknown; rows: unknown; panel: Panel } | { waiting: string } | { error: string };
+/**
+ * A panel worked out without drawing it: its value, that value as its view shows it (`shown`, unit
+ * included) and its rows, or why not. A compare panel's value and rows are its current window's.
+ */
+export type Evaluation = { value: unknown; shown: string; rows: unknown; panel: Panel } | { waiting: string } | { error: string };
 
 /** A block whose output is appended to a list in the app's data note on an interval. */
 interface RecordJob {
@@ -194,8 +196,10 @@ export class Background {
     const p = r.panel;
     const source = p.source ?? viewDef(p.view)?.implicitSource?.(p);
     try {
-      const rows = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath }, { ttlMs: entry.refreshMs, now, force });
-      return { value: valueFor(p, rows, now), rows, panel: p };
+      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath }, { ttlMs: entry.refreshMs, now, force });
+      const rows = splitByWindow(p, loaded, now).current;
+      const { value, text, unit } = panelValue(p, rows, now);
+      return { value, shown: unit ? `${text} ${unit}` : text, rows, panel: p };
     } catch (e) {
       return { error: (e as Error).message };
     }
@@ -302,7 +306,7 @@ export class Background {
       if (!("panel" in r)) continue;
       const p = r.panel;
       const title = p.title ?? p.label ?? entry.name;
-      const shown = p.view === "text" ? String(r.value) : `${formatValue(toNumber(r.value) ?? r.value, p.decimals)}${p.unit ? ` ${p.unit}` : ""}`;
+      const { shown } = r;
       if (p.pin === "status") this.pins.set(key, { appPath: entry.path, text: `${title}: ${shown}`, title: entry.name });
       if (p.alert === undefined) continue;
       const matching = typeof p.alert === "string" ? undefined : rowsOf(r.rows).filter(compileWhere(p.alert, now)).length;
@@ -529,14 +533,4 @@ function recordJobs(spec: AppSpec): RecordJob[] {
     if (!every || sourceDef(String(keys.source)).id !== "url") return [];
     return [{ block, list: typeof keys.into === "string" ? keys.into : `${block}_log`, everyMs: Math.max(MIN_RECORD_MS, every) }];
   });
-}
-
-/** The value a number, progress or text panel shows, worked out as the views do. */
-function valueFor(p: Panel, data: unknown, now: Date): unknown {
-  if (p.view === "text") {
-    const ctx = Array.isArray(data) ? { ...(data[0] as Row), rows: data, count: data.length } : data;
-    return fillTemplate(p.text ?? "", ctx, p.decimals);
-  }
-  const value = p.agg === "streak" ? streak(rowsOf(data), p.group!, p.per!, now) : valueOf(p, data);
-  return p.view === "progress" ? toNumber(value) ?? 0 : value;
 }

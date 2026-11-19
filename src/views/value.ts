@@ -13,9 +13,22 @@ function checkAgg(p: Panel): string[] {
   return [];
 }
 
-/** The single value a number or progress panel shows. */
-function shown(p: Panel, data: unknown, now: Date): unknown {
-  return p.agg === "streak" ? streak(rowsOf(data), p.group!, p.per!, now) : valueOf(p, data);
+/**
+ * What a number, progress or text panel shows for its data: its value (a progress panel's is a
+ * number, 0 when there is none; a text panel's is its text), that value as text under the panel's
+ * `values`, `format` and `decimals`, and the `unit` that goes beside it (none when a format or
+ * values already speak for it). The views draw this, and the status bar and alerts say it again.
+ */
+export function panelValue(p: Panel, data: unknown, now: Date): { value: unknown; text: string; unit?: string } {
+  if (p.view === "text") {
+    const scope = Array.isArray(data) ? { ...(data[0] as Row), rows: data, count: data.length } : data;
+    const text = fillWith(p.text ?? "", scope, (path, v) => display(p, path, v, now, "text"));
+    return { value: text, text };
+  }
+  const found = p.agg === "streak" ? streak(rowsOf(data), p.group!, p.per!, now) : valueOf(p, data);
+  const value = p.view === "progress" ? toNumber(found) ?? 0 : found;
+  const unit = p.unit && formatFor(p, p.field) === undefined && mapped(p, p.field, value) === undefined ? p.unit : undefined;
+  return { value, text: display(p, p.field, value, now), unit };
 }
 
 function checkCompare(p: Panel): string[] {
@@ -90,12 +103,10 @@ export const number: ViewDef = {
     heading(el, p);
     // With compare, the data holds the window before too; the value is the current window's.
     const { current, previous } = splitByWindow(p, data, ctx.now);
-    const value = shown(p, current, ctx.now);
+    const { value, text, unit } = panelValue(p, current, ctx.now);
     const row = el.createDiv({ cls: "na-big" });
-    row.createSpan({ text: display(p, p.field, value, ctx.now) });
-    if (p.unit && formatFor(p, p.field) === undefined && mapped(p, p.field, value) === undefined) {
-      row.createSpan({ cls: "na-unit", text: p.unit });
-    }
+    row.createSpan({ text });
+    if (unit) row.createSpan({ cls: "na-unit", text: unit });
     if (previous) drawChange(el, p, ctx.now, value, previous);
     if (p.label) el.createDiv({ cls: "na-label", text: p.label });
   }),
@@ -119,8 +130,7 @@ export const text: ViewDef = {
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);
-    const scope = Array.isArray(data) ? { ...(data[0] as Row), rows: data, count: data.length } : data;
-    el.createDiv({ cls: "na-text", text: fillWith(p.text!, scope, (path, v) => display(p, path, v, ctx.now, "text")) });
+    el.createDiv({ cls: "na-text", text: panelValue(p, data, ctx.now).text });
     if (p.label) el.createDiv({ cls: "na-label", text: p.label });
   }),
 };
@@ -139,14 +149,13 @@ export const progress: ViewDef = {
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);
-    const value = toNumber(shown(p, data, ctx.now)) ?? 0;
+    const { value, text, unit } = panelValue(p, data, ctx.now);
     const max = p.max ?? 100;
     const big = el.createDiv({ cls: "na-big" });
-    big.createSpan({ text: display(p, p.field, value, ctx.now) });
-    const unit = p.unit && formatFor(p, p.field) === undefined ? ` ${p.unit}` : "";
-    big.createSpan({ cls: "na-unit", text: `/ ${display(p, p.field, max, ctx.now)}${unit}` });
+    big.createSpan({ text });
+    big.createSpan({ cls: "na-unit", text: `/ ${display(p, p.field, max, ctx.now)}${unit ? ` ${unit}` : ""}` });
     const bar = el.createDiv({ cls: "na-progress" }).createDiv({ cls: "na-progress-fill" });
-    bar.style.width = `${Math.max(0, Math.min(100, (value / max) * 100))}%`;
+    bar.style.width = `${Math.max(0, Math.min(100, ((value as number) / max) * 100))}%`;
     if (p.label) el.createDiv({ cls: "na-label", text: p.label });
   }),
 };
