@@ -1,7 +1,7 @@
 // The gallery, copied over a copy of test/vault: every note opens, and each app's main use works.
 
-const APPS = ["Aurora watch", "Book finder", "Budget", "Medication log", "Project board", "Read later", "Sleep", "Task inbox", "Trip planner", "Watchlist", "Weight"];
-const COMPONENTS = ["Destination weather", "Reading progress", "Tracker kit"];
+const APPS = ["Aurora watch", "Book finder", "Budget", "Decision journal", "Medication log", "Project board", "Read later", "Sleep", "Task inbox", "Trip planner", "Watchlist", "Weight"];
+const COMPONENTS = ["Decision review", "Destination weather", "Reading progress", "Tracker kit"];
 const NOAA = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
 const NET = {
   "Aurora watch": [NOAA, "https://services.swpc.noaa.gov/products/noaa-planetary-k-index-forecast.json"],
@@ -110,6 +110,61 @@ export default async function gallery(t) {
       return { picked, label, state: na.state() };`);
     expect(after.picked?.startsWith(`Tax return is ${r.to}, due `) && after.label === "Open" && after.state === "markdown:Projects/Tax return.md", { ...r, ...after });
     return `${r.from} → ${r.to} (${r.neighbours} in that column); ${after.picked}; opened ${after.state}`;
+  });
+
+  await check("Decision journal: a decision typed and written down with real keys and clicks is due today; scoring it moves the count and the share, and its lens reads it back", async () => {
+    const DECISION = "Plant garlic before the frost";
+    const at = (selector, root) => `(() => { const el = ${root}.querySelector(${JSON.stringify(selector)}); el.scrollIntoView({ block: "center" }); const r = el.getBoundingClientRect(); return [r.x + Math.min(12, r.width / 2), r.y + r.height / 2]; })()`;
+    const before = await run(`
+      await na.open("Apps/Decision journal");
+      const panel = ${PANEL};
+      const number = (title) => panel(title).querySelector(".na-big").textContent;
+      const form = panel("A decision I'm making");
+      const name = ${at('input[type="text"]', "form")};
+      await na.sleep(200);
+      return { ready: Number(number("Ready to score")), right: number("Right so far"), name, captions: [...form.querySelectorAll(".na-field > span")].map((s) => s.textContent) };`);
+    expect(JSON.stringify(before.captions) === JSON.stringify(["Decision", "I expected", "% sure", "Due"]), before);
+    await t.click(before.name);
+    await type(DECISION);
+    await press("Tab");
+    await type("Most of the cloves come up in spring");
+    const write = await run(`const form = (${PANEL})("A decision I'm making"); const b = [...form.querySelectorAll("button")].find((x) => x.textContent === "Write it down"); b.scrollIntoView({ block: "center" }); await na.sleep(200); const r = b.getBoundingClientRect(); return { at: [r.x + r.width / 2, r.y + r.height / 2], mark: na.notices.length };`);
+    await t.click(write.at);
+    const written = await run(`
+      const panel = ${PANEL};
+      const path = "Decisions/${DECISION}.md";
+      const fm = await na.until(() => na.fm(path), 5000);
+      const ready = await na.until(() => Number(panel("Ready to score").querySelector(".na-big").textContent) === ${before.ready} + 1, 3000);
+      const notices = await na.noticesSince(${write.mark}, "Written down");
+      const tab = [...na.view().contentEl.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Score");
+      tab.scrollIntoView({ block: "center" });
+      await na.sleep(200);
+      const r = tab.getBoundingClientRect();
+      return { fm, ready: !!ready, notices, tab: [r.x + r.width / 2, r.y + r.height / 2] };`);
+    const d = new Date();
+    const today = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    expect(written.fm?.expect === "Most of the cloves come up in spring" && written.fm.confidence === 60 && written.fm.outcome === "open" && written.fm.made === today && written.fm.review === today && written.ready, written);
+    expect(written.notices.includes(`Written down. Come back on ${today} to score it.`), written.notices);
+    await t.click(written.tab);
+    const scored = await run(`
+      const panel = ${PANEL};
+      const row = await na.until(() => [...panel("How did these turn out?").querySelectorAll("tbody tr")].find((tr) => tr.textContent.startsWith("${DECISION}")), 3000);
+      na.choose(row.querySelector("select"), "right");
+      const fm = await na.until(() => na.fm("Decisions/${DECISION}.md")?.outcome === "right" && na.fm("Decisions/${DECISION}.md"), 3000);
+      await na.until(() => Number(panel("Ready to score").querySelector(".na-big").textContent) === ${before.ready}, 3000);
+      await na.sleep(300);
+      const gone = ![...panel("How did these turn out?").querySelectorAll("tbody tr")].some((tr) => tr.textContent.startsWith("${DECISION}"));
+      return { fm, ready: Number(panel("Ready to score").querySelector(".na-big").textContent), right: panel("Right so far").querySelector(".na-big").textContent, gone };`);
+    expect(scored.fm?.outcome === "right" && scored.ready === before.ready && scored.gone && /^\d+%$/.test(scored.right) && scored.right !== before.right, { before, scored });
+    const lens = await run(`
+      await app.workspace.openLinkText("Decisions/${DECISION}", "", false);
+      await na.sleep(1200);
+      const el = na.view().contentEl.querySelector(".na-lens");
+      const out = { state: na.state(), name: el?.querySelector(".na-lens-name")?.textContent, text: el && na.text(el) };
+      await na.remove("Decisions/${DECISION}.md");
+      return out;`);
+    expect(lens.state === `markdown:Decisions/${DECISION}.md` && lens.name === "Decision review" && lens.text?.includes("I expected: Most of the cloves come up in spring (60% sure). It went right."), lens);
+    return `written (due ${today}); scored right: ready ${before.ready + 1} → ${scored.ready}, right so far ${before.right} → ${scored.right}; lens: ${lens.text.slice(0, 70)}`;
   });
 
   await check("Task inbox: a task added through the form shows in Open; ticking it ticks its line", async () => {

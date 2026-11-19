@@ -10,6 +10,8 @@ A note app is an ordinary note whose properties start with `app:` and one senten
 - [[Reading progress]]: Track where I am in a book, on the book's own note
 - [[Project board]]: Move my projects from idea to done and open the one I'm working on
 - [[Task inbox]]: Capture tasks and tick them off wherever they live in my notes
+- [[Decision journal]]: Write down a decision before I know how it turns out, score it later, and see how often I'm right
+- [[Decision review]]: Score a decision on its own note, next to what I wrote about it
 - [[Trip planner]]: Plan one trip: days to go, packing, itinerary, weather and what I spend abroad (needs [[Destination weather]] and Trips/Tokyo.ics)
 - [[Watchlist]]: Watch a stock, record what I buy and see what my holdings are worth
 - [[Aurora watch]]: Get told when an aurora is likely and keep my own record of what I saw

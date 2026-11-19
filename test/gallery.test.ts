@@ -66,6 +66,7 @@ const APPS: Record<string, string[]> = {
   "Apps/Aurora watch.md": ["net:services.swpc.noaa.gov"],
   "Apps/Book finder.md": ["create:Books", "edit:Books", "images", "net:openlibrary.org", "read:Books"],
   "Apps/Budget.md": [],
+  "Apps/Decision journal.md": ["create:Decisions", "edit:Decisions", "read:Decisions"],
   "Apps/Medication log.md": [],
   "Apps/Project board.md": ["create:Projects", "edit:Projects", "read:Projects"],
   "Apps/Read later.md": ["create:Reading", "edit:Reading", "net:feeds.bbci.co.uk", "net:feeds.npr.org", "read:Reading"],
@@ -76,6 +77,7 @@ const APPS: Record<string, string[]> = {
   "Apps/Weight.md": [],
 };
 const COMPONENTS: Record<string, string[]> = {
+  "Components/Decision review.md": ["edit:Decisions"],
   "Components/Destination weather.md": ["net:api.open-meteo.com", "net:archive-api.open-meteo.com"],
   "Components/Reading progress.md": ["edit:Books"],
   "Components/Tracker kit.md": [],
@@ -108,6 +110,7 @@ test("every gallery component reads without errors and asks for what it says it 
     assert.ok(body.trim().length > 0, `${path} says what it is for`);
   }
   assert.equal(readComponentPreview(fm("Components/Reading progress.md"), { path: "Components/Reading progress.md", notes: reader }).lens, "Books");
+  assert.equal(readComponentPreview(fm("Components/Decision review.md"), { path: "Components/Decision review.md", notes: reader }).lens, "Decisions");
 });
 
 /** The `note-app` blocks of a note's text. */
@@ -513,6 +516,103 @@ test("Project board: add a project, drag it along, pick it for its dates, and op
   click(board.querySelector(".na-detail a")!);
   await settle();
   assert.deepEqual(opened, ["Projects/Learn piano.md"]);
+});
+
+/** The sample decisions in gallery/Decisions, as notes with their properties and text. */
+const decisions = (): Notes => Object.fromEntries(noteNames("Decisions").map((n) => [`Decisions/${n}`, gallery(`Decisions/${n}`)]));
+
+test("Decision journal: one decision is due; write one down, score the due one, and the share and the chart follow", async () => {
+  const path = "Apps/Decision journal.md";
+  const t = await background({ [path]: { fm: fm(path) }, ...decisions() });
+  // With the app closed: the one whose day has come is counted in the status bar and told once.
+  assert.deepEqual(t.out.status, [{ appPath: path, text: "Ready to score: 1", title: "Decision journal" }]);
+  assert.deepEqual(t.notices, ["Decision journal: Ready to score 1"]);
+  assert.deepEqual(t.out.commands, [{ id: `${path}:decide`, name: "Decision journal: Write it down" }]);
+
+  const root = await t.open(path);
+  assert.equal(root.querySelector(".na-error"), null);
+  const panel = (title: string) => panels(root).find((p) => text(p.querySelector(".na-title")) === title)!;
+  const tab = (name: string) => click([...root.querySelectorAll("button.na-tab")].find((b) => text(b) === name)!);
+  assert.deepEqual([...root.querySelectorAll("button.na-tab")].map(text), ["Score", "Waiting", "Track record"]);
+  assert.equal(text(panel("Ready to score").querySelector(".na-big")), "1");
+  assert.equal(text(panel("Right so far").querySelector(".na-big")), "67%");
+
+  // Written down: a note in Decisions, its confidence a number, outcome open and today's date from the fields' defaults.
+  const form = panel("A decision I'm making");
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["Decision", "I expected", "% sure", "Due"]);
+  const [name, expect] = form.querySelectorAll("input");
+  type(name, "Walk to work through the winter");
+  type(expect, "I keep it up until March");
+  choose(form.querySelector("select")!, "80");
+  type(form.querySelector('input[type="date"]')!, "2027-03-01");
+  submit(form.querySelector("form")!);
+  await settle();
+  assert.deepEqual(t.f.files.get("Decisions/Walk to work through the winter.md")!.fm, {
+    expect: "I keep it up until March", confidence: 80, review: "2027-03-01", outcome: "open", made: "2026-11-18", at: "2026-11-18T12:00",
+  });
+  assert.ok(t.notices.includes("Written down. Come back on 2027-03-01 to score it."), t.notices.join("; "));
+
+  // Waiting: picking one shows what I expected, with a link to its note.
+  tab("Waiting");
+  const timeline = panel("Still waiting to find out");
+  assert.deepEqual([...timeline.querySelectorAll(".na-tl-label")].map(text),
+    ["Repaint the hallway myself", "Take the night train to Vienna", "Walk to work through the winter"]);
+  click(timeline.querySelectorAll(".na-tl-bar")[1]);
+  assert.equal(text(timeline.querySelector(".na-detail-text")),
+    "Take the night train to Vienna. I expected: It costs less than flying once I count the hotel night (80% sure). I'll know by 2027-03-20.");
+
+  // Score the due one in place: what I learned, then how it went; it leaves the table and the count.
+  tab("Score");
+  const score = panel("How did these turn out?");
+  assert.deepEqual([...score.querySelectorAll("th")].map(text), ["Decision", "I expected", "% sure", "Due", "It went", "What I learned"]);
+  const row = score.querySelector("tbody tr")!;
+  assert.deepEqual([...row.querySelectorAll("td")].slice(0, 4).map(text),
+    ["Repaint the hallway myself", "It takes one weekend and looks as good as a painter's job", "70", "3 days ago"]);
+  type(row.querySelector("input")!, "Two weekends, and the ceiling shows it");
+  await settle();
+  choose(panel("How did these turn out?").querySelector("tbody tr select")!, "wrong");
+  await settle();
+  assert.deepEqual(t.f.files.get("Decisions/Repaint the hallway myself.md")!.fm, {
+    expect: "It takes one weekend and looks as good as a painter's job", confidence: 70, made: "2026-10-25", review: "2026-11-15",
+    outcome: "wrong", learned: "Two weekends, and the ceiling shows it",
+  });
+  assert.equal(text(panel("Ready to score").querySelector(".na-big")), "0");
+  assert.equal(text(panel("Right so far").querySelector(".na-big")), "50%");
+  assert.equal(t.out.status[0].text, "Ready to score: 0");
+
+  // Track record: what I said against how often I was right, by how sure I was.
+  tab("Track record");
+  const chart = panel("How sure I said I was, and how often I was right");
+  assert.equal(text(chart.querySelector(".na-legend")), "I saidI was right");
+  // 60%, 70% (both of them wrong, so no bar for right) and 90% sure.
+  assert.equal(chart.querySelectorAll("path.na-bar").length, 5);
+  assert.equal(text(chart.querySelector(".na-readout")), "90I said 90%I was right 100%");
+  assert.deepEqual([...panel("Scored").querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))),
+    ["Repaint the hallway myself", "Buy the winter tyres in October", "Fix the electricity price for a year", "Cook dinner from scratch three nights a week"]);
+});
+
+test("Decision review: a lens on each decision note reads it back and saves how it went", async () => {
+  const path = "Components/Decision review.md";
+  const t = fakeEnv({ [path]: { fm: fm(path) }, "Apps/Decision journal.md": { fm: fm("Apps/Decision journal.md") }, ...decisions() });
+  const index = new LensIndex(t.data);
+  assert.deepEqual(index.lensesFor("Decisions/Take the night train to Vienna.md"), [path]);
+  assert.deepEqual(index.lensesFor("Apps/Decision journal.md"), []);
+  const el = document.createElement("div");
+  document.body.appendChild(el);
+  const stack = new LensStack(el, index, () => t.env, { folded: () => false, setFolded: () => {} });
+  started.push(stack);
+  stack.show("Decisions/Take the night train to Vienna.md");
+  await settle();
+  assert.equal(el.querySelector(".na-error"), null);
+  assert.equal(text(el.querySelector(".na-view-text .na-text")), "I expect: It costs less than flying once I count the hotel night (80% sure). Due 2027-03-20.");
+  const form = el.querySelector("form.na-form")!;
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["It went", "What I learned", "Due"]);
+  choose(form.querySelector("select")!, "right");
+  type(form.querySelector("textarea")!, "The sleeper was full; book it early");
+  await settle();
+  const saved = t.f.files.get("Decisions/Take the night train to Vienna.md")!;
+  assert.deepEqual([saved.fm!.outcome, saved.fm!.learned], ["right", "The sleeper was full; book it early"]);
+  assert.equal(text(el.querySelector(".na-view-text .na-text")), "I expected: It costs less than flying once I count the hotel night (80% sure). It went right.");
 });
 
 test("Task inbox: add a task to the inbox, see what is open and due this week, tick one in its own note", async () => {
