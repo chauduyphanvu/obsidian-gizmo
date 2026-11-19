@@ -3,11 +3,12 @@ import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { basename, typedName, type NoteReader } from "./expand.ts";
 import {
-  askersOf, describePermission, isComponent, isUrl, permissionsOf, readComponentPreview, readSpec,
+  askersOf, describePermission, isComponent, isUrl, permissionsOf, pickPanels, readComponentPreview, readSpec,
   resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
-import type { InputValue } from "./template.ts";
+import { thisValues } from "./sources/this.ts";
+import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
@@ -44,6 +45,41 @@ export interface AppEnv {
   openNote(path: string, fromPath: string): void;
   showSource(): void;
   now(): Date;
+}
+
+/** What an app keeps while it is open: input values, selections, the open tab and its timers. */
+export interface AppMemory {
+  values: Record<string, InputValue>;
+  selections: Map<string, Row>;
+  activeTab?: string;
+  timers: Map<string, TimerState>;
+}
+
+export function newMemory(): AppMemory {
+  return { values: {}, selections: new Map(), timers: new Map() };
+}
+
+/**
+ * Where an app runs when it isn't an app note opened on its own: `embed`, a `note-app` block with
+ * its keys; `app`, a block showing panels of an app note as that app; `lens`, a component shown
+ * above every note in its `for` scope. The app's path (links, lists typed into it) is given apart.
+ */
+export interface Hosting {
+  kind: "embed" | "app" | "lens";
+  /** What the app's grants are kept under. */
+  grantKey: string;
+  /** The note `$this` and `source: this` read and `save: this` writes. */
+  hostPath: string;
+  /** The app's keys, read again whenever they may have changed. */
+  definition(): Record<string, unknown> | undefined;
+  /** The data note, when it isn't the one the app's `store` or path gives. */
+  dataPath?: string;
+  /** A lens's `for` scope. */
+  scope?: string;
+  /** Only the panels with these titles or labels are drawn. */
+  panels?: string[];
+  /** Kept by the caller, so a block drawn again (as the editor does freely) keeps its state. */
+  memory?: AppMemory;
 }
 
 interface Mounted {
@@ -117,7 +153,14 @@ export class AppController {
   private definition = "";
   private dataPath = "";
   private unsubscribe: (() => void) | undefined;
-  private timers = new Map<string, TimerState>();
+  private hosting: Hosting | undefined;
+  private grantKey: string;
+  private hostPath: string;
+  /** What `$this` reads, and as JSON, to tell when it changed. */
+  private host: Row = {};
+  private hostJson = "";
+  private memory: AppMemory;
+  private get timers() { return this.memory.timers; }
   private tickHandle: ReturnType<typeof setInterval> | undefined;
   private refreshHandle: ReturnType<typeof setInterval> | undefined;
   private resizeHandle: ReturnType<typeof setTimeout> | undefined;
@@ -125,11 +168,13 @@ export class AppController {
   private columns = MAX_COLUMNS;
   private tabs: HTMLElement | undefined;
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
-  private activeTab: string | undefined;
+  private get activeTab() { return this.memory.activeTab; }
+  private set activeTab(tab: string | undefined) { this.memory.activeTab = tab; }
   /** Input values; kept while the note is edited, back to their starts when it's reopened. An empty search box has none. */
-  private values: Record<string, InputValue> = {};
+  private get values() { return this.memory.values; }
+  private set values(values: Record<string, InputValue>) { this.memory.values = values; }
   /** Rows panels selected, by selection name; kept while the note is edited, cleared when it's reopened. */
-  private selections = new Map<string, Row>();
+  private get selections() { return this.memory.selections; }
   /** The input bar, kept as drawn while the inputs stay the same so typing in it is never interrupted. */
   private bar: HTMLElement | undefined;
   private barFor = "";
@@ -138,10 +183,15 @@ export class AppController {
   /** What every panel may ask; each gets its own copy that knows which panel it is (see ctxFor). */
   private ctx: Omit<PanelCtx, "editRow">;
 
-  constructor(root: HTMLElement, appPath: string, env: AppEnv) {
+  /** Without `hosting`, the app note at `appPath` opened on its own: its own grants, data note and `$this`. */
+  constructor(root: HTMLElement, appPath: string, env: AppEnv, hosting?: Hosting) {
     this.root = root;
     this.appPath = appPath;
     this.env = env;
+    this.hosting = hosting;
+    this.grantKey = hosting?.grantKey ?? appPath;
+    this.hostPath = hosting?.hostPath ?? appPath;
+    this.memory = hosting?.memory ?? newMemory();
     this.shell = root.createDiv({ cls: "note-app" });
     const self = this;
     this.ctx = {
@@ -179,6 +229,13 @@ export class AppController {
   load(): void {
     this.destroyPanels();
     this.definition = "";
+    this.reconcile();
+    // Timers kept in memory from an earlier drawing of this app go on counting.
+    if ([...this.timers.values()].some((s) => s.endsAt)) this.startTicking();
+  }
+
+  /** Looks again at what may have changed without a note changing: whether the app is allowed now. */
+  recheck(): void {
     this.reconcile();
   }
 
@@ -231,25 +288,38 @@ export class AppController {
 
   /** Brings the drawn app in line with the note's keys, keeping panels whose keys didn't change. */
   private reconcile(): void {
-    const fm = this.env.frontmatter(this.appPath) ?? {};
-    const opts = { now: this.env.now(), notes: this.env.notes, path: this.appPath };
+    const moved = this.readHost();
+    const h = this.hosting;
+    const fm = (h ? h.definition() : this.env.frontmatter(this.appPath)) ?? {};
+    // In an embed or a lens (not one showing an app as that app), `save: this` writes the note it sits in.
+    const opts = { now: this.env.now(), notes: this.env.notes, path: this.appPath, host: h && h.kind !== "app" ? { scope: h.scope } : undefined };
     // A component note opened on its own shows how to use it, and a preview when it can.
-    const component: ComponentPreview | undefined = isComponent(fm) ? readComponentPreview(fm, opts) : undefined;
-    const result = component?.result ?? readSpec(fm, opts);
-    // The app is its own keys plus those of every component it uses.
-    const definition = JSON.stringify([fm, result?.spec?.read ?? null]);
-    if (definition === this.definition) return;
+    const component: ComponentPreview | undefined = !h && isComponent(fm) ? readComponentPreview(fm, opts) : undefined;
+    const read = component?.result ?? readSpec(fm, opts);
+    // An embed showing some of an app's panels asks for what the whole app asks for, as the app does.
+    const picked = read?.spec && h?.panels ? pickPanels(read.spec, h.panels, `[[${basename(this.appPath)}]]`) : undefined;
+    const result = read && picked ? { ...read, errors: [...read.errors, ...picked.errors] } : read;
+    const wanted = read?.spec ? permissionsOf(read.spec, this.appPath) : [];
+    const granted = this.env.isGranted(this.grantKey, wanted);
+    // The app is its own keys plus those of every component it uses, and whether it may run.
+    const definition = JSON.stringify([fm, result?.spec?.read ?? null, granted]);
+    if (definition === this.definition) {
+      if (moved) this.refillHostReaders();
+      return;
+    }
     this.definition = definition;
     this.links = result?.spec?.links ?? [];
-    this.spec = result?.spec;
-    this.dataPath = this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath);
+    this.spec = picked?.spec ?? result?.spec;
+    this.dataPath = h?.dataPath ?? (this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath));
 
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar) el.remove();
     const header = createDivIn(this.shell, "na-header");
     this.shell.prepend(header);
 
     if (!result) {
-      header.createDiv({ cls: "na-card", text: "This note has no app key." });
+      // A lens whose note no longer fills its params shows nothing until it is taken away.
+      if (!h) header.createDiv({ cls: "na-card", text: "This note has no app key." });
+      else if (h.kind === "app") header.createDiv({ cls: "na-card", text: `[[${basename(this.appPath)}]] isn't an app (it has no app: line)` });
       return this.showOnly(header);
     }
     const description = this.spec?.description ?? String(fm.app ?? "");
@@ -266,11 +336,11 @@ export class AppController {
       for (const e of result.errors) ul.createEl("li", { text: e });
     }
     const spec = this.spec;
-    if (!spec?.panels.length || component?.missing.length) return this.showOnly(header);
+    if (!spec?.panels.length || component?.missing.length || component?.lens) return this.showOnly(header);
 
-    const wanted = permissionsOf(spec, this.appPath);
-    if (!this.env.isGranted(this.appPath, wanted)) {
-      this.renderPermissionPrompt(header, wanted, askersOf(spec, this.appPath));
+    if (!granted) {
+      if (h?.kind === "app") this.renderOpenOnce(header);
+      else this.renderPermissionPrompt(header, wanted, askersOf(read!.spec!, this.appPath));
       return this.showOnly(header);
     }
 
@@ -310,6 +380,7 @@ export class AppController {
     for (const m of order) if (m.tab !== undefined) this.grid.appendChild(m.el);
     this.layout();
     this.subscribe();
+    if (moved) this.refillHostReaders();
   }
 
   /** Keeps each input's value while it's still allowed, starts new ones, and draws the bar. */
@@ -339,9 +410,31 @@ export class AppController {
     this.barFor = "";
   }
 
-  /** Every value a panel may read: the inputs', then the selections. */
+  /** Every value a panel may read: the inputs', then the selections, and the note the app sits in. */
   private current(): Record<string, unknown> {
-    return { ...this.values, ...Object.fromEntries(this.selections) };
+    return { ...this.values, ...Object.fromEntries(this.selections), [THIS]: this.host };
+  }
+
+  /** Reads `$this` again; true when it changed. */
+  private readHost(): boolean {
+    const host = thisValues(this.hostPath, this.env.frontmatter(this.hostPath), this.env.data.host.tags(this.hostPath));
+    const json = JSON.stringify(host);
+    if (json === this.hostJson) return false;
+    this.host = host;
+    this.hostJson = json;
+    return true;
+  }
+
+  /** Fills again the panels a change to `$this` changes; one whose values stayed the same is left as it is. */
+  private refillHostReaders(): void {
+    const values = this.current();
+    for (const m of this.mounted.values()) {
+      if (!m.ps.inputs.includes(THIS)) continue;
+      const r = resolvePanel(m.ps, values);
+      if (!m.idle && r.panel && stableJson(r.panel) === stableJson(m.p)) continue;
+      this.refill(m);
+    }
+    this.subscribe();
   }
 
   private setInput(name: string, value: InputValue): void {
@@ -406,9 +499,13 @@ export class AppController {
     if (header.parentElement !== this.shell) this.shell.prepend(header);
   }
 
-  /** The notes the app's definition comes from: its own, and each component it links to by name. */
+  /**
+   * The notes the app's definition comes from: its own, and each component it links to by name;
+   * and the note it sits in, which `$this` reads (and a lens's params).
+   */
   private definitionDeps(): string[] {
-    return [`file:${this.appPath}`, ...this.links.map((l) => `name:${l}`)];
+    const host = this.hostPath === this.appPath ? [] : [`file:${this.hostPath}`];
+    return [`file:${this.appPath}`, ...host, ...this.links.map((l) => `name:${l}`)];
   }
 
   private destroyPanels(): void {
@@ -422,7 +519,7 @@ export class AppController {
   }
 
   private files(): AppFiles {
-    return { appPath: this.appPath, dataPath: this.dataPath };
+    return { appPath: this.appPath, dataPath: this.dataPath, hostPath: this.hostPath };
   }
 
   private subscribe(): void {
@@ -430,7 +527,8 @@ export class AppController {
     const definition = this.definitionDeps();
     const deps = new Set(definition);
     for (const m of this.mounted.values()) for (const d of m.deps) deps.add(d);
-    const self = `file:${this.appPath}`;
+    // An embed's keys are in its block, not in the note it names as its path.
+    const self = this.hosting?.kind === "embed" ? "" : `file:${this.appPath}`;
     this.unsubscribe = this.env.data.subscribe(deps, (changed) => {
       // Lists typed into the app note are part of its definition, so a change there is
       // handled by reconcile, which reloads the panels it keeps.
@@ -554,7 +652,7 @@ export class AppController {
     const card = header.createDiv({ cls: "na-card" });
     card.createDiv({ cls: "na-title", text: "This app needs your OK to:" });
     const ul = card.createEl("ul");
-    const before = new Set(this.env.granted(this.appPath));
+    const before = new Set(this.env.granted(this.grantKey));
     for (const p of wanted) {
       const li = ul.createEl("li");
       if (before.size && !before.has(p)) li.createSpan({ cls: "na-new", text: "New" });
@@ -565,23 +663,38 @@ export class AppController {
     }
     const row = card.createDiv({ cls: "na-actions" });
     row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
-      await this.env.grant(this.appPath, wanted);
+      await this.env.grant(this.grantKey, wanted);
       this.load();
     });
-    row.createEl("button", { text: "Edit source" }).addEventListener("click", () => this.env.showSource());
+    // An embed's keys are in the note it is drawn in, and a lens's in its component.
+    if (!this.hosting) row.createEl("button", { text: "Edit source" }).addEventListener("click", () => this.env.showSource());
+  }
+
+  /** In an embed of an app that isn't allowed yet: the app asks for itself when it is opened. */
+  private renderOpenOnce(header: HTMLElement): void {
+    const line = header.createDiv({ cls: "na-waiting" });
+    line.createSpan({ text: "Open " });
+    const link = line.createEl("a", { cls: "internal-link", text: `[[${basename(this.appPath)}]]`, href: "#" });
+    link.addEventListener("click", (e) => {
+      e.preventDefault();
+      this.env.openNote(this.appPath, this.hostPath);
+    });
+    line.createSpan({ text: " once to allow it" });
   }
 
   private renderUsage(header: HTMLElement, c: ComponentPreview): void {
     const card = header.createDiv({ cls: "na-card" });
     card.createDiv({ text: "A component. Use it in an app's panels:" });
     card.createEl("pre", { cls: "na-example", text: c.usage });
-    if (c.missing.length) card.createDiv({ cls: "na-label", text: "Give every param a default to preview it here." });
+    if (c.lens) card.createDiv({ cls: "na-label", text: `It is also a lens: it shows above every note in ${c.lens}.` });
+    else if (c.missing.length) card.createDiv({ cls: "na-label", text: "Give every param a default to preview it here." });
   }
 
   private renderEmpty(header: HTMLElement): void {
     const card = header.createDiv({ cls: "na-card" });
     card.createDiv({ text: "No app keys yet. Add a view under the app line, for example:" });
     card.createEl("pre", { cls: "na-example", text: "view: countdown\nto: 2027-01-01\nlabel: New year" });
+    if (this.hosting) return;
     card.createDiv({ cls: "na-actions" }).createEl("button", { cls: "mod-cta", text: "Edit source" })
       .addEventListener("click", () => this.env.showSource());
   }
@@ -596,7 +709,24 @@ export class AppController {
   private ctxFor(id: string): PanelCtx {
     return Object.assign(Object.create(this.ctx) as PanelCtx, {
       editRow: (row: Row, field: string, value: unknown) => this.editRow(id, row, field, value),
+      setProperty: (field: string, value: unknown) => this.setProperty(id, field, value),
     });
+  }
+
+  /**
+   * Writes one field of a `save: this` form to the note the app sits in: only a field the form has,
+   * and for a lens only while that note is in the scope it was allowed to change.
+   */
+  private async setProperty(id: string, field: string, value: unknown): Promise<void> {
+    const m = this.mounted.get(id);
+    const target = m?.p.target;
+    if (!m || m.idle || target?.kind !== "this" || !Object.hasOwn(m.p.fields ?? {}, field)) return;
+    if (target.scope && !this.env.data.notes(target.scope).some((r) => r.path === this.hostPath)) return;
+    try {
+      await this.env.writeFrontmatter(this.hostPath, (fm) => { fm[field] = value; });
+    } catch (e) {
+      this.env.notify(`Couldn't save: ${(e as Error).message}`);
+    }
   }
 
   /**

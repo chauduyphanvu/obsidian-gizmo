@@ -2,6 +2,7 @@ import {
   MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
 import { DataLayer } from "./datalayer.ts";
+import { dropGrants, moveGrants } from "./hosted.ts";
 import { obsidianHost } from "./host.ts";
 import { defaultDataPath } from "./store.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
@@ -29,17 +30,12 @@ export default class NoteAppsPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.dataLayer.fileDeleted(file.path);
-      if (!(file.path in this.store.grants)) return;
-      delete this.store.grants[file.path];
-      void this.saveData(this.store);
+      if (dropGrants(this.store.grants, file.path)) void this.saveData(this.store);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.dataLayer.fileRenamed(file.path, oldPath);
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
-      if (!(oldPath in this.store.grants)) return;
-      this.store.grants[file.path] = this.store.grants[oldPath];
-      delete this.store.grants[oldPath];
-      void this.saveData(this.store);
+      if (moveGrants(this.store.grants, oldPath, file.path)) void this.saveData(this.store);
     }));
 
     this.addCommand({

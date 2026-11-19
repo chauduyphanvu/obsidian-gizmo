@@ -28,6 +28,8 @@ export interface Host {
 export interface AppFiles {
   appPath: string;
   dataPath: string;
+  /** The note it sits in (`$this`, `source: this`) when that isn't its own: an embed's or a lens's note. */
+  hostPath?: string;
 }
 
 const SECRET = /\{secret:([a-z0-9-]+)\}/g;
