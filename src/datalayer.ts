@@ -79,11 +79,16 @@ export class DataLayer {
     return sourceDef(source).deps(withSource(p, source), files);
   }
 
+  /** What the source returns, before any step of the panel's pipeline. */
+  async rawData(source: string | undefined, p: Panel, files: AppFiles, opts: LoadOpts): Promise<unknown> {
+    if (!source) return undefined;
+    return sourceDef(source).load(withSource(p, source), files, this, opts);
+  }
+
   /** `source` may differ from `p.source`: a checklist reads the list it saves to. */
   async panelData(source: string | undefined, p: Panel, files: AppFiles, opts: LoadOpts): Promise<unknown> {
     if (!source) return undefined;
-    const data = await sourceDef(source).load(withSource(p, source), files, this, opts);
-    return compilePipeline(p, opts.now)(data);
+    return compilePipeline(p, opts.now)(await this.rawData(source, p, files, opts));
   }
 
   // ---- Web ----------------------------------------------------------------------------------

@@ -23,9 +23,9 @@ export function checkVersion(value: unknown): string | undefined {
 }
 
 /** Keys only a block holds, for others to read: never merged into a panel that doesn't take them. */
-const BLOCK_ONLY: readonly string[] = ["fields", "record", "into"];
+export const BLOCK_ONLY: readonly string[] = ["fields", "record", "into"];
 /** Keys a named source in `data:` may hold. */
-const BLOCK_KEYS: readonly string[] = [...DATA_KEYS, ...GROUP_KEYS, ...BLOCK_ONLY];
+export const BLOCK_KEYS: readonly string[] = [...DATA_KEYS, ...GROUP_KEYS, ...BLOCK_ONLY];
 /** Keys that say where a chain's data comes from, so only its root block holds them. */
 const ROOT_KEYS: readonly string[] = ["headers", "from", "body", "record", "into"];
 /** The most blocks one chain may hold, its root included. */

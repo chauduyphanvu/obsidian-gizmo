@@ -334,3 +334,48 @@
 .note-app .na-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
 .note-app .na-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); }
 .note-app .na-stacked:not(.na-selected) { stroke: var(--background-secondary); stroke-width: 1; }
+/* Authoring: suggestions, error links, inspector */
+.suggestion-item .na-suggest-key { color: var(--text-normal); }
+.suggestion-item .na-suggest-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); }
+.note-app button.na-error-link {
+  background: none;
+  box-shadow: none;
+  border: none;
+  padding: 0;
+  height: auto;
+  font: inherit;
+  text-align: left;
+  white-space: normal;
+  overflow-wrap: anywhere;
+  color: var(--text-accent);
+  text-decoration: underline;
+  cursor: pointer;
+}
+.note-app button.na-error-link:hover { color: var(--text-accent-hover); }
+.note-app .na-inspector { max-height: 60vh; overflow: auto; }
+.note-app .na-inspect-source + .na-inspect-source { margin-top: var(--size-4-3); padding-top: var(--size-4-3); border-top: 1px solid var(--background-modifier-border); }
+.note-app .na-inspect-head { font-weight: var(--font-semibold); font-size: var(--font-ui-small); }
+.note-app .na-inspect-kind { color: var(--text-muted); font-weight: var(--font-normal); }
+.note-app .na-inspect-url { color: var(--text-faint); font-size: var(--font-ui-smaller); word-break: break-all; margin-bottom: var(--size-4-1); }
+.note-app .na-inspect-error { color: var(--text-error); font-size: var(--font-ui-small); }
+.note-app .na-tree { font-family: var(--font-monospace); font-size: var(--font-ui-smaller); line-height: 1.6; }
+.note-app .na-tree .na-children { margin-left: var(--size-4-3); padding-left: var(--size-4-2); border-left: 1px solid var(--background-modifier-border); }
+.note-app .na-tree summary { cursor: pointer; }
+.note-app .na-tree button.na-key {
+  background: none;
+  box-shadow: none;
+  border: none;
+  padding: 0 var(--size-4-1) 0 0;
+  height: auto;
+  font: inherit;
+  color: var(--text-normal);
+  cursor: pointer;
+}
+.note-app .na-tree button.na-key::after { content: ":"; color: var(--text-faint); }
+.note-app .na-tree button.na-key:hover { color: var(--text-accent); text-decoration: underline; }
+.note-app .na-tree .na-t-string { color: var(--color-green); }
+.note-app .na-tree .na-t-number { color: var(--color-blue); }
+.note-app .na-tree .na-t-bool { color: var(--color-orange); }
+.note-app .na-tree .na-t-null, .note-app .na-tree .na-t-meta { color: var(--text-muted); }
+.note-app .na-tree .na-copied { color: var(--text-accent); margin-right: var(--size-4-2); font-family: var(--font-interface); }
+.note-app .na-tree .na-inspect-more { color: var(--text-faint); }

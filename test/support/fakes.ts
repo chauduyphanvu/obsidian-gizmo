@@ -96,6 +96,9 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
   const writes: string[] = [];
   const notices: string[] = [];
   const opened: string[] = [];
+  /** The app note's text, which `sourceLines` gives back, and the lines `showSourceAt` was asked for. */
+  const source = { lines: [] as string[], shownAt: [] as number[] };
+  const copied: string[] = [];
   const changed = (path: string) => {
     data.fileChanged(path);
     f.flush();
@@ -143,7 +146,10 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     notify: (m) => { notices.push(m); },
     openNote: (path) => { opened.push(path); },
     showSource: () => {},
+    showSourceAt: (line) => { source.shownAt.push(line); },
+    sourceLines: async () => source.lines,
+    copy: (text) => { copied.push(text); },
     now: () => new Date(2026, 10, 18, 12, 0),
   };
-  return { env, f, data, writes, notices, opened, changed };
+  return { env, f, data, writes, notices, opened, changed, source, copied };
 }
