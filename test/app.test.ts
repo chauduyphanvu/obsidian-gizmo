@@ -40,6 +40,7 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
     appendLine: async (path) => { writes.push(path); },
     createNote: async () => false,
     readBody: async () => "",
+    setTaskDone: async () => false,
     notify: (m) => { notices.push(m); },
     openNote: () => {},
     showSource: () => {},

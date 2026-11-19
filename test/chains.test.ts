@@ -209,7 +209,7 @@ test("an input used in a block above the named one is filled, checked and reload
     notes: { resolve: () => undefined, frontmatter: () => undefined },
     isGranted: () => true, granted: () => [], grant: async () => {},
     storePath: (s: string) => s, writeFrontmatter: async () => {}, appendLine: async () => {},
-    createNote: async () => false, readBody: async () => "",
+    createNote: async () => false, readBody: async () => "", setTaskDone: async () => false,
     notify: () => {}, openNote: () => {}, showSource: () => {}, now: () => NOW,
   } satisfies AppEnv;
   const root = document.createElement("div");

@@ -22,6 +22,8 @@ export interface Host {
   now(): number;
   /** Runs cb once, soon; used to batch change notifications. */
   schedule(cb: () => void): void;
+  /** The whole text of a file in the vault, a note's frontmatter included. */
+  readText(path: string): Promise<string>;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -52,6 +54,8 @@ export class DataLayer {
   private listeners = new Set<{ deps: Set<string>; cb: (changed: Set<string>) => void }>();
   private pending = new Set<string>();
   private flushQueued = false;
+  /** What each parse made of a note's text, by note path; dropped when the note changes. */
+  private parsed = new Map<string, Map<unknown, Promise<unknown>>>();
 
   /** What sources read the vault through. */
   readonly host: Host;
@@ -115,6 +119,21 @@ export class DataLayer {
     return rows;
   }
 
+  /**
+   * What `parse` makes of a note's text. Each note is read and parsed once and kept until it
+   * changes, so a scope of many notes re-reads only the ones that changed.
+   */
+  parseNote<T>(path: string, parse: (text: string) => T): Promise<T> {
+    let byParse = this.parsed.get(path);
+    if (!byParse) this.parsed.set(path, (byParse = new Map()));
+    const hit = byParse.get(parse) as Promise<T> | undefined;
+    if (hit) return hit;
+    const promise = this.host.readText(path).then(parse);
+    byParse.set(parse, promise);
+    promise.catch(() => { if (this.parsed.get(path)?.get(parse) === promise) this.parsed.get(path)!.delete(parse); });
+    return promise;
+  }
+
   private rows(): Map<string, Row> {
     if (!this.index) {
       this.index = new Map();
@@ -137,6 +156,7 @@ export class DataLayer {
   // ---- Changes ------------------------------------------------------------------------------
 
   fileChanged(path: string): void {
+    this.parsed.delete(path);
     const before = this.index?.get(path);
     const info = this.host.fileInfo(path);
     if (this.index && info) this.index.set(path, this.row(info));
@@ -144,6 +164,7 @@ export class DataLayer {
   }
 
   fileDeleted(path: string): void {
+    this.parsed.delete(path);
     const before = this.index?.get(path);
     this.index?.delete(path);
     this.touch(path, before, undefined);

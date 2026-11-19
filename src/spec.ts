@@ -502,6 +502,7 @@ export function describePermission(perm: string): string {
     case "store": return `Save its data in ${what}`;
     case "create": return `Create notes in ${what}`;
     case "edit": return `Change properties of notes in ${what}`;
+    case "tasks": return `Tick tasks in notes in ${what}`;
     default: return perm;
   }
 }

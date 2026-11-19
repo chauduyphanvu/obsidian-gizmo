@@ -3,6 +3,7 @@ import { bodyOf } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type NoteAppsPlugin from "./main.ts";
+import { tickLine } from "./sources/tasks.ts";
 import { notePath } from "./spec.ts";
 import { storeTarget } from "./store.ts";
 
@@ -35,6 +36,11 @@ export function obsidianHost(app: App): Host {
     now: () => Date.now(),
     // A short timer rather than requestAnimationFrame, which stops while the window is hidden.
     schedule: (cb) => { window.setTimeout(cb, 30); },
+    async readText(path) {
+      const f = file(path);
+      if (!f) throw new Error(`can't find ${path}`);
+      return app.vault.cachedRead(f);
+    },
   };
 }
 
@@ -111,6 +117,20 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
       const f = app.metadataCache.getFirstLinkpathDest(target, file.path) ?? app.vault.getFileByPath(notePath(normalizePath(target)));
       if (!f) throw new Error(`can't find [[${target}]]`);
       return bodyOf(await app.vault.cachedRead(f));
+    },
+    async setTaskDone(path, line, text, done) {
+      let ticked = false;
+      await queued(path, async () => {
+        const target = app.vault.getFileByPath(path);
+        if (!target) return;
+        // process reads and writes in one step, so an edit made meanwhile isn't lost or misread.
+        await app.vault.process(target, (data) => {
+          const next = tickLine(data, line, text, done);
+          ticked = next !== undefined;
+          return next ?? data;
+        });
+      });
+      return ticked;
     },
     notify: (message) => { new Notice(message); },
     openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),

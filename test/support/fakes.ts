@@ -1,5 +1,6 @@
 import type { AppEnv } from "../../src/app.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
+import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
 
 type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string }>;
@@ -27,6 +28,11 @@ export function fakeHost(notes: Notes = {}) {
     secret: (id) => secrets[id] ?? null,
     now: () => clock,
     schedule: (cb) => { queued.push(cb); },
+    // A fake note keeps its frontmatter apart, so its text is its body and lines count from there.
+    async readText(path) {
+      if (!files.has(path)) throw new Error(`can't find ${path}`);
+      return files.get(path)!.body ?? "";
+    },
   };
   return {
     host,
@@ -90,6 +96,15 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
       const path = resolve(storeTarget(link));
       if (!path) throw new Error(`can't find [[${storeTarget(link)}]]`);
       return f.files.get(path)?.body ?? "";
+    },
+    setTaskDone: async (path, line, text, done) => {
+      const note = f.files.get(path);
+      const next = note ? tickLine(note.body ?? "", line, text, done) : undefined;
+      if (!note || next === undefined) return false;
+      writes.push(path);
+      note.body = next;
+      changed(path);
+      return true;
     },
     notify: (m) => { notices.push(m); },
     openNote: (path) => { opened.push(path); },

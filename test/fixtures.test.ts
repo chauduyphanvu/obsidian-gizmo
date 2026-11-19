@@ -1,6 +1,6 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
+import { readdirSync, readFileSync } from "node:fs";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { permissionsOf, readSpec } from "../src/spec.ts";
@@ -110,4 +110,50 @@ test("Chores: a form shaped by the block saves chores; ticking one off moves it 
   assert.equal((f.files.get("Apps/Chores data.md")!.fm!.chores as { done: boolean }[])[0].done, true);
   assert.equal(text(todo.querySelector(".na-empty")), "Nothing here yet.");
   assert.equal(text(root.querySelector(".na-view-number .na-big")), "1");
+});
+
+/** The notes of a test vault folder, each with its whole text as its body, so task lines count as in the file. */
+function withText(folder: string) {
+  const names = readdirSync(new URL(`./vault/${folder}`, import.meta.url)).filter((n) => n.endsWith(".md"));
+  return Object.fromEntries(names.map((n) => [`${folder}/${n}`, {
+    fm: vaultNote(`${folder}/${n}`).fm,
+    body: readFileSync(new URL(`./vault/${folder}/${n}`, import.meta.url), "utf8"),
+  }]));
+}
+
+test("Tasks: what's open across project notes, ticked off in the note itself", async () => {
+  const spec = readSpec(vaultNote("Apps/Tasks.md").fm, { path: "Apps/Tasks.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Tasks.md"), ["read:Tasks", "tasks:Tasks"]);
+
+  const { root, f, notices } = openApp("Apps/Tasks.md", withText("Tasks"));
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [open, soon, done] = [...root.querySelectorAll(".na-panel")];
+  const openRows = () => [...open.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].slice(0, 3).map((td) => text(td)));
+  // Undated tasks sort first; a code block's checkboxes aren't tasks.
+  assert.deepEqual(openRows(), [
+    ["Pour the base", "Garden shed", "—"],
+    ["Draw the plans", "Garden shed", "—"],
+    ["Write the about page", "Website", "—"],
+    ["Download bank statements 📅 2026-11-19", "Tax return", "2026-11-19"],
+    ["Order timber 📅 2026-11-20 #shopping", "Garden shed", "2026-11-20"],
+    ["Hire a mixer [due:: 2026-11-24]", "Garden shed", "2026-11-24"],
+    ["Renew the domain 📅 2026-11-25 #admin", "Website", "2026-11-25"],
+    ["File the return 📅 2027-01-31", "Tax return", "2027-01-31"],
+  ]);
+  assert.equal(text(soon.querySelector(".na-big")), "4");
+  assert.deepEqual([...done.querySelectorAll("li")].map((li) => text(li)),
+    ["Measure the space 📅 2026-11-02 · Garden shed", "Find last year's return · Tax return", "Pick a theme · Website"]);
+
+  const box = open.querySelectorAll("tbody tr")[3].querySelector('input[type="checkbox"]') as HTMLInputElement;
+  box.checked = true;
+  box.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.deepEqual(notices, []);
+  assert.equal(f.files.get("Tasks/Tax return.md")!.body,
+    "Everything for this year's return, in order.\n\n1. [x] Find last year's return\n2. [x] Download bank statements 📅 2026-11-19\n3. [ ] File the return 📅 2027-01-31\n");
+  assert.equal(openRows().length, 7);
+  assert.equal(text(soon.querySelector(".na-big")), "3");
+  assert.equal(text(done.querySelectorAll("li")[2]), "Download bank statements 📅 2026-11-19 · Tax return");
 });

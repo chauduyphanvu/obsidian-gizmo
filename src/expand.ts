@@ -91,6 +91,10 @@ export function readBlocks(value: unknown, errors: string[], names: ReadonlySet<
       errors.push(`data: "notes" can't be a name; source: notes already means notes in the vault`);
       continue;
     }
+    if (name === "tasks") {
+      errors.push(`data: "tasks" can't be a name; source: tasks already means tasks in notes`);
+      continue;
+    }
     if (!isPlainObject(raw)) {
       errors.push(`${at} must be a set of keys`);
       continue;
