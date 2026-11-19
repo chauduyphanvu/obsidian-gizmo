@@ -4,7 +4,7 @@ import { readdirSync } from "node:fs";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { permissionsOf, readSpec } from "../src/spec.ts";
-import { fakeEnv } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv } from "./support/fakes.ts";
 import { vaultNote } from "./support/yaml.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -110,4 +110,90 @@ test("Chores: a form shaped by the block saves chores; ticking one off moves it 
   assert.equal((f.files.get("Apps/Chores data.md")!.fm!.chores as { done: boolean }[])[0].done, true);
   assert.equal(text(todo.querySelector(".na-empty")), "Nothing here yet.");
   assert.equal(text(root.querySelector(".na-view-number .na-big")), "1");
+});
+
+const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
+const KP_READINGS = [
+  { time_tag: "2026-11-18T10:58:00", kp_index: 4, estimated_kp: 4.33, kp: "4P" },
+  { time_tag: "2026-11-18T10:59:00", kp_index: 5, estimated_kp: 5.33, kp: "5P" },
+];
+
+/** The background service on these vault notes, started; `open` draws an app as its tab would. */
+async function background(paths: string[]) {
+  const t = fakeBackground(Object.fromEntries(paths.map((p) => [p, { fm: vaultNote(p).fm }])), { [KP]: KP_READINGS });
+  t.env.opened = (path) => t.bg.opened(path);
+  t.env.alerts = t.bg.alerts;
+  await t.bg.start();
+  const open = async (path: string) => {
+    const root = document.createElement("div");
+    document.body.appendChild(root);
+    new AppController(root, path, t.env).load();
+    await settle();
+    return root;
+  };
+  return { ...t, open };
+}
+
+test("Space weather: Kp now, told when a storm is likely, an hourly record of my own, and my sightings", async () => {
+  const path = "Apps/Space weather.md";
+  const spec = readSpec(vaultNote(path).fm, { path })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:services.swpc.noaa.gov"]);
+
+  // With the app closed: a sample recorded, the storm told once, the value in the status bar.
+  const t = await background([path]);
+  const data = () => t.f.files.get("Apps/Space weather data.md")!.fm!;
+  assert.deepEqual(data().kp_log, [{ at: "2026-11-18T12:00", time_tag: "2026-11-18T10:59:00", kp_index: 5, estimated_kp: 5.33, kp: "5P" }]);
+  assert.deepEqual(t.notices, ["Space weather: Kp now 5.33"]);
+  assert.deepEqual(t.out.status, [{ appPath: path, text: "Kp now: 5.33", title: "Space weather" }]);
+  assert.deepEqual(t.out.commands, [{ id: `${path}:saw-aurora`, name: "Space weather: Saw aurora" }]);
+
+  const root = await t.open(path);
+  assert.equal(root.querySelector(".na-error"), null);
+  const [now, , record, sightings] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(text(now.querySelector(".na-big")), "5.33");
+  assert.equal(text(record.querySelector(".na-title")), "My Kp record");
+  assert.ok(record.querySelector(".na-chart-svg"));
+  (root.querySelector("button.na-button") as HTMLButtonElement).click();
+  await settle();
+  assert.equal(text(sightings.querySelector(".na-list")), "2026-11-18T12:00");
+  // From a hotkey or a link, without opening the app.
+  t.advance(90 * 60_000);
+  await t.bg.runUri({ app: "Space weather", do: "saw-aurora" });
+  await t.bg.tick();
+  await settle();
+  assert.deepEqual((data().sightings as { at: string }[]).map((s) => s.at), ["2026-11-18T12:00", "2026-11-18T13:30"]);
+  assert.equal((data().kp_log as unknown[]).length, 2);
+  assert.deepEqual(t.notices.slice(1), ["Sighting saved", "Sighting saved"]);
+});
+
+test("Meds: took meds from a hotkey or a link, and today's doses in the status bar", async () => {
+  const path = "Apps/Meds.md";
+  assert.deepEqual(readSpec(vaultNote(path).fm, { path })!.errors, []);
+  const t = await background([path]);
+  assert.deepEqual(t.out.commands, [{ id: `${path}:took-meds`, name: "Meds: Took meds" }]);
+  assert.deepEqual(t.out.status, [{ appPath: path, text: "Doses today: 0", title: "Meds" }]);
+  await t.bg.runCommand(`${path}:took-meds`);
+  await t.bg.runUri({ app: "Meds", do: "took-meds" });
+  await settle();
+  assert.equal((t.f.files.get("Apps/Meds data.md")!.fm!.doses as unknown[]).length, 2);
+  assert.equal(t.writes.filter((w) => w === "Daily.md").length, 2);
+  assert.deepEqual(t.notices, ["Logged", "Logged"]);
+  assert.equal(t.out.status[0].text, "Doses today: 2");
+});
+
+test("Attention: what needs my attention across my apps, and the day's to-dos", async () => {
+  const path = "Apps/Attention.md";
+  const spec = readSpec(vaultNote(path).fm, { path })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), []);
+  const t = await background([path, "Apps/Space weather.md"]);
+  const root = await t.open(path);
+  const items = [...root.querySelectorAll(".na-alerts li")];
+  assert.deepEqual(items.map((li) => [...li.children].map((c) => text(c))), [["Space weather", "Kp now", "5.33"]]);
+  const box = root.querySelector(".na-checklist input") as HTMLInputElement;
+  box.dispatchEvent(new window.Event("change"));
+  await settle();
+  assert.deepEqual(t.f.files.get("Apps/Attention data.md")!.fm!.done_today, ["Take meds"]);
+  assert.match(text(root.querySelector(".na-view-checklist .na-title")), /1\/4/);
 });
