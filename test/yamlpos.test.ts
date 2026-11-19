@@ -104,7 +104,7 @@ test("Movers: computed columns and chained blocks", () => {
   assert.deepEqual(rest(at(MOVERS, "    source: days")), value("block", "source", "days", ["where"]));
   assert.deepEqual(rest(at(MOVERS, "    source: big")), value("panel", "source", "big", ["view", "title", "label"], "number"));
   assert.equal(at(MOVERS, "      when: '\"session \" + session'", "wh")?.where, "other");
-  assert.deepEqual(rest(at(MOVERS, "    columns: [when, close, change]", "columns")), key("panel", "columns", ["view", "title", "source", "compute", "sort", "limit", "decimals"], "table"));
+  assert.deepEqual(rest(at(MOVERS, "    columns: [when, close, change]", "columns")), key("panel", "columns", ["view", "title", "source", "compute", "sort", "limit", "decimals", "select"], "table"));
 });
 
 function rest(c: Context | undefined): Expected | undefined {

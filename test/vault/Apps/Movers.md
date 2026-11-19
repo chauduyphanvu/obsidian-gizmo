@@ -1,5 +1,5 @@
 ---
-app: How much a stock moved each day
+app: Watch a stock's big moves and note why they happened
 inputs:
   symbol: [SPY, QQQ, AAPL]
 data:
@@ -58,5 +58,23 @@ panels:
     limit: 5
     columns: [when, close, change]
     decimals: 2
+    select: day
+  - view: form
+    title: Why did it move?
+    fields: {reason: text}
+    save: reasons
+    row:
+      symbol: $symbol
+      session: $day.session
+      close: $day.close
+      change: $day.change
+      reason: "{reason}"
+    label: Note it
+  - view: list
+    title: Why they moved
+    source: reasons
+    sort: -at
+    item: "{symbol} session {session}, {change}%: {reason}"
 ---
-Prices from Yahoo Finance, no API key. Each session's change is worked out from the close before it with `prev`.
+Prices from Yahoo Finance, no API key. Each session's change is worked out from the close before it with `prev`;
+pick one of the biggest moves and write down why it happened, and your notes stay in the list below.
