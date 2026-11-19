@@ -1,0 +1,18 @@
+{
+  "name": "note-apps",
+  "version": "0.1.0",
+  "description": "Turn a note's frontmatter into a working app.",
+  "scripts": {
+    "dev": "node esbuild.config.mjs",
+    "build": "tsc && node esbuild.config.mjs production",
+    "test": "node --test test/*.test.ts"
+  },
+  "type": "module",
+  "devDependencies": {
+    "@types/node": "^26.6.6",
+    "esbuild": "^0.28.2",
+    "obsidian": "^1.14.4",
+    "typescript": "^7.0.2"
+  },
+  "private": true
+}

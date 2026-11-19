@@ -1,0 +1,123 @@
+.note-app {
+  padding: var(--size-4-4) var(--size-4-4) var(--size-4-8);
+  max-width: 960px;
+  margin: 0 auto;
+}
+
+.note-app .na-description {
+  color: var(--text-muted);
+  font-size: var(--font-ui-small);
+  margin-bottom: var(--size-4-3);
+}
+
+.note-app .na-grid {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  gap: var(--size-4-3);
+}
+
+.note-app .na-panel,
+.note-app .na-card {
+  background: var(--background-secondary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-l);
+  padding: var(--size-4-3) var(--size-4-4);
+  min-width: 0;
+}
+
+.note-app .na-wide { grid-column: 1 / -1; }
+.note-app .na-card { margin-bottom: var(--size-4-3); }
+.note-app .na-card ul { margin: var(--size-4-2) 0; }
+.note-app .na-error { border-color: var(--text-error); }
+
+.note-app .na-title {
+  font-weight: var(--font-semibold);
+  font-size: var(--font-ui-small);
+  color: var(--text-normal);
+  margin-bottom: var(--size-4-2);
+}
+
+.note-app .na-label {
+  color: var(--text-muted);
+  font-size: var(--font-ui-smaller);
+  margin-top: var(--size-4-1);
+}
+
+.note-app .na-big {
+  font-size: 2.1em;
+  font-weight: 650;
+  line-height: 1.15;
+  font-variant-numeric: tabular-nums;
+  letter-spacing: -0.01em;
+}
+
+.note-app .na-unit {
+  font-size: 0.5em;
+  font-weight: 500;
+  color: var(--text-muted);
+  margin-left: 0.3em;
+}
+
+.note-app .na-text { font-size: var(--font-text-size); line-height: 1.5; }
+.note-app .na-empty { color: var(--text-faint); font-size: var(--font-ui-small); }
+
+.note-app .na-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--size-4-2);
+  flex-wrap: wrap;
+}
+
+.note-app .na-row .na-title { margin-bottom: 0; }
+.note-app .na-small { font-size: var(--font-ui-smaller); padding: 2px 8px; height: auto; }
+.note-app .na-button { width: 100%; height: 2.6em; font-size: var(--font-ui-medium); }
+
+/* Charts */
+.note-app .na-chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
+.note-app .na-gridline { stroke: var(--background-modifier-border); stroke-width: 1; }
+.note-app .na-axis { stroke: none; fill: var(--text-faint); font-size: 11px; font-family: var(--font-interface); }
+.note-app .na-line { fill: none; stroke: var(--interactive-accent); stroke-width: 2; stroke-linejoin: round; }
+.note-app .na-area { fill: var(--interactive-accent); opacity: 0.12; }
+.note-app .na-dot { fill: var(--interactive-accent); }
+.note-app .na-bar { fill: var(--interactive-accent); opacity: 0.85; }
+.note-app .na-cursor { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
+.note-app .na-readout {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+  min-height: 1.4em;
+}
+
+/* Tables and lists */
+.note-app .na-table-wrap { overflow-x: auto; }
+.note-app .na-table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small); }
+.note-app .na-table th { text-align: left; color: var(--text-muted); font-weight: var(--font-medium); }
+.note-app .na-table th, .note-app .na-table td {
+  padding: var(--size-4-1) var(--size-4-2);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.note-app .na-table td.na-num { text-align: right; font-variant-numeric: tabular-nums; }
+.note-app .na-list, .note-app .na-checklist { margin: 0; padding-left: var(--size-4-5); }
+.note-app .na-checklist { list-style: none; padding-left: 0; }
+.note-app .na-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }
+.note-app .na-checklist input:checked + span { color: var(--text-faint); text-decoration: line-through; }
+
+/* Forms */
+.note-app .na-form { display: flex; flex-wrap: wrap; gap: var(--size-4-3); align-items: flex-end; }
+.note-app .na-field { display: flex; flex-direction: column; gap: var(--size-4-1); font-size: var(--font-ui-small); color: var(--text-muted); }
+.note-app .na-field textarea { min-width: 260px; }
+
+/* Progress and timer */
+.note-app .na-progress {
+  height: 8px;
+  border-radius: 4px;
+  background: var(--background-modifier-border);
+  margin-top: var(--size-4-2);
+  overflow: hidden;
+}
+.note-app .na-progress-fill { height: 100%; background: var(--interactive-accent); }
+.note-app .na-clock { margin-bottom: var(--size-4-2); }
+.note-app .na-actions { display: flex; gap: var(--size-4-2); margin-top: var(--size-4-2); }
+.note-app .na-example { margin: var(--size-4-2) 0; padding: var(--size-4-2) var(--size-4-3); background: var(--background-primary); border-radius: var(--radius-s); font-size: var(--font-ui-small); }
