@@ -1,4 +1,4 @@
-import { filterRows, getPath, parseBody, sortRows, stampParts, type Row } from "./data.ts";
+import { compilePipeline, parseBody, stampParts, type Row } from "./data.ts";
 import { isUrl, type Panel } from "./spec.ts";
 import { resolveList } from "./store.ts";
 
@@ -78,13 +78,7 @@ export class DataLayer {
     if (isUrl(source)) data = await this.fetch(source, p.headers, opts.ttlMs, opts.force);
     else if (source === "notes") data = this.notes(p.from ?? "");
     else data = resolveList(source, this.host.frontmatter(files.dataPath), this.host.frontmatter(files.appPath) ?? {});
-    data = getPath(data, p.pick);
-    if (Array.isArray(data)) {
-      data = filterRows(data, p.where, opts.now);
-      data = sortRows(data as unknown[], p.sort);
-      if (p.limit) data = (data as unknown[]).slice(0, p.limit);
-    }
-    return data;
+    return compilePipeline(p, opts.now)(data);
   }
 
   // ---- Web ----------------------------------------------------------------------------------

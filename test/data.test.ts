@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  aggregate, daysUntil, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
+  aggregate, compilePipeline, daysUntil, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
 } from "../src/data.ts";
 
 const NOW = new Date(2026, 10, 18, 14, 30); // Wed 18 Nov 2026, local time
@@ -97,4 +97,29 @@ test("min and max work on arrays too long to spread", () => {
   const big = Array.from({ length: 300_000 }, (_, i) => i - 1000);
   assert.deepEqual(extent(big), [-1000, 298_999]);
   assert.equal(aggregate(big.map((v) => ({ v })), "v", "max"), 298_999);
+});
+
+test("a panel's pipeline picks, filters, sorts and limits in one pass", () => {
+  const input = { hourly: [
+    { at: "2026-11-18T09:00", t: 4 }, { at: "2026-11-17T09:00", t: 9 },
+    { at: "2026-11-18T15:00", t: 11 }, { at: "2026-11-18T12:00", t: 7 },
+  ] };
+  const run = compilePipeline({ pick: "hourly", where: { at: "today", t: ">5" }, sort: "-at", limit: 1 }, NOW);
+  assert.deepEqual(run(input), [{ at: "2026-11-18T15:00", t: 11 }]);
+  assert.deepEqual(compilePipeline({ pick: "hourly.0" }, NOW)(input), { at: "2026-11-18T09:00", t: 4 });
+});
+
+test("10,000 rows go through where and sort quickly", () => {
+  const rows = Array.from({ length: 10_000 }, (_, i) => ({
+    at: new Date(2025, 10, 18 + Math.floor(i / 30)).toISOString().slice(0, 10),
+    weight: 70 + ((i * 37) % 200) / 10,
+    tags: ["#a", i % 2 ? "#b" : "#c"],
+  }));
+  const run = compilePipeline({ where: { at: "last 90 days", weight: ">75", tags: "#b" }, sort: "-at" }, NOW);
+  const start = performance.now();
+  const out = run(rows) as { at: string }[];
+  const ms = performance.now() - start;
+  assert.ok(out.length > 0 && out[0].at >= out[out.length - 1].at);
+  // About 2 ms on an M-series Mac; the ceiling only catches a return to per-row parsing on slow machines.
+  assert.ok(ms < 150, `took ${ms.toFixed(1)} ms`);
 });

@@ -99,44 +99,80 @@ function dateWindow(cond: string, now: Date): [number, number] | undefined {
   return undefined;
 }
 
-export function matches(value: unknown, cond: string | number | boolean, now: Date): boolean {
-  if (typeof cond !== "string") return value === cond || String(value) === String(cond);
+type Test = (value: unknown) => boolean;
+
+/** Turns one `where` condition into a test, parsing its date window or comparison once. */
+function compileCondition(cond: string | number | boolean, now: Date): Test {
+  if (typeof cond !== "string") {
+    const text = String(cond);
+    return (v) => v === cond || String(v) === text;
+  }
   const window = dateWindow(cond, now);
   if (window) {
-    const t = toTime(value);
-    return t !== undefined && t >= window[0] && t < window[1];
+    const [from, to] = window;
+    return (v) => {
+      const t = toTime(v);
+      return t !== undefined && t >= from && t < to;
+    };
   }
   const m = cond.match(/^\s*(>=|<=|!=|>|<)\s*(.+)$/);
   if (m) {
     const [, op, rhs] = m;
-    if (op === "!=") return String(value ?? "") !== rhs;
-    const a = toNumber(value) ?? toTime(value);
+    if (op === "!=") return (v) => String(v ?? "") !== rhs;
     const b = toNumber(rhs) ?? toTime(rhs);
-    if (a === undefined || b === undefined) return false;
-    return op === ">" ? a > b : op === "<" ? a < b : op === ">=" ? a >= b : a <= b;
+    if (b === undefined) return () => false;
+    const holds = op === ">" ? (a: number) => a > b
+      : op === "<" ? (a: number) => a < b
+      : op === ">=" ? (a: number) => a >= b
+      : (a: number) => a <= b;
+    return (v) => {
+      const a = toNumber(v) ?? toTime(v);
+      return a !== undefined && holds(a);
+    };
   }
-  if (Array.isArray(value)) return value.some((v) => String(v) === cond);
-  return String(value ?? "") === cond;
+  return (v) => (Array.isArray(v) ? v.some((x) => String(x) === cond) : String(v ?? "") === cond);
+}
+
+export function matches(value: unknown, cond: string | number | boolean, now: Date): boolean {
+  return compileCondition(cond, now)(value);
+}
+
+function compileWhere(where: NonNullable<Panel["where"]>, now: Date): (row: unknown) => boolean {
+  const tests = Object.entries(where).map(([path, cond]) => [path, compileCondition(cond, now)] as const);
+  return (row) => tests.every(([path, test]) => test(getPath(row, path)));
 }
 
 export function filterRows(rows: unknown[], where: Panel["where"], now: Date): unknown[] {
-  if (!where) return rows;
-  return rows.filter((row) => Object.entries(where).every(([k, c]) => matches(getPath(row, k), c, now)));
+  return where ? rows.filter(compileWhere(where, now)) : rows;
 }
 
+function sortKey(v: unknown): number | string {
+  return toTime(v) ?? toNumber(v) ?? (v === undefined || v === null ? "" : String(v).toLowerCase());
+}
+
+/** Sorts on keys worked out once per row, not once per comparison. */
 export function sortRows(rows: unknown[], sort: string | undefined): unknown[] {
   if (!sort) return rows;
   const desc = sort.startsWith("-");
-  const key = desc ? sort.slice(1) : sort;
-  const val = (r: unknown) => {
-    const v = getPath(r, key);
-    return toTime(v) ?? toNumber(v) ?? (v === undefined || v === null ? "" : String(v).toLowerCase());
-  };
-  return [...rows].sort((a, b) => {
-    const va = val(a), vb = val(b);
-    const cmp = va < vb ? -1 : va > vb ? 1 : 0;
+  const path = desc ? sort.slice(1) : sort;
+  const keyed = rows.map((row) => ({ row, key: sortKey(getPath(row, path)) }));
+  keyed.sort((a, b) => {
+    const cmp = a.key < b.key ? -1 : a.key > b.key ? 1 : 0;
     return desc ? -cmp : cmp;
   });
+  return keyed.map((k) => k.row);
+}
+
+/** A panel's pick, where, sort and limit as one function, with its conditions parsed up front. */
+export function compilePipeline(p: Pick<Panel, "pick" | "where" | "sort" | "limit">, now: Date): (input: unknown) => unknown {
+  const keep = p.where ? compileWhere(p.where, now) : undefined;
+  return (input) => {
+    let data = getPath(input, p.pick);
+    if (!Array.isArray(data)) return data;
+    if (keep) data = data.filter(keep);
+    data = sortRows(data as unknown[], p.sort);
+    return p.limit ? (data as unknown[]).slice(0, p.limit) : data;
+  };
 }
 
 export function aggregate(rows: unknown[], field: string | undefined, agg: Agg): unknown {
