@@ -131,6 +131,19 @@ export default class NoteAppsPlugin extends Plugin {
     await leaf.setViewState({ type: "markdown", state: { file: file.path, mode: "source" }, active: true });
   }
 
+  /** Shows the note's source with the cursor at the start of a line, which is scrolled into view. */
+  async showSourceAt(leaf: WorkspaceLeaf, file: TFile, line: number): Promise<void> {
+    await this.showSource(leaf, file);
+    const view = leaf.view;
+    if (!(view instanceof MarkdownView)) return;
+    // The editor may still be loading the note's text.
+    for (let tries = 0; tries < 20 && view.editor.lineCount() <= line; tries++) await new Promise((r) => window.setTimeout(r, 50));
+    const at = { line, ch: 0 };
+    view.editor.setCursor(at);
+    view.editor.scrollIntoView({ from: at, to: at }, true);
+    view.editor.focus();
+  }
+
   isGranted(path: string, wanted: string[]): boolean {
     return wanted.length === 0 || this.store.grants[path] === wanted.join("\n");
   }

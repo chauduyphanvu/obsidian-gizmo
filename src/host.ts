@@ -115,6 +115,8 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
     notify: (message) => { new Notice(message); },
     openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),
     showSource: () => void plugin.showSource(leaf, file),
+    showSourceAt: (line) => void plugin.showSourceAt(leaf, file, line),
+    sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
     now: () => new Date(),
   };
 }

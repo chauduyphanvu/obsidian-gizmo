@@ -9,6 +9,7 @@ import {
 } from "./spec.ts";
 import type { InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
+import { labelOf, lineOf } from "./yamlpos.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
@@ -43,6 +44,10 @@ export interface AppEnv {
   notify(message: string): void;
   openNote(path: string, fromPath: string): void;
   showSource(): void;
+  /** Shows the note's source with the cursor at the start of this 0-based line. */
+  showSourceAt(line: number): void;
+  /** The note's text as it is now, line by line. */
+  sourceLines(): Promise<string[]>;
   now(): Date;
 }
 
@@ -263,7 +268,7 @@ export class AppController {
       const card = header.createDiv({ cls: "na-card na-error" });
       card.createDiv({ cls: "na-title", text: "This app's keys have problems" });
       const ul = card.createEl("ul");
-      for (const e of result.errors) ul.createEl("li", { text: e });
+      for (const e of result.errors) this.renderError(ul, e);
     }
     const spec = this.spec;
     if (!spec?.panels.length || component?.missing.length) return this.showOnly(header);
@@ -569,6 +574,21 @@ export class AppController {
       this.load();
     });
     row.createEl("button", { text: "Edit source" }).addEventListener("click", () => this.env.showSource());
+  }
+
+  /** An error that names a panel, a data block or an input is a link to that place in the note's source. */
+  private renderError(ul: HTMLElement, error: string): void {
+    const li = ul.createEl("li");
+    if (!labelOf(error)) return li.setText(error);
+    const link = li.createEl("button", { cls: "na-error-link", text: error, title: "Show it in the note" });
+    link.addEventListener("click", () => void this.showErrorSource(error));
+  }
+
+  /** Reads the note when the link is used, since it may have changed since the card was drawn. */
+  private async showErrorSource(error: string): Promise<void> {
+    const line = lineOf(await this.env.sourceLines(), error);
+    if (line === undefined) this.env.showSource();
+    else this.env.showSourceAt(line);
   }
 
   private renderUsage(header: HTMLElement, c: ComponentPreview): void {
