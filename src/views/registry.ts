@@ -7,6 +7,7 @@ import { button, checklist, form } from "./inputs.ts";
 import { pie } from "./pie.ts";
 import { list, table } from "./rows.ts";
 import { scatter } from "./scatter.ts";
+import { timeline } from "./timeline.ts";
 import { timer } from "./timer.ts";
 import { countdown, number, progress, text } from "./value.ts";
 
@@ -70,7 +71,7 @@ export interface ViewDef {
 
 export const VIEW_DEFS: readonly ViewDef[] = [
   number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
-  calendar, board, scatter,
+  calendar, board, scatter, timeline,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));

@@ -274,3 +274,18 @@
 .note-app .na-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .note-app .na-scatter-dot.na-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
 .note-app .na-chart-svg:has(.na-scatter-dot.na-selected) .na-scatter-dot:not(.na-selected) { opacity: 0.35; }
+.note-app .na-timeline { --na-tl-label: 140px; font-size: var(--font-ui-small); }
+.note-app .na-tl-axis { position: relative; height: 1.6em; margin-left: var(--na-tl-label); }
+.note-app .na-tl-tick { position: absolute; transform: translateX(-50%); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; }
+.note-app .na-tl-body { position: relative; }
+.note-app .na-tl-grid { position: absolute; top: 0; bottom: 0; left: var(--na-tl-label); right: 0; pointer-events: none; }
+.note-app .na-tl-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--background-modifier-border); }
+.note-app .na-tl-today { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--color-red); }
+.note-app .na-tl-row { display: grid; grid-template-columns: var(--na-tl-label) minmax(0, 1fr); align-items: center; }
+.note-app .na-tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: var(--size-4-2); }
+.note-app .na-tl-track { position: relative; height: 1.9em; }
+.note-app .na-tl-bar { position: absolute; top: 22%; bottom: 22%; min-width: 4px; border-radius: 4px; background: var(--na-s1); }
+.note-app .na-tl-dot { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--na-s1); }
+.note-app .na-tl-bar:focus-visible, .note-app .na-tl-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.note-app .na-tl-bar.na-selected, .note-app .na-tl-dot.na-selected { outline: 2px solid var(--text-normal); outline-offset: 1px; }
+.note-app .na-tl-body:has(.na-selected) .na-tl-bar:not(.na-selected), .note-app .na-tl-body:has(.na-selected) .na-tl-dot:not(.na-selected) { opacity: 0.45; }
