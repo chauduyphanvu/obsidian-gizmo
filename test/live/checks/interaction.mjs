@@ -1,4 +1,6 @@
 // Core interaction: search box, selections, row actions, saving notes, edit in place.
+import { prompts } from "./apps.mjs";
+
 const OPENLIBRARY = ["https://openlibrary.org/search.json?q=dune&limit=10"];
 const USGS = ["https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson"];
 
@@ -159,6 +161,35 @@ export default async function interaction(t) {
       return { title: first.querySelector(".na-title")?.textContent, value: first.querySelector(".na-big")?.textContent, errors: na.errors() };`);
     expect(r.title === "Earthquakes, past day" && /^\d+$/.test(r.value ?? "") && r.errors === 0, r);
     return `${r.title}: ${r.value}`;
+  }, { net: USGS });
+
+  await check("Planet Earth: asks for its three hosts; picking a quake shows it as a card with its USGS page; Follow keeps it with a note on why", async () => {
+    const want = ["Fetch data from api.open-meteo.com — for [[City]]", "Fetch data from earthquake.usgs.gov", "Fetch data from services.swpc.noaa.gov"];
+    expect(JSON.stringify([...(prompts["Planet Earth"] ?? [])].sort()) === JSON.stringify(want), prompts["Planet Earth"]);
+    const r = await run(`
+      await na.open("Apps/Planet Earth");
+      const el = na.view().contentEl;
+      [...el.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Earthquakes").click();
+      const panel = (title) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title);
+      const row = await na.until(() => panel("The ten strongest")?.querySelector("tbody tr"), 10000);
+      const [mag, place] = [...row.querySelectorAll("td")].map((td) => td.textContent);
+      const waiting = panel("The one I picked").textContent;
+      row.click();
+      const card = await na.until(() => panel("The one I picked").querySelector(".na-rowcard"), 3000);
+      const link = card?.querySelector("a")?.getAttribute("href");
+      const mark = na.notices.length;
+      na.button("Follow", row).click();
+      const saved = await na.until(() => na.fm("Apps/Planet Earth data.md")?.following?.at(-1), 3000);
+      const notices = await na.noticesSince(mark, "Following");
+      await na.sleep(600);
+      const followed = [...panel("Quakes I'm following").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td").textContent === saved?.quake);
+      na.fill(followed.querySelector("input"), "Near family");
+      const note = await na.until(() => na.fm("Apps/Planet Earth data.md")?.following?.find((f) => f.quake === saved.quake)?.note, 3000);
+      return { mag, place, waiting, title: card?.querySelector(".na-rowcard-title")?.textContent, link, saved, notices, note, errors: na.errors() };`);
+    expect(r.waiting.includes("Pick a row in “The ten strongest”") && /^\d+\.\d$/.test(r.mag) && r.title === r.place, r);
+    expect(/^https:\/\/earthquake\.usgs\.gov\/earthquakes\/eventpage\/\w+$/.test(r.link ?? "") && r.saved?.page === r.link && r.saved.quake.startsWith("M ") && typeof r.saved.when === "number", r);
+    expect(r.notices.includes(`Following ${r.place}`) && r.note === "Near family" && r.errors === 0, r);
+    return `picked M${r.mag} ${r.place}; followed with a note`;
   }, { net: USGS });
 
   await check("a bar chart with select: clicking a bar dims the others and filters the list; again clears it", async () => {

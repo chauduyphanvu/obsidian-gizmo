@@ -126,7 +126,7 @@ export default async function authoring(t) {
       await na.sleep(300);
       return { above, urls, copied, badge, gone: !el.querySelector(".na-inspector") };`);
     const hosts = new Set(r.urls.map((u) => new URL(u).host));
-    expect(r.above && r.urls.length === new Set(r.urls).size && ["earthquake.usgs.gov", "services.swpc.noaa.gov", "api.open-meteo.com", "archive-api.open-meteo.com"].every((h) => hosts.has(h)), r);
+    expect(r.above && r.urls.length === new Set(r.urls).size && ["earthquake.usgs.gov", "services.swpc.noaa.gov", "api.open-meteo.com"].every((h) => hosts.has(h)), r);
     expect(r.copied === "features.0.properties.mag" && r.badge && r.gone, r);
     return `${r.urls.length} sources on ${hosts.size} hosts; copied ${r.copied}`;
   }, { net: NET["Planet Earth"] });

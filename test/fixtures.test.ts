@@ -917,3 +917,100 @@ test("Weather: now, the next hours and the week in words, told when rain is like
   await settle();
   assert.equal((t.f.files.get("Apps/Weather data.md")!.fm!.walks as { note: string }[])[0].note, "Round the park, dry the whole way");
 });
+
+const USGS = "https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/";
+const at = (day: number, hour: number) => new Date(2026, 10, day, hour, 0).getTime();
+/** A USGS feed: a strong quake yesterday that people felt, two smaller ones. */
+const QUAKES = {
+  type: "FeatureCollection",
+  features: [
+    { id: "ak01", properties: { mag: 3.2, place: "10 km N of Anchorage, Alaska", time: at(18, 6), felt: null, url: "https://earthquake.usgs.gov/earthquakes/eventpage/ak01", title: "M 3.2 - 10 km N of Anchorage, Alaska" }, geometry: { coordinates: [-149.9, 61.3, 40.1] } },
+    { id: "us7001", properties: { mag: 7.1, place: "120 km S of Hachijo-jima, Japan", time: at(17, 9), felt: 450, url: "https://earthquake.usgs.gov/earthquakes/eventpage/us7001", title: "M 7.1 - 120 km S of Hachijo-jima, Japan" }, geometry: { coordinates: [139.8, 32, 35.2] } },
+    { id: "ci02", properties: { mag: 4.5, place: "8 km W of Ridgecrest, CA", time: at(16, 22), felt: 12, url: "https://earthquake.usgs.gov/earthquakes/eventpage/ci02", title: "M 4.5 - 8 km W of Ridgecrest, CA" }, geometry: { coordinates: [-117.8, 35.6, 8] } },
+  ],
+};
+const SPACE = {
+  "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json": [
+    { time_tag: "2026-11-18T10:58:00", active: true, proton_speed: 412.5, proton_density: 4.1 },
+    { time_tag: "2026-11-18T10:59:00", active: true, proton_speed: 418.2, proton_density: 4.3 },
+  ],
+  [KP]: KP_READINGS,
+};
+/** Open-Meteo for a city: now, and thirteen weeks of days ending today. */
+const CITY = {
+  current: { temperature_2m: 48.2, apparent_temperature: 44.1, relative_humidity_2m: 71, wind_speed_10m: 9.4 },
+  daily: (() => {
+    const time = Array.from({ length: 92 }, (_, i) => {
+      const d = new Date(2026, 10, 18 - 91 + i);
+      return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+    });
+    return { time, temperature_2m_max: time.map(() => 60), temperature_2m_min: time.map(() => 45), precipitation_sum: time.map(() => 0.1) };
+  })(),
+};
+
+test("Planet Earth: told of a strong quake, pick one to see where and how deep with its USGS page, follow it and say why", async () => {
+  const path = "Apps/Planet Earth.md";
+  const notes = { [path]: { fm: vaultNote(path).fm }, "Components/City.md": { fm: vaultNote("Components/City.md").fm } };
+  const spec = readSpec(vaultNote(path).fm, { path, notes: fakeEnv(notes).env.notes })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:api.open-meteo.com", "net:earthquake.usgs.gov", "net:services.swpc.noaa.gov"]);
+
+  const t = fakeBackground(notes, { [USGS]: QUAKES, "https://api.open-meteo.com/v1/forecast": CITY, ...SPACE });
+  await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
+  assert.deepEqual(t.notices, ["Planet Earth: Strongest 7.1"]);
+
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  mount(root, path, t.env);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  assert.deepEqual([...root.querySelectorAll("button.na-tab")].map((b) => text(b)), ["Earthquakes", "Sun", "Philadelphia", "Saigon"]);
+  const panel = (title: string) => panelsOf(root).find((p) => text(p.querySelector(".na-title")) === title)!;
+  assert.equal(text(panel("Earthquakes, past week").querySelector(".na-big")), "3");
+  assert.equal(text(panel("Strongest").querySelector(".na-big")), "7.1");
+  assert.equal(text(panel("Solar wind").querySelector(".na-big")), "418km/s");
+
+  const strongest = panel("The ten strongest");
+  assert.deepEqual([...strongest.querySelectorAll("th")].map((th) => text(th)).slice(0, 3), ["Magnitude", "Where", "When"]);
+  const rows = [...strongest.querySelectorAll("tbody tr")];
+  assert.deepEqual(rows.map((tr) => cells(tr).slice(0, 3)), [
+    ["7.1", "120 km S of Hachijo-jima, Japan", "yesterday"],
+    ["4.5", "8 km W of Ridgecrest, CA", "2 days ago"],
+    ["3.2", "10 km N of Anchorage, Alaska", "6 hours ago"],
+  ]);
+  assert.equal(text(panel("The one I picked").querySelector(".na-waiting")), "Pick a row in “The ten strongest”");
+  assert.deepEqual([...panel("Felt by the most people").querySelectorAll("li")].map((li) => text(li)),
+    ["450 reports · M7.1 · 120 km S of Hachijo-jima, Japan", "12 reports · M4.5 · 8 km W of Ridgecrest, CA"]);
+
+  // Picked: the quake as a card, with how deep it was and a link to its page.
+  (rows[0] as HTMLElement).click();
+  await settle();
+  const card = panel("The one I picked").querySelector(".na-rowcard")!;
+  assert.equal(text(card.querySelector(".na-rowcard-title")), "120 km S of Hachijo-jima, Japan");
+  const lines = Object.fromEntries([...card.querySelectorAll(".na-rowcard-line")].map((l) => [text(l.querySelector(".na-rowcard-label")), l.querySelector(".na-rowcard-value")!]));
+  assert.deepEqual(Object.keys(lines), ["Magnitude", "When", "Depth", "Felt reports", "USGS page"]);
+  assert.deepEqual([text(lines.Magnitude), text(lines.Depth), text(lines["Felt reports"])], ["7.1", "35 km", "450"]);
+  assert.equal(lines["USGS page"].querySelector("a")!.getAttribute("href"), "https://earthquake.usgs.gov/earthquakes/eventpage/us7001");
+
+  // Follow it, and say why.
+  (rows[0].querySelector("button.na-row-action") as HTMLButtonElement).click();
+  await settle();
+  assert.deepEqual(t.f.files.get("Apps/Planet Earth data.md")!.fm!.following, [{
+    quake: "M 7.1 - 120 km S of Hachijo-jima, Japan", when: at(17, 9), page: "https://earthquake.usgs.gov/earthquakes/eventpage/us7001", at: "2026-11-18T12:00",
+  }]);
+  assert.deepEqual(t.notices.slice(1), ["Following 120 km S of Hachijo-jima, Japan"]);
+  const followed = panel("Quakes I'm following").querySelector("tbody tr")!;
+  assert.equal(text(followed.querySelector("td")), "M 7.1 - 120 km S of Hachijo-jima, Japan");
+  assert.equal(followed.querySelector("a")!.getAttribute("href"), "https://earthquake.usgs.gov/earthquakes/eventpage/us7001");
+  const why = followed.querySelector("input") as HTMLInputElement;
+  why.value = "My cousin lives on Hachijo-jima";
+  why.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal((t.f.files.get("Apps/Planet Earth data.md")!.fm!.following as { note: string }[])[0].note, "My cousin lives on Hachijo-jima");
+
+  // A city, through the component: now, and its last thirteen weeks from one request.
+  assert.equal(text(panel("Saigon now").querySelector(".na-big")), "48°F");
+  assert.equal(text(panel("Average high and low by week, last three months").querySelector(".na-legend")), "HighLow");
+  assert.equal(t.f.requests.filter((u) => u.includes("latitude=10.82")).length, 1);
+});

@@ -10,8 +10,7 @@ export const NET = {
   AAPL: [YAHOO], Portfolio: [YAHOO], Movers: [YAHOO],
   Weather: [METEO], Currency: ["https://api.frankfurter.dev/v2/rates?base=USD&quotes=EUR", "https://api.frankfurter.dev/v2/rates?base=USD&quotes=EUR&from=2025-01-01&group=week"],
   "Planet Earth": ["https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson", NOAA,
-    "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json", METEO,
-    "https://archive-api.open-meteo.com/v1/archive?latitude=39.95&longitude=-75.17&start_date=2025-11-01&end_date=2025-11-02&daily=temperature_2m_max"],
+    "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json", METEO],
   "Space weather": [NOAA], "Reading list": ["https://hnrss.org/frontpage", "https://xkcd.com/atom.xml"],
 };
 

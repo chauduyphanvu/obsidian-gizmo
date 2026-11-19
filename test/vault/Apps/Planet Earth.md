@@ -1,5 +1,5 @@
 ---
-app: Planet Earth, right now
+app: Keep an eye on the planet, follow the earthquakes that matter to me, and see the weather where my family lives
 spec: 1
 refresh: 10m
 inputs:
@@ -14,6 +14,15 @@ data:
     sort: time_tag
   kp:
     source: https://services.swpc.noaa.gov/json/planetary_k_index_1m.json
+  strong:
+    source: quakes
+    compute:
+      mag: properties.mag
+      place: properties.place
+      when: properties.time
+      depth: geometry.coordinates.2
+      felt: coalesce(properties.felt, 0)
+      page: properties.url
 panels:
   - view: number
     title: Earthquakes, past $period
@@ -25,7 +34,8 @@ panels:
     field: properties.mag
     agg: max
     decimals: 1
-    label: magnitude
+    label: magnitude; I'm told when one reaches 7
+    alert: ">= 7"
   - view: number
     title: Solar wind
     source: wind
@@ -43,6 +53,7 @@ panels:
 
   - view: bar
     tab: Earthquakes
+    span: 2
     title: Earthquakes per day
     source: quakes
     group: properties.time
@@ -50,20 +61,52 @@ panels:
   - view: list
     tab: Earthquakes
     span: 2
-    title: The ten strongest
-    source: quakes
-    sort: -properties.mag
+    title: Felt by the most people
+    source: strong
+    where: {felt: "> 0"}
+    sort: -felt
     limit: 10
-    item: "M{properties.mag} · {properties.place}"
-  - view: list
+    item: "{felt} reports · M{mag} · {place}"
+    format: {mag: "0.0"}
+  - view: table
     tab: Earthquakes
     span: 2
-    title: Felt by the most people
-    source: quakes
-    where: {properties.felt: "> 0"}
-    sort: -properties.felt
+    title: The ten strongest
+    source: strong
+    sort: -mag
     limit: 10
-    item: "{properties.felt} reports · M{properties.mag} · {properties.place}"
+    columns: [mag, place, when]
+    labels: {mag: Magnitude, place: Where, when: When}
+    format: {mag: "0.0", when: relative}
+    select: quake
+    action: Follow
+    save: following
+    row:
+      quake: "{properties.title}"
+      when: "{when}"
+      page: "{page}"
+    notify: Following {place}
+  - view: table
+    tab: Earthquakes
+    span: 2
+    title: The one I picked
+    source: strong
+    where: {id: $quake.id}
+    columns: [place, mag, when, depth, felt, page]
+    labels: {place: Where, mag: Magnitude, when: When, depth: Depth, felt: Felt reports, page: USGS page}
+    format: {mag: "0.0", when: datetime, depth: "0 km"}
+    cells: {page: link}
+    layout: cards
+  - view: table
+    tab: Earthquakes
+    title: Quakes I'm following
+    source: following
+    sort: -when
+    columns: [quake, when, page, note]
+    labels: {quake: Quake, when: When, page: USGS page, note: Why I'm following it}
+    format: {when: date}
+    cells: {page: link}
+    edit: [note]
 
   - view: line
     tab: Sun
@@ -92,10 +135,8 @@ panels:
   - use: "[[City]]"
     with: {name: Saigon, lat: 10.82, lon: 106.63}
     tab: Saigon
-  - view: countdown
-    tab: Saigon
-    title: Tết
-    to: 2027-02-06
-    label: Lunar New Year, Year of the Goat
 ---
-Earthquakes from USGS, the solar wind and Kp index from NOAA's Space Weather Prediction Center, weather from Open-Meteo. No API keys.
+Earthquakes from USGS, the solar wind and Kp index from NOAA's Space Weather Prediction Center, weather
+from Open-Meteo; no keys. Pick a quake among the strongest to see where and how deep it was and open its
+USGS page; Follow keeps it in your list, where you can note why. You get a notice when a quake of
+magnitude 7 or more is in the past week. Change the cities under the last two tabs to your own.

@@ -57,11 +57,13 @@ function at(lines: string[], text: string, where?: string, nth = 1) {
 
 test("Planet Earth: a panel's keys and values, with its view and the keys beside it", () => {
   assert.deepEqual(rest(at(PLANET, "  - view: number", "number")), value("panel", "view", "number", ["title", "source", "label"]));
-  assert.deepEqual(rest(at(PLANET, "    source: quakes", "quakes")), { ...value("panel", "source", "quakes", ["view", "title", "label"], "number") });
-  assert.deepEqual(rest(at(PLANET, "    agg: max", "max")), value("panel", "agg", "max", ["view", "title", "source", "field", "decimals", "label"], "number"));
+  // The first "source: quakes" is a block that reads the quakes block; the second, a panel's.
+  assert.deepEqual(rest(at(PLANET, "    source: quakes", "quakes")), value("block", "source", "quakes", ["compute"]));
+  assert.deepEqual(rest(at(PLANET, "    source: quakes", "quakes", 2)), { ...value("panel", "source", "quakes", ["view", "title", "label"], "number") });
+  assert.deepEqual(rest(at(PLANET, "    agg: max", "max")), value("panel", "agg", "max", ["view", "title", "source", "field", "decimals", "label", "alert"], "number"));
   assert.deepEqual(rest(at(PLANET, "    title: Earthquakes, past $period", "past $period")), value("panel", "title", "Earthquakes, past $period", ["view", "source", "label"], "number"));
-  assert.deepEqual(rest(at(PLANET, "    per: day")), value("panel", "per", "day", ["view", "tab", "title", "source", "group"], "bar"));
-  assert.deepEqual(rest(at(PLANET, "    tab: Earthquakes", "tab", 2)), { ...key("panel", "tab", ["view", "span", "title", "source", "sort", "limit", "item"], "list") });
+  assert.deepEqual(rest(at(PLANET, "    per: day")), value("panel", "per", "day", ["view", "tab", "span", "title", "source", "group"], "bar"));
+  assert.deepEqual(rest(at(PLANET, "    tab: Earthquakes", "tab", 2)), { ...key("panel", "tab", ["view", "span", "title", "source", "where", "sort", "limit", "item", "format"], "list") });
 });
 
 test("Planet Earth: data blocks, inputs, flow maps and components", () => {
@@ -75,19 +77,19 @@ test("Planet Earth: data blocks, inputs, flow maps and components", () => {
   assert.equal(at(PLANET, "    with: {name: Philadelphia, lat: 39.95, lon: -75.17}")?.where, "other");
   assert.deepEqual(rest(at(PLANET, "    tab: Philadelphia")), value("panel", "tab", "Philadelphia", ["use", "with"]));
   assert.deepEqual(rest(at(PLANET, "refresh: 10m")), value("top", "refresh", "10m", ["app", "spec", "inputs", "data", "panels"]));
-  assert.deepEqual(rest(at(PLANET, "app: Planet Earth, right now", "app")), key("top", "app", ["spec", "refresh", "inputs", "data", "panels"]));
+  assert.deepEqual(rest(at(PLANET, PLANET[1], "app")), key("top", "app", ["spec", "refresh", "inputs", "data", "panels"]));
 });
 
 test("Planet Earth: half-typed lines in the middle of an app", () => {
   const lines = [...PLANET];
   const i = lines.indexOf("    title: Strongest");
   lines.splice(i + 1, 0, "    fie");
-  assert.deepEqual(rest(contextAt(lines, i + 1, 7)), key("panel", "fie", ["view", "title", "source", "field", "agg", "decimals", "label"], "number"));
+  assert.deepEqual(rest(contextAt(lines, i + 1, 7)), key("panel", "fie", ["view", "title", "source", "field", "agg", "decimals", "label", "alert"], "number"));
   lines[i + 1] = "    agg: ";
-  assert.deepEqual(rest(contextAt(lines, i + 1, 9)), value("panel", "agg", "", ["view", "title", "source", "field", "agg", "decimals", "label"], "number"));
+  assert.deepEqual(rest(contextAt(lines, i + 1, 9)), value("panel", "agg", "", ["view", "title", "source", "field", "agg", "decimals", "label", "alert"], "number"));
   lines[i + 1] = "  - ";
   // A new item takes the keys that follow it, so they count as its own.
-  assert.deepEqual(rest(contextAt(lines, i + 1, 4)), key("panel", "", ["source", "field", "agg", "decimals", "label"]));
+  assert.deepEqual(rest(contextAt(lines, i + 1, 4)), key("panel", "", ["source", "field", "agg", "decimals", "label", "alert"]));
 });
 
 test("Library: data blocks with a schema, a form's row map, a note's body of keys", () => {
@@ -247,24 +249,25 @@ test("labelOf names the panel, block or input at the start of a message", () => 
 
 test("lineOf finds the line of panel N, with or without where it came from", () => {
   // Planet Earth's panels start at these 0-based lines.
-  const starts = [17, 21, 28, 35, 43, 49, 57, 67, 74, 81, 88, 91, 94];
+  const starts = [26, 30, 38, 45, 53, 60, 70, 88, 99, 110, 117, 124, 131, 134];
   starts.forEach((line, i) => {
     assert.equal(lineOf(PLANET, `panel ${i + 1}`), line);
     assert.equal(lineOf(PLANET, `panel ${i + 1}: "unit" doesn't apply to bar`), line);
     assert.equal(PLANET[line].startsWith("  - "), true);
   });
-  assert.equal(lineOf(PLANET, "panel 12 (from [[City]] panel 3): \"unit\" doesn't apply to bar"), 91);
-  assert.equal(lineOf(PLANET, "panel 12 (from [[City]] panel 3 → [[Loop A]] panel 1): x"), 91);
-  assert.equal(lineOf(PLANET, "panel 14: x"), undefined);
+  assert.equal(lineOf(PLANET, "panel 13 (from [[City]] panel 3): \"unit\" doesn't apply to bar"), 131);
+  assert.equal(lineOf(PLANET, "panel 13 (from [[City]] panel 3 → [[Loop A]] panel 1): x"), 131);
+  assert.equal(lineOf(PLANET, "panel 15: x"), undefined);
   assert.equal(lineOf(PLANET, "panel 0: x"), undefined);
-  assert.equal(lineOf(PLANET, 'panel 2: compute.change: unknown function "foo"'), 21);
-  assert.equal(lineOf(PLANET, 'panel 2: data.quakes: "per" needs "group"'), 21);
+  assert.equal(lineOf(PLANET, 'panel 2: compute.change: unknown function "foo"'), 30);
+  assert.equal(lineOf(PLANET, 'panel 2: data.quakes: "per" needs "group"'), 30);
 });
 
 test("lineOf finds a data block and an input by name", () => {
   assert.equal(lineOf(PLANET, 'data.quakes: unknown key "x"'), 7);
   assert.equal(lineOf(PLANET, "data.wind needs a source"), 10);
   assert.equal(lineOf(PLANET, "data.kp must be a set of keys"), 14);
+  assert.equal(lineOf(PLANET, "data.strong: compute.felt: unknown function \"foo\""), 16);
   assert.equal(lineOf(PLANET, "data.nope: x"), undefined);
   assert.equal(lineOf(PLANET, "inputs.period must be a list of choices or date"), 5);
   assert.equal(lineOf(PLANET, 'input "period" isn\'t used by any panel'), 5);
