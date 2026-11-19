@@ -239,6 +239,68 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
   };
 }
 
+type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+
+/**
+ * A control that saves a field as it is edited. A checkbox or dropdown writes at once; text,
+ * numbers and dates when changed (leaving the field, or Enter). The control is disabled while its
+ * write runs and keeps focus. Returns what shows a value, which leaves a field being typed in
+ * (focused, or changed and not yet saved) alone. `look` gives the classes beside a dropdown's, the
+ * accessible name, and the element for a type that is neither a list nor `checkbox`: `textarea`,
+ * or an input's type.
+ */
+export function fieldControl(
+  parent: HTMLElement, type: string | string[], write: (value: unknown) => Promise<void>,
+  look: { cls?: string; label?: string; input(type: string): string },
+): (value: unknown) => void {
+  const cls = look.cls ? { cls: look.cls } : {};
+  const run = async (control: Control, value: unknown) => {
+    const focused = control.ownerDocument.activeElement === control;
+    control.disabled = true;
+    try {
+      await write(value);
+    } finally {
+      control.disabled = false;
+      if (focused) control.focus();
+    }
+  };
+  if (Array.isArray(type)) {
+    const select = parent.createEl("select", { cls: look.cls ? `dropdown ${look.cls}` : "dropdown" });
+    if (look.label) select.setAttr("aria-label", look.label);
+    let options: unknown[] = [];
+    select.addEventListener("change", () => void run(select, options[Number(select.value)]));
+    return (v) => {
+      // A value that isn't one of the choices (or none yet) is still shown as it is.
+      options = type.some((c) => c === v) ? type : [v ?? "", ...type];
+      select.empty();
+      options.forEach((o, i) => {
+        const option = select.createEl("option", { text: String(o), value: String(i) });
+        if (o === (v ?? "")) option.setAttr("selected", "");
+      });
+    };
+  }
+  if (type === "checkbox") {
+    const box = parent.createEl("input", { type: "checkbox", ...cls });
+    if (look.label) box.setAttr("aria-label", look.label);
+    box.addEventListener("change", () => void run(box, box.checked));
+    return (v) => { box.checked = v === true; };
+  }
+  const kind = look.input(type);
+  const input = kind === "textarea" ? parent.createEl("textarea", cls) : parent.createEl("input", { type: kind, ...cls });
+  if (look.label) input.setAttr("aria-label", look.label);
+  if (kind === "number") input.setAttr("step", "any");
+  let saved = "";
+  input.addEventListener("change", () => {
+    saved = input.value;
+    void run(input, kind === "number" ? (input.value === "" ? null : Number(input.value)) : input.value);
+  });
+  return (v) => {
+    if (input.ownerDocument.activeElement === input || input.value !== saved) return;
+    saved = v === undefined || v === null ? "" : String(v);
+    input.value = saved;
+  };
+}
+
 /** A handle whose update simply redraws the panel's contents. */
 export function redraw(el: HTMLElement, draw: (data: unknown) => void) {
   return {

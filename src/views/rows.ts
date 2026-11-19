@@ -3,7 +3,7 @@ import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts"
 import type { Panel } from "../spec.ts";
 import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
-  busy, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote, selectable, shownRows,
+  busy, fieldControl, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote, selectable, shownRows,
 } from "./common.ts";
 import { ACTION_KEYS, DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
@@ -79,61 +79,6 @@ function editType(p: Panel, field: string, rows: Row[]): string | string[] {
   return typeof sample === "boolean" ? "checkbox" : typeof sample === "number" ? "number" : "text";
 }
 
-type Control = HTMLInputElement | HTMLSelectElement;
-
-/**
- * An input in one cell. A checkbox or dropdown writes at once; text, numbers and dates when
- * changed (leaving the cell, or Enter). The control is disabled while its write runs. Returns what
- * shows a new value, which leaves text being typed (focused, or changed and not yet saved) alone.
- */
-function editCell(td: HTMLElement, field: string, type: string | string[], write: (value: unknown) => Promise<void>): (value: unknown) => void {
-  const run = async (control: Control, value: unknown) => {
-    const focused = control.ownerDocument.activeElement === control;
-    control.disabled = true;
-    try {
-      await write(value);
-    } finally {
-      control.disabled = false;
-      if (focused) control.focus();
-    }
-  };
-  if (Array.isArray(type)) {
-    const select = td.createEl("select", { cls: "dropdown gz-edit" });
-    select.setAttr("aria-label", field);
-    let options: unknown[] = [];
-    select.addEventListener("change", () => void run(select, options[Number(select.value)]));
-    return (v) => {
-      // A value that isn't one of the choices is still shown as it is.
-      options = type.some((c) => c === v) ? type : [v ?? "", ...type];
-      select.empty();
-      options.forEach((o, i) => {
-        const option = select.createEl("option", { text: String(o), value: String(i) });
-        if (o === (v ?? "")) option.setAttr("selected", "");
-      });
-    };
-  }
-  if (type === "checkbox") {
-    const box = td.createEl("input", { type: "checkbox", cls: "gz-edit" });
-    box.setAttr("aria-label", field);
-    box.addEventListener("change", () => void run(box, box.checked));
-    return (v) => { box.checked = v === true; };
-  }
-  const kind = ["number", "date", "time"].includes(type) ? type : "text";
-  const input = td.createEl("input", { type: kind, cls: "gz-edit" });
-  input.setAttr("aria-label", field);
-  if (kind === "number") input.setAttr("step", "any");
-  let saved = "";
-  input.addEventListener("change", () => {
-    saved = input.value;
-    void run(input, kind === "number" ? (input.value === "" ? null : Number(input.value)) : input.value);
-  });
-  return (v) => {
-    if (input.ownerDocument.activeElement === input || input.value !== saved) return;
-    saved = v === undefined || v === null ? "" : String(v);
-    input.value = saved;
-  };
-}
-
 /** A drawn table or set of cards: what it shows, and how to show new values of the same rows in place. */
 interface Drawn {
   columns: string[];
@@ -163,7 +108,10 @@ interface DrawnRow {
 function column(box: HTMLElement, env: RowEnv, c: string, i: number, title = false): (row: Row) => void {
   const type = env.edited.get(c);
   if (type === undefined) return (row) => { box.empty(); fillCell(box, env.p, env.ctx, row, c, title); };
-  const show = editCell(box, c, type, (value) => env.ctx.editRow(env.current[i], c, value));
+  // A cell has no label of its own; anything but a number, date or time is edited as one line of text.
+  const show = fieldControl(box, type, (value) => env.ctx.editRow(env.current[i], c, value), {
+    cls: "gz-edit", label: c, input: (t) => (["number", "date", "time"].includes(t) ? t : "text"),
+  });
   return (row) => show(getPath(row, c));
 }
 

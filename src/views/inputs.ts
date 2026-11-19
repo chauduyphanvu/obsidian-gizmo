@@ -2,7 +2,7 @@ import { stampParts, type Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import { THIS } from "../template.ts";
 import { labelOf } from "../format.ts";
-import { busy, heading, needsAction, redraw } from "./common.ts";
+import { busy, fieldControl, heading, needsAction, redraw } from "./common.ts";
 import { ACTION_KEYS, checkFields, isPlainObject, startOf } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
@@ -27,57 +27,6 @@ export const button: ViewDef = {
   }),
 };
 
-type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-
-/**
- * One field of a `save: this` form. A checkbox or dropdown writes at once; text, numbers and dates
- * when changed (leaving the field, or Enter). The control is disabled while its write runs and keeps
- * focus. Returns what shows the note's value, which leaves a field being typed in alone.
- */
-function propertyField(label: HTMLElement, type: string | string[], write: (value: unknown) => Promise<void>): (value: unknown) => void {
-  const run = async (control: Control, value: unknown) => {
-    const focused = control.ownerDocument.activeElement === control;
-    control.disabled = true;
-    try {
-      await write(value);
-    } finally {
-      control.disabled = false;
-      if (focused) control.focus();
-    }
-  };
-  if (Array.isArray(type)) {
-    const select = label.createEl("select", { cls: "dropdown" });
-    let options: unknown[] = [];
-    select.addEventListener("change", () => void run(select, options[Number(select.value)]));
-    return (v) => {
-      // A value that isn't one of the choices (or none yet) is still shown as it is.
-      options = type.some((c) => c === v) ? type : [v ?? "", ...type];
-      select.empty();
-      options.forEach((o, i) => {
-        const option = select.createEl("option", { text: String(o), value: String(i) });
-        if (o === (v ?? "")) option.setAttr("selected", "");
-      });
-    };
-  }
-  if (type === "checkbox") {
-    const box = label.createEl("input", { type: "checkbox" });
-    box.addEventListener("change", () => void run(box, box.checked));
-    return (v) => { box.checked = v === true; };
-  }
-  const input = type === "textarea" ? label.createEl("textarea") : label.createEl("input", { type });
-  if (type === "number") input.setAttr("step", "any");
-  let saved = "";
-  input.addEventListener("change", () => {
-    saved = input.value;
-    void run(input, type === "number" ? (input.value === "" ? null : Number(input.value)) : input.value);
-  });
-  return (v) => {
-    if (input.ownerDocument.activeElement === input || input.value !== saved) return;
-    saved = v === undefined || v === null ? "" : String(v);
-    input.value = saved;
-  };
-}
-
 /** A form with `save: this`: its fields hold the properties of the note the app sits in, saved as they change. */
 function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
   heading(el, p);
@@ -86,7 +35,9 @@ function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
   const fields = Object.entries(p.fields!).map(([name, type]) => {
     const label = f.createEl("label", { cls: "gz-field" });
     label.createSpan({ text: labelOf(p, name) });
-    return [name, propertyField(label, type, (value) => ctx.setProperty?.(name, value) ?? Promise.resolve())] as const;
+    // Inside its label, which names it; a field typed textarea gets a text box of its own.
+    const show = fieldControl(label, type, (value) => ctx.setProperty?.(name, value) ?? Promise.resolve(), { input: (t) => t });
+    return [name, show] as const;
   });
   return {
     update(note) {
