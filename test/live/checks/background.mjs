@@ -91,7 +91,7 @@ export default async function background(t) {
     return `opened ${r.opened}; off: no items, no commands; on again: ${r.on.status} items, ${r.on.commands} commands`;
   });
 
-  await check("with the network failing, Weather paints every panel from its disk copy, marked as of, and keeps the mark through a resize", async () => {
+  await check("with the network failing, Weather paints every forecast panel from its disk copy, marked as of, and keeps the mark through a resize", async () => {
     // The stub stays in place across the resize below; the last step puts the real fetch back.
     const r = await run(`
       await na.open("Apps/Weather");
@@ -100,7 +100,8 @@ export default async function background(t) {
       host.fetch = async () => ({ status: 503, text: "Service Unavailable", contentType: "text/plain" });
       [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Reload data").click();
       const el = na.view().contentEl;
-      const panels = () => [...el.querySelectorAll(".na-panel")];
+      // Every panel that reads the forecast; the walks are in the data note, not on the web.
+      const panels = () => [...el.querySelectorAll(".na-panel")].filter((p) => p.querySelector(".na-title")?.textContent !== "My walks");
       await na.until(() => panels().every((p) => p.hasAttribute("data-asof")), 8000);
       return { marked: panels().map((p) => p.getAttribute("data-asof")), errors: el.querySelectorAll(".na-error").length };`);
     let after;
@@ -109,12 +110,13 @@ export default async function background(t) {
       after = await run(`
         await na.sleep(1200);
         const el = na.view().contentEl;
-        return { width: el.clientWidth, marked: [...el.querySelectorAll(".na-panel")].map((p) => p.getAttribute("data-asof")), lines: el.querySelectorAll(".na-view-line path.na-line").length, errors: el.querySelectorAll(".na-error").length };`);
+        const web = [...el.querySelectorAll(".na-panel")].filter((p) => p.querySelector(".na-title")?.textContent !== "My walks");
+        return { width: el.clientWidth, marked: web.map((p) => p.getAttribute("data-asof")), lines: el.querySelectorAll(".na-view-line path.na-line").length, errors: el.querySelectorAll(".na-error").length };`);
     } finally {
       await page.send("Emulation.clearDeviceMetricsOverride");
       await run(`if (window.__naFetch) na.plugin().dataLayer.host.fetch = window.__naFetch; delete window.__naFetch;`);
     }
-    expect(r.marked.length === 3 && r.marked.every((m) => m?.startsWith("as of")) && r.errors === 0, r);
+    expect(r.marked.length === 5 && r.marked.every((m) => m?.startsWith("as of")) && r.errors === 0, r);
     expect(after.marked.every((m) => m?.startsWith("as of")) && after.lines === 2 && after.errors === 0, after);
     return `${r.marked[0]} on all ${r.marked.length}; at ${after.width} px still marked`;
   }, { net: NET.Weather });

@@ -858,3 +858,62 @@ test("Currency: today's rate told when it reaches mine, an amount converted, a t
   assert.equal(text(panelsOf(root)[1].querySelector("li")), "250.00 GBP is 285.00 EUR at 1.1400I sent it");
   assert.ok(t.f.requests.includes(`${FRANKFURTER}?base=GBP&quotes=EUR&from=2025-01-01&group=week`));
 });
+
+const METEO = "https://api.open-meteo.com/v1/forecast";
+/** Open-Meteo's answer for London: overcast now, four hours ahead (two of them likely wet), three days. */
+const LONDON = {
+  current: { time: "2026-11-18T12:00", interval: 900, temperature_2m: 8.4, apparent_temperature: 6.2, weather_code: 3, wind_speed_10m: 12.25 },
+  hourly: {
+    time: ["2026-11-18T12:00", "2026-11-18T13:00", "2026-11-18T14:00", "2026-11-18T15:00"],
+    temperature_2m: [8.4, 8.9, 9.1, 8.6], apparent_temperature: [6.2, 6.8, 7, 6.5], precipitation_probability: [10, 35, 60, 85],
+  },
+  daily: {
+    time: ["2026-11-18", "2026-11-19", "2026-11-20"], weather_code: [3, 63, 0],
+    temperature_2m_max: [9.4, 10.6, 7.9], temperature_2m_min: [6.2, 5.5, 2.1], precipitation_probability_max: [85, 100, 0],
+  },
+};
+
+test("Weather: now, the next hours and the week in words, told when rain is likely, and a walk logged with its weather", async () => {
+  const path = "Apps/Weather.md";
+  const spec = readSpec(vaultNote(path).fm, { path })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:api.open-meteo.com", "write:Daily.md"]);
+
+  const t = fakeBackground({ [path]: { fm: vaultNote(path).fm }, "Daily.md": { body: "# Daily\n" } }, { [METEO]: LONDON });
+  const lines: string[] = [];
+  t.env.appendLine = async (note, line) => { lines.push(`${note}: ${line}`); };
+  await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
+  assert.deepEqual(t.notices, ["Weather: Rainy hours ahead 2 hours"]);
+
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  mount(root, path, t.env);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [now, rainy, hours, chance, week, walks] = panelsOf(root);
+  // One request feeds every panel that reads the forecast.
+  assert.equal(t.f.requests.filter((u) => u.startsWith(METEO)).length, 1);
+  assert.equal(text(now.querySelector("li")), "8.4°C, feels like 6.2°C, overcast, wind 12.3 km/hI went for a walk");
+  assert.equal(text(rainy.querySelector(".na-big")), "2hours");
+  assert.equal(text(hours.querySelector(".na-legend")), "TemperatureFeels like");
+  assert.equal(hours.querySelectorAll("path.na-line").length, 2);
+  assert.equal(text(chance.querySelector(".na-goal-label")), "goal 50 %");
+  assert.deepEqual([...week.querySelectorAll("th")].map((th) => text(th)), ["Day", "Sky", "Temperature", "Rain chance"]);
+  assert.deepEqual([...week.querySelectorAll("tbody tr")].map(cells),
+    [["Wednesday", "overcast", "6 to 9 °C", "85 %"], ["Thursday", "rain", "6 to 11 °C", "100 %"], ["Friday", "clear", "2 to 8 °C", "0 %"]]);
+  assert.equal(text(walks.querySelector(".na-empty")), "Nothing here yet.");
+
+  (now.querySelector("button.na-row-action") as HTMLButtonElement).click();
+  await settle();
+  assert.deepEqual(t.f.files.get("Apps/Weather data.md")!.fm!.walks, [{ sky: "overcast", temp: 8.4, feels: 6.2, wind: 12.25, at: "2026-11-18T12:00" }]);
+  assert.deepEqual(lines, ["Daily.md: - Walked in London: overcast, 8.4°C, feels like 6.2°C, wind 12.25 km/h"]);
+  assert.deepEqual(t.notices.slice(1), ["Walk logged"]);
+  const row = walks.querySelector("tbody tr")!;
+  assert.deepEqual(cells(row).slice(0, 4), ["just now", "overcast", "8.4", "6.2"]);
+  const note = row.querySelector("input") as HTMLInputElement;
+  note.value = "Round the park, dry the whole way";
+  note.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal((t.f.files.get("Apps/Weather data.md")!.fm!.walks as { note: string }[])[0].note, "Round the park, dry the whole way");
+});

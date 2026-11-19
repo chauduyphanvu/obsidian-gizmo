@@ -77,8 +77,38 @@ export default async function apps(t) {
       await na.open("Apps/Weather");
       const chart = na.view().contentEl.querySelector(".na-view-line");
       return { lines: chart.querySelectorAll("path.na-line").length, legend: chart.querySelector(".na-legend")?.innerText };`);
-    if (r.lines !== 2 || !r.legend?.includes("apparent_temperature")) throw new Error(JSON.stringify(r));
+    if (r.lines !== 2 || !r.legend?.includes("Temperature") || !r.legend?.includes("Feels like")) throw new Error(JSON.stringify(r));
     return "2 lines and a legend";
+  }, { net: NET.Weather });
+
+  await check("Weather: asks for Open-Meteo and Daily; the week reads in words; I went for a walk logs it with its weather and a line in Daily; a note is added", async () => {
+    expect(JSON.stringify([...(prompts.Weather ?? [])].sort()) === JSON.stringify(["Add lines to Daily.md", "Fetch data from api.open-meteo.com"]), prompts.Weather);
+    const r = await run(`
+      await na.open("Apps/Weather");
+      const el = na.view().contentEl;
+      const panel = (title) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title);
+      const days = [...panel("The week ahead").querySelectorAll("tbody tr")].map((tr) => tr.querySelector("td").textContent);
+      const skies = [...panel("The week ahead").querySelectorAll("tbody tr")].map((tr) => tr.querySelectorAll("td")[1].textContent);
+      const now = panel("Right now").querySelector("li");
+      const shown = now.textContent;
+      const mark = na.notices.length;
+      na.button("I went for a walk", now).click();
+      const walk = await na.until(() => na.fm("Apps/Weather data.md")?.walks?.[0], 3000);
+      const notices = await na.noticesSince(mark, "Walk logged");
+      await na.sleep(600);
+      const daily = await na.read("Daily.md");
+      const row = panel("My walks").querySelector("tbody tr");
+      const cells = [...row.querySelectorAll("td")].slice(0, 2).map((td) => td.textContent);
+      na.fill(row.querySelector("input"), "Round the park");
+      const note = await na.until(() => na.fm("Apps/Weather data.md")?.walks?.[0]?.note, 3000);
+      return { days, skies, shown, walk, notices, line: daily.split("\\n").find((l) => l.startsWith("- Walked in London: ")), cells, note, errors: na.errors() };`);
+    const names = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"];
+    const skies = ["clear", "partly cloudy", "overcast", "fog", "drizzle", "rain", "snow", "showers", "snow showers", "thunderstorm"];
+    expect(r.days.length === 7 && r.days.every((d) => names.includes(d)) && r.skies.every((s) => skies.includes(s)), r);
+    expect(r.walk && skies.includes(r.walk.sky) && typeof r.walk.temp === "number" && typeof r.walk.feels === "number" && r.notices.includes("Walk logged"), r);
+    expect(r.line === `- Walked in London: ${r.walk.sky}, ${r.walk.temp}°C, feels like ${r.walk.feels}°C, wind ${r.walk.wind} km/h` && r.shown.endsWith("I went for a walk"), r);
+    expect(r.cells[0] === "just now" && r.cells[1] === r.walk.sky && r.note === "Round the park" && r.errors === 0, r);
+    return `${r.line}; week ${r.days[0]}–${r.days[6]}`;
   }, { net: NET.Weather });
 
   await check("Portfolio: asks only for Yahoo; picking a stock and a range redraws the Ticker; a buy recorded is held and worth something", async () => {
