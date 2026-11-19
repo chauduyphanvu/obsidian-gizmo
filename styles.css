@@ -441,3 +441,6 @@ button.na-lens-toggle {
   font-size: var(--font-ui-small);
 }
 .note-app .na-detail-text { flex: 1 1 16em; }
+
+/* Edit in place: a dropdown in an edited column is as wide as its longest choice, never cut short. */
+.note-app .na-table select.na-edit { width: auto; min-width: max-content; }
