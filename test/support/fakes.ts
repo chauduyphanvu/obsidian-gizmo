@@ -2,7 +2,8 @@ import type { AppEnv } from "../../src/app.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { storeTarget } from "../../src/store.ts";
 
-type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string }>;
+/** A file in the fake vault: a note (frontmatter, tags, body) or any other file (its text in `raw`). */
+type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string; raw?: string }>;
 
 /** An in-memory vault and network. `flush()` delivers batched change notifications. */
 export function fakeHost(notes: Notes = {}) {
@@ -11,6 +12,7 @@ export function fakeHost(notes: Notes = {}) {
   let queued: (() => void)[] = [];
   let clock = 1_000_000;
   const secrets: Record<string, string> = { demo: "s3cret" };
+  const isNote = (path: string) => path.endsWith(".md");
   const info = (path: string): FileInfo => ({ path, basename: path.split("/").pop()!.replace(/\.md$/, ""), mtime: 0, ctime: 0 });
   const host: Host = {
     async fetch(url) {
@@ -20,13 +22,19 @@ export function fakeHost(notes: Notes = {}) {
       if (url.includes("/fail")) return { status: 503, text: "", contentType: "" };
       return { status: 200, text: JSON.stringify({ current: { t: 7 }, hourly: { time: ["a", "b"], t: [1, 2] } }), contentType: "application/json" };
     },
-    markdownFiles: () => [...files.keys()].map(info),
-    fileInfo: (path) => (files.has(path) ? info(path) : undefined),
+    markdownFiles: () => [...files.keys()].filter(isNote).map(info),
+    fileInfo: (path) => (files.has(path) && isNote(path) ? info(path) : undefined),
     frontmatter: (path) => files.get(path)?.fm,
     tags: (path) => files.get(path)?.tags ?? [],
     secret: (id) => secrets[id] ?? null,
     now: () => clock,
     schedule: (cb) => { queued.push(cb); },
+    readFile: async (path) => {
+      const raw = files.get(path)?.raw;
+      if (raw === undefined) throw new Error(`Can't find ${path}`);
+      return raw;
+    },
+    resolveFile: (link) => [...files.keys()].find((p) => p === link || p.endsWith(`/${link}`)),
   };
   return {
     host,

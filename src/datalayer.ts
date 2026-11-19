@@ -22,6 +22,10 @@ export interface Host {
   now(): number;
   /** Runs cb once, soon; used to batch change notifications. */
   schedule(cb: () => void): void;
+  /** The text of any file in the vault; rejects with `Can't find <path>` when there is none. */
+  readFile(path: string): Promise<string>;
+  /** The vault path a link or file name points at from the note at `from`, or undefined when no file matches. */
+  resolveFile(link: string, from: string): string | undefined;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -52,6 +56,7 @@ export class DataLayer {
   private listeners = new Set<{ deps: Set<string>; cb: (changed: Set<string>) => void }>();
   private pending = new Set<string>();
   private flushQueued = false;
+  private parsedFiles = new Map<string, Promise<unknown>>();
 
   /** What sources read the vault through. */
   readonly host: Host;
@@ -100,6 +105,18 @@ export class DataLayer {
       if (!value) throw new Error(`Missing secret "${id}". Add it under Settings → Keychain.`);
       return value;
     });
+  }
+
+  // ---- Vault files --------------------------------------------------------------------------
+
+  /** A vault file read and parsed once; the next change to the file, or a failed read, drops it. */
+  parsedFile(path: string, parse: (text: string) => unknown): Promise<unknown> {
+    const hit = this.parsedFiles.get(path);
+    if (hit) return hit;
+    const promise = this.host.readFile(path).then(parse);
+    this.parsedFiles.set(path, promise);
+    promise.catch(() => { if (this.parsedFiles.get(path) === promise) this.parsedFiles.delete(path); });
+    return promise;
   }
 
   // ---- Notes --------------------------------------------------------------------------------
@@ -165,6 +182,7 @@ export class DataLayer {
 
   private touch(path: string, before: Row | undefined, after: Row | undefined): void {
     this.pending.add(`file:${path}`);
+    this.parsedFiles.delete(path);
     // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
     this.pending.add(`name:${path.split("/").pop()!.replace(/\.md$/i, "")}`);
     for (const [key] of this.queries) {
