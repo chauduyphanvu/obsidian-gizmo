@@ -8,8 +8,28 @@ export function shiftDay(date: string, n: number): string {
 }
 
 const DATE = /^\d{4}-\d{2}-\d{2}$/;
+/** A search box applies what was typed once typing pauses this long, or at once on Enter. */
+export const TYPING_PAUSE_MS = 300;
 
-/** The bar above an app's panels: a dropdown per list of choices, a ‹ date › Today bar per date. */
+/** A search box: starts empty, reports its text after a pause in typing or on Enter. */
+function searchBox(field: HTMLElement, name: string, value: InputValue | undefined, onChange: (name: string, value: InputValue) => void): void {
+  const input = field.createEl("input", { type: "search", cls: "na-search" });
+  input.setAttr("aria-label", name);
+  input.value = value === undefined ? "" : String(value);
+  let pending: ReturnType<typeof setTimeout> | undefined;
+  const apply = () => {
+    if (pending) clearTimeout(pending);
+    pending = undefined;
+    onChange(name, input.value);
+  };
+  input.addEventListener("input", () => {
+    if (pending) clearTimeout(pending);
+    pending = setTimeout(apply, TYPING_PAUSE_MS);
+  });
+  input.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") apply(); });
+}
+
+/** The bar above an app's panels: a dropdown per list of choices, a ‹ date › Today bar per date, a search box per text. */
 export function renderInputBar(
   parent: HTMLElement,
   defs: InputDef[],
@@ -21,6 +41,10 @@ export function renderInputBar(
   for (const def of defs) {
     const field = bar.createDiv({ cls: "na-input" });
     field.createSpan({ cls: "na-input-name", text: def.name });
+    if (def.kind === "text") {
+      searchBox(field, def.name, values[def.name], onChange);
+      continue;
+    }
     if (def.kind === "choice") {
       const select = field.createEl("select", { cls: "dropdown" });
       select.setAttr("aria-label", def.name);

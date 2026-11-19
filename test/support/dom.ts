@@ -47,6 +47,19 @@ Object.assign(proto, {
   },
 });
 
+// linkedom doesn't track focus; this is enough of it for tests that check focus is kept.
+let focused: Element | null = null;
+Object.defineProperty(document, "activeElement", {
+  configurable: true,
+  get: () => (focused?.isConnected ? focused : document.body),
+});
+for (const target of [window.Element.prototype, window.HTMLElement.prototype] as unknown as Record<string, unknown>[]) {
+  Object.assign(target, {
+    focus(this: Element) { focused = this; },
+    blur(this: Element) { if (focused === this) focused = null; },
+  });
+}
+
 Object.assign(globalThis, { window, document });
 
 export { document };

@@ -25,6 +25,9 @@ export interface PanelCtx {
   startTimer(key: string, p: Panel): void;
   pauseTimer(key: string): void;
   resetTimer(key: string, p: Panel): void;
+  /** Sets the selection `name` (a panel's `select`) to a row, or clears it; panels reading it follow. */
+  select(name: string, row: Row | undefined): void;
+  selected(name: string): Row | undefined;
 }
 
 export interface PanelHandle {

@@ -214,8 +214,8 @@ export function nearMisses(raw: unknown, names: ReadonlySet<string>, kind: "inpu
 
 export interface InputDef {
   name: string;
-  /** A dropdown of choices (starting at the first), or a date bar (starting today). */
-  kind: "choice" | "date";
+  /** A dropdown of choices (starting at the first), a date bar (starting today), or a search box (starting empty). */
+  kind: "choice" | "date" | "text";
   options: InputValue[];
 }
 
@@ -229,7 +229,7 @@ export function readInputs(value: unknown, errors: string[]): InputDef[] {
   for (const [name, def] of Object.entries(value)) {
     const scalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v);
     if (!NAME.test(name)) errors.push(`inputs: "${name}" can only use letters, digits and _`);
-    else if (def === "date") defs.push({ name, kind: "date", options: [] });
+    else if (def === "date" || def === "text") defs.push({ name, kind: def, options: [] });
     else if (!Array.isArray(def) || def.length === 0 || !def.every(scalar)) errors.push(`inputs.${name} must be a list of choices or date`);
     else if (def.some(unsafeValue)) errors.push(`inputs.${name}: a choice can't hold a secret or a line break`);
     else defs.push({ name, kind: "choice", options: def as InputValue[] });

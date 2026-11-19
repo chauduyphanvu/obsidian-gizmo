@@ -1,6 +1,6 @@
-import { extent, formatValue, seriesOf, toTime, type Per, type Point } from "../data.ts";
+import { extent, formatValue, getPath, seriesOf, toTime, type Per, type Point, type Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, seriesNames } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, selectable, seriesNames } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -54,6 +54,8 @@ export interface ChartOptions {
   decimals?: number;
   /** Grouped by period: axis labels name the period. */
   per?: Per;
+  /** Selection hook: called with each bar drawn and the x value it stands for. */
+  mark?(el: SVGElement, x: unknown): void;
 }
 
 /** A colour swatch and name; text keeps the text colour, the swatch carries the series colour. */
@@ -146,7 +148,8 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       for (const [i, y] of byIndex) {
         if (y === 0) continue;
         const x = sx(i) - (m * w + (m - 1) * GAP) / 2 + s * (w + GAP);
-        svg("path", { d: barPath(x, w, zero, sy(y)), class: `na-bar ${colour(s)}` }, root);
+        const bar = svg("path", { d: barPath(x, w, zero, sy(y)), class: `na-bar ${colour(s)}` }, root);
+        opts.mark?.(bar, label.get(keys[i]));
       }
     });
   }
@@ -185,10 +188,16 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   });
 }
 
+/** The row behind a bar: the data (or group) row whose x is `at`, else one made of the series' values there. */
+function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
+  const found = Array.isArray(data) ? data.find((r) => r !== null && typeof r === "object" && String(getPath(r, x)) === String(at)) : undefined;
+  return (found as Row | undefined) ?? Object.fromEntries([[x, at], ...series.map((s) => [s.name, s.points.find((pt) => pt.x === at)?.y ?? null])]);
+}
+
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals"],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", ...(kind === "bar" ? ["select"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {
@@ -206,6 +215,9 @@ function chartView(kind: "line" | "bar"): ViewDef {
       { panel: { view: kind, source: "sessions", group: "at", per: "week", y: "minutes" }, errors: ["group with y needs agg (sum, avg, min, max, first or last)"] },
       { panel: { view: kind, source: "sessions", group: "at", x: "at" }, errors: ["leave out x: the x axis is the group"] },
       { panel: { view: kind, source: "s", x: "t", y: ["a", "b", "c", "d", "e", "f", "g"] }, errors: [`at most ${MAX_SERIES} series in y`] },
+      kind === "bar"
+        ? { panel: { view: kind, source: "notes", from: "Books", group: "genre", select: "genre" } }
+        : { panel: { view: kind, source: "weights", x: "at", y: "weight", select: "day" }, errors: ['"select" doesn\'t apply to line'] },
     ],
     mount(el, p, ctx, key): PanelHandle {
       let last: unknown;
@@ -216,7 +228,8 @@ function chartView(kind: "line" | "bar"): ViewDef {
         const x = p.group ?? p.x!;
         const ys = seriesNames(p);
         const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, points: seriesOf(last, x, y) }));
-        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, width: width ?? ctx.width(key), per: p.per });
+        const mark = p.select ? (bar: SVGElement, at: unknown) => selectable(bar, p, ctx, rowAt(last, x, at, series), String(at)) : undefined;
+        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, width: width ?? ctx.width(key), per: p.per, mark });
       };
       return {
         update(data) { last = data; draw(); },

@@ -189,3 +189,18 @@
   padding: 0 6px;
   margin-right: 6px;
 }
+
+/* Selection, row actions, edit in place */
+.note-app .na-waiting { color: var(--text-muted); font-size: var(--font-ui-small); font-style: italic; }
+.note-app .na-search { min-width: 180px; }
+.note-app .na-selectable { cursor: pointer; }
+.note-app .na-selectable:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.note-app li.na-selectable { border-radius: var(--radius-s); padding: 1px var(--size-4-1); }
+.note-app li.na-selected, .note-app tr.na-selected td, .note-app .na-legend-item.na-selected {
+  background: var(--background-modifier-hover);
+  color: var(--text-normal);
+}
+.note-app .na-legend-item.na-selected { border-radius: var(--radius-s); font-weight: var(--font-semibold); }
+.note-app .na-chart-svg:has(.na-selected) .na-bar.na-selectable:not(.na-selected),
+.note-app .na-pie:has(.na-selected) .na-selectable:not(.na-selected) { opacity: 0.35; }
+.note-app .na-bar.na-selected, .note-app .na-slice.na-selected { stroke: var(--text-normal); stroke-width: 1.5; }

@@ -1,6 +1,6 @@
 import { fillTemplate, stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
-import { basename, type NoteReader } from "./expand.ts";
+import { basename, typedName, type NoteReader } from "./expand.ts";
 import {
   askersOf, describePermission, isComponent, isUrl, notePath, permissionsOf, readComponentPreview, readSpec,
   resolvePanel, startingValues, type ComponentPreview,
@@ -53,6 +53,13 @@ interface Mounted {
   seq: number;
   /** An input it uses changed: draw it afresh once its new data arrives. */
   remount: boolean;
+  /** Not loaded: it waits for a value, or a value it was given can't be used. */
+  idle: boolean;
+}
+
+/** A panel's title as typed, when no value is filled into it. */
+function plainTitle(ps: PanelSpec): string | undefined {
+  return typeof ps.template.title === "string" ? ps.template.title : undefined;
 }
 
 /** JSON with object keys sorted, so the order keys were typed in doesn't matter. */
@@ -103,8 +110,13 @@ export class AppController {
   private tabs: HTMLElement | undefined;
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
   private activeTab: string | undefined;
-  /** Input values; kept while the note is edited, back to their starts when it's reopened. */
+  /** Input values; kept while the note is edited, back to their starts when it's reopened. An empty search box has none. */
   private values: Record<string, InputValue> = {};
+  /** Rows panels selected, by selection name; kept while the note is edited, cleared when it's reopened. */
+  private selections = new Map<string, Row>();
+  /** The input bar, kept as drawn while the inputs stay the same so typing in it is never interrupted. */
+  private bar: HTMLElement | undefined;
+  private barFor = "";
   /** Names of the component notes the app links to; a change to any of them redraws it. */
   private links: string[] = [];
   private ctx: PanelCtx;
@@ -141,6 +153,8 @@ export class AppController {
         this.timers.set(key, { remainingMs: p.minutes! * 60_000 });
         this.redraw(key);
       },
+      select: (name, row) => this.setSelection(name, row),
+      selected: (name) => this.selections.get(name),
     };
   }
 
@@ -212,7 +226,7 @@ export class AppController {
     this.spec = result?.spec;
     this.dataPath = this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath);
 
-    for (const el of [...this.shell.children]) if (el !== this.grid) el.remove();
+    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar) el.remove();
     const header = createDivIn(this.shell, "na-header");
     this.shell.prepend(header);
 
@@ -243,6 +257,7 @@ export class AppController {
     }
 
     this.setRefresh(spec);
+    for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });
     this.columns = columnsFor(this.shell.clientWidth);
     this.syncInputs(spec);
@@ -285,27 +300,60 @@ export class AppController {
     const kept: Record<string, InputValue> = {};
     for (const def of spec.inputs) {
       const v = this.values[def.name];
-      const ok = v !== undefined && (def.kind === "date" ? typeof v === "string" : def.options.includes(v));
-      kept[def.name] = ok ? v : start[def.name];
+      const ok = v !== undefined && (def.kind === "choice" ? def.options.includes(v) : typeof v === "string");
+      if (ok) kept[def.name] = v;
+      else if (def.name in start) kept[def.name] = start[def.name];
     }
     this.values = kept;
+    const barFor = JSON.stringify(spec.inputs);
+    if (this.bar && barFor === this.barFor) return;
+    this.removeBar();
     if (spec.inputs.length === 0) return;
     const today = () => stampParts(this.env.now()).date;
-    const bar = renderInputBar(this.shell, spec.inputs, this.values, today, (name, value) => this.setInput(name, value));
-    this.shell.insertBefore(bar, this.grid!);
+    this.bar = renderInputBar(this.shell, spec.inputs, this.values, today, (name, value) => this.setInput(name, value));
+    this.barFor = barFor;
+    this.shell.insertBefore(this.bar, this.grid!);
+  }
+
+  private removeBar(): void {
+    this.bar?.remove();
+    this.bar = undefined;
+    this.barFor = "";
+  }
+
+  /** Every value a panel may read: the inputs', then the selections. */
+  private current(): Record<string, unknown> {
+    return { ...this.values, ...Object.fromEntries(this.selections) };
   }
 
   private setInput(name: string, value: InputValue): void {
-    if (this.values[name] === value) return;
-    this.values[name] = value;
+    // An empty search box has no value, so the panels that read it wait.
+    const typed = this.spec?.inputs.some((d) => d.name === name && d.kind === "text");
+    const next = typed && value === "" ? undefined : value;
+    if (this.values[name] === next) return;
+    if (next === undefined) delete this.values[name];
+    else this.values[name] = next;
+    this.refillReaders(name);
+  }
+
+  /** Only names the app declares are kept; a view can't make up a selection. */
+  private setSelection(name: string, row: Row | undefined): void {
+    if (!this.spec?.selections.includes(name) || this.selections.get(name) === row) return;
+    if (row) this.selections.set(name, row);
+    else this.selections.delete(name);
+    this.refillReaders(name);
+  }
+
+  private refillReaders(name: string): void {
     for (const m of this.mounted.values()) if (m.ps.inputs.includes(name)) this.refill(m);
     this.subscribe();
   }
 
   /** Fills a panel's inputs again; its old content stays, dimmed, until the new data arrives. */
   private refill(m: Mounted): void {
-    const r = resolvePanel(m.ps, this.values);
-    if (!r.panel) return this.showPanelError(m, r.errors.join("; "));
+    const r = resolvePanel(m.ps, this.current());
+    if (!r.panel) return this.halt(m, r.waiting, r.errors);
+    m.idle = false;
     m.p = r.panel;
     m.source = m.p.source ?? m.def.implicitSource?.(m.p);
     m.deps = this.env.data.depsOf(m.source, m.p, this.files());
@@ -331,6 +379,7 @@ export class AppController {
 
   private showOnly(header: HTMLElement): void {
     this.destroyPanels();
+    this.removeBar();
     this.unsubscribe?.();
     // Still listen to the app note and its components, so fixing their keys redraws the app.
     this.unsubscribe = this.env.data.subscribe(this.definitionDeps(), () => this.reconcile());
@@ -380,12 +429,14 @@ export class AppController {
   // ---- Panels -------------------------------------------------------------------------------
 
   private mount(id: string, ps: PanelSpec, files: AppFiles): Mounted {
-    const p = resolvePanel(ps, this.values).panel ?? ps.panel;
+    const r = resolvePanel(ps, this.current());
+    // Unresolved, the checked panel stands in for layout; its title may hold check-time stand-ins.
+    const p = r.panel ?? { ...ps.panel, title: plainTitle(ps) };
     const def = viewDef(p.view)!;
     const el = createDivIn(this.grid!, `na-panel na-view-${p.view}`);
-    const source = p.source ?? def.implicitSource?.(p);
+    const source = r.panel ? p.source ?? def.implicitSource?.(p) : undefined;
     const m = {
-      id, ps, p, def, el, source, remount: false,
+      id, ps, p, def, el, source, remount: false, idle: false,
       span: p.span ?? def.span,
       tab: p.tab,
       deps: this.env.data.depsOf(source, p, files),
@@ -393,6 +444,12 @@ export class AppController {
     } as Mounted;
     // Registered before mounting, so the view can ask for its width.
     this.mounted.set(id, m);
+    if (!r.panel) {
+      // The view is mounted once there is something to draw.
+      m.handle = { update() {} };
+      this.halt(m, r.waiting, r.errors);
+      return m;
+    }
     m.handle = def.mount(el, p, this.ctx, id);
     if (source) {
       el.addClass("na-loading");
@@ -439,9 +496,36 @@ export class AppController {
     m.el.createDiv({ text: message });
   }
 
+  /**
+   * Stops a panel that can't load as it stands: it waits for a value (a placeholder says which), or
+   * a value it was given can't be used (its error shows). Nothing reloads it until its values change.
+   */
+  private halt(m: Mounted, waiting: string | undefined, errors: string[]): void {
+    m.idle = true;
+    m.source = undefined;
+    m.deps = [];
+    m.remount = true;
+    m.seq++;
+    if (waiting === undefined) return this.showPanelError(m, errors.join("; "));
+    m.el.removeClass("na-loading", "na-error", "na-stale");
+    m.el.empty();
+    const title = plainTitle(m.ps);
+    if (title) m.el.createDiv({ cls: "na-title", text: title });
+    m.el.createDiv({ cls: "na-waiting", text: this.waitingFor(waiting) });
+  }
+
+  /** What a waiting panel asks for: typing in a search box, or picking a row in the panel that selects. */
+  private waitingFor(name: string): string {
+    if (this.spec?.inputs.some((d) => d.name === name)) return `Type in “${name}”`;
+    const picker = [...this.mounted.values()].find((x) => x.p.select === name && !x.idle);
+    const ps = this.spec?.panels.find((s) => s.panel.select === name);
+    const title = picker?.p.title ?? (ps && (plainTitle(ps) ?? ps.panel.view)) ?? typedName(name);
+    return `Pick a row in “${title}”`;
+  }
+
   private redraw(id: string): void {
     const m = this.mounted.get(id);
-    if (m && !m.source) m.handle.update(undefined);
+    if (m && !m.source && !m.idle) m.handle.update(undefined);
   }
 
   // ---- Cards --------------------------------------------------------------------------------

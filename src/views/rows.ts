@@ -1,12 +1,12 @@
 import { fillTemplate, formatValue, getPath } from "../data.ts";
-import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, noteLink, redraw, rowsOf, shownRows } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, noteLink, redraw, rowsOf, selectable, shownRows } from "./common.ts";
 import type { ViewDef } from "./registry.ts";
 
 const HIDDEN_COLUMNS = new Set(["path", "mtime", "ctime", "tags", "position"]);
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals", "select"],
   span: 4,
   needsSource: true,
   validate: (p) => groupedTotals(p, p.columns ?? [], "columns"),
@@ -17,6 +17,7 @@ export const table: ViewDef = {
     { panel: { view: "table", source: "notes" }, errors: ['source "notes" needs "from" (a #tag or folder)'] },
     { panel: { view: "table", source: "notes", from: "Books", compute: { left: "pages - read" }, sort: "-left", columns: ["name", "left"] } },
     { panel: { view: "table", source: "quotes", compute: { change: "pct(close)" } }, errors: ['compute.change: unknown function "pct"'] },
+    { panel: { view: "table", source: "notes", from: "Books", columns: ["name", "finished"], select: "book" } },
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p, p.label);
@@ -37,19 +38,21 @@ export const table: ViewDef = {
         else td.setText(text);
         if (typeof v === "number") td.addClass("na-num");
       }
+      selectable(tr, p, ctx, r);
     });
   }),
 };
 
 export const list: ViewDef = {
   id: "list",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "select"],
   span: 4,
   needsSource: true,
   examples: [
     { panel: { view: "list", source: "notes", from: "#health/appointment", where: { date: "upcoming" }, sort: "date", item: "{date} · {name}" } },
     { panel: { view: "list", source: "http://example.com/feed.json" }, errors: ["source must use https"] },
     { panel: { view: "list", source: "notes", from: "#book", group: "tags", sort: "-count", limit: 5 } },
+    { panel: { view: "list", source: "https://api.example.com/quakes", pick: "features", item: "{properties.place}", select: "quake" } },
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p, p.label);
@@ -62,6 +65,7 @@ export const list: ViewDef = {
       const li = ul.createEl("li");
       if (typeof r.path === "string") noteLink(li, text, r.path, ctx);
       else li.setText(text);
+      selectable(li, p, ctx, r);
     });
   }),
 };

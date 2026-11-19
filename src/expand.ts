@@ -225,13 +225,30 @@ export interface Produced {
   writtenIn: Record<string, string>;
 }
 
-/** The note an entry was written in: its names, data blocks and how `$names` are filled there. */
+/**
+ * The note an entry was written in: its names, data blocks and how `$names` are filled there.
+ * `selects` maps the names a component's own panels select to the app-wide names of this use of
+ * it, so two uses of one component keep their selections apart; those names are also in `names`
+ * and `params` (as references), and are refused where inputs are.
+ */
 interface Scope {
   path: string;
   blocks: Blocks;
   names: ReadonlySet<string>;
   kind: "input" | "param";
   params: ReadonlyMap<string, unknown>;
+  selects: ReadonlyMap<string, string>;
+}
+
+/** The name an entry selects, as typed; numbers are text, as for any text key. */
+export function selectOf(entry: unknown): string | undefined {
+  if (!isPlainObject(entry)) return undefined;
+  return typeof entry.select === "string" || typeof entry.select === "number" ? String(entry.select) : undefined;
+}
+
+/** The typed name behind an app-wide selection name (a component's own get `@<use>` added). */
+export function typedName(name: string): string {
+  return name.split("@")[0];
 }
 
 interface Component {
@@ -253,6 +270,9 @@ export function basename(path: string): string {
 }
 
 const linkName = (path: string) => `[[${basename(path)}]]`;
+
+/** Where a component's panel is written, for messages: "panel 2 (from [[City]] panel 1)". */
+const stepLabel = (base: string, step: string[]) => (base ? `${base} (from ${step.join(" → ")})` : step.join(" → "));
 
 function readComponent(fm: Record<string, unknown> | undefined, name: string, errors: string[]): Component | undefined {
   if (!fm || fm.component === undefined || fm.component === null || fm.component === false) {
@@ -334,16 +354,20 @@ export class Expander {
   read: Record<string, unknown> = {};
   links = new Set<string>();
   errors: string[] = [];
+  /** App-wide names of the selections components' own panels make. */
+  selections = new Set<string>();
   private notes: NoteReader | undefined;
   private appPath: string;
+  private uses = 0;
 
   constructor(notes: NoteReader | undefined, appPath: string) {
     this.notes = notes;
     this.appPath = appPath;
   }
 
-  appScope(blocks: Blocks, inputs: ReadonlySet<string>): Scope {
-    return { path: this.appPath, blocks, names: inputs, kind: "input", params: new Map() };
+  /** `names` are the app's inputs and the names its panels select. */
+  appScope(blocks: Blocks, names: ReadonlySet<string>): Scope {
+    return { path: this.appPath, blocks, names, kind: "input", params: new Map(), selects: new Map() };
   }
 
   /** The description of the component a link names, for an app that is one whole component. */
@@ -439,18 +463,41 @@ export class Expander {
 
     const blockErrors: string[] = [];
     const names = new Set(component.params.keys());
-    const inner: Scope = { path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params };
+    const stepOf = (j: number) => [...trail, `${name} panel ${j + 1}`];
+    const selects = this.ownSelects(component.panels, names, (j, e) => this.errors.push(`${stepLabel(base, stepOf(j))}: ${e}`));
+    for (const [typed, own] of selects) {
+      names.add(typed);
+      params.set(typed, new InputRef(own));
+    }
+    const inner: Scope = { path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params, selects };
     blockErrors.forEach((e) => at(`${name} ${e}`));
     const produced = component.panels.flatMap((entry, j) => {
-      const step = [...trail, `${name} panel ${j + 1}`];
+      const step = stepOf(j);
       if (!isPlainObject(entry)) {
-        this.errors.push(`${base ? `${base} (from ${step.join(" → ")})` : step.join(" → ")}: must be a set of keys`);
+        this.errors.push(`${stepLabel(base, step)}: must be a set of keys`);
         return [];
       }
       return this.expand(entry, inner, base, step, [...chain, path]);
     });
     this.applyOverrides(raw, scope, produced, name, at);
     return produced;
+  }
+
+  /** Names a component's own panels select, each given an app-wide name for this use of it. */
+  private ownSelects(panels: unknown[], params: ReadonlySet<string>, at: (j: number, e: string) => void): Map<string, string> {
+    const use = ++this.uses;
+    const out = new Map<string, string>();
+    panels.forEach((entry, j) => {
+      const name = selectOf(entry);
+      if (name === undefined || out.has(name)) return;
+      if (!NAME.test(name)) at(j, `select: "${name}" can only use letters, digits and _`);
+      else if (params.has(name)) at(j, `select: "${name}" is already a param`);
+      else {
+        out.set(name, `${name}@${use}`);
+        this.selections.add(`${name}@${use}`);
+      }
+    });
+    return out;
   }
 
   /**
@@ -465,7 +512,10 @@ export class Expander {
     merged.errors.forEach(at);
     const parts = [merged.template, ...merged.stages.map((s) => s.keys)];
     if (typos) nearMisses(parts, scope.names, scope.kind).forEach(at);
-    const refused = parts.flatMap((part) => refusedPlaces(part, scope.names, scope.kind));
+    // A component's own selections are values from the user, refused wherever inputs are.
+    const own = new Set(scope.selects.keys());
+    const params = own.size ? new Set([...scope.names].filter((n) => !own.has(n))) : scope.names;
+    const refused = parts.flatMap((part) => [...refusedPlaces(part, params, scope.kind), ...refusedPlaces(part, own, "input")]);
     refused.forEach(at);
     if (refused.length) return undefined;
     const fillErrors: string[] = [];
@@ -473,6 +523,8 @@ export class Expander {
     fillErrors.forEach(at);
     if (stages.length) template.upstream = stages.map((keys, i) => ({ block: merged.stages[i].block, keys }));
     if (merged.schema) template.schema = merged.schema;
+    const selected = selectOf(template);
+    if (selected !== undefined && scope.selects.has(selected)) template.select = scope.selects.get(selected);
     return { typed: merged.template, template };
   }
 

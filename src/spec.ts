@@ -3,10 +3,11 @@ import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, storeTarget } from "./store.ts";
 import {
-  readInputs, refsIn, resolveInputs, type InputDef, type InputValue,
+  InputRef, InputText, NAME, readInputs, readRef, refsIn, resolveInputs, resolveWith, type InputDef, type InputValue,
 } from "./template.ts";
 import {
-  Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, type NoteReader, type Produced, type Stage,
+  Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, selectOf, typedName,
+  type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
@@ -100,6 +101,8 @@ export interface AppSpec {
   panels: PanelSpec[];
   refreshMs?: number;
   inputs: InputDef[];
+  /** Names panels select, app-wide: as typed, or `name@<use>` for a component's own. */
+  selections: string[];
   /** The app's own data blocks, checked, as typed (`$names` unfilled). */
   blocks: Record<string, Record<string, unknown>>;
   /** Component notes read while expanding (path → frontmatter), and the names of every `use` link. */
@@ -107,17 +110,23 @@ export interface AppSpec {
   links: string[];
 }
 
-/** Where each input starts: its first choice, or today. */
+/** Where each input starts: its first choice, or today. A search box starts with no value. */
 export function startingValues(defs: InputDef[], now: Date): Record<string, InputValue> {
-  return Object.fromEntries(defs.map((d) => [d.name, d.kind === "date" ? stampParts(now).date : d.options[0]]));
+  const out: Record<string, InputValue> = {};
+  for (const d of defs) if (d.kind !== "text") out[d.name] = d.kind === "date" ? stampParts(now).date : d.options[0];
+  return out;
 }
 
 /**
- * The panel with these values filled in, checked. A value that can't be used (a secret or a line
- * break in typed text, a row where text goes) is an error, and the panel isn't drawn.
+ * The panel with these values filled in, checked. A name the panel reads that has no value yet (a
+ * selection nobody made, an empty search box) leaves it `waiting` for that name. A value that can't
+ * be used (a secret or a line break in typed text, a row where text goes) is an error, and the
+ * panel isn't drawn.
  */
-export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unknown>>): { panel?: Panel; errors: string[] } {
+export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unknown>>): { panel?: Panel; errors: string[]; waiting?: string } {
   if (ps.inputs.length === 0) return { panel: ps.panel, errors: [] };
+  const waiting = ps.inputs.find((n) => values[n] === undefined);
+  if (waiting !== undefined) return { errors: [], waiting };
   const problems: string[] = [];
   const filled = resolveInputs(ps.template, values, problems) as Record<string, unknown>;
   return problems.length ? { errors: problems } : checkTemplate(filled, ps.strict);
@@ -239,28 +248,51 @@ export function readSpec(
   const errors: string[] = [];
   const inputErrors: string[] = [];
   const inputs = readInputs(fm.inputs, inputErrors);
-  const names = new Set(inputs.map((d) => d.name));
+  const inputNames = new Set(inputs.map((d) => d.name));
+  const selects = appSelects(fm, inputNames, inputErrors);
+  // Selections are names like inputs, known before any `$name` is read.
+  const names = new Set([...inputNames, ...selects]);
   const blocks = readBlocks(fm.data, errors, names);
   errors.push(...inputErrors);
   const start = startingValues(inputs, opts.now ?? new Date());
   const expander = new Expander(opts.notes, opts.path ?? "");
   const scope = expander.appScope(blocks, names);
+  const isSelection = (n: string) => selects.has(n) || expander.selections.has(n);
+  // Names whose values only come at run time, from whoever types or picks them.
+  const late = (n: string) => isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
 
   const panels: PanelSpec[] = [];
   const used = new Set<string>();
+  /** Each selection's selecting panel, by label. */
+  const selectedBy = new Map<string, string>();
   let count = 0;
   const check = (p: Produced, strict: boolean) => {
     const at = (e: string) => (p.label ? `${p.label}: ${e}` : e);
     const uses = refsIn(p.template);
     for (const n of uses) used.add(n);
-    const r = checkTemplate(resolveInputs(p.template, start) as Record<string, unknown>, strict);
+    const bare = bareRefs(p.template).filter(isSelection);
+    if (bare.length) {
+      errors.push(...[...new Set(bare)].map((n) => at(`say which field: $${typedName(n)}.id`)));
+      return;
+    }
+    const selected = selectOf(p.template);
+    if (selected !== undefined && isSelection(selected)) {
+      if (selectedBy.has(selected)) {
+        errors.push(at(`two panels select "${typedName(selected)}"`));
+        return;
+      }
+      selectedBy.set(selected, p.label);
+    }
+    const checkWith = (values: Record<string, unknown>) => (uses.some(late)
+      ? checkStandIns(p.template, values, late, strict)
+      : checkTemplate(resolveInputs(p.template, values) as Record<string, unknown>, strict));
+    const r = checkWith(start);
     errors.push(...r.errors.map(at));
     // Any choice can be picked, so each must make a valid panel too.
     for (const def of inputs) {
       if (def.kind !== "choice" || !uses.includes(def.name)) continue;
       for (const option of def.options.slice(1)) {
-        const other = checkTemplate(resolveInputs(p.template, { ...start, [def.name]: option }) as Record<string, unknown>, strict)
-          .errors.filter((e) => !r.errors.includes(e));
+        const other = checkWith({ ...start, [def.name]: option }).errors.filter((e) => !r.errors.includes(e));
         if (other.length === 0) continue;
         errors.push(...other.map((e) => at(`${e} (when $${def.name} is ${option})`)));
         break;
@@ -296,6 +328,12 @@ export function readSpec(
     return { errors, empty: true };
   }
   for (const d of inputs) if (!used.has(d.name)) errors.push(`input "${d.name}" isn't used by any panel`);
+  const selections = [...selects, ...expander.selections];
+  for (const n of selections) {
+    if (used.has(n)) continue;
+    const label = selectedBy.get(n);
+    errors.push(`${label ? `${label}: ` : ""}selection "${typedName(n)}" isn't used by any panel`);
+  }
 
   let refreshMs: number | undefined;
   if (fm.refresh !== undefined) {
@@ -309,9 +347,60 @@ export function readSpec(
     else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
   }
   const spec = {
-    description, panels, refreshMs, store, inputs, blocks: Object.fromEntries(blocks), read: expander.read, links: [...expander.links],
+    description, panels, refreshMs, store, inputs, selections,
+    blocks: Object.fromEntries(blocks), read: expander.read, links: [...expander.links],
   };
   return { spec, errors, empty: false };
+}
+
+/** The names an app's own panel entries select (beside `use` too), checked. */
+function appSelects(fm: Record<string, unknown>, inputs: ReadonlySet<string>, errors: string[]): Set<string> {
+  const listed = Array.isArray(fm.panels);
+  const entries: unknown[] = fm.use !== undefined ? [] : listed ? fm.panels as unknown[] : fm.view !== undefined ? [fm] : [];
+  const out = new Set<string>();
+  entries.forEach((entry, i) => {
+    const name = selectOf(entry);
+    if (name === undefined || out.has(name)) return;
+    const at = listed ? `panel ${i + 1}: ` : "";
+    if (!NAME.test(name)) errors.push(`${at}select: "${name}" can only use letters, digits and _`);
+    else if (inputs.has(name)) errors.push(`${at}select: "${name}" is already an input`);
+    else out.add(name);
+  });
+  return out;
+}
+
+/** Names read whole (`$quake`, no path) in a template; a formula's values are bound whole by design. */
+function bareRefs(value: unknown, out: string[] = []): string[] {
+  if (value instanceof InputRef) {
+    if (!value.path) out.push(value.input);
+  } else if (value instanceof InputText) {
+    for (const p of value.parts) bareRefs(p, out);
+  } else if (Array.isArray(value)) {
+    for (const v of value) bareRefs(v, out);
+  } else if (isPlainObject(value) && !(value instanceof Date)) {
+    for (const [k, v] of Object.entries(value)) if (k !== "vars") bareRefs(v, out);
+  }
+  return out;
+}
+
+/**
+ * What a name whose value only comes at run time stands for while checking: each of these is
+ * tried in turn, and only problems every one of them has are reported, since the others depend on
+ * what will be typed or picked.
+ */
+const STAND_INS: readonly unknown[] = ["x", 1, true];
+
+/** Checks a template with each stand-in for the `late` names; the panel is the first that checks out. */
+function checkStandIns(
+  template: Record<string, unknown>, values: Readonly<Record<string, unknown>>, late: (name: string) => boolean, strict: boolean,
+): { panel?: Panel; errors: string[] } {
+  const runs = STAND_INS.map((s) => {
+    const filled = resolveWith(template, (ref) => (late(ref.input) ? s : readRef(values[ref.input], ref.path)), []);
+    return checkTemplate(filled as Record<string, unknown>, strict);
+  });
+  const panel = runs.find((r) => r.panel)?.panel;
+  if (!panel) return runs[0];
+  return { panel, errors: runs[0].errors.filter((e) => runs.every((r) => r.errors.includes(e))) };
 }
 
 /** What opening a component note shows: how to use it, and a preview when every param has a default. */

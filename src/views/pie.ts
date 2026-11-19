@@ -2,7 +2,7 @@ import { formatValue, getPath, toNumber } from "../data.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { legendItem, svg } from "./chart.ts";
-import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, redraw, rowsOf, seriesNames } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, redraw, rowsOf, selectable, seriesNames } from "./common.ts";
 import type { ViewDef } from "./registry.ts";
 
 /** Most slices drawn; past this the smallest fold into "Other". */
@@ -35,7 +35,7 @@ function arc(a0: number, a1: number): string {
 
 export const pie: ViewDef = {
   id: "pie",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "select"],
   span: 2,
   needsSource: true,
   validate(p: Panel) {
@@ -50,10 +50,13 @@ export const pie: ViewDef = {
     { panel: { view: "pie", source: "budget", x: "category", y: "amount" } },
     { panel: { view: "pie", source: "budget", x: "category" }, errors: ["pie needs x (slice names) and y (sizes), or group"] },
     { panel: { view: "pie", source: "s", group: "g", y: ["a", "b"], agg: "sum" }, errors: ["pie takes one y"] },
+    { panel: { view: "pie", source: "spending", group: "category", y: "amount", agg: "sum", select: "category" } },
   ],
-  mount: (el, p) => redraw(el, (data) => {
+  mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p, p.label);
-    const slices = slicesOf(rowsOf(data), p.group ?? p.x!, seriesNames(p)[0] ?? "count");
+    const rows = rowsOf(data);
+    const nameField = p.group ?? p.x!;
+    const slices = slicesOf(rows, nameField, seriesNames(p)[0] ?? "count");
     if (slices.length === 0) {
       el.createDiv({ cls: "na-empty", text: "Nothing to show yet." });
       return;
@@ -83,6 +86,12 @@ export const pie: ViewDef = {
       item.createSpan({ cls: "na-pie-value", text: `${fmt(s.value)} · ${share(s.value)}` });
       shapes[i].addEventListener("pointerenter", () => readout.setText(`${s.name} · ${fmt(s.value)} · ${share(s.value)}`));
       shapes[i].addEventListener("pointerleave", showTotal);
+      // "Other" folds several rows together, so there is no one row to pick.
+      const row = s.colour === "na-other" ? undefined : rows.find((r) => String(getPath(r, nameField) ?? NONE) === s.name);
+      if (row) {
+        selectable(shapes[i], p, ctx, row, s.name);
+        selectable(item, p, ctx, row);
+      }
     });
     showTotal();
     if (p.label && p.title) el.createDiv({ cls: "na-label", text: p.label });

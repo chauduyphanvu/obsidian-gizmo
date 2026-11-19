@@ -173,6 +173,69 @@ export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void):
   });
 }
 
+// ---- Selection -----------------------------------------------------------------------------------
+
+/** What each selectable element picks, so picking one can mark the others in its panel again. */
+const PICKS = new WeakMap<Element, { p: Panel; ctx: PanelCtx; row: Row }>();
+
+/** Whether two rows of one panel are the same row: by group key, then note path, then content. */
+export function sameRow(p: Panel, a: Row | undefined, b: Row): boolean {
+  if (!a) return false;
+  if (p.group) return a[p.group] === b[p.group];
+  if (typeof a.path === "string" && typeof b.path === "string") return a.path === b.path;
+  return JSON.stringify(a) === JSON.stringify(b);
+}
+
+function mark(el: Element, on: boolean): void {
+  el.classList.toggle("na-selected", on);
+  el.setAttribute("aria-pressed", String(on));
+}
+
+/** A click or key that lands on a link, button or field inside the element is that control's. */
+function fromControl(e: Event, el: Element): boolean {
+  const control = (e.target as Element | null)?.closest?.("a, button, input, select, textarea, label");
+  return !!control && control !== el && el.contains(control);
+}
+
+/** Marks every selectable element in `el`'s panel against the current selections. */
+function markAll(el: Element): void {
+  // Outside an app (a view drawn on its own) the whole tree it hangs in stands in for the panel.
+  let scope: Element = el.closest(".na-panel") ?? el;
+  if (scope === el) while (scope.parentElement) scope = scope.parentElement;
+  for (const item of scope.querySelectorAll(".na-selectable")) {
+    const pick = PICKS.get(item);
+    if (pick) mark(item, sameRow(pick.p, pick.ctx.selected(pick.p.select!), pick.row));
+  }
+}
+
+/**
+ * Makes `el` (a list item, a table row, a bar, a slice, a legend entry) pick `row` as the panel's
+ * `select`: a button for the mouse and keyboard (Enter or Space), marked `na-selected` while its
+ * row is the selection. Picking it again clears the selection. Every element of the panel is marked
+ * again in place, so the panel isn't redrawn. Does nothing when the panel has no `select`.
+ */
+export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string): void {
+  if (!p.select) return;
+  const name = p.select;
+  PICKS.set(el, { p, ctx, row });
+  el.classList.add("na-selectable");
+  el.setAttribute("role", "button");
+  el.setAttribute("tabindex", "0");
+  if (label) el.setAttribute("aria-label", label);
+  mark(el, sameRow(p, ctx.selected(name), row));
+  const pick = () => {
+    ctx.select(name, sameRow(p, ctx.selected(name), row) ? undefined : row);
+    markAll(el);
+  };
+  el.addEventListener("click", (e) => { if (!fromControl(e, el)) pick(); });
+  el.addEventListener("keydown", (e) => {
+    const key = (e as KeyboardEvent).key;
+    if ((key !== "Enter" && key !== " ") || fromControl(e, el)) return;
+    e.preventDefault();
+    pick();
+  });
+}
+
 /** A handle whose update simply redraws the panel's contents. */
 export function redraw(el: HTMLElement, draw: (data: unknown) => void) {
   return {
