@@ -179,3 +179,28 @@ test("a compare panel that is pinned or alerting reads its current window, not t
   assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 3"]);
   assert.deepEqual(t.notices, ["Doses: Doses 3"]);
 });
+
+test("a pinned panel that reads $this works while the app is closed, with the app note as $this", async () => {
+  const t = fakeBackground({
+    "Apps/Meds.md": { fm: { app: "Meds", owner: "ann", panels: [
+      { view: "number", title: "Doses", source: "doses", where: { who: "$this.owner" }, agg: "count", pin: "status" },
+      { view: "number", title: "Under my name", source: "doses", where: { who: "$this.name" }, agg: "count", pin: "status" },
+      { view: "number", title: "Not a property", source: "doses", where: { who: "$this.nothing" }, agg: "count", pin: "status" },
+    ] } },
+    "Apps/Meds data.md": { fm: { doses: [{ who: "ann" }, { who: "bob" }, { who: "ann" }, { who: "Meds" }] } },
+  });
+  await t.bg.start();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 2", "Under my name: 1", "Not a property: 0"]);
+
+  // The data it reads is watched like any other panel's.
+  t.f.files.get("Apps/Meds data.md")!.fm = { doses: [{ who: "ann" }] };
+  t.changed("Apps/Meds data.md");
+  await settle();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 1", "Under my name: 0", "Not a property: 0"]);
+
+  // And so is the note itself: another owner, another count.
+  t.f.files.get("Apps/Meds.md")!.fm!.owner = "bob";
+  t.changed("Apps/Meds.md");
+  await settle();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 0", "Under my name: 0", "Not a property: 0"]);
+});

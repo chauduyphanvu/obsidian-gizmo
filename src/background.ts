@@ -5,11 +5,12 @@ import { compileWhere, matches, parseDuration, stampParts, toTime, type Row } fr
 import type { DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
 import { sourceDef } from "./sources/registry.ts";
+import { thisValues } from "./sources/this.ts";
 import {
   permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
-import { InputRef, valueProblem } from "./template.ts";
+import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { rowsOf } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
@@ -184,14 +185,14 @@ export class Background {
   }
 
   /**
-   * A panel's value and rows as its app would show them, with every input at its starting value.
-   * A panel that waits for typing or a selection isn't loaded.
+   * A panel's value and rows as its app would show them, with every input at its starting value
+   * and `$this` the app's own note. A panel that waits for typing or a selection isn't loaded.
    */
   async evaluate(appPath: string, ps: PanelSpec, force = false): Promise<Evaluation> {
     const entry = this.apps.get(appPath);
     if (!entry) return { error: `${basename(appPath)} isn't an app` };
     const now = this.env.now();
-    const r = resolvePanel(ps, startingValues(entry.spec.inputs, now));
+    const r = resolvePanel(ps, this.valuesOf(appPath, entry.spec, now));
     if (!r.panel) return r.waiting !== undefined ? { waiting: r.waiting } : { error: r.errors.join("; ") };
     const p = r.panel;
     const source = p.source ?? viewDef(p.view)?.implicitSource?.(p);
@@ -203,6 +204,11 @@ export class Background {
     } catch (e) {
       return { error: (e as Error).message };
     }
+  }
+
+  /** What a panel reads while its app is closed: inputs at their starting values, and the app note as `$this`. */
+  private valuesOf(appPath: string, spec: AppSpec, now: Date): Record<string, unknown> {
+    return { ...startingValues(spec.inputs, now), [THIS]: thisValues(appPath, this.env.frontmatter(appPath), this.env.data.host.tags(appPath)) };
   }
 
   // ---- Shortcuts ----------------------------------------------------------------------------
@@ -451,7 +457,7 @@ export class Background {
     };
     const definitionDeps = [`file:${path}`, ...spec.links.map((l) => `name:${l}`)];
     const files = { appPath: path, dataPath: entry.dataPath };
-    const start = startingValues(spec.inputs, this.env.now());
+    const start = this.valuesOf(path, spec, this.env.now());
     const dataDeps = entry.watched.flatMap(({ ps }) => {
       const p = resolvePanel(ps, start).panel;
       return p ? this.env.data.depsOf(p.source ?? viewDef(p.view)?.implicitSource?.(p), p, files) : [];
