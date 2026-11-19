@@ -1,10 +1,10 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
-import { readdirSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { permissionsOf, readSpec } from "../src/spec.ts";
-import { fakeEnv } from "./support/fakes.ts";
+import { fakeEnv, raw } from "./support/fakes.ts";
 import { vaultNote } from "./support/yaml.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -110,4 +110,120 @@ test("Chores: a form shaped by the block saves chores; ticking one off moves it 
   assert.equal((f.files.get("Apps/Chores data.md")!.fm!.chores as { done: boolean }[])[0].done, true);
   assert.equal(text(todo.querySelector(".na-empty")), "Nothing here yet.");
   assert.equal(text(root.querySelector(".na-view-number .na-big")), "1");
+});
+
+/** A file of the test vault that isn't a note: its text, as the vault would hand it over. */
+const vaultFile = (path: string) => ({ raw: readFileSync(new URL(`./vault/${path}`, import.meta.url), "utf8") });
+
+test("Bank: spending per month from the export; pick a transaction and flag it with a reason", async () => {
+  const spec = readSpec(vaultNote("Apps/Bank.md").fm, { path: "Apps/Bank.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Bank.md"), ["read:Finance/bank.csv"]);
+
+  const { root, f, changed } = openApp("Apps/Bank.md", { "Finance/bank.csv": vaultFile("Finance/bank.csv") });
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [months, largest, flag, flagged] = [...root.querySelectorAll(".na-panel")];
+  assert.equal(months.querySelectorAll(".na-bar").length, 4);
+  const rows = [...largest.querySelectorAll("tbody tr")];
+  assert.equal(rows.length, 8);
+  assert.deepEqual(rows.slice(4).map((tr) => text(tr.querySelectorAll("td")[1])),
+    ["Online Furniture Co", "Apple Store", 'Bistro "Le Chat", Elm Ave', "Whole Foods Market"]);
+  assert.equal(text(flag.querySelector(".na-waiting")), "Pick a row in “Largest transactions”");
+
+  (rows[4] as HTMLElement).click();
+  await settle();
+  const form = root.querySelector("form.na-form")!;
+  (form.querySelector("input") as HTMLInputElement).value = "Too much for a shelf";
+  form.dispatchEvent(new window.Event("submit"));
+  await settle();
+  assert.deepEqual(f.files.get("Apps/Bank data.md")!.fm!.flagged,
+    [{ description: "Online Furniture Co", amount: "-489.99", date: "2026-10-24", reason: "Too much for a shelf", at: "2026-11-18T12:00" }]);
+  assert.equal(text(flagged.querySelector("li")), "2026-10-24 · Online Furniture Co · -489.99 — Too much for a shelf");
+
+  // A new export lands in the same file: the table follows it.
+  f.files.set("Finance/bank.csv", { raw: `${vaultFile("Finance/bank.csv").raw}2026-11-18,Dentist,-900.00,Health\n` });
+  changed("Finance/bank.csv");
+  await settle();
+  assert.equal(text(largest.querySelectorAll("tbody tr")[4].querySelectorAll("td")[1]), "Dentist");
+});
+
+const HN = `<?xml version="1.0" encoding="UTF-8"?>
+<rss version="2.0" xmlns:dc="http://purl.org/dc/elements/1.1/"><channel><title>Hacker News: Front Page</title>
+<item><title>Unreal Tournament 2004 in the Browser</title><link>https://ut2004.dev/</link><pubDate>Wed, 18 Nov 2026 20:29:00</pubDate><dc:creator>TheAceOfHearts</dc:creator><guid>https://news.ycombinator.com/item?id=2</guid></item>
+<item><title>Show HN: A tiny &amp; fast parser</title><link>https://example.com/parser</link><pubDate>Wed, 18 Nov 2026 18:05:00</pubDate><dc:creator>jane</dc:creator><guid>https://news.ycombinator.com/item?id=1</guid></item>
+</channel></rss>`;
+const XKCD = `<?xml version="1.0" encoding="utf-8"?>
+<feed xmlns="http://www.w3.org/2005/Atom"><title>xkcd.com</title><link href="https://xkcd.com/" rel="alternate"/>
+<entry><title>Voyager Crash</title><link href="https://xkcd.com/3326/" rel="alternate"/><updated>2026-11-17T19:00:00</updated><id>https://xkcd.com/3326/</id></entry>
+</feed>`;
+
+test("Reading list: save an article from a feed as a note, then tick it off when read", async () => {
+  const spec = readSpec(vaultNote("Apps/Reading list.md").fm, { path: "Apps/Reading list.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Reading list.md"),
+    ["create:Reading", "edit:Reading", "net:hnrss.org", "net:xkcd.com", "read:Reading"]);
+
+  const responses = { "https://hnrss.org/frontpage": raw(HN, "application/xml; charset=utf-8"), "https://xkcd.com/atom.xml": raw(XKCD, "text/xml; charset=UTF-8") };
+  const { root, f, notices } = openApp("Apps/Reading list.md", {}, responses);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [hn, xkcd, saved] = [...root.querySelectorAll(".na-panel")];
+  assert.deepEqual([...hn.querySelectorAll("li")].map((li) => text(li)), ["Unreal Tournament 2004 in the BrowserSave", "Show HN: A tiny & fast parserSave"]);
+  assert.deepEqual([...xkcd.querySelectorAll("li")].map((li) => text(li)), ["Voyager CrashSave"]);
+  assert.equal(text(saved.querySelector(".na-empty")), "Nothing here yet.");
+
+  const save = (li: Element) => (li.querySelector("button.na-row-action") as HTMLButtonElement).click();
+  save(hn.querySelectorAll("li")[1]);
+  await settle();
+  save(xkcd.querySelector("li")!);
+  await settle();
+  // Saving the same article again is refused rather than overwriting the note.
+  save(hn.querySelectorAll("li")[1]);
+  await settle();
+  assert.deepEqual(notices, ["Saved Show HN: A tiny & fast parser to Reading", "Saved Voyager Crash to Reading", "“Show HN A tiny & fast parser” already exists"]);
+  assert.deepEqual(f.files.get("Reading/Show HN A tiny & fast parser.md")!.fm,
+    { link: "https://example.com/parser", date: "2026-11-18T18:05", at: "2026-11-18T12:00" });
+  assert.deepEqual(f.files.get("Reading/Voyager Crash.md")!.fm, { link: "https://xkcd.com/3326/", date: "2026-11-17T19:00", at: "2026-11-18T12:00" });
+
+  const rows = [...saved.querySelectorAll("tbody tr")];
+  assert.deepEqual(rows.map((tr) => text(tr.querySelector("td"))), ["Show HN A tiny & fast parser", "Voyager Crash"]);
+  const tick = rows[1].querySelector('input[type="checkbox"]') as HTMLInputElement;
+  assert.equal(tick.checked, false);
+  tick.checked = true;
+  tick.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal(f.files.get("Reading/Voyager Crash.md")!.fm!.read, true);
+});
+
+test("Week: the next seven days from a calendar file; log an item as done, or something that wasn't planned", async () => {
+  const spec = readSpec(vaultNote("Apps/Week.md").fm, { path: "Apps/Week.md" })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Week.md"), ["read:Calendar/family.ics"]);
+
+  const { root, f, notices, changed } = openApp("Apps/Week.md", { "Calendar/family.ics": vaultFile("Calendar/family.ics") });
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [agenda, form, done] = [...root.querySelectorAll(".na-panel")];
+  // Wed 18 Nov: the Thursday bins and Tuesday's swim practice (a weekly rule), not Thanksgiving on the 26th.
+  assert.deepEqual([...agenda.querySelectorAll("li")].map((li) => text(li)), ["2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
+  assert.equal(text(done.querySelector(".na-empty")), "Nothing here yet.");
+
+  (agenda.querySelectorAll("li")[1].querySelector("button.na-row-action") as HTMLButtonElement).click();
+  await settle();
+  assert.deepEqual(notices, ["Logged Swim practice"]);
+  assert.deepEqual(f.files.get("Apps/Week data.md")!.fm!.done, [{ what: "Swim practice", planned: "2026-11-24T17:30", at: "2026-11-18T12:00" }]);
+
+  (form.querySelector("input") as HTMLInputElement).value = "Called the plumber";
+  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  await settle();
+  assert.deepEqual([...done.querySelectorAll("li")].map((li) => text(li)), ["2026-11-18T12:00 · Swim practice", "2026-11-18T12:00 · Called the plumber"]);
+
+  // An event added to the calendar file today appears first.
+  const ics = vaultFile("Calendar/family.ics").raw.replace("END:VCALENDAR", "BEGIN:VEVENT\nUID:dentist\nDTSTART;VALUE=DATE:20261118\nSUMMARY:Dentist\nEND:VEVENT\nEND:VCALENDAR");
+  f.files.set("Calendar/family.ics", { raw: ics });
+  changed("Calendar/family.ics");
+  await settle();
+  assert.deepEqual([...agenda.querySelectorAll("li")].map((li) => text(li)),
+    ["2026-11-18 · DentistDone", "2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
 });

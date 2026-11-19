@@ -2,6 +2,17 @@ import type { AppEnv } from "../../src/app.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { storeTarget } from "../../src/store.ts";
 
+/** A web response sent as written, with its content type. */
+class Raw {
+  text: string;
+  contentType: string;
+  constructor(text: string, contentType: string) {
+    this.text = text;
+    this.contentType = contentType;
+  }
+}
+export const raw = (text: string, contentType: string) => new Raw(text, contentType);
+
 /** A file in the fake vault: a note (frontmatter, tags, body) or any other file (its text in `raw`). */
 type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string; raw?: string }>;
 
@@ -53,7 +64,8 @@ export function fakeHost(notes: Notes = {}) {
 /**
  * An AppEnv on a fake vault with every permission granted. Writes change the vault the way
  * Obsidian would and deliver the change; what the app writes, notifies and opens is recorded.
- * `responses` answers web requests by the start of their URL.
+ * `responses` answers web requests by the start of their URL: a value is sent as JSON, or as
+ * it is when wrapped in `raw(text, contentType)` (a feed, a calendar).
  */
 export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = {}) {
   const f = fakeHost(notes);
@@ -64,7 +76,9 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     f.requests.push(url);
     f.calls.push({ url, headers, method: init?.method ?? "GET", body: init?.body });
     await new Promise((r) => setTimeout(r, 5));
-    return { status: 200, text: JSON.stringify(responses[hit]), contentType: "application/json" };
+    const answer = responses[hit];
+    if (answer instanceof Raw) return { status: 200, text: answer.text, contentType: answer.contentType };
+    return { status: 200, text: JSON.stringify(answer), contentType: "application/json" };
   };
   const data = new DataLayer(f.host);
   const writes: string[] = [];
