@@ -1,9 +1,9 @@
 import { PERIODS, stampParts, type Agg, type Per } from "./data.ts";
 import { storeTarget } from "./store.ts";
 import {
-  namesIn, nearMisses, parseInputs, readInputs, refusedPlaces, resolveInputs, type InputDef, type InputValue,
+  readInputs, refsIn, resolveInputs, type InputDef, type InputValue,
 } from "./template.ts";
-import { expandPanel, readBlocks } from "./expand.ts";
+import { Expander, MAX_PANELS, checkVersion, readBlocks, type NoteReader, type Produced } from "./expand.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 
@@ -54,6 +54,8 @@ export interface PanelSpec {
   inputs: string[];
   /** Panels in a `panels` list are checked strictly; a single top-level panel isn't. */
   strict: boolean;
+  /** The note each key was typed in, so a permission can name the component that asks for it. */
+  writtenIn: Record<string, string>;
 }
 
 export interface AppSpec {
@@ -63,6 +65,9 @@ export interface AppSpec {
   panels: PanelSpec[];
   refreshMs?: number;
   inputs: InputDef[];
+  /** Component notes read while expanding (path → frontmatter), and the names of every `use` link. */
+  read: Record<string, unknown>;
+  links: string[];
 }
 
 /** Where each input starts: its first choice, or today. */
@@ -76,8 +81,6 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, Inpu
   return checkPanel(resolveInputs(ps.template, values) as Record<string, unknown>, ps.strict);
 }
 
-/** The language version this plugin reads. */
-export const SPEC_VERSION = 1;
 
 /** Top-level keys that define an app or component; lists may never be named after them. */
 export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params"];
@@ -148,69 +151,73 @@ export function isListName(source: string | undefined): source is string {
   return !!source && source !== "notes" && !isUrl(source);
 }
 
-function checkVersion(value: unknown): string | undefined {
-  if (value === undefined || value === null || value === SPEC_VERSION) return undefined;
-  if (typeof value === "number" && Number.isInteger(value) && value > SPEC_VERSION) {
-    return `spec: ${value} needs a newer Note Apps (this one reads spec ${SPEC_VERSION})`;
-  }
-  return `spec must be ${SPEC_VERSION}`;
-}
-
 /** Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. */
-export function readSpec(fm: Record<string, unknown> | undefined, opts: { now?: Date } = {}): SpecResult | undefined {
+export function readSpec(
+  fm: Record<string, unknown> | undefined,
+  opts: { now?: Date; notes?: NoteReader; path?: string } = {},
+): SpecResult | undefined {
   if (!fm || fm.app === undefined || fm.app === null || fm.app === false) return undefined;
-  const description = fm.app === true ? "" : String(fm.app);
+  let description = fm.app === true ? "" : String(fm.app);
   const versionError = checkVersion(fm.spec);
   // Keys written for a newer version may mean something else, so nothing is drawn.
   if (versionError) return { errors: [versionError], empty: false };
   const errors: string[] = [];
-  const panels: PanelSpec[] = [];
   const blocks = readBlocks(fm.data, errors);
   const inputs = readInputs(fm.inputs, errors);
   const names = new Set(inputs.map((d) => d.name));
   const start = startingValues(inputs, opts.now ?? new Date());
+  const expander = new Expander(opts.notes, opts.path ?? "");
+  const scope = expander.appScope(blocks, names);
+
+  const panels: PanelSpec[] = [];
   const used = new Set<string>();
-  const add = (raw: Record<string, unknown>, label: string, strict: boolean) => {
-    const at = (e: string) => (label ? `${label}: ${e}` : e);
-    const expanded = expandPanel(raw, blocks);
-    errors.push(...expanded.errors.map(at));
-    errors.push(...nearMisses(expanded.template, names, "input").map(at));
-    const refused = refusedPlaces(expanded.template, names, "input");
-    errors.push(...refused.map(at));
-    if (refused.length) return;
-    const template = parseInputs(expanded.template, names) as Record<string, unknown>;
-    const uses = [...namesIn(template, names)];
+  let count = 0;
+  const check = (p: Produced, strict: boolean) => {
+    const at = (e: string) => (p.label ? `${p.label}: ${e}` : e);
+    const uses = refsIn(p.template);
     for (const n of uses) used.add(n);
-    const r = checkPanel(resolveInputs(template, start) as Record<string, unknown>, strict);
+    const r = checkPanel(resolveInputs(p.template, start) as Record<string, unknown>, strict);
     errors.push(...r.errors.map(at));
     // Any choice can be picked, so each must make a valid panel too.
     for (const def of inputs) {
       if (def.kind !== "choice" || !uses.includes(def.name)) continue;
       for (const option of def.options.slice(1)) {
-        const other = checkPanel(resolveInputs(template, { ...start, [def.name]: option }) as Record<string, unknown>, strict)
+        const other = checkPanel(resolveInputs(p.template, { ...start, [def.name]: option }) as Record<string, unknown>, strict)
           .errors.filter((e) => !r.errors.includes(e));
         if (other.length === 0) continue;
         errors.push(...other.map((e) => at(`${e} (when $${def.name} is ${option})`)));
         break;
       }
     }
-    if (r.panel) panels.push({ template, panel: r.panel, label, inputs: uses, strict });
+    if (r.panel) panels.push({ template: p.template, panel: r.panel, label: p.label, inputs: uses, strict, writtenIn: p.writtenIn });
   };
-
-  if (Array.isArray(fm.panels)) {
-    fm.panels.forEach((raw, i) => {
-      const label = `panel ${i + 1}`;
-      if (!isPlainObject(raw)) return errors.push(`${label}: must be a set of keys`);
-      add(raw, label, true);
-    });
+  // Each entry expands to one or more panels, checked in turn so each panel's problems stay together.
+  const entry = (raw: Record<string, unknown>, label: string, strict: boolean) => {
+    const before = expander.errors.length;
+    const produced = expander.expand(raw, scope, label);
+    errors.push(...expander.errors.slice(before));
+    for (const p of produced) {
+      if (++count === MAX_PANELS + 1) errors.push(`this app has more than ${MAX_PANELS} panels; only the first ${MAX_PANELS} are drawn`);
+      if (count > MAX_PANELS) return;
+      check(p, strict);
+    }
+  };
+  if (fm.use !== undefined) {
+    if (fm.panels !== undefined) errors.push("put - use: … inside panels to mix a component with other panels");
+    else entry({ use: fm.use, with: fm.with }, "", true);
+    if (!description) description = expander.describe(fm.use);
+  } else if (Array.isArray(fm.panels)) {
     if (fm.panels.length === 0) return { errors, empty: true };
+    fm.panels.forEach((raw, i) => {
+      if (isPlainObject(raw)) entry(raw, `panel ${i + 1}`, true);
+      else errors.push(`panel ${i + 1}: must be a set of keys`);
+    });
   } else if (fm.view !== undefined) {
     // The note's other properties aren't part of the panel.
-    add(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES)), "", false);
+    entry(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES)), "", false);
   } else {
     return { errors, empty: true };
   }
-
   for (const d of inputs) if (!used.has(d.name)) errors.push(`input "${d.name}" isn't used by any panel`);
 
   let refreshMs: number | undefined;
@@ -224,32 +231,51 @@ export function readSpec(fm: Record<string, unknown> | undefined, opts: { now?: 
     if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
     else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
   }
-  return { spec: { description, panels, refreshMs, store, inputs }, errors, empty: false };
+  const spec = { description, panels, refreshMs, store, inputs, read: expander.read, links: [...expander.links] };
+  return { spec, errors, empty: false };
 }
 
 export function secretsIn(text: string | undefined): string[] {
   return [...(text ?? "").matchAll(/\{secret:([a-z0-9-]+)\}/g)].map((m) => m[1]);
 }
 
+/** A panel's permissions, each with the key that asks for it. */
+function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
+  const out: [string, keyof Panel][] = [];
+  if (isUrl(p.source)) {
+    try {
+      out.push([`net:${new URL(p.source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host}`, "source"]);
+    } catch {
+      out.push([`net:${p.source}`, "source"]);
+    }
+  }
+  for (const id of secretsIn(p.source)) out.push([`secret:${id}`, "source"]);
+  for (const id of Object.values(p.headers ?? {}).flatMap(secretsIn)) out.push([`secret:${id}`, "headers"]);
+  if (p.source === "notes" && p.from) out.push([`read:${p.from}`, "from"]);
+  if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
+  return out;
+}
+
 /** What an app is allowed to do, as stable strings. Writes to the note itself need no grant. */
 export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
   const out = new Set<string>();
-  for (const { panel: p } of spec.panels) {
-    if (isUrl(p.source)) {
-      try {
-        out.add(`net:${new URL(p.source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host}`);
-      } catch {
-        out.add(`net:${p.source}`);
-      }
-    }
-    for (const id of [...secretsIn(p.source), ...Object.values(p.headers ?? {}).flatMap(secretsIn)]) {
-      out.add(`secret:${id}`);
-    }
-    if (p.source === "notes" && p.from) out.add(`read:${p.from}`);
-    if (p.append && notePath(p.append) !== selfPath) out.add(`write:${notePath(p.append)}`);
-  }
+  for (const { panel } of spec.panels) for (const [perm] of panelPermissions(panel, selfPath)) out.add(perm);
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
   return [...out].sort();
+}
+
+/** For each permission, the notes whose keys ask for it: the app itself or the components it uses. */
+export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<string>> {
+  const out = new Map<string, Set<string>>();
+  const add = (perm: string, path: string) => {
+    if (!out.has(perm)) out.set(perm, new Set());
+    out.get(perm)!.add(path);
+  };
+  for (const ps of spec.panels) {
+    for (const [perm, key] of panelPermissions(ps.panel, selfPath)) add(perm, ps.writtenIn[key] ?? selfPath);
+  }
+  if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
+  return out;
 }
 
 export function notePath(path: string): string {

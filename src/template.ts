@@ -176,3 +176,64 @@ export function readInputs(value: unknown, errors: string[]): InputDef[] {
   }
   return defs;
 }
+
+/** Input references in an already-parsed value (references only, never `$` text). */
+export function refsIn(value: unknown): string[] {
+  return [...namesIn(value, new Set())];
+}
+
+function asText(v: unknown): string | undefined {
+  if (typeof v === "string") return v;
+  if (typeof v === "number" || typeof v === "boolean") return String(v);
+  if (v instanceof Date) return v.toISOString().slice(0, 10);
+  return undefined;
+}
+
+/**
+ * Fills a component's declared params. A whole `$name` takes the value as given (a number stays a
+ * number, a list a list, and an app input passed through `with` stays a reference); inside text it
+ * becomes text, percent-encoded inside a URL. Inserted values are never scanned again.
+ */
+export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>, errors: string[], key = ""): unknown {
+  if (typeof value === "string") {
+    const parts = split(value, new Set(params.keys()));
+    if (!parts.some((p) => p instanceof InputRef)) return value;
+    if (parts.length === 1) return params.get((parts[0] as InputRef).input);
+    const encode = key === "source";
+    const text = (t: string) => (encode ? encodeURIComponent(t) : t);
+    const out: (string | InputRef)[] = [];
+    for (const part of parts) {
+      if (!(part instanceof InputRef)) {
+        out.push(part);
+        continue;
+      }
+      const v = params.get(part.input);
+      if (v instanceof InputRef) {
+        out.push(v);
+      } else if (v instanceof InputText) {
+        for (const q of v.parts) out.push(q instanceof InputRef ? q : text(q));
+      } else {
+        const t = asText(v);
+        if (t === undefined) {
+          errors.push(`$${part.input} holds a list or a set of keys, so it can only be a whole value`);
+          return value;
+        }
+        out.push(text(t));
+      }
+    }
+    if (!out.some((p) => p instanceof InputRef)) return out.join("");
+    const merged: (string | InputRef)[] = [];
+    for (const p of out) {
+      const last = merged[merged.length - 1];
+      if (typeof p === "string" && typeof last === "string") merged[merged.length - 1] = last + p;
+      else merged.push(p);
+    }
+    return new InputText(merged, encode);
+  }
+  if (value instanceof InputRef || value instanceof InputText || value instanceof Date) return value;
+  if (Array.isArray(value)) return value.map((v) => fillParams(v, params, errors, key));
+  if (isPlainObject(value)) {
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fillParams(v, params, errors, key || k)]));
+  }
+  return value;
+}
