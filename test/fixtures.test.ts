@@ -34,6 +34,12 @@ function books() {
   return Object.fromEntries(names.map((n) => [`Books/${n}`, { fm: vaultNote(`Books/${n}`).fm }]));
 }
 
+test("no two notes in the test vault share a name, so every [[link]] means one note", () => {
+  const names = (readdirSync(new URL("./vault", import.meta.url), { recursive: true }) as string[]).filter((n) => n.endsWith(".md")).map((n) => n.replace(/^.*\//, ""));
+  assert.ok(names.length > 20);
+  assert.deepEqual(names.filter((n, i) => names.indexOf(n) !== i), []);
+});
+
 function openApp(path: string, notes: Parameters<typeof fakeEnv>[0], responses: Record<string, unknown> = {}) {
   const t = fakeEnv({ [path]: { fm: vaultNote(path).fm }, ...notes }, responses);
   const root = document.createElement("div");

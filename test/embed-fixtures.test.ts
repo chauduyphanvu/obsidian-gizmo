@@ -21,15 +21,15 @@ function books() {
   return Object.fromEntries(names.map((n) => [`Books/${n}`, { fm: vaultNote(`Books/${n}`).fm }]));
 }
 
-test("Reading: a lens above every book tracks the page I'm on, saved in the book itself", async () => {
-  const component = vaultNote("Components/Reading.md").fm;
-  const t = fakeEnv({ "Components/Reading.md": { fm: component }, "Apps/Reading.md": { fm: vaultNote("Apps/Reading.md").fm }, ...books() });
-  const preview = readComponentPreview(component, { path: "Components/Reading.md", notes: t.env.notes });
+test("Reading progress: a lens above every book tracks the page I'm on, saved in the book itself", async () => {
+  const component = vaultNote("Components/Reading progress.md").fm;
+  const t = fakeEnv({ "Components/Reading progress.md": { fm: component }, "Apps/Reading.md": { fm: vaultNote("Apps/Reading.md").fm }, ...books() });
+  const preview = readComponentPreview(component, { path: "Components/Reading progress.md", notes: t.env.notes });
   assert.deepEqual(preview.result.errors, []);
   assert.equal(preview.lens, "Books");
 
   const index = new LensIndex(t.data);
-  assert.deepEqual(index.lensesFor("Books/Dune.md"), ["Components/Reading.md"]);
+  assert.deepEqual(index.lensesFor("Books/Dune.md"), ["Components/Reading progress.md"]);
   assert.deepEqual(index.lensesFor("Apps/Reading.md"), []);
 
   const grants: Record<string, string[]> = {};
@@ -40,11 +40,11 @@ test("Reading: a lens above every book tracks the page I'm on, saved in the book
   const stack = new LensStack(el, index, () => t.env, { folded: () => false, setFolded: () => {} });
   stack.show("Books/Dune.md");
   await settle();
-  assert.equal(text(el.querySelector(".na-lens-name")), "Reading");
+  assert.equal(text(el.querySelector(".na-lens-name")), "Reading progress");
   assert.deepEqual([...el.querySelectorAll(".na-card li")].map(text), ["Change properties of notes in Books"]);
   (el.querySelector(".na-card button.mod-cta") as HTMLButtonElement).click();
   await settle();
-  assert.deepEqual(grants, { "Components/Reading.md": ["edit:Books"] });
+  assert.deepEqual(grants, { "Components/Reading progress.md": ["edit:Books"] });
   assert.equal(el.querySelector(".na-error"), null);
   assert.equal(text(el.querySelector(".na-view-progress .na-big")), "412/ 412 pages");
 
