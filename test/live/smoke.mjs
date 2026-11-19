@@ -34,12 +34,20 @@ const before = Object.fromEntries(appNotes.map((f) => [f, readFileSync(join(vaul
 spawn("open", ["-g", "-n", "-a", "Obsidian", "--args", `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`,
   "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
+/** Stops only the instance this run launched, found by its own user-data dir. */
+const quit = () => {
+  const pids = spawnSync("pgrep", ["-f", `user-data-dir=${userData}`]).stdout.toString().trim().split("\n").filter(Boolean);
+  if (pids.length) spawnSync("kill", pids);
+};
 let page;
 for (let i = 0; i < 40 && !page; i++) {
   await sleep(1000);
   page = await connect(port, vault).catch(() => undefined);
 }
-if (!page) throw new Error("the test Obsidian did not come up");
+if (!page) {
+  quit();
+  throw new Error(`the test Obsidian did not come up on port ${port} (is another instance using it?)`);
+}
 
 const results = [];
 const check = async (name, fn) => {
@@ -240,8 +248,7 @@ try {
   await page.shot(join(work, "weight-phone.png"), 420, 900);
 } finally {
   page.close();
-  const pids = spawnSync("pgrep", ["-f", `user-data-dir=${userData}`]).stdout.toString().trim().split("\n").filter(Boolean);
-  if (pids.length) spawnSync("kill", pids);
+  quit();
 }
 
 for (const r of results) console.log(`${r.ok ? "PASS" : "FAIL"}  ${r.name}${r.detail ? `  (${r.detail})` : ""}`);
