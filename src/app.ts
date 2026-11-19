@@ -530,11 +530,21 @@ export class AppController {
     }
     m.el.removeClass("na-loading", "na-error", "na-stale");
     m.handle.update(data);
-    for (const badge of m.el.querySelectorAll(".na-asof")) badge.remove();
-    if (asOf !== undefined) m.el.createDiv({ cls: "na-asof", text: asOfText(asOf, this.env.now().getTime()) });
+    this.markAsOf(m, asOf);
+  }
+
+  /**
+   * Marks a panel that shows a disk copy with the copy's age, or clears the mark. CSS draws it from
+   * the attribute, so it stays while a view redraws itself (a chart on resize).
+   */
+  private markAsOf(m: Mounted, at?: number): void {
+    m.el.classList.toggle("na-asof", at !== undefined);
+    if (at === undefined) m.el.removeAttribute("data-asof");
+    else m.el.setAttr("data-asof", asOfText(at, this.env.now().getTime()));
   }
 
   private showPanelError(m: Mounted, message: string): void {
+    this.markAsOf(m);
     m.el.removeClass("na-loading", "na-stale");
     m.el.addClass("na-error");
     m.el.empty();
@@ -553,6 +563,7 @@ export class AppController {
     m.remount = true;
     m.seq++;
     if (waiting === undefined) return this.showPanelError(m, errors.join("; "));
+    this.markAsOf(m);
     m.el.removeClass("na-loading", "na-error", "na-stale");
     m.el.empty();
     const title = plainTitle(m.ps);

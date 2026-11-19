@@ -228,7 +228,7 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  async runShortcut(appPath: string, shortcut: string, params?: Record<string, string>): Promise<void> {
+  private async runShortcut(appPath: string, shortcut: string, params?: Record<string, string>): Promise<void> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
@@ -399,7 +399,7 @@ export class Background {
     const key = `${entry.path}\n${message}`;
     if (!opened && this.told.has(key)) return;
     this.told.add(key);
-    this.env.sink.notify(`${entry.name}: ${message}`);
+    this.say(`${entry.name}: ${message}`);
   }
 
   // ---- Index --------------------------------------------------------------------------------
@@ -409,6 +409,8 @@ export class Background {
     const old = this.apps.get(path);
     const fm = this.env.frontmatter(path);
     const spec = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path })?.spec;
+    // Most notes that change aren't apps and never were.
+    if (!old && !spec) return undefined;
     const definition = JSON.stringify([fm, spec?.read ?? null]);
     if (old && spec && old.definition === definition) return old;
     old?.stop();
