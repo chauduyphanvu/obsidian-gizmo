@@ -15,9 +15,9 @@ panels:
     source: https://openlibrary.org/search.json?q=$q&limit=10&fields=key,title,author_name,first_publish_year,edition_count,number_of_pages_median,cover_i
     pick: docs
     item: "{title} · {author_name.0} ({first_publish_year})"
-    select: book
+    detail: "{title}, by {author_name.0}, first published in {first_publish_year}. {edition_count} editions."
     action: Add
-    save: Books/
+    save: shelf
     name: "{title}"
     row:
       title: "{title}"
@@ -27,9 +27,6 @@ panels:
       cover: "{cover_i}"
       status: to read
     notify: Added {title} to Books
-  - view: text
-    title: About the pick
-    text: "$book.title, by $book.author_name.0, first published in $book.first_publish_year. $book.edition_count editions."
   - view: number
     title: Read this year
     source: shelf
@@ -44,7 +41,7 @@ panels:
     columns: [picture, name, author, status, finished]
     cells: {picture: image}
     layout: cards
-    edit: [status, finished]
+    edit: true
 ---
 Type a title or an author to search Open Library (no key needed), pick a result to read about it, and Add
 it to the shelf as a note in Books; set its status and finish date on its card. It asks to fetch from

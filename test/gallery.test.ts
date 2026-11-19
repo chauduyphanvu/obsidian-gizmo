@@ -309,9 +309,8 @@ test("Book finder: search, read about a pick, add it to Books, then set its stat
   );
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
-  const [results, about, read, shelf] = panels(root);
+  const [results, read, shelf] = panels(root);
   assert.equal(text(results.querySelector(".na-waiting")), "Type in “q”");
-  assert.equal(text(about.querySelector(".na-waiting")), "Pick a row in “Search Open Library”");
   assert.equal(text(read.querySelector(".na-big")), "1");
   assert.deepEqual([...shelf.querySelectorAll(".na-rowcard-title")].map(text), ["Middlemarch"]);
 
@@ -324,9 +323,11 @@ test("Book finder: search, read about a pick, add it to Books, then set its stat
   assert.deepEqual(f.requests, ["https://openlibrary.org/search.json?q=dune&limit=10&fields=key,title,author_name,first_publish_year,edition_count,number_of_pages_median,cover_i"]);
   const items = [...results.querySelectorAll("li")];
   assert.deepEqual(items.map(text), ["Dune · Frank Herbert (1965)Add", "Piranesi · Susanna Clarke (2020)Add"]);
+  // Picking a result tells me about it under the results; it isn't a note yet, so there is nothing to open.
   click(items[0]);
   await settle();
-  assert.equal(text(about.querySelector(".na-text")), "Dune, by Frank Herbert, first published in 1965. 155 editions.");
+  assert.equal(text(results.querySelector(".na-detail-text")), "Dune, by Frank Herbert, first published in 1965. 155 editions.");
+  assert.equal(results.querySelector(".na-detail a"), null);
 
   for (const li of items) click(li.querySelector("button.na-row-action")!);
   await settle();
