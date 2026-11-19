@@ -82,7 +82,7 @@ export default async function gallery(t) {
     const r = await run(`
       await na.open("Apps/Project board");
       const el = na.view().contentEl;
-      const board = ${PANEL}("Projects");
+      const board = (${PANEL})("Projects");
       const card = () => [...el.querySelectorAll(".na-board-card")].find((c) => c.textContent.includes("Tax return"));
       const from = card().closest(".na-board-col").getAttribute("aria-label");
       const to = from === "doing" ? "done" : "doing";
@@ -100,7 +100,7 @@ export default async function gallery(t) {
     // A real click on the card, beside its title (the title itself is a link to the note).
     await t.click(r.at);
     const after = await run(`
-      const board = ${PANEL}("Projects");
+      const board = (${PANEL})("Projects");
       const detail = await na.until(() => board.querySelector(".na-detail"), 3000);
       const picked = detail?.querySelector(".na-detail-text")?.textContent;
       const link = detail?.querySelector("a");
@@ -156,15 +156,20 @@ export default async function gallery(t) {
       const gone = ![...panel("How did these turn out?").querySelectorAll("tbody tr")].some((tr) => tr.textContent.startsWith("${DECISION}"));
       return { fm, ready: Number(panel("Ready to score").querySelector(".na-big").textContent), right: panel("Right so far").querySelector(".na-big").textContent, gone };`);
     expect(scored.fm?.outcome === "right" && scored.ready === before.ready && scored.gone && /^\d+%$/.test(scored.right) && scored.right !== before.right, { before, scored });
+    // The lens asks once to change notes in Decisions; allowed, it reads the decision back.
     const lens = await run(`
       await app.workspace.openLinkText("Decisions/${DECISION}", "", false);
       await na.sleep(1200);
-      const el = na.view().contentEl.querySelector(".na-lens");
-      const out = { state: na.state(), name: el?.querySelector(".na-lens-name")?.textContent, text: el && na.text(el) };
+      const el = () => na.view().contentEl.querySelector(".na-lens");
+      const asked = na.text(el());
+      na.button("Allow", el())?.click();
+      const line = await na.until(() => el()?.querySelector(".na-view-text .na-text")?.textContent, 5000);
+      const out = { state: na.state(), name: el()?.querySelector(".na-lens-name")?.textContent, asked, text: el() && na.text(el()), line };
       await na.remove("Decisions/${DECISION}.md");
       return out;`);
-    expect(lens.state === `markdown:Decisions/${DECISION}.md` && lens.name === "Decision review" && lens.text?.includes("I expected: Most of the cloves come up in spring (60% sure). It went right."), lens);
-    return `written (due ${today}); scored right: ready ${before.ready + 1} → ${scored.ready}, right so far ${before.right} → ${scored.right}; lens: ${lens.text.slice(0, 70)}`;
+    expect(lens.state === `markdown:Decisions/${DECISION}.md` && lens.name === "Decision review" && lens.asked.includes("Change properties of notes in Decisions"), lens);
+    expect(lens.line === "I expected: Most of the cloves come up in spring (60% sure). It went right.", lens);
+    return `written (due ${today}); scored right: ready ${before.ready + 1} → ${scored.ready}, right so far ${before.right} → ${scored.right}; lens: ${lens.line}`;
   });
 
   await check("Task inbox: a task added through the form shows in Open; ticking it ticks its line", async () => {
