@@ -153,3 +153,23 @@ test("nothing to plot says so; one dot still draws", () => {
   assert.equal(text(mount({}, [{ name: "x" }]).el.querySelector(".na-empty")), "No data to chart yet.");
   assert.equal(dots(mount({}, [{ w: 3, mpg: 3 }]).el).length, 1);
 });
+
+test("format sets the axis ticks, the default title and the readout; labels name the axes; values name x in an item", () => {
+  const { el } = mount({ format: { w: "0,0 lb", mpg: "0.0 mpg" }, labels: { w: "Weight", mpg: "Efficiency" } }, CARS);
+  assert.ok(axisLabels(el).includes("1,400 lb"));
+  assert.ok(axisLabels(el).includes("30.0 mpg"));
+  assert.equal(text(dots(el)[0].querySelector("title")), "1,200 lb, 38.2 mpg");
+  assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "Efficiency by Weight");
+  assert.equal(text(el.querySelector(".na-readout")), "x: Weight · y: Efficiency");
+  dots(el)[1].dispatchEvent(new window.Event("pointerover", { bubbles: true }));
+  assert.equal(text(el.querySelector(".na-readout")), "1,500 lb, 31.0 mpg");
+  // format wins over unit and decimals, as it does in the other views.
+  assert.equal(text(mount({ format: { mpg: "0 mpg" }, unit: "kg", decimals: 3 }, CARS).el.querySelector("title")), "1,200, 38 mpg");
+
+  const sized = [{ name: "Mini", w: 1200, mpg: 38, size: 1 }, { name: "Volvo", w: 2100, mpg: 24, size: 2 }];
+  const named = mount({ item: "{name} ({size}, {w})", values: { size: { 1: "small", 2: "large" } }, format: { w: "0,0 lb" } }, sized).el;
+  assert.deepEqual(dots(named).map((d) => text(d.querySelector("title"))), ["Mini (small, 1,200 lb)", "Volvo (large, 2,100 lb)"]);
+  assert.deepEqual(checkPanel({ view: "scatter", source: "s", x: "w", y: "mpg", format: "dollars" }, true).errors, [
+    'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
+  ]);
+});

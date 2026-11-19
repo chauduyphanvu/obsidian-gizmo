@@ -1,4 +1,5 @@
 import { extent, getPath, periodStart, stampParts, toTime, type Row } from "../data.ts";
+import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { itemText } from "./board.ts";
@@ -56,7 +57,7 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
 
   shownRows(el, rows, (row) => {
     const { start, end } = items.get(row)!;
-    const text = itemText(p, row);
+    const text = itemText(p, row, ctx.now);
     const line = list.createDiv({ cls: "na-tl-row" });
     const label = line.createDiv({ cls: "na-tl-label", attr: { title: text } });
     if (typeof row.path === "string") noteLink(label, text, row.path, ctx);
@@ -83,13 +84,15 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
 
 export const timeline: ViewDef = {
   id: "timeline",
-  keys: [...DATA_KEYS, "start", "end", "item", "label", "select"],
+  keys: [...DATA_KEYS, "start", "end", "item", "label", "format", "values", "select"],
   span: 4,
   needsSource: true,
-  validate: (p) => (p.start ? [] : ["timeline needs start (a date field)"]),
+  validate: (p) => [...(p.start ? [] : ["timeline needs start (a date field)"]), ...formatErrors(p)],
   examples: [
     { panel: { view: "timeline", source: "notes", from: "Projects", start: "start", end: "due", item: "{name}", select: "project" } },
     { panel: { view: "timeline", source: "trips", start: "date", sort: "date" } },
+    { panel: { view: "timeline", source: "notes", from: "Projects", start: "start", end: "due", item: "{name} · {status} · {budget}", format: { budget: "$0,0" }, values: { status: { doing: "In progress" } } } },
+    { panel: { view: "timeline", source: "trips", start: "date", format: "dollars" }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "timeline", source: "notes", from: "Projects" }, errors: ["timeline needs start (a date field)"] },
     { panel: { view: "timeline", source: "notes", from: "Projects", end: "due" }, errors: ["timeline needs start (a date field)"] },
     { panel: { view: "timeline", source: "notes", from: "Projects", start: "start", group: "area" }, errors: ['"group" doesn\'t apply to timeline'] },

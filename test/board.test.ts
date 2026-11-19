@@ -276,3 +276,25 @@ test("a board over a saved list moves rows by their place in the list", async ()
   assert.ok(card(root, "bins").classList.contains("na-selected"));
   assert.equal(text(root.querySelector(".na-text")), "bins is in garden");
 });
+
+test("item placeholders go through format and values, and the group field's values name the columns", () => {
+  const rows: Row[] = [
+    { name: "Garden", path: "Projects/Garden.md", status: "doing", budget: 1234.5 },
+    { name: "Rust", path: "Projects/Rust.md", status: "idea", budget: 90 },
+  ];
+  const { el } = mount({ item: "{name} · {status} · {budget}", format: { budget: "$0,0" }, values: { status: { doing: "In progress", idea: "Someday" } } }, rows);
+  assert.deepEqual(names(el), ["Someday", "In progress", "done"]);
+  assert.equal(text(column(el, "In progress").querySelector(".na-board-text")), "Garden · In progress · $1,235");
+  assert.equal(text(column(el, "Someday").querySelector(".na-board-text")), "Rust · Someday · $90");
+  assert.equal(column(el, "In progress").getAttribute("aria-label"), "In progress");
+  // A column's name is for the eye: dropping a card there still writes the group value.
+  const { ctx, edits } = fakeCtx();
+  const moved = mount({ values: { status: { doing: "In progress", idea: "Someday" } } }, rows, ctx).el;
+  const select = card(moved, "Rust").querySelector("select.na-move")!;
+  assert.deepEqual([...select.querySelectorAll("option")].map((o) => text(o)), ["Move to…", "In progress", "done"]);
+  choose(select, "In progress");
+  assert.deepEqual(edits.map((e) => [e.field, e.value]), [["status", "doing"]]);
+  assert.deepEqual(checkPanel({ view: "board", source: "notes", from: "Projects", group: "status", format: "dollars" }, true, { schema: SCHEMA }).errors, [
+    'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
+  ]);
+});

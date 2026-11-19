@@ -1,4 +1,5 @@
-import { formatValue, getPath, stampParts, toNumber, type Row } from "../data.ts";
+import { getPath, stampParts, toNumber, type Row } from "../data.ts";
+import { display, formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { svg } from "./chart.ts";
 import { DATA_KEYS, groupedTotals, heading, rowsOf, selectable, seriesNames } from "./common.ts";
@@ -38,22 +39,26 @@ function shiftDay(date: string, n: number): string {
 interface Days {
   row(date: string): Row;
   value(date: string): number | undefined;
+  /** The day's value as text, in the panel's `values` and `format`. */
+  show(date: string): string;
   step(date: string): number;
   label(date: string): string;
 }
 
-function daysOf(p: Panel, data: unknown): Days {
+function daysOf(p: Panel, data: unknown, now: Date): Days {
   const y = seriesNames(p)[0];
   const byDay = new Map<string, Row>();
   for (const r of rowsOf(data)) byDay.set(String(getPath(r, p.group)), r);
   const row = (date: string): Row => byDay.get(date) ?? { [p.group!]: date, count: 0, ...(y ? { [y]: p.agg === "sum" ? 0 : null } : {}) };
   const value = (date: string) => toNumber(getPath(row(date), y ?? "count"));
   const steps = shadeSteps([...byDay.keys()].map(value).filter((v): v is number => v !== undefined));
+  const show = (date: string) => display(p, y ?? "count", value(date), now);
   return {
     row,
     value,
+    show,
     step: (date) => steps.get(value(date) ?? 0) ?? 0,
-    label: (date) => `${date}: ${value(date) === undefined ? "no data" : formatValue(value(date), p.decimals)}`,
+    label: (date) => `${date}: ${value(date) === undefined ? "no data" : show(date)}`,
   };
 }
 
@@ -98,7 +103,7 @@ function drawMonth(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: n
     const cell = grid.createDiv({ cls: "na-cal-day", attr: { title: days.label(date) } });
     cell.createSpan({ cls: "na-cal-num", text: String(d) });
     const v = days.value(date);
-    if (v) cell.createSpan({ cls: "na-cal-val", text: formatValue(v, p.decimals) });
+    if (v) cell.createSpan({ cls: "na-cal-val", text: days.show(date) });
     markDay(cell, p, ctx, days, date, today);
   }
   arrowKeys(grid, 1, 7);
@@ -137,7 +142,7 @@ type Nav = "prev" | "next" | "today";
 
 export const calendar: ViewDef = {
   id: "calendar",
-  keys: [...DATA_KEYS, "group", "per", "y", "agg", "label", "layout", "select"],
+  keys: [...DATA_KEYS, "group", "per", "y", "agg", "label", "layout", "format", "values", "select"],
   span: 4,
   needsSource: true,
   // Days are the only period, so the pipeline groups per day whatever was typed.
@@ -150,12 +155,16 @@ export const calendar: ViewDef = {
       ...(p.layout && p.layout !== "year" ? ["layout must be year"] : []),
       ...(ys.length > 1 ? ["calendar takes one y"] : []),
       ...groupedTotals(p, ys, "y"),
+      ...formatErrors(p),
     ];
   },
   examples: [
     { panel: { view: "calendar", source: "stretches", group: "at" } },
     { panel: { view: "calendar", source: "spending", group: "at", y: "amount", agg: "sum", where: { at: "this year" } } },
     { panel: { view: "calendar", source: "stretches", group: "at", layout: "year", select: "day" } },
+    { panel: { view: "calendar", source: "spending", group: "at", y: "amount", agg: "sum", format: "$0,0" } },
+    { panel: { view: "calendar", source: "moods", group: "at", y: "mood", agg: "last", values: { mood: { 1: "low", 5: "high" } } } },
+    { panel: { view: "calendar", source: "spending", group: "at", y: "amount", agg: "sum", format: "dollars" }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "calendar", source: "stretches" }, errors: ["calendar needs group (a date field)"] },
     { panel: { view: "calendar", source: "stretches", group: "at", per: "week" }, errors: ["calendar counts per day; leave out per"] },
     { panel: { view: "calendar", source: "stretches", group: "at", layout: "month" }, errors: ["layout must be year"] },
@@ -187,7 +196,7 @@ export const calendar: ViewDef = {
       head.createSpan({ cls: "na-cal-title", text: yearly ? String(year) : new Date(year, month, 1).toLocaleDateString(undefined, { month: "long", year: "numeric" }) });
       button("next", "›", () => move(1), `Next ${unit}`);
       button("today", "Today", () => { [year, month] = [ctx.now.getFullYear(), ctx.now.getMonth()]; });
-      const days = daysOf(p, last);
+      const days = daysOf(p, last, ctx.now);
       if (yearly) drawYear(el, p, ctx, days, year, width ?? ctx.width(key));
       else drawMonth(el, p, ctx, days, year, month);
     };

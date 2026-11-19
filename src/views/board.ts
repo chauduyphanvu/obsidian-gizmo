@@ -1,14 +1,16 @@
-import { fillTemplate, getPath, type Row } from "../data.ts";
+import { fillWith, getPath, type Row } from "../data.ts";
+import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { DATA_KEYS, editErrors, heading, noteLink, rowKey, rowsOf, selectable } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
-/** A card's (or timeline row's) text: the `item` template, else the row's name, title, or first text value. */
-export function itemText(p: Panel, row: Row): string {
-  if (p.item) return fillTemplate(p.item, row);
-  const first = Object.values(row).find((v) => typeof v === "string" && v !== "");
-  return String(row.name ?? row.title ?? first ?? "");
+/** A card's (or timeline row's) text: the `item` template, else the row's name, title, or first text value; each shown as the panel's `values` and `format` say. */
+export function itemText(p: Panel, row: Row, now: Date): string {
+  if (p.item) return fillWith(p.item, row, (path, v) => display(p, path, v, now, "text"));
+  const field = ["name", "title"].find((f) => row[f] !== undefined && row[f] !== null)
+    ?? Object.keys(row).find((k) => typeof row[k] === "string" && row[k] !== "");
+  return field === undefined ? "" : display(p, field, row[field], now, "text");
 }
 
 interface Column {
@@ -46,6 +48,11 @@ export function columnsOf(p: Panel, rows: Row[]): Column[] {
   return none.length ? [...columns, { name: NONE, value: null, rows: none }] : columns;
 }
 
+/** What a column is called: the panel's `values` for its group value, else the value. */
+function columnTitle(p: Panel, c: Column): string {
+  return mapped(p, p.group, c.value) ?? c.name;
+}
+
 /** The card whose controls hold the focus, found again after the board is drawn afresh. */
 function focusedKey(el: HTMLElement): string | undefined {
   return el.ownerDocument.activeElement?.closest?.(".na-board-card")?.getAttribute("data-key") ?? undefined;
@@ -53,15 +60,17 @@ function focusedKey(el: HTMLElement): string | undefined {
 
 export const board: ViewDef = {
   id: "board",
-  keys: [...DATA_KEYS, "group", "item", "label", "select"],
+  keys: [...DATA_KEYS, "group", "item", "label", "format", "values", "select"],
   span: 4,
   needsSource: true,
   // The board groups the raw rows itself, so cards keep what a write needs to find their note.
   pipeline: { group: undefined },
-  validate: (p) => (p.group ? editErrors(p, [p.group]) : ["board needs group (the field its columns come from)"]),
+  validate: (p) => [...(p.group ? editErrors(p, [p.group]) : ["board needs group (the field its columns come from)"]), ...formatErrors(p)],
   examples: [
     { panel: { view: "board", source: "notes", from: "Projects", group: "status" } },
     { panel: { view: "board", source: "chores", group: "room", item: "{task}", select: "chore" } },
+    { panel: { view: "board", source: "notes", from: "Projects", group: "status", item: "{name} · {due}", format: { due: "relative" }, values: { status: { doing: "In progress" } } } },
+    { panel: { view: "board", source: "notes", from: "Projects", group: "status", format: "dollars" }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "board", source: "notes", from: "Projects" }, errors: ["board needs group (the field its columns come from)"] },
     { panel: { view: "board", source: "https://api.example.com/tasks", group: "status" }, errors: ["edit works on notes and saved lists"] },
     { panel: { view: "board", source: "notes", from: "Projects", group: "tags" }, errors: ['edit: "tags" comes from the note\'s file, not its properties'] },
@@ -92,7 +101,7 @@ export const board: ViewDef = {
         }
       };
       const drawCard = (parent: HTMLElement, row: Row, column: Column) => {
-        const text = itemText(p, row);
+        const text = itemText(p, row, ctx.now);
         const key = rowKey(row);
         const card = parent.createDiv({ cls: "na-board-card", attr: { draggable: "true" } });
         if (key !== undefined) card.setAttribute("data-key", String(key));
@@ -114,7 +123,7 @@ export const board: ViewDef = {
         const others = columns.filter((c) => c !== column);
         const moveTo = card.createEl("select", { cls: "dropdown na-move", attr: { "aria-label": `Move ${text}` } });
         moveTo.createEl("option", { text: "Move to…", value: "" });
-        others.forEach((c, i) => moveTo.createEl("option", { text: c.name, value: String(i) }));
+        others.forEach((c, i) => moveTo.createEl("option", { text: columnTitle(p, c), value: String(i) }));
         moveTo.addEventListener("change", () => {
           const picked = moveTo.value;
           moveTo.options[0].selected = true;
@@ -125,9 +134,9 @@ export const board: ViewDef = {
         if (key !== undefined && String(key) === refocus) moveTo.focus();
       };
       for (const column of columns) {
-        const col = root.createDiv({ cls: "na-board-col", attr: { role: "group", "aria-label": column.name } });
+        const col = root.createDiv({ cls: "na-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });
         const head = col.createDiv({ cls: "na-board-head" });
-        head.createSpan({ cls: "na-board-name", text: column.name });
+        head.createSpan({ cls: "na-board-name", text: columnTitle(p, column) });
         head.createSpan({ cls: "na-board-count", text: String(column.rows.length) });
         const cards = col.createDiv({ cls: "na-board-cards" });
         if (column.rows.length === 0) cards.createDiv({ cls: "na-empty", text: "Nothing here" });

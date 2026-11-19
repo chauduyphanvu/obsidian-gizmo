@@ -141,3 +141,18 @@ test("at most 200 rows are drawn, then a Show all button draws the rest", () => 
   assert.equal(el.querySelectorAll(".na-tl-row").length, 250);
   assert.equal(el.querySelector("button.na-more"), null);
 });
+
+test("item placeholders and the default text go through values and format", () => {
+  const rows = [
+    { name: "Garden", start: "2026-11-01", due: "2026-11-30", status: "doing", budget: 1234.5 },
+    { name: "Trip", start: "2026-11-20", status: "idea", budget: 90 },
+  ];
+  const { el } = mount({ item: "{name} · {status} · {budget}", values: { status: { doing: "In progress" } }, format: { budget: "$0,0.00" } }, rows);
+  assert.deepEqual(labels(el), ["Garden · In progress · $1,234.50", "Trip · idea · $90.00"]);
+  assert.equal(marks(el)[0].getAttribute("title"), "Garden · In progress · $1,234.50: 2026-11-01 to 2026-11-30");
+  // With no item the row's name is shown as the panel's values say.
+  assert.deepEqual(labels(mount({ values: { name: { Garden: "The garden" } } }, rows).el), ["The garden", "Trip"]);
+  assert.deepEqual(checkPanel({ view: "timeline", source: "s", start: "start", format: "dollars" }, true).errors, [
+    'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
+  ]);
+});

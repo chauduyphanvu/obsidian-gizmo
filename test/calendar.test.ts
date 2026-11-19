@@ -230,3 +230,24 @@ test("year layout moves by year and arrows go a day up or down and a week across
   (el.querySelector("button.na-cal-today") as HTMLButtonElement).click();
   assert.equal(text(el.querySelector(".na-cal-title")), "2026");
 });
+
+test("format and values show in each day's value and in its tooltip and label", () => {
+  const rows = [{ at: "2026-11-03", count: 2, amount: 1234.5 }, { at: "2026-11-04", count: 1, amount: 40 }];
+  const money = mount({ y: "amount", agg: "sum", format: "$0,0" }, rows).el;
+  assert.equal(text(cell(money, "2026-11-03").querySelector(".na-cal-val")), "$1,235");
+  assert.equal(cell(money, "2026-11-03").getAttribute("title"), "2026-11-03: $1,235");
+  assert.equal(cell(money, "2026-11-04").getAttribute("aria-label"), "2026-11-04: $40");
+  // A day with no data still says so, whatever the format.
+  assert.equal(cell(money, "2026-11-10").getAttribute("aria-label"), "2026-11-10: $0");
+
+  const named = mount({ values: { count: { 2: "twice", 1: "once" } }, select: "day" }, rows).el;
+  assert.equal(text(cell(named, "2026-11-03").querySelector(".na-cal-val")), "twice");
+  assert.equal(cell(named, "2026-11-04").getAttribute("aria-label"), "2026-11-04: once");
+  assert.equal(cell(named, "2026-11-10").getAttribute("aria-label"), "2026-11-10: 0");
+
+  const year = mount({ layout: "year", y: "amount", agg: "sum", format: "$0.00" }, rows).el;
+  assert.equal(text(cell(year, "2026-11-03").querySelector("title")), "2026-11-03: $1234.50");
+  assert.deepEqual(checkPanel({ view: "calendar", source: "s", group: "at", format: "dollars" }, true).errors, [
+    'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
+  ]);
+});
