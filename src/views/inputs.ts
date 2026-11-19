@@ -1,7 +1,8 @@
 import { stampParts, type Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import { THIS } from "../template.ts";
-import { ACTION_KEYS, busy, checkFields, heading, isPlainObject, needsAction, redraw } from "./common.ts";
+import { labelOf } from "../format.ts";
+import { ACTION_KEYS, busy, checkFields, heading, isPlainObject, needsAction, redraw, startOf } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 export const button: ViewDef = {
@@ -83,7 +84,7 @@ function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
   f.addEventListener("submit", (e) => e.preventDefault());
   const fields = Object.entries(p.fields!).map(([name, type]) => {
     const label = f.createEl("label", { cls: "na-field" });
-    label.createSpan({ text: name });
+    label.createSpan({ text: labelOf(p, name) });
     return [name, propertyField(label, type, (value) => ctx.setProperty?.(name, value) ?? Promise.resolve())] as const;
   });
   return {
@@ -115,6 +116,9 @@ export const form: ViewDef = {
     { panel: { view: "form", fields: { page: "number", status: ["to read", "reading", "done"] }, save: "this" } },
     { panel: { view: "form", fields: { page: "number" }, save: "this", notify: "Saved" }, errors: ['"notify" doesn\'t apply with save: this, which saves each field as it changes'] },
     { panel: { view: "form", fields: { weight: "number" }, save: "weights", shortcut: "weigh-in" } },
+    { panel: { view: "form", fields: { mood: { type: ["low", "ok", "good"], label: "How I feel", default: "ok" }, slept: { type: "number", label: "Hours slept" } }, save: "moods" } },
+    { panel: { view: "form", fields: { mood: { type: ["low", "ok"], default: "great" } }, save: "moods" }, errors: ['field "mood" default must be one of its choices: low, ok'] },
+    { panel: { view: "form", fields: ["mood", "slept"], save: "moods" }, errors: ["fields as a list names fields of the block the form saves to; save to a block with fields, or give each field a type"] },
   ],
   mount: (el, p, ctx) => (p.target?.kind === "this" ? propertyForm(el, p, ctx) : redraw(el, () => {
     heading(el, p);
@@ -122,17 +126,28 @@ export const form: ViewDef = {
     const inputs: [string, string | string[], HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement][] = [];
     for (const [name, type] of Object.entries(p.fields ?? p.schema!)) {
       const label = f.createEl("label", { cls: "na-field" });
-      label.createSpan({ text: name });
+      label.createSpan({ text: labelOf(p, name) });
+      // Set as the field's default, so the form's reset after a save brings it back.
+      const start = startOf(p.fieldInfo?.[name], ctx.now) ?? (type === "date" ? stampParts(ctx.now).date : undefined);
       let input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
       if (Array.isArray(type)) {
         input = label.createEl("select");
-        for (const opt of type) input.createEl("option", { text: String(opt), value: String(opt) });
+        for (const opt of type) {
+          const option = input.createEl("option", { text: String(opt), value: String(opt) });
+          if (start !== undefined && opt === start) option.setAttr("selected", "");
+        }
       } else if (type === "textarea") {
         input = label.createEl("textarea");
+        if (start !== undefined) input.textContent = String(start);
       } else {
         input = label.createEl("input", { type: type === "number" ? "number" : type });
         if (type === "number") input.setAttr("step", "any");
-        if (type === "date") input.value = stampParts(ctx.now).date;
+        if (type === "checkbox") {
+          if (start === true) input.setAttr("checked", "");
+        } else if (start !== undefined) {
+          input.setAttr("value", String(start));
+          input.value = String(start);
+        }
       }
       inputs.push([name, type, input]);
     }
@@ -143,6 +158,8 @@ export const form: ViewDef = {
       for (const [name, type, input] of inputs) {
         if (type === "checkbox") row[name] = (input as HTMLInputElement).checked;
         else if (type === "number") row[name] = input.value === "" ? null : Number(input.value);
+        // A choice is saved as it was typed in the list: 70 stays a number.
+        else if (Array.isArray(type)) row[name] = type.find((o) => String(o) === input.value) ?? input.value;
         else row[name] = input.value;
       }
       submit.disabled = true;

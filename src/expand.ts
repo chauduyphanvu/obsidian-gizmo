@@ -6,7 +6,7 @@ import {
   InputRef, NAME, THIS, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
 } from "./template.ts";
 import {
-  COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readValue, type PanelKey,
+  COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
 } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 import type { SaveTarget } from "./spec.ts";
@@ -53,10 +53,23 @@ export function blockChain(name: string, blocks: BlockSet): string[] {
   return chain;
 }
 
+/** The `fields` typed on the nearest block up a block's chain that has them, itself first. */
+function fieldsOf(name: string, blocks: BlockSet): Record<string, unknown> | undefined {
+  const holder = blockChain(name, blocks).reverse().find((n) => blockIn(blocks, n)?.fields !== undefined);
+  return holder === undefined ? undefined : blockIn(blocks, holder)!.fields as Record<string, unknown>;
+}
+
 /** The fields describing a block's rows: its own, or those of the nearest block up its chain that has them. */
 export function schemaOf(name: string, blocks: BlockSet): Record<string, string | string[]> | undefined {
-  const holder = blockChain(name, blocks).reverse().find((n) => blockIn(blocks, n)?.fields !== undefined);
-  return holder === undefined ? undefined : blockIn(blocks, holder)!.fields as Record<string, string | string[]>;
+  const fields = fieldsOf(name, blocks);
+  return fields && readFields(fields).types;
+}
+
+/** What those fields say besides their types (labels, formats, defaults), when any says something. */
+export function fieldInfoOf(name: string, blocks: BlockSet): Record<string, FieldInfo> | undefined {
+  const fields = fieldsOf(name, blocks);
+  const info = fields && readFields(fields).info;
+  return info && Object.keys(info).length ? info : undefined;
 }
 
 function readBlockKey(key: string, value: unknown, names: ReadonlySet<string>): { value?: unknown; errors: string[] } {
@@ -72,7 +85,9 @@ function readBlockKey(key: string, value: unknown, names: ReadonlySet<string>): 
   }
   const read = readValue(key as PanelKey, value);
   if ("error" in read) return { errors: [read.error] };
-  const errors = key === "fields" ? checkFields(read.value as Record<string, string | string[]>)
+  if (key === "fields" && Array.isArray(read.value)) return { errors: ["fields must be a set of name: type, e.g. fields: {status: [open, done]}"] };
+  const fields = key === "fields" ? readFields(read.value as Record<string, unknown>) : undefined;
+  const errors = fields ? [...fields.errors, ...checkFields(fields.types)]
     : key === "compute" ? computeErrors(read.value as Record<string, string | number>, names)
     : [];
   return errors.length ? { errors } : { value: read.value, errors };
@@ -211,6 +226,7 @@ export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): {
   template: Record<string, unknown>;
   stages: Stage[];
   schema?: Record<string, string | string[]>;
+  info?: Record<string, FieldInfo>;
   errors: string[];
 } {
   const name = raw.source;
@@ -238,7 +254,7 @@ export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): {
   const stages = chain.slice(0, -1)
     .map((n) => ({ block: n, keys: stageKeys(blocks.get(n)!) }))
     .filter((s) => Object.keys(s.keys).length > 0);
-  return { template, stages, schema: schemaOf(name as string, blocks), errors };
+  return { template, stages, schema: schemaOf(name as string, blocks), info: fieldInfoOf(name as string, blocks), errors };
 }
 
 // ---- Components ----------------------------------------------------------------------------------
@@ -603,6 +619,7 @@ export class Expander {
     const kept = scope.kind === "param" ? wholeParams(merged.template.row, template.row, scope.params) : undefined;
     if (kept) template.kept = kept;
     if (merged.schema) template.schema = merged.schema;
+    if (merged.info) template.fieldInfo = merged.info;
     // A checklist's save is the list it ticks, never a block's target.
     if (typeof template.save === "string" && scope.blocks.has(template.save) && template.view !== "checklist") {
       const saving = blockTarget(template.save, scope.blocks);
@@ -612,7 +629,11 @@ export class Expander {
       }
       template.target = saving.target;
       const schema = schemaOf(template.save, scope.blocks);
-      if (schema && !template.schema) template.schema = schema;
+      if (schema && !template.schema) {
+        template.schema = schema;
+        const info = fieldInfoOf(template.save, scope.blocks);
+        if (info) template.fieldInfo = info;
+      }
     }
     const selected = selectOf(template);
     if (selected !== undefined && scope.selects.has(selected)) template.select = scope.selects.get(selected);
@@ -645,7 +666,7 @@ export class Expander {
       for (const t of targets) {
         set(t, key);
         // A chain's stages and schema come with the source that named it; formula values with the formulas.
-        if (key === "source") for (const k of ["upstream", "schema"]) set(t, k);
+        if (key === "source") for (const k of ["upstream", "schema", "fieldInfo"]) set(t, k);
         if (key === "compute") set(t, "vars");
         if (key === "save") set(t, "target");
         if (key === "row") set(t, "kept");

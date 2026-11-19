@@ -12,7 +12,9 @@ import {
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
-import { COMMON_KEYS, KEY_TYPES, editPermissions, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
+import {
+  COMMON_KEYS, KEY_TYPES, editPermissions, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
+} from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { backgroundKeyErrors } from "./views/alerts.ts";
 
@@ -83,6 +85,8 @@ export interface Panel {
   target?: SaveTarget;
   /** Internal: the secrets typed whole in its source, headers and body; its requests may fill no other. */
   secrets?: string[];
+  /** Internal: what its fields (a form's own, and the schema's) say besides their types. */
+  fieldInfo?: Record<string, FieldInfo>;
 }
 
 /**
@@ -207,7 +211,7 @@ function absentThis(t: Record<string, unknown>, note: unknown): Record<string, u
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, vars, target, secrets, kept, ...keys } = t;
+  const { upstream, schema, vars, target, secrets, kept, fieldInfo, ...keys } = t;
   const stageErrors: string[] = [];
   const stages: PipelineKeys[] = [];
   let stopped = false;
@@ -223,6 +227,7 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   if (vars) internal.vars = vars as Panel["vars"];
   if (target) internal.target = target as SaveTarget;
   if (secrets) internal.secrets = secrets as string[];
+  if (fieldInfo) internal.fieldInfo = fieldInfo as Panel["fieldInfo"];
   const r = checkPanel(keys, strict, internal);
   // Checking makes `row` text; values that were one whole param keep the param's type.
   if (r.panel?.row && isPlainObject(kept)) {
@@ -296,9 +301,11 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     delete panel.compute;
   }
   const p = { ...panel, ...internal } as Panel;
+  const fieldProblems = settleFields(p);
   // A checklist's save is the list it ticks; anything else may save to a folder.
   if (p.save && def.id !== "checklist") p.target ??= saveTarget(p.save);
   const problems = [
+    ...fieldProblems,
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
@@ -313,7 +320,45 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...definitionProblems(p, def.id),
     ...backgroundKeyErrors(p),
   ];
-  return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
+  if (problems.length) return { errors: [...errors, ...problems] };
+  showFields(p);
+  return { panel: p, errors };
+}
+
+/**
+ * A form's `fields` as plain types: picked from the schema of the block it saves to when they are
+ * a list of names, else read as typed, where a field written as a map adds its label, format and
+ * default to `fieldInfo` (over the schema's, field by field).
+ */
+function settleFields(p: Panel): string[] {
+  const written = p.fields as unknown;
+  if (written === undefined) return [];
+  if (Array.isArray(written)) {
+    const schema = p.schema;
+    // Told here, not again as a form without fields.
+    p.fields = {};
+    if (!schema) return ["fields as a list names fields of the block the form saves to; save to a block with fields, or give each field a type"];
+    const names = written.map(String);
+    const missing = names.find((n) => !Object.hasOwn(schema, n));
+    if (missing !== undefined) return [`fields: "${missing}" isn't a field of the block it saves to (it has ${Object.keys(schema).join(", ")})`];
+    p.fields = Object.fromEntries(names.map((n) => [n, schema[n]]));
+    return [];
+  }
+  const { types, info, errors } = readFields(written as Record<string, unknown>);
+  p.fields = types;
+  const merged = { ...p.fieldInfo };
+  for (const [name, own] of Object.entries(info)) merged[name] = { ...merged[name], ...own };
+  if (Object.keys(merged).length) p.fieldInfo = merged;
+  return errors;
+}
+
+/** Labels and formats the fields give fill in for those the panel doesn't. */
+function showFields(p: Panel): void {
+  const info = Object.entries(p.fieldInfo ?? {});
+  const labels = Object.fromEntries(info.flatMap(([f, i]) => (i.label === undefined ? [] : [[f, i.label]])));
+  if (Object.keys(labels).length) p.labels = { ...labels, ...p.labels };
+  const formats = Object.fromEntries(info.flatMap(([f, i]) => (i.format === undefined ? [] : [[f, i.format]])));
+  if (typeof p.format !== "string" && Object.keys(formats).length) p.format = { ...formats, ...p.format };
 }
 
 /**

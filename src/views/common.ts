@@ -1,4 +1,5 @@
-import type { Row } from "../data.ts";
+import { stampParts, type Row } from "../data.ts";
+import { checkFormat } from "../format.ts";
 import { ROW_INDEX } from "../sources/list.ts";
 import { sourceDef } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
@@ -15,7 +16,7 @@ export type KeyType =
   | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept"] as const;
+export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept", "fieldInfo"] as const;
 export type InternalKey = (typeof INTERNAL_KEYS)[number];
 /** A key that can be typed on a panel. */
 export type PanelKey = Exclude<keyof Panel, InternalKey>;
@@ -44,6 +45,7 @@ const EXPECTED: Partial<Record<KeyType, string>> = {
   alert: "a condition, or a set of field: condition",
   compute: "a set of name: formula",
   textMap: "a set of name: text",
+  fieldMap: "a set of name: type, or a list of field names",
 };
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -68,8 +70,10 @@ function checkType(value: unknown, type: KeyType): boolean {
     case "where":
       return isPlainObject(value) && Object.values(value).every(scalar);
     case "fieldMap":
+      // A list of names picks fields of the block a form saves to.
+      if (Array.isArray(value)) return value.length > 0 && value.every(isText);
       return isPlainObject(value) && Object.values(value).every(
-        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)),
+        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)) || isMap(v),
       );
     case "json": return isText(value) || isMap(value);
     case "format":
@@ -108,6 +112,85 @@ export function checkFields(fields: Record<string, string | string[]>): string[]
   return Object.entries(fields)
     .filter(([, type]) => typeof type === "string" && !FIELD_TYPES.includes(type))
     .map(([name]) => `field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+}
+
+/** What a field written as a map carries besides its type: its display name, its format, and the value it starts with. */
+export interface FieldInfo {
+  label?: string;
+  format?: string;
+  default?: unknown;
+}
+
+const FIELD_KEYS = ["type", "label", "format", "default"];
+
+/** Why a field's `default` can't be used, or undefined; `today` and `now` are words for a date and a time. */
+function defaultProblem(name: string, type: string | string[], value: unknown): string | undefined {
+  const at = `field "${name}" default`;
+  if (Array.isArray(type)) return type.some((c) => String(c) === String(value)) ? undefined : `${at} must be one of its choices: ${type.join(", ")}`;
+  if (type === "date") return value === "today" || value instanceof Date || /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? undefined : `${at} must be today or a date, e.g. 2026-01-31`;
+  if (type === "time") return value === "now" || /^\d{1,2}:\d{2}$/.test(String(value)) ? undefined : `${at} must be now or a time, e.g. 09:30`;
+  if (type === "number") return typeof value === "number" ? undefined : `${at} must be a number`;
+  if (type === "checkbox") return typeof value === "boolean" ? undefined : `${at} must be true or false`;
+  return ["string", "number", "boolean"].includes(typeof value) ? undefined : `${at} must be text`;
+}
+
+/**
+ * Reads a `fields` map: each field a type word, a list of choices, or a map `{type, label, format,
+ * default}` (`type` text when left out). Gives each field's type, what the maps say besides, and
+ * the problems with the maps (a map with a problem leaves its field out); type words are checked
+ * by checkFields.
+ */
+export function readFields(fields: Record<string, unknown>): { types: Record<string, string | string[]>; info: Record<string, FieldInfo>; errors: string[] } {
+  const types: Record<string, string | string[]> = {};
+  const info: Record<string, FieldInfo> = {};
+  const errors: string[] = [];
+  for (const [name, written] of Object.entries(fields)) {
+    if (!isMap(written)) {
+      types[name] = written as string | string[];
+      continue;
+    }
+    const unknown = Object.keys(written).filter((k) => !FIELD_KEYS.includes(k));
+    if (unknown.length) {
+      errors.push(`field "${name}" has no key "${unknown[0]}" (it takes ${FIELD_KEYS.join(", ")})`);
+      continue;
+    }
+    const type = written.type ?? "text";
+    if (!(typeof type === "string" || (Array.isArray(type) && type.length > 0 && type.every(scalar)))) {
+      errors.push(`field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+      continue;
+    }
+    const one: FieldInfo = {};
+    const problems: string[] = [];
+    for (const key of ["label", "format"] as const) {
+      const v = written[key];
+      if (v === undefined || v === null) continue;
+      if (!isText(v)) problems.push(`field "${name}" ${key} must be text`);
+      else one[key] = String(v);
+    }
+    const formatProblem = one.format === undefined ? undefined : checkFormat(one.format);
+    if (formatProblem) problems.push(`field "${name}": ${formatProblem}`);
+    if (written.default !== undefined && written.default !== null) {
+      const problem = defaultProblem(name, type, written.default);
+      if (problem) problems.push(problem);
+      // A choice keeps the type it was typed with in the list: `default: 70` is the number 70 there.
+      else one.default = Array.isArray(type) ? type.find((c) => String(c) === String(written.default)) : written.default instanceof Date ? written.default.toISOString().slice(0, 10) : written.default;
+    }
+    if (problems.length) {
+      errors.push(...problems);
+      continue;
+    }
+    types[name] = type;
+    if (Object.keys(one).length) info[name] = one;
+  }
+  return { types, info, errors };
+}
+
+/** The value a field starts with: its `default`, with `today` and `now` read as the date and time it is. */
+export function startOf(info: FieldInfo | undefined, now: Date): unknown {
+  const d = info?.default;
+  if (d === "today") return stampParts(now).date;
+  if (d === "now") return stampParts(now).time;
+  return d;
 }
 
 /** Keys every view accepts. */

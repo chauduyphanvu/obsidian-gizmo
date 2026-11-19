@@ -11,7 +11,7 @@ import {
 import { defaultDataPath, resolveList } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
-import { rowsOf } from "./views/common.ts";
+import { rowsOf, startOf } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 import { panelValue } from "./views/value.ts";
 
@@ -256,7 +256,7 @@ export class Background {
       // Rule 0.2: whatever a link carries is refused whole if any of it holds a secret or a line break.
       const problem = Object.entries(params).map(([k, v]) => valueProblem(new InputRef(k), v, true)).find(Boolean);
       if (problem) return this.say(`${entry.name}: ${problem}`);
-      const filled = formRow(p.fields ?? p.schema ?? {}, params, now);
+      const filled = formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, params, now);
       if ("error" in filled) return this.say(`${entry.name}: ${filled.error}`);
       input = filled.row;
     }
@@ -474,12 +474,12 @@ function labelOf(p: Panel, fallback: string): string {
  * A form's row from a link's parameters, each read as its field's type; a field the link doesn't
  * give is what an untouched form saves. Parameters that aren't fields are ignored.
  */
-function formRow(fields: Record<string, string | string[]>, params: Record<string, string>, now: Date): { row: Row } | { error: string } {
+function formRow(fields: Record<string, string | string[]>, info: Panel["fieldInfo"], params: Record<string, string>, now: Date): { row: Row } | { error: string } {
   const row: Row = {};
   for (const [name, type] of Object.entries(fields)) {
     if (!Object.hasOwn(params, name)) {
-      row[name] = Array.isArray(type) ? String(type[0] ?? "")
-        : type === "checkbox" ? false : type === "number" ? null : type === "date" ? stampParts(now).date : "";
+      row[name] = startOf(info?.[name], now) ?? (Array.isArray(type) ? type[0] ?? ""
+        : type === "checkbox" ? false : type === "number" ? null : type === "date" ? stampParts(now).date : "");
       continue;
     }
     const value = typedValue(type, params[name]);
@@ -491,7 +491,7 @@ function formRow(fields: Record<string, string | string[]>, params: Record<strin
 
 /** Link text as a field of this type holds it; undefined when it can't. */
 function typedValue(type: string | string[], raw: string): unknown {
-  if (Array.isArray(type)) return type.map(String).find((o) => o === raw);
+  if (Array.isArray(type)) return type.find((o) => String(o) === raw);
   const word = raw.trim().toLowerCase();
   switch (type) {
     case "number": return word !== "" && Number.isFinite(Number(raw)) ? Number(raw) : undefined;

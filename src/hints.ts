@@ -62,7 +62,7 @@ export const KEY_HINTS: Record<string, string> = {
   start: "The field a timeline bar starts at",
   end: "The field a timeline bar ends at",
   // Acting
-  fields: "A form's inputs, or a data block's schema: text, number, date, time, checkbox, textarea, or a list of choices",
+  fields: "A form's inputs or a block's schema: name: type (or a list of choices), or name: {type, label, format, default}",
   save: "Where a click saves its row: a list name, or a folder ending in /",
   append: "A note to add a line to",
   line: "The line to add with append; {fields} and {date} fill in",
