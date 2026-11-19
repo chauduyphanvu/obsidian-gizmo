@@ -208,7 +208,7 @@
 .note-app .na-row-action { margin-left: var(--size-4-2); }
 .note-app td.na-row-actions { text-align: right; white-space: nowrap; }
 .note-app .na-table .na-edit { width: 100%; min-width: 4em; }
-.note-app .na-table input.na-edit[type="checkbox"] { width: auto; min-width: 0; }
+.note-app .na-table input.na-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
 
 /* Views: calendar, board, scatter, timeline */
 /* A five-step single-hue scale: the first chart colour mixed into the panel background. */
