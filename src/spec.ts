@@ -7,6 +7,8 @@ import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 export interface Panel {
   view: string;
   title?: string;
+  tab?: string;
+  span?: number;
   source?: string;
   headers?: Record<string, string>;
   pick?: string;
@@ -112,6 +114,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     ...(p.source && /^http:\/\//i.test(p.source) ? ["source must use https"] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
     ...(p.per && !p.group ? ['"per" needs "group"'] : []),
+    ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
     ...(p.per && !PERIODS.includes(p.per) ? [`per must be one of ${PERIODS.join(", ")}`] : []),
     ...(p.group === "count" ? ['group can\'t be "count"; every group gets a count'] : []),
     ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),

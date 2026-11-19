@@ -11,7 +11,7 @@ export const KEY_TYPES: Record<keyof Panel, KeyType> = {
   from: "string", where: "where", sort: "string", limit: "number", group: "string", per: "string",
   x: "string", y: "names",
   field: "string", agg: "string", label: "string", unit: "string", decimals: "number",
-  text: "string", item: "string", columns: "strings", max: "number", to: "string",
+  tab: "string", span: "number", text: "string", item: "string", columns: "strings", max: "number", to: "string",
   minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
   line: "string", notify: "string",
 };
@@ -49,7 +49,7 @@ export function readValue(key: keyof Panel, value: unknown): { value: unknown } 
 }
 
 /** Keys every view accepts. */
-export const COMMON_KEYS = ["view", "title"] as const;
+export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */
 export const DATA_KEYS = ["source", "headers", "pick", "from", "where", "sort", "limit"] as const;
 /** Keys that turn rows into one row per group or period. */

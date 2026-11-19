@@ -1,6 +1,7 @@
 import { fillTemplate, stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel, type PanelSpec } from "./spec.ts";
+import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { defaultDataPath } from "./store.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import { formatClock } from "./views/timer.ts";
@@ -30,6 +31,9 @@ interface Mounted {
   def: ViewDef;
   el: HTMLElement;
   handle: PanelHandle;
+  /** Columns asked for, and the tab the panel sits in (none: always shown, above the tabs). */
+  span: number;
+  tab: string | undefined;
   source: string | undefined;
   deps: string[];
   /** Bumped on every load so a slow, outdated response can't overwrite a newer one. */
@@ -80,6 +84,10 @@ export class AppController {
   private refreshHandle: ReturnType<typeof setInterval> | undefined;
   private resizeHandle: ReturnType<typeof setTimeout> | undefined;
   private width = 0;
+  private columns = MAX_COLUMNS;
+  private tabs: HTMLElement | undefined;
+  /** The open tab; kept while the note is edited, back to the first when it's reopened. */
+  private activeTab: string | undefined;
   private ctx: PanelCtx;
 
   constructor(root: HTMLElement, appPath: string, env: AppEnv) {
@@ -90,7 +98,7 @@ export class AppController {
     const self = this;
     this.ctx = {
       get now() { return self.env.now(); },
-      get chartWidth() { return self.chartWidth(); },
+      width: (key) => this.widthOf(key),
       runActions: (p, row) => this.runActions(p, row),
       toggleChecked: (key, item) => this.writeData((fm) => {
         const list = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
@@ -141,17 +149,31 @@ export class AppController {
   resize(): void {
     if (this.resizeHandle) clearTimeout(this.resizeHandle);
     this.resizeHandle = setTimeout(() => {
-      const width = this.chartWidth();
+      const width = this.shell.clientWidth;
       if (Math.abs(width - this.width) < 8) return;
       this.width = width;
-      for (const m of this.mounted.values()) m.handle.resize?.(width);
+      this.layout();
+      for (const [id, m] of this.mounted) m.handle.resize?.(this.widthOf(id));
     }, 150);
   }
 
-  private chartWidth(): number {
-    // A wide panel's inner width: the app column minus its padding, the panel's padding and border.
-    // A hidden tab reports 0; draw at full width and let resize() correct it once shown.
-    return Math.min(this.root.clientWidth || 960, 960) - 32 - 34;
+  /** The drawing width inside a panel, from the grid arithmetic rather than measuring it. */
+  private widthOf(id: string): number {
+    const m = this.mounted.get(id);
+    return widthFor(m?.span ?? MAX_COLUMNS, this.columns, this.shell.clientWidth);
+  }
+
+  /** Sets the column count and each panel's span and visibility as classes. */
+  private layout(): void {
+    this.columns = columnsFor(this.shell.clientWidth);
+    if (!this.grid) return;
+    this.grid.className = `na-grid na-cols-${this.columns}`;
+    for (const m of this.mounted.values()) {
+      for (const c of [...m.el.classList]) if (c.startsWith("na-span-")) m.el.classList.remove(c);
+      m.el.classList.add(`na-span-${spanOn(m.span, this.columns)}`);
+      m.el.classList.toggle("na-off", m.tab !== undefined && m.tab !== this.activeTab);
+    }
+    for (const b of this.tabs?.querySelectorAll("button") ?? []) b.classList.toggle("is-active", b.textContent === this.activeTab);
   }
 
   // ---- Definition ---------------------------------------------------------------------------
@@ -197,6 +219,7 @@ export class AppController {
 
     this.setRefresh(spec);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });
+    this.columns = columnsFor(this.shell.clientWidth);
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const keep = new Set(ids);
     for (const [id, m] of this.mounted) {
@@ -208,17 +231,40 @@ export class AppController {
       }
     }
     const files = this.files();
-    ids.forEach((id, i) => {
+    const order = ids.map((id, i) => {
       const existing = this.mounted.get(id);
       const m = existing ?? this.mount(id, spec.panels[i], files);
-      this.grid!.appendChild(m.el);
       // A kept panel may read a list typed into the app note, or the store may have moved.
       if (existing && m.source) {
         m.deps = this.env.data.depsOf(m.source, m.p, files);
         void this.loadPanel(m);
       }
+      return m;
     });
+    // Panels without a tab come first and stay visible; the tab bar sits between them and the rest.
+    const tabNames = [...new Set(order.map((m) => m.tab).filter((t): t is string => t !== undefined))];
+    if (!this.activeTab || !tabNames.includes(this.activeTab)) this.activeTab = tabNames[0];
+    this.tabs?.remove();
+    this.tabs = tabNames.length ? this.renderTabs(tabNames) : undefined;
+    for (const m of order) if (m.tab === undefined) this.grid.appendChild(m.el);
+    if (this.tabs) this.grid.appendChild(this.tabs);
+    for (const m of order) if (m.tab !== undefined) this.grid.appendChild(m.el);
+    this.layout();
     this.subscribe();
+  }
+
+  private renderTabs(names: string[]): HTMLElement {
+    const bar = this.grid!.createDiv({ cls: "na-tabs" });
+    bar.setAttr("role", "tablist");
+    for (const name of names) {
+      const b = bar.createEl("button", { cls: "na-tab", text: name });
+      b.setAttr("role", "tab");
+      b.addEventListener("click", () => {
+        this.activeTab = name;
+        this.layout();
+      });
+    }
+    return bar;
   }
 
   private showOnly(header: HTMLElement): void {
@@ -234,6 +280,7 @@ export class AppController {
     this.mounted.clear();
     this.grid?.remove();
     this.grid = undefined;
+    this.tabs = undefined;
     if (this.refreshHandle) clearInterval(this.refreshHandle);
     this.refreshHandle = undefined;
   }
@@ -267,15 +314,18 @@ export class AppController {
   private mount(id: string, ps: PanelSpec, files: AppFiles): Mounted {
     const p = ps.panel;
     const def = viewDef(p.view)!;
-    const el = createDivIn(this.grid!, `na-panel na-view-${p.view}${def.wide ? " na-wide" : ""}`);
+    const el = createDivIn(this.grid!, `na-panel na-view-${p.view}`);
     const source = p.source ?? def.implicitSource?.(p);
-    const m: Mounted = {
+    const m = {
       id, p, def, el, source,
-      handle: def.mount(el, p, this.ctx, id),
+      span: p.span ?? def.span,
+      tab: p.tab,
       deps: this.env.data.depsOf(source, p, files),
       seq: 0,
-    };
+    } as Mounted;
+    // Registered before mounting, so the view can ask for its width.
     this.mounted.set(id, m);
+    m.handle = def.mount(el, p, this.ctx, id);
     if (source) {
       el.addClass("na-loading");
       el.createDiv({ cls: "na-title", text: p.title ?? p.label ?? "" });

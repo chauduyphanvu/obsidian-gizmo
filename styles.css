@@ -10,11 +10,36 @@
   margin-bottom: var(--size-4-3);
 }
 
+/* Column count and spans are set as classes by src/layout.ts, which keeps the same numbers. */
 .note-app .na-grid {
   display: grid;
-  grid-template-columns: repeat(auto-fill, minmax(200px, 1fr));
+  grid-template-columns: minmax(0, 1fr);
   gap: var(--size-4-3);
 }
+.note-app .na-grid.na-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+.note-app .na-grid.na-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
+.note-app .na-grid.na-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
+.note-app .na-span-2 { grid-column: span 2; }
+.note-app .na-span-3 { grid-column: span 3; }
+.note-app .na-span-4 { grid-column: span 4; }
+.note-app .na-off { display: none; }
+.note-app .na-tabs {
+  grid-column: 1 / -1;
+  display: flex;
+  flex-wrap: wrap;
+  gap: var(--size-4-1);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.note-app button.na-tab {
+  background: none;
+  box-shadow: none;
+  border-radius: var(--radius-s) var(--radius-s) 0 0;
+  color: var(--text-muted);
+  border-bottom: 2px solid transparent;
+  margin-bottom: -1px;
+}
+.note-app button.na-tab:hover { color: var(--text-normal); }
+.note-app button.na-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
 
 .note-app .na-panel,
 .note-app .na-card {
@@ -25,7 +50,6 @@
   min-width: 0;
 }
 
-.note-app .na-wide { grid-column: 1 / -1; }
 .note-app .na-card { margin-bottom: var(--size-4-3); }
 .note-app .na-card ul { margin: var(--size-4-2) 0; }
 .note-app .na-error { border-color: var(--text-error); }

@@ -189,7 +189,7 @@ function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
     keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals"],
-    wide: true,
+    span: 4,
     needsSource: true,
     validate(p: Panel) {
       const ys = seriesNames(p);
@@ -207,16 +207,16 @@ function chartView(kind: "line" | "bar"): ViewDef {
       { panel: { view: kind, source: "sessions", group: "at", x: "at" }, errors: ["leave out x: the x axis is the group"] },
       { panel: { view: kind, source: "s", x: "t", y: ["a", "b", "c", "d", "e", "f", "g"] }, errors: [`at most ${MAX_SERIES} series in y`] },
     ],
-    mount(el, p, ctx): PanelHandle {
+    mount(el, p, ctx, key): PanelHandle {
       let last: unknown;
-      let width = ctx.chartWidth;
+      let width: number | undefined;
       const draw = () => {
         el.empty();
         heading(el, p, p.label);
         const x = p.group ?? p.x!;
         const ys = seriesNames(p);
         const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, points: seriesOf(last, x, y) }));
-        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, width, per: p.per });
+        renderChart(el, series, { kind, unit: p.unit, decimals: p.decimals, width: width ?? ctx.width(key), per: p.per });
       };
       return {
         update(data) { last = data; draw(); },

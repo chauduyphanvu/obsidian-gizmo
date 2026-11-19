@@ -9,7 +9,7 @@ export function formatClock(ms: number): string {
 export const timer: ViewDef = {
   id: "timer",
   keys: [...ACTION_KEYS, "minutes", "label"],
-  wide: false,
+  span: 1,
   validate: (p) => (p.minutes && p.minutes > 0 ? [] : ["timer needs minutes"]),
   examples: [
     { panel: { view: "timer", minutes: 25, append: "Daily", line: "- Focus {time}" } },

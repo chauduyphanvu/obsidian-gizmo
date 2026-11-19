@@ -7,7 +7,7 @@ const HIDDEN_COLUMNS = new Set(["path", "mtime", "ctime", "tags", "position"]);
 export const table: ViewDef = {
   id: "table",
   keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals"],
-  wide: true,
+  span: 4,
   needsSource: true,
   validate: (p) => groupedTotals(p, p.columns ?? [], "columns"),
   examples: [
@@ -42,7 +42,7 @@ export const table: ViewDef = {
 export const list: ViewDef = {
   id: "list",
   keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals"],
-  wide: true,
+  span: 4,
   needsSource: true,
   examples: [
     { panel: { view: "list", source: "notes", from: "#health/appointment", where: { date: "upcoming" }, sort: "date", item: "{date} · {name}" } },

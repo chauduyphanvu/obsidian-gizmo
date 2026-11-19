@@ -122,12 +122,27 @@ try {
       const before = streak();
       const bars = panel(".na-view-bar").querySelectorAll("path.na-bar").length;
       const slices = panel(".na-view-pie").querySelectorAll("path.na-slice").length;
-      const groups = panel(".na-view-list").innerText;
+      const groups = [...panel(".na-view-list").querySelectorAll("li")].map((li) => li.textContent).join(" | ");
       na.button("Stretched").click(); await na.sleep(1200);
       return { before, after: streak(), bars, slices, groups };`);
     if (r.before !== "0days" || r.after !== "1days") throw new Error(JSON.stringify(r));
-    if (r.bars !== 3 || r.slices !== 3 || !r.groups.includes("good · 6\nstiff · 2\nsore · 1")) throw new Error(JSON.stringify(r));
+    if (r.bars !== 3 || r.slices !== 3 || !r.groups.includes("good · 6 | stiff · 2 | sore · 1")) throw new Error(JSON.stringify(r));
     return `streak 0 → 1, ${r.bars} weekly bars, ${r.slices} slices`;
+  });
+
+  await check("Habits tabs switch without redrawing", async () => {
+    const r = await run(`
+      await na.open("Apps/Habits");
+      const el = na.view().contentEl;
+      const shown = () => [...el.querySelectorAll(".na-panel")].filter((p) => p.offsetParent !== null).map((p) => p.className.split(" ")[1]);
+      const pie = el.querySelector(".na-view-pie");
+      const first = shown();
+      [...el.querySelectorAll("button.na-tab")].find((b) => b.textContent === "Moods").click();
+      await na.sleep(200);
+      return { tabs: [...el.querySelectorAll("button.na-tab")].map((b) => b.textContent), first, second: shown(), same: el.querySelector(".na-view-pie") === pie };`);
+    const want = { tabs: ["Weeks", "Moods"], first: ["na-view-button", "na-view-number", "na-view-bar"], second: ["na-view-button", "na-view-number", "na-view-pie", "na-view-list"], same: true };
+    if (JSON.stringify(r) !== JSON.stringify(want)) throw new Error(JSON.stringify(r));
+    return "Weeks → Moods";
   });
 
   await check("Weather draws two series from one request", async () => {
@@ -273,6 +288,8 @@ try {
   await page.shot(join(work, "habits-desktop.png"), 1100, 760);
   await run(`app.workspace.leftSplit.collapse(); await na.open("Apps/Weight");`);
   await page.shot(join(work, "weight-phone.png"), 420, 900);
+  await run(`await na.open("Apps/Habits");`);
+  await page.shot(join(work, "habits-phone.png"), 420, 900);
 } finally {
   page.close();
   quit();

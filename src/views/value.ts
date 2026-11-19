@@ -19,7 +19,7 @@ function shown(p: Panel, data: unknown, now: Date): unknown {
 export const number: ViewDef = {
   id: "number",
   keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals"],
-  wide: false,
+  span: 1,
   needsSource: true,
   validate: checkAgg,
   examples: [
@@ -43,7 +43,7 @@ export const number: ViewDef = {
 export const text: ViewDef = {
   id: "text",
   keys: [...DATA_KEYS, "text", "label", "decimals"],
-  wide: false,
+  span: 1,
   validate: (p) => (p.text ? [] : ["text needs a text template"]),
   examples: [
     { panel: { view: "text", source: "https://api.example.com/now", pick: "current", text: "{temp}°C" } },
@@ -61,7 +61,7 @@ export const text: ViewDef = {
 export const progress: ViewDef = {
   id: "progress",
   keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "max", "label", "unit", "decimals"],
-  wide: false,
+  span: 1,
   needsSource: true,
   validate: checkAgg,
   examples: [
@@ -84,7 +84,7 @@ export const progress: ViewDef = {
 export const countdown: ViewDef = {
   id: "countdown",
   keys: ["to", "label"],
-  wide: false,
+  span: 1,
   validate: (p) => (!p.to ? ['countdown needs "to" (a date)'] : Number.isNaN(Date.parse(p.to)) ? ['"to" is not a date'] : []),
   examples: [
     { panel: { view: "countdown", to: "2027-10-03", label: "Benefits renewal" } },

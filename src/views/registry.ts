@@ -15,7 +15,8 @@ export interface TimerState {
 /** What a mounted panel may ask of the app around it. */
 export interface PanelCtx {
   now: Date;
-  chartWidth: number;
+  /** The drawing width inside the panel with this key. */
+  width(key: string): number;
   runActions(p: Panel, row: Row): Promise<void>;
   toggleChecked(key: string, item: string): Promise<void>;
   clearChecked(key: string): Promise<void>;
@@ -39,8 +40,8 @@ export interface PanelHandle {
 export interface ViewDef {
   id: string;
   keys: readonly string[];
-  /** Full width in the grid; otherwise a small tile. */
-  wide: boolean;
+  /** Columns the view takes by default, out of 4 on a wide pane; `span:` overrides it. */
+  span: number;
   needsSource?: boolean;
   /** The list this view shows when it has no `source:` (a checklist's ticked items). */
   implicitSource?(p: Panel): string;

@@ -109,3 +109,8 @@ test("a single top-level panel's identity ignores the note's other properties", 
   assert.deepEqual(a.template, b.template);
   assert.deepEqual(a.template, { view: "countdown", to: "2027-01-01" });
 });
+
+test("span takes 1 to 4 columns", () => {
+  const r = readSpec({ app: "x", panels: [{ view: "countdown", to: "2027-01-01", span: 5 }, { view: "countdown", to: "2027-01-01", span: 2, tab: "A" }] });
+  assert.deepEqual(r?.errors, ["panel 1: span must be 1, 2, 3 or 4"]);
+});

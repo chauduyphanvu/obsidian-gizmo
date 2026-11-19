@@ -12,16 +12,20 @@ panels:
     agg: streak
     unit: days
   - view: bar
+    tab: Weeks
     title: Stretches per week
     source: stretches
     group: at
     per: week
     where: {at: last 8 weeks}
   - view: pie
+    tab: Moods
     title: Moods
     source: stretches
     group: mood
   - view: list
+    tab: Moods
+    span: 2
     title: How it felt
     source: stretches
     group: mood

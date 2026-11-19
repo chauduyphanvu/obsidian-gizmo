@@ -6,7 +6,7 @@ import { bar, line } from "../src/views/chart.ts";
 import { pie, slicesOf } from "../src/views/pie.ts";
 import type { PanelCtx, ViewDef } from "../src/views/registry.ts";
 
-const ctx = { now: new Date(2026, 10, 18), chartWidth: 600 } as PanelCtx;
+const ctx = { now: new Date(2026, 10, 18), width: () => 600 } as unknown as PanelCtx;
 
 function draw(def: ViewDef, keys: Record<string, unknown>, data: unknown): HTMLElement {
   const { panel, errors } = checkPanel(keys, true);

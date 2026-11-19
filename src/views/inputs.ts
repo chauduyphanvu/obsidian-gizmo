@@ -7,7 +7,7 @@ const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "textarea"];
 export const button: ViewDef = {
   id: "button",
   keys: [...ACTION_KEYS, "label"],
-  wide: false,
+  span: 1,
   validate: (p) => needsAction("button", p),
   examples: [
     { panel: { view: "button", label: "Took meds", save: "doses", append: "Daily", line: "- Took meds {time}" } },
@@ -24,7 +24,7 @@ export const button: ViewDef = {
 export const form: ViewDef = {
   id: "form",
   keys: [...ACTION_KEYS, "fields", "label"],
-  wide: true,
+  span: 4,
   validate(p) {
     const errors = p.fields ? [] : ["form needs fields"];
     for (const [name, type] of Object.entries(p.fields ?? {})) {
@@ -81,7 +81,7 @@ export const form: ViewDef = {
 export const checklist: ViewDef = {
   id: "checklist",
   keys: ["items", "save", "label"],
-  wide: true,
+  span: 4,
   implicitSource: (p) => p.save ?? "checked",
   validate: (p) => (p.items?.length ? [] : ["checklist needs items"]),
   examples: [

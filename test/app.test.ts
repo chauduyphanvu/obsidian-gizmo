@@ -48,7 +48,7 @@ const text = (el: Element | null | undefined) => el?.textContent ?? "";
 
 test("every view's examples draw", () => {
   const ctx: PanelCtx = {
-    now: new Date(2026, 10, 18), chartWidth: 600,
+    now: new Date(2026, 10, 18), width: () => 600,
     runActions: async () => {}, toggleChecked: async () => {}, clearChecked: async () => {},
     openNote: () => {}, timer: () => ({ remainingMs: 60_000 }),
     startTimer: () => {}, pauseTimer: () => {}, resetTimer: () => {},
@@ -183,4 +183,60 @@ test("editing a data block remounts only the panels that use it", async () => {
   assert.notEqual(first2, first);
   assert.equal(second2, second);
   assert.equal(text(first2.querySelector(".na-big")), "82");
+});
+
+test("without tabs there's no tab bar; spans become classes", async () => {
+  const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", panels: [
+    { view: "countdown", to: "2027-01-01" },
+    { view: "countdown", to: "2027-02-01", span: 2 },
+    { view: "line", source: "weights", x: "at", y: "weight" },
+  ] } } });
+  app.load();
+  await settle();
+  assert.equal(root.querySelector(".na-tabs"), null);
+  assert.equal(root.querySelector(".na-grid")!.className, "na-grid na-cols-4");
+  assert.deepEqual([...root.querySelectorAll(".na-panel")].map((e) => [...e.classList].find((c) => c.startsWith("na-span-"))), ["na-span-1", "na-span-2", "na-span-4"]);
+});
+
+test("tabs: untabbed panels stay above the bar; switching keeps elements and typed text", async () => {
+  const { app, root } = setup({
+    "Apps/W.md": { fm: { app: "x", panels: [
+      { view: "countdown", to: "2027-01-01" },
+      { view: "form", fields: { weight: "number" }, save: "weights", tab: "Log" },
+      { view: "line", source: "weights", x: "at", y: "weight", tab: "Chart" },
+      { view: "countdown", to: "2027-02-01", tab: "Log" },
+    ] } },
+    "Apps/W data.md": { fm: { weights: [{ at: "2026-11-17", weight: 80 }, { at: "2026-11-18", weight: 79 }] } },
+  });
+  app.load();
+  await settle();
+  const children = [...root.querySelector(".na-grid")!.children];
+  assert.deepEqual(children.map((e) => e.classList.contains("na-tabs") ? "tabs" : e.className.split(" ")[1]),
+    ["na-view-countdown", "tabs", "na-view-form", "na-view-line", "na-view-countdown"]);
+  const tabs = [...root.querySelectorAll("button.na-tab")] as HTMLButtonElement[];
+  assert.deepEqual(tabs.map((b) => [b.textContent, b.classList.contains("is-active")]), [["Log", true], ["Chart", false]]);
+  const off = () => children.filter((e) => e.classList.contains("na-off")).map((e) => e.className.split(" ")[1]);
+  assert.deepEqual(off(), ["na-view-line"]);
+  // A chart in a hidden tab is still drawn at its real width.
+  assert.equal(root.querySelector(".na-chart-svg")!.getAttribute("viewBox"), "0 0 894 220");
+
+  const input = root.querySelector(".na-form input") as HTMLInputElement;
+  input.value = "77";
+  tabs[1].click();
+  assert.deepEqual(off(), ["na-view-form", "na-view-countdown"]);
+  tabs[0].click();
+  assert.equal(root.querySelector(".na-form input"), input);
+  assert.equal(input.value, "77");
+});
+
+test("the open tab survives an edit to the note while it still exists", async () => {
+  const panels = [{ view: "countdown", to: "2027-01-01", tab: "A" }, { view: "countdown", to: "2027-02-01", tab: "B" }];
+  const { app, root, edit } = setup({ "Apps/W.md": { fm: { app: "x", panels } } });
+  app.load();
+  await settle();
+  (root.querySelectorAll("button.na-tab")[1] as HTMLButtonElement).click();
+  await edit("Apps/W.md", (fm) => { fm.panels = [...panels, { view: "countdown", to: "2027-03-01", tab: "C" }]; });
+  assert.deepEqual([...root.querySelectorAll("button.na-tab.is-active")].map((b) => b.textContent), ["B"]);
+  await edit("Apps/W.md", (fm) => { fm.panels = [panels[0]]; });
+  assert.deepEqual([...root.querySelectorAll("button.na-tab.is-active")].map((b) => b.textContent), ["A"]);
 });
