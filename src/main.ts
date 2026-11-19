@@ -24,6 +24,14 @@ export default class NoteAppsPlugin extends Plugin {
     this.dataLayer = new DataLayer(obsidianHost(this.app));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
+    // Notes that change reach the data layer through the metadata event above; any other file only through here.
+    this.registerEvent(this.app.vault.on("modify", (file) => {
+      if (file instanceof TFile && file.extension !== "md") this.dataLayer.fileChanged(file.path);
+    }));
+    // While a vault loads, every existing file reports as created; only later ones are news.
+    this.app.workspace.onLayoutReady(() => this.registerEvent(this.app.vault.on("create", (file) => {
+      if (file instanceof TFile) this.dataLayer.fileChanged(file.path);
+    })));
 
     this.routeAppNotes();
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());

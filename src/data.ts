@@ -1,3 +1,5 @@
+import { parseFeed } from "./sources/feed.ts";
+import { parseICS } from "./sources/ics.ts";
 import type { Panel } from "./spec.ts";
 
 export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last", "streak"] as const;
@@ -313,9 +315,30 @@ export function parseCSV(text: string): Row[] {
   })));
 }
 
-/** Parses an API response body: JSON first, then CSV, else the raw text. */
-export function parseBody(text: string, contentType: string): unknown {
+/** The XML declaration, other processing instructions, comments and a doctype that may come before a feed's root. */
+const PROLOG = /\s*(?:<\?[\s\S]*?\?>|<!--[\s\S]*?-->|<!DOCTYPE[^>]*>)/iy;
+
+function isFeed(text: string): boolean {
+  let at = 0;
+  for (;;) {
+    PROLOG.lastIndex = at;
+    const m = PROLOG.exec(text);
+    if (!m) break;
+    at += m[0].length;
+  }
+  return /^\s*<(?:rss|feed|rdf:RDF)[\s>]/i.test(text.slice(at, at + 200));
+}
+
+/**
+ * Parses an API response body: a calendar or a feed into rows, else JSON, then CSV, else the raw
+ * text. `now` is the moment a calendar's repeating events are expanded around.
+ */
+export function parseBody(text: string, contentType: string, now: Date = new Date()): unknown {
   const trimmed = text.trimStart();
+  if (trimmed.startsWith("BEGIN:VCALENDAR") || (contentType.includes("calendar") && !contentType.includes("json"))) {
+    return parseICS(text, now);
+  }
+  if (trimmed.startsWith("<") && isFeed(trimmed)) return parseFeed(text);
   if (contentType.includes("json") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
     return JSON.parse(text);
   }

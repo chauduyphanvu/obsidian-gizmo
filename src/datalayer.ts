@@ -13,7 +13,7 @@ export interface FileInfo {
 
 /** What the data layer needs from Obsidian; tests pass a fake. */
 export interface Host {
-  fetch(url: string, headers: Record<string, string>): Promise<{ status: number; text: string; contentType: string }>;
+  fetch(url: string, headers: Record<string, string>, init?: { method?: string; body?: string }): Promise<{ status: number; text: string; contentType: string }>;
   markdownFiles(): FileInfo[];
   fileInfo(path: string): FileInfo | undefined;
   frontmatter(path: string): Record<string, unknown> | undefined;
@@ -22,6 +22,10 @@ export interface Host {
   now(): number;
   /** Runs cb once, soon; used to batch change notifications. */
   schedule(cb: () => void): void;
+  /** The text of any file in the vault; rejects with `Can't find <path>` when there is none. */
+  readFile(path: string): Promise<string>;
+  /** The vault path a link or file name points at from the note at `from`, or undefined when no file matches. */
+  resolveFile(link: string, from: string): string | undefined;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -52,6 +56,7 @@ export class DataLayer {
   private listeners = new Set<{ deps: Set<string>; cb: (changed: Set<string>) => void }>();
   private pending = new Set<string>();
   private flushQueued = false;
+  private parsedFiles = new Map<string, Promise<unknown>>();
 
   /** What sources read the vault through. */
   readonly host: Host;
@@ -77,21 +82,30 @@ export class DataLayer {
 
   // ---- Web ----------------------------------------------------------------------------------
 
-  fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false): Promise<unknown> {
+  /** With a `body`, the request is a POST; the same URL with another body is another request. */
+  fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false, body?: string | Record<string, unknown>): Promise<unknown> {
     // The key holds the {secret:id} placeholders, never the secrets themselves.
-    const key = `${source}|${JSON.stringify(headers ?? {})}`;
+    const key = `${source}|${JSON.stringify(headers ?? {})}${body === undefined ? "" : `|${JSON.stringify(body)}`}`;
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
     const promise = (async () => {
       const filled = Object.fromEntries(Object.entries(headers ?? {}).map(([k, v]) => [k, this.withSecrets(String(v))]));
-      const res = await this.host.fetch(this.withSecrets(source), filled);
+      const init = body === undefined ? undefined : this.post(body, filled);
+      const res = await this.host.fetch(this.withSecrets(source), filled, init);
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
-      return parseBody(res.text, res.contentType);
+      return parseBody(res.text, res.contentType, new Date(this.host.now()));
     })();
     this.http.set(key, { at: this.host.now(), promise });
     // A failure isn't cached: the next render tries again.
     promise.catch(() => { if (this.http.get(key)?.promise === promise) this.http.delete(key); });
     return promise;
+  }
+
+  /** A map is sent as JSON, unless the headers say what it is; text is sent as typed. Secrets are filled into values only, after the map is complete, so they can't break the JSON. */
+  private post(body: string | Record<string, unknown>, headers: Record<string, string>): { method: string; body: string } {
+    if (typeof body === "string") return { method: "POST", body: this.withSecrets(body) };
+    if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["content-type"] = "application/json";
+    return { method: "POST", body: JSON.stringify(body, (_, v) => (typeof v === "string" ? this.withSecrets(v) : v)) };
   }
 
   private withSecrets(text: string): string {
@@ -100,6 +114,18 @@ export class DataLayer {
       if (!value) throw new Error(`Missing secret "${id}". Add it under Settings → Keychain.`);
       return value;
     });
+  }
+
+  // ---- Vault files --------------------------------------------------------------------------
+
+  /** A vault file read and parsed once; the next change to the file, or a failed read, drops it. */
+  parsedFile(path: string, parse: (text: string) => unknown): Promise<unknown> {
+    const hit = this.parsedFiles.get(path);
+    if (hit) return hit;
+    const promise = this.host.readFile(path).then(parse);
+    this.parsedFiles.set(path, promise);
+    promise.catch(() => { if (this.parsedFiles.get(path) === promise) this.parsedFiles.delete(path); });
+    return promise;
   }
 
   // ---- Notes --------------------------------------------------------------------------------
@@ -165,6 +191,7 @@ export class DataLayer {
 
   private touch(path: string, before: Row | undefined, after: Row | undefined): void {
     this.pending.add(`file:${path}`);
+    this.parsedFiles.delete(path);
     // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
     this.pending.add(`name:${path.split("/").pop()!.replace(/\.md$/i, "")}`);
     for (const [key] of this.queries) {

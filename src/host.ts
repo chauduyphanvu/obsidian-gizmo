@@ -13,8 +13,16 @@ function info(f: TFile): FileInfo {
 export function obsidianHost(app: App): Host {
   const file = (path: string) => app.vault.getFileByPath(path);
   return {
-    async fetch(url, headers) {
-      const res = await requestUrl({ url, headers, throw: false });
+    async fetch(url, headers, init) {
+      // requestUrl takes the content type apart from the other headers.
+      const rest = { ...headers };
+      let contentType: string | undefined;
+      for (const name of Object.keys(rest)) {
+        if (name.toLowerCase() !== "content-type") continue;
+        contentType = rest[name];
+        delete rest[name];
+      }
+      const res = await requestUrl({ url, headers: rest, method: init?.method, body: init?.body, contentType, throw: false });
       return { status: res.status, text: res.text, contentType: res.headers["content-type"] ?? "" };
     },
     markdownFiles: () => app.vault.getMarkdownFiles().map(info),
@@ -35,6 +43,12 @@ export function obsidianHost(app: App): Host {
     now: () => Date.now(),
     // A short timer rather than requestAnimationFrame, which stops while the window is hidden.
     schedule: (cb) => { window.setTimeout(cb, 30); },
+    async readFile(path) {
+      const f = file(normalizePath(path));
+      if (!f) throw new Error(`Can't find ${path}`);
+      return app.vault.cachedRead(f);
+    },
+    resolveFile: (link, from) => (file(normalizePath(link)) ?? app.metadataCache.getFirstLinkpathDest(link, from))?.path,
   };
 }
 
