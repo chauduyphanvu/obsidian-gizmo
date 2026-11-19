@@ -181,6 +181,7 @@ test("save is settled from the keys: a list, a folder, or what the block it name
   assert.deepEqual(r.errors, [
     'panel 5: save: "tagged" reads #book; name a folder to save notes into',
     'panel 6: save: "several" reads Books, Archive; name a folder to save notes into',
+    'panel 7: save: "web" reads a web address; name a list or a folder',
     "panel 8: save needs a folder before the /, e.g. save: Books/",
     "panel 9: form needs fields",
   ]);
@@ -190,7 +191,6 @@ test("save is settled from the keys: a list, a folder, or what the block it name
     { kind: "folder", folder: "Ideas" },
     { kind: "list", name: "weights_log" },
     { kind: "folder", folder: "Books" },
-    { kind: "list", name: "web" },
     undefined,
   ]);
   // The form takes the fields of the block it saves to.
@@ -253,6 +253,7 @@ test("save can't name a block that reads a base, tasks, a file or the note itsel
     panels: [{ view: "form", save: "shelf" }, { view: "table", source: "shelf" }],
   }, { path: "Apps/S.md" })!;
   const cases: [Record<string, unknown>, string][] = [
+    [{ source: "https://api.example.com/x" }, "a web address"],
     [{ source: "[[Books.base]]" }, "a base"],
     [{ source: "tasks", from: "Tasks" }, "tasks"],
     [{ source: "Finance/bank.csv" }, "a file"],
@@ -264,10 +265,9 @@ test("save can't name a block that reads a base, tasks, a file or the note itsel
     assert.deepEqual(r.errors, [`panel 1: save: "shelf" reads ${what}; name a list or a folder`], JSON.stringify(block));
     assert.equal(r.spec!.panels.length, 1, "the form isn't drawn");
   }
-  // A block over a list, or a folder of notes, is where saving goes, as before; so is one over a web address.
+  // A block over a list, or a folder of notes, is where saving goes, as before.
   assert.deepEqual(read({ source: "books" }).errors, []);
   assert.deepEqual(read({ source: "notes", from: "Books" }).errors, []);
-  assert.deepEqual(read({ source: "https://api.example.com/x" }).spec!.panels[0].panel.target, { kind: "list", name: "shelf" });
 });
 
 test("row: a value that is exactly one param keeps the param's type, as a whole $reference does", async () => {

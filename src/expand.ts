@@ -172,21 +172,19 @@ function checkChains(blocks: Blocks, errors: string[]): void {
 }
 
 /** What a block's root reads, for a `save` naming it, by kind of source. */
-const READS: Record<string, string> = { base: "a base", tasks: "tasks", file: "a file", this: "the note itself" };
+const READS: Record<string, string> = { url: "a web address", base: "a base", tasks: "tasks", file: "a file", this: "the note itself" };
 
 /**
  * Where `save` writes when it names a block: the list at the root of the block's chain, or new
- * notes in the one folder a `notes` root reads. A root that reads a base, tasks, a file or the
- * note itself is an error, since no panel on the block would show what was saved. Undefined for a
- * web address (it then names a list, as any other text does).
+ * notes in the one folder a `notes` root reads. A root that reads a web address, a base, tasks, a
+ * file or the note itself is an error, since no panel on the block would show what was saved.
  */
-function blockTarget(save: string, blocks: Blocks): { target: SaveTarget } | { error: string } | undefined {
+function blockTarget(save: string, blocks: Blocks): { target: SaveTarget } | { error: string } {
   const root = blocks.get(blockChain(save, blocks)[0])!;
   const source = String(root.source);
   const kind = sourceDef(source).id;
   if (kind === "list") return { target: { kind: "list", name: source } };
   if (Object.hasOwn(READS, kind)) return { error: `save: "${save}" reads ${READS[kind]}; name a list or a folder` };
-  if (kind !== "notes") return undefined;
   const from = typeof root.from === "string" ? root.from.trim() : "";
   if (!from || from.startsWith("#") || from.includes(",")) return { error: `save: "${save}" reads ${from || "no folder"}; name a folder to save notes into` };
   return { target: { kind: "folder", folder: from.replace(/\/+$/, "") } };
@@ -608,11 +606,11 @@ export class Expander {
     // A checklist's save is the list it ticks, never a block's target.
     if (typeof template.save === "string" && scope.blocks.has(template.save) && template.view !== "checklist") {
       const saving = blockTarget(template.save, scope.blocks);
-      if (saving && "error" in saving) {
+      if ("error" in saving) {
         at(saving.error);
         return undefined;
       }
-      if (saving) template.target = saving.target;
+      template.target = saving.target;
       const schema = schemaOf(template.save, scope.blocks);
       if (schema && !template.schema) template.schema = schema;
     }
