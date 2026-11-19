@@ -12,7 +12,7 @@ export type KeyType =
   | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema", "vars"] as const;
+export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target"] as const;
 export type InternalKey = (typeof INTERNAL_KEYS)[number];
 /** A key that can be typed on a panel. */
 export type PanelKey = Exclude<keyof Panel, InternalKey>;
@@ -113,11 +113,21 @@ export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
 export const DATA_KEYS = ["source", "headers", "pick", "from", "where", "sort", "limit", "compute"] as const;
 /** Keys that turn rows into one row per group or period. */
 export const GROUP_KEYS = ["group", "per"] as const;
-/** Keys that make a panel write or notify when used. */
-export const ACTION_KEYS = ["save", "append", "line", "notify"] as const;
+/**
+ * Keys that make a panel write, notify or open a note when used; `row` shapes what is saved,
+ * `name` and `template` the note a save to a folder creates.
+ */
+export const ACTION_KEYS = ["save", "append", "line", "notify", "open", "row", "name", "template"] as const;
 
+/** A panel that acts needs something to do; opening a note alone is enough. */
 export function needsAction(view: string, p: Panel): string[] {
-  return p.save || p.append || p.notify ? [] : [`${view} needs at least one of save, append, notify`];
+  return p.save || p.append || p.notify || p.open ? [] : [`${view} needs at least one of save, append, notify`];
+}
+
+/** On a list or table, the action keys need `action` (the button each row gets), and it needs one of them. */
+export function rowActionErrors(view: string, p: Panel): string[] {
+  if (!p.action) return ACTION_KEYS.filter((k) => p[k] !== undefined).map((k) => `"${k}" needs "action" on a ${view}`);
+  return p.save || p.append || p.notify || p.open ? [] : ['"action" needs at least one of save, append, notify, open'];
 }
 
 /**

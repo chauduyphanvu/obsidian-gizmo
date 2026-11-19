@@ -204,3 +204,5 @@
 .note-app .na-chart-svg:has(.na-selected) .na-bar.na-selectable:not(.na-selected),
 .note-app .na-pie:has(.na-selected) .na-selectable:not(.na-selected) { opacity: 0.35; }
 .note-app .na-bar.na-selected, .note-app .na-slice.na-selected { stroke: var(--text-normal); stroke-width: 1.5; }
+.note-app .na-row-action { margin-left: var(--size-4-2); }
+.note-app td.na-row-actions { text-align: right; white-space: nowrap; }

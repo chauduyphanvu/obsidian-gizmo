@@ -1,8 +1,9 @@
-import { fillTemplate, stampParts, type Row } from "./data.ts";
+import { runActions as runPanelActions } from "./actions.ts";
+import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { basename, typedName, type NoteReader } from "./expand.ts";
 import {
-  askersOf, describePermission, isComponent, isUrl, notePath, permissionsOf, readComponentPreview, readSpec,
+  askersOf, describePermission, isComponent, isUrl, permissionsOf, readComponentPreview, readSpec,
   resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
@@ -30,6 +31,13 @@ export interface AppEnv {
   /** Changes a note's frontmatter, creating the note if needed; writes to one note run in order. */
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
   appendLine(path: string, line: string): Promise<void>;
+  /**
+   * Creates a note at `path` (and its folders) with this frontmatter and body; false, writing
+   * nothing, when a note is already there. The note reaches the data layer like any other change.
+   */
+  createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<boolean>;
+  /** The text after the frontmatter of the note a path or link names, resolved from the app as `store` is. */
+  readBody(path: string): Promise<string>;
   notify(message: string): void;
   openNote(path: string, fromPath: string): void;
   showSource(): void;
@@ -573,25 +581,18 @@ export class AppController {
   }
 
   async runActions(p: Panel, row: Row): Promise<void> {
-    const stamp = stampParts(this.env.now());
-    const saved: Row = { ...row, at: stamp.at };
-    const ctx = { ...stamp, ...row };
-    try {
-      if (p.append) {
-        const fields = Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(", ");
-        const line = fillTemplate(p.line ?? `- {date} {time}${fields ? ` ${fields}` : ""}`, ctx);
-        await this.env.appendLine(notePath(p.append), line);
-      }
-      if (p.save) {
-        await this.writeData((fm) => {
-          const list = fm[p.save!];
-          fm[p.save!] = Array.isArray(list) ? [...list, saved] : [saved];
-        });
-      }
-      if (p.notify) this.env.notify(fillTemplate(p.notify, ctx));
-    } catch (e) {
-      this.env.notify(`Couldn't save: ${(e as Error).message}`);
-    }
+    const env = this.env;
+    await runPanelActions(p, row, {
+      now: () => env.now(),
+      dataPath: this.dataPath,
+      appPath: this.appPath,
+      writeFrontmatter: (path, fn) => env.writeFrontmatter(path, fn),
+      appendLine: (path, line) => env.appendLine(path, line),
+      createNote: (path, fm, body) => env.createNote(path, fm, body),
+      readBody: (path) => env.readBody(path),
+      notify: (message) => env.notify(message),
+      openNote: (path, from) => env.openNote(path, from),
+    });
   }
 
   // ---- Timers -------------------------------------------------------------------------------

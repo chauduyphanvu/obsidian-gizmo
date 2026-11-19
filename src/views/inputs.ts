@@ -11,6 +11,8 @@ export const button: ViewDef = {
     { panel: { view: "button", label: "Took meds", save: "doses", append: "Daily", line: "- Took meds {time}" } },
     { panel: { view: "button", label: "Nothing" }, errors: ["button needs at least one of save, append, notify"] },
     { panel: { view: "button", notify: "Hi", unit: "kg" }, errors: ['"unit" doesn\'t apply to button'] },
+    { panel: { view: "button", label: "Today's note", open: "Daily/{date}" } },
+    { panel: { view: "button", label: "New idea", save: "Ideas/", row: { status: "new" }, template: "[[Idea template]]" } },
   ],
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
@@ -24,18 +26,22 @@ export const form: ViewDef = {
   keys: [...ACTION_KEYS, "fields", "label"],
   span: 4,
   validate(p) {
-    const errors = p.fields ? checkFields(p.fields) : ["form needs fields"];
+    // Without its own fields, a form takes those of the block it saves to.
+    const fields = p.fields ?? p.schema;
+    const errors = fields ? checkFields(fields) : ["form needs fields"];
     return [...errors, ...needsAction("form", p)];
   },
   examples: [
     { panel: { view: "form", fields: { weight: "number", note: "text", mood: ["good", "ok"] }, save: "weights" } },
     { panel: { view: "form", fields: { weight: "kilos" }, save: "weights" }, errors: ['field "weight" type must be one of text, number, date, time, checkbox, textarea or a list of choices'] },
+    { panel: { view: "form", fields: { title: "text", author: "text" }, save: "Books/", name: "{title}", open: "{path}" } },
+    { panel: { view: "form", save: "books" }, errors: ["form needs fields"] },
   ],
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
     const f = el.createEl("form", { cls: "na-form" });
     const inputs: [string, string | string[], HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement][] = [];
-    for (const [name, type] of Object.entries(p.fields!)) {
+    for (const [name, type] of Object.entries(p.fields ?? p.schema!)) {
       const label = f.createEl("label", { cls: "na-field" });
       label.createSpan({ text: name });
       let input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
@@ -76,10 +82,14 @@ export const checklist: ViewDef = {
   keys: ["items", "save", "label"],
   span: 4,
   implicitSource: (p) => p.save ?? "checked",
-  validate: (p) => (p.items?.length ? [] : ["checklist needs items"]),
+  validate: (p) => [
+    ...(p.items?.length ? [] : ["checklist needs items"]),
+    ...(p.save?.endsWith("/") ? ["checklist saves its ticks to a list, not a folder; leave out the /"] : []),
+  ],
   examples: [
     { panel: { view: "checklist", items: ["Passport", "Chargers"], save: "packed" } },
     { panel: { view: "checklist", items: ["Passport"], append: "Daily" }, errors: ['"append" doesn\'t apply to checklist'] },
+    { panel: { view: "checklist", items: ["Passport"], save: "Trips/" }, errors: ["checklist saves its ticks to a list, not a folder; leave out the /"] },
   ],
   mount: (el, p, ctx) => redraw(el, (saved) => {
     const key = p.save ?? "checked";

@@ -38,6 +38,8 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
     storePath: (store) => `${store}.md`,
     writeFrontmatter: async (path, fn) => { writes.push(path); await edit(path, fn); },
     appendLine: async (path) => { writes.push(path); },
+    createNote: async () => false,
+    readBody: async () => "",
     notify: (m) => { notices.push(m); },
     openNote: () => {},
     showSource: () => {},

@@ -2,7 +2,7 @@ import type { AppEnv } from "../../src/app.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { storeTarget } from "../../src/store.ts";
 
-type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[] }>;
+type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string }>;
 
 /** An in-memory vault and network. `flush()` delivers batched change notifications. */
 export function fakeHost(notes: Notes = {}) {
@@ -60,13 +60,11 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     data.fileChanged(path);
     f.flush();
   };
+  const resolve = (link: string) => [...f.files.keys()].find((p) => p === `${link}.md` || p.endsWith(`/${link}.md`));
   const env: AppEnv = {
     data,
     frontmatter: (path) => f.files.get(path)?.fm,
-    notes: {
-      resolve: (link) => [...f.files.keys()].find((p) => p === `${link}.md` || p.endsWith(`/${link}.md`)),
-      frontmatter: (path) => f.files.get(path)?.fm,
-    },
+    notes: { resolve, frontmatter: (path) => f.files.get(path)?.fm },
     isGranted: () => true,
     granted: () => [],
     grant: async () => {},
@@ -80,6 +78,19 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
       changed(path);
     },
     appendLine: async (path) => { writes.push(path); },
+    // As in Obsidian, a new note reaches the data layer through the metadata cache's change event.
+    createNote: async (path, fm, body) => {
+      if (f.files.has(path)) return false;
+      writes.push(path);
+      f.files.set(path, { fm: structuredClone(fm), body });
+      changed(path);
+      return true;
+    },
+    readBody: async (link) => {
+      const path = resolve(storeTarget(link));
+      if (!path) throw new Error(`can't find [[${storeTarget(link)}]]`);
+      return f.files.get(path)?.body ?? "";
+    },
     notify: (m) => { notices.push(m); },
     openNote: (path) => { opened.push(path); },
     showSource: () => {},

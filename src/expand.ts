@@ -9,6 +9,7 @@ import {
   COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readValue, type PanelKey,
 } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
+import type { SaveTarget } from "./spec.ts";
 
 /** The language version this plugin reads. */
 export const SPEC_VERSION = 1;
@@ -152,6 +153,22 @@ function checkChains(blocks: Blocks, errors: string[]): void {
       delete block[key];
     }
   }
+}
+
+/**
+ * Where `save` writes when it names a block: the list at the root of the block's chain, or new
+ * notes in the one folder a `notes` root reads. Undefined when the block's root is neither (it
+ * then names a list, as any other text does).
+ */
+function blockTarget(save: string, blocks: Blocks): { target: SaveTarget } | { error: string } | undefined {
+  const root = blocks.get(blockChain(save, blocks)[0])!;
+  const source = String(root.source);
+  const kind = sourceDef(source).id;
+  if (kind === "list") return { target: { kind: "list", name: source } };
+  if (kind !== "notes") return undefined;
+  const from = typeof root.from === "string" ? root.from.trim() : "";
+  if (!from || from.startsWith("#") || from.includes(",")) return { error: `save: "${save}" reads ${from || "no folder"}; name a folder to save notes into` };
+  return { target: { kind: "folder", folder: from.replace(/\/+$/, "") } };
 }
 
 /** A block's pipeline, run as a stage when a panel names a block further down its chain. */
@@ -523,6 +540,17 @@ export class Expander {
     fillErrors.forEach(at);
     if (stages.length) template.upstream = stages.map((keys, i) => ({ block: merged.stages[i].block, keys }));
     if (merged.schema) template.schema = merged.schema;
+    // A checklist's save is the list it ticks, never a block's target.
+    if (typeof template.save === "string" && scope.blocks.has(template.save) && template.view !== "checklist") {
+      const saving = blockTarget(template.save, scope.blocks);
+      if (saving && "error" in saving) {
+        at(saving.error);
+        return undefined;
+      }
+      if (saving) template.target = saving.target;
+      const schema = schemaOf(template.save, scope.blocks);
+      if (schema && !template.schema) template.schema = schema;
+    }
     const selected = selectOf(template);
     if (selected !== undefined && scope.selects.has(selected)) template.select = scope.selects.get(selected);
     return { typed: merged.template, template };
@@ -556,6 +584,7 @@ export class Expander {
         // A chain's stages and schema come with the source that named it; formula values with the formulas.
         if (key === "source") for (const k of ["upstream", "schema"]) set(t, k);
         if (key === "compute") set(t, "vars");
+        if (key === "save") set(t, "target");
       }
     }
   }

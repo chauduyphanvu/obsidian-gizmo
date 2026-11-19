@@ -76,6 +76,16 @@ export interface Panel {
   schema?: Record<string, string | string[]>;
   /** Internal: the values of the `$names` its own `compute` formulas read. */
   vars?: Record<string, unknown>;
+  /** Internal: where `save` writes, settled from the keys (and the block `save` names) when checked. */
+  target?: SaveTarget;
+}
+
+/** Where a panel's `save` writes: a list in the app's data note, or one new note per save in a folder. */
+export type SaveTarget = { kind: "list"; name: string } | { kind: "folder"; folder: string };
+
+/** What `save` text names on its own: a folder when it ends in a slash (`Books/`), else a list. */
+export function saveTarget(save: string): SaveTarget {
+  return save.endsWith("/") ? { kind: "folder", folder: save.replace(/^\/+|\/+$/g, "") } : { kind: "list", name: save };
 }
 
 /** One panel of an app, as written and as drawn. */
@@ -138,23 +148,24 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unkn
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, vars, ...keys } = t;
-  const r = checkPanel(keys, strict);
-  const errors = [...r.errors];
+  const { upstream, schema, vars, target, ...keys } = t;
+  const stageErrors: string[] = [];
   const stages: PipelineKeys[] = [];
   let stopped = false;
   for (const { block, keys: raw } of (upstream ?? []) as Stage[]) {
     const s = readStage(raw);
-    errors.push(...[...s.errors, ...s.problems].map((e) => `data.${block}: ${e}`));
+    stageErrors.push(...[...s.errors, ...s.problems].map((e) => `data.${block}: ${e}`));
     stopped ||= s.problems.length > 0;
     stages.push(s.stage);
   }
-  if (!r.panel || stopped) return { errors };
-  const panel: Panel = { ...r.panel };
-  if (stages.length) panel.upstream = stages;
-  if (schema) panel.schema = schema as Panel["schema"];
-  if (vars) panel.vars = vars as Panel["vars"];
-  return { panel, errors };
+  const internal: Partial<Panel> = {};
+  if (stages.length) internal.upstream = stages;
+  if (schema) internal.schema = schema as Panel["schema"];
+  if (vars) internal.vars = vars as Panel["vars"];
+  if (target) internal.target = target as SaveTarget;
+  const r = checkPanel(keys, strict, internal);
+  const errors = [...r.errors, ...stageErrors];
+  return !r.panel || stopped ? { errors } : { panel: r.panel, errors };
 }
 
 /** One block's pipeline keys, checked again once its `$names` are filled. */
@@ -194,8 +205,10 @@ export function isUrl(source: string | undefined): source is string {
  * apply to the view; a single panel written at the top level shares the frontmatter with ordinary
  * note properties, so those are ignored there. Key-level problems are reported but still let the
  * panel show; missing or contradictory keys stop it. Messages carry no location prefix.
+ * `internal` holds what expansion added (a chain's stages, a schema, a save target); the view's
+ * checks see it.
  */
-export function checkPanel(raw: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
+export function checkPanel(raw: Record<string, unknown>, strict: boolean, internal: Partial<Panel> = {}): { panel?: Panel; errors: string[] } {
   const def = typeof raw.view === "string" ? viewDef(raw.view) : undefined;
   if (!def) return { errors: [`view must be one of ${VIEW_DEFS.map((d) => d.id).join(", ")}`] };
   const allowed = new Set<string>([...COMMON_KEYS, ...def.keys]);
@@ -217,7 +230,9 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     errors.push(...formulaErrors);
     delete panel.compute;
   }
-  const p = panel as unknown as Panel;
+  const p = { ...panel, ...internal } as Panel;
+  // A checklist's save is the list it ticks; anything else may save to a folder.
+  if (p.save && def.id !== "checklist") p.target ??= saveTarget(p.save);
   const problems = [
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
@@ -226,6 +241,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
     ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
+    ...(p.target?.kind === "folder" && !p.target.folder ? ["save needs a folder before the /, e.g. save: Books/"] : []),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
 }
@@ -438,6 +454,10 @@ export function readComponentPreview(fm: Record<string, unknown>, opts: { now?: 
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   const out: [string, keyof Panel][] = p.source ? sourceDef(p.source).permissions(p, selfPath) : [];
   if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
+  if (p.target?.kind === "folder") {
+    out.push([`create:${p.target.folder}`, "save"]);
+    if (p.template) out.push([`read:${notePath(storeTarget(p.template))}`, "template"]);
+  }
   return out;
 }
 
@@ -473,9 +493,11 @@ export function describePermission(perm: string): string {
   switch (kind) {
     case "net": return `Fetch data from ${what}`;
     case "secret": return `Use your saved secret "${what}"`;
-    case "read": return `Read notes in ${what}`;
+    // A file (a template note) or a scope of notes (a folder or #tag).
+    case "read": return /\.[A-Za-z0-9]+$/.test(what) ? `Read ${what}` : `Read notes in ${what}`;
     case "write": return `Add lines to ${what}`;
     case "store": return `Save its data in ${what}`;
+    case "create": return `Create notes in ${what}`;
     default: return perm;
   }
 }

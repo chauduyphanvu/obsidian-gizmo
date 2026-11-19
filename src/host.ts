@@ -1,4 +1,5 @@
-import { Notice, getAllTags, normalizePath, requestUrl, type App, type TFile, type WorkspaceLeaf } from "obsidian";
+import { Notice, getAllTags, normalizePath, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf } from "obsidian";
+import { bodyOf } from "./actions.ts";
 import type { AppEnv } from "./app.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type NoteAppsPlugin from "./main.ts";
@@ -91,6 +92,26 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
       await ensureFolder(app, path);
       await app.vault.create(normalizePath(path), `${line}\n`);
     }),
+    async createNote(path, frontmatter, body) {
+      const target = normalizePath(path);
+      if (app.vault.getAbstractFileByPath(target)) return false;
+      await ensureFolder(app, target);
+      const yaml = Object.keys(frontmatter).length ? `---\n${stringifyYaml(frontmatter)}---\n` : "";
+      try {
+        await app.vault.create(target, `${yaml}${body}`);
+      } catch (e) {
+        // Created in the meantime (a double click): it already exists, as above.
+        if (app.vault.getAbstractFileByPath(target)) return false;
+        throw e;
+      }
+      return true;
+    },
+    async readBody(path) {
+      const target = storeTarget(path);
+      const f = app.metadataCache.getFirstLinkpathDest(target, file.path) ?? app.vault.getFileByPath(notePath(normalizePath(target)));
+      if (!f) throw new Error(`can't find [[${target}]]`);
+      return bodyOf(await app.vault.cachedRead(f));
+    },
     notify: (message) => { new Notice(message); },
     openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),
     showSource: () => void plugin.showSource(leaf, file),
