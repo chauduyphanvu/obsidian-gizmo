@@ -14,16 +14,22 @@ export const url: SourceDef = {
   ],
   permissions(p) {
     const source = p.source!;
-    const out: [string, "source" | "headers"][] = [];
+    const out: [string, "source" | "headers" | "body"][] = [];
+    let host = source;
     try {
-      out.push([`net:${new URL(source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host}`, "source"]);
+      host = new URL(source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host;
     } catch {
-      out.push([`net:${source}`, "source"]);
+      // Not a URL at all: the address as typed is what's asked about.
     }
+    out.push([`net:${host}`, "source"]);
     for (const id of secretsIn(source)) out.push([`secret:${id}`, "source"]);
     for (const id of Object.values(p.headers ?? {}).flatMap(secretsIn)) out.push([`secret:${id}`, "headers"]);
+    if (p.body !== undefined) {
+      out.push([`post:${host}`, "body"]);
+      for (const id of secretsIn(typeof p.body === "string" ? p.body : JSON.stringify(p.body))) out.push([`secret:${id}`, "body"]);
+    }
     return out;
   },
   deps: (p) => [`url:${p.source}`],
-  load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force),
+  load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force, p.body),
 };

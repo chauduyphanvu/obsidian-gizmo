@@ -237,6 +237,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
+    ...(p.body !== undefined && !isUrl(p.source) ? ['"body" needs a URL source'] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
     ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
@@ -495,6 +496,7 @@ export function describePermission(perm: string): string {
   const what = rest.join(":");
   switch (kind) {
     case "net": return `Fetch data from ${what}`;
+    case "post": return `Send a request body to ${what}`;
     case "secret": return `Use your saved secret "${what}"`;
     // A file (a template note) or a scope of notes (a folder or #tag).
     case "read": return /\.[A-Za-z0-9]+$/.test(what) ? `Read ${what}` : `Read notes in ${what}`;

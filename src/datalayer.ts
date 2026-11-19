@@ -13,7 +13,7 @@ export interface FileInfo {
 
 /** What the data layer needs from Obsidian; tests pass a fake. */
 export interface Host {
-  fetch(url: string, headers: Record<string, string>): Promise<{ status: number; text: string; contentType: string }>;
+  fetch(url: string, headers: Record<string, string>, init?: { method?: string; body?: string }): Promise<{ status: number; text: string; contentType: string }>;
   markdownFiles(): FileInfo[];
   fileInfo(path: string): FileInfo | undefined;
   frontmatter(path: string): Record<string, unknown> | undefined;
@@ -82,21 +82,30 @@ export class DataLayer {
 
   // ---- Web ----------------------------------------------------------------------------------
 
-  fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false): Promise<unknown> {
+  /** With a `body`, the request is a POST; the same URL with another body is another request. */
+  fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false, body?: string | Record<string, unknown>): Promise<unknown> {
     // The key holds the {secret:id} placeholders, never the secrets themselves.
-    const key = `${source}|${JSON.stringify(headers ?? {})}`;
+    const key = `${source}|${JSON.stringify(headers ?? {})}${body === undefined ? "" : `|${JSON.stringify(body)}`}`;
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
     const promise = (async () => {
       const filled = Object.fromEntries(Object.entries(headers ?? {}).map(([k, v]) => [k, this.withSecrets(String(v))]));
-      const res = await this.host.fetch(this.withSecrets(source), filled);
+      const init = body === undefined ? undefined : this.post(body, filled);
+      const res = await this.host.fetch(this.withSecrets(source), filled, init);
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
-      return parseBody(res.text, res.contentType);
+      return parseBody(res.text, res.contentType, new Date(this.host.now()));
     })();
     this.http.set(key, { at: this.host.now(), promise });
     // A failure isn't cached: the next render tries again.
     promise.catch(() => { if (this.http.get(key)?.promise === promise) this.http.delete(key); });
     return promise;
+  }
+
+  /** A map is sent as JSON, unless the headers say what it is; text is sent as typed. Secrets are filled into values only, after the map is complete, so they can't break the JSON. */
+  private post(body: string | Record<string, unknown>, headers: Record<string, string>): { method: string; body: string } {
+    if (typeof body === "string") return { method: "POST", body: this.withSecrets(body) };
+    if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["content-type"] = "application/json";
+    return { method: "POST", body: JSON.stringify(body, (_, v) => (typeof v === "string" ? this.withSecrets(v) : v)) };
   }
 
   private withSecrets(text: string): string {

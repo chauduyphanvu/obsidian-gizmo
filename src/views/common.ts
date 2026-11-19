@@ -112,7 +112,7 @@ export function checkFields(fields: Record<string, string | string[]>): string[]
 /** Keys every view accepts. */
 export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */
-export const DATA_KEYS = ["source", "headers", "pick", "from", "where", "sort", "limit", "compute"] as const;
+export const DATA_KEYS = ["source", "headers", "body", "pick", "from", "where", "sort", "limit", "compute"] as const;
 /** Keys that turn rows into one row per group or period. */
 export const GROUP_KEYS = ["group", "per"] as const;
 /**

@@ -9,14 +9,17 @@ type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; bod
 export function fakeHost(notes: Notes = {}) {
   const files = new Map(Object.entries(notes));
   const requests: string[] = [];
+  /** Every request with what was sent besides the URL. */
+  const calls: { url: string; headers: Record<string, string>; method: string; body?: string }[] = [];
   let queued: (() => void)[] = [];
   let clock = 1_000_000;
   const secrets: Record<string, string> = { demo: "s3cret" };
   const isNote = (path: string) => path.endsWith(".md");
   const info = (path: string): FileInfo => ({ path, basename: path.split("/").pop()!.replace(/\.md$/, ""), mtime: 0, ctime: 0 });
   const host: Host = {
-    async fetch(url) {
+    async fetch(url, headers, init) {
       requests.push(url);
+      calls.push({ url, headers, method: init?.method ?? "GET", body: init?.body });
       await new Promise((r) => setTimeout(r, 5));
       if (url.includes("/never")) return new Promise(() => {});
       if (url.includes("/fail")) return { status: 503, text: "", contentType: "" };
@@ -38,8 +41,10 @@ export function fakeHost(notes: Notes = {}) {
   };
   return {
     host,
+    secrets,
     files,
     requests,
+    calls,
     advance: (ms: number) => { clock += ms; },
     flush: () => { const q = queued; queued = []; q.forEach((cb) => cb()); return q.length; },
   };
@@ -53,10 +58,11 @@ export function fakeHost(notes: Notes = {}) {
 export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = {}) {
   const f = fakeHost(notes);
   const fetch = f.host.fetch;
-  f.host.fetch = async (url, headers) => {
+  f.host.fetch = async (url, headers, init) => {
     const hit = Object.keys(responses).find((prefix) => url.startsWith(prefix));
-    if (hit === undefined) return fetch(url, headers);
+    if (hit === undefined) return fetch(url, headers, init);
     f.requests.push(url);
+    f.calls.push({ url, headers, method: init?.method ?? "GET", body: init?.body });
     await new Promise((r) => setTimeout(r, 5));
     return { status: 200, text: JSON.stringify(responses[hit]), contentType: "application/json" };
   };

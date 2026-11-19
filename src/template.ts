@@ -171,7 +171,7 @@ export function refusedPlaces(raw: Record<string, unknown>, names: ReadonlySet<s
     } else if (key === "source" || key === "save") {
       if (kind === "input") errors.push(`${first} can't choose ${key === "save" ? "where data is saved" : "the source"}; use it in a URL's path or query, or in where`);
       else if (!whole) errors.push(`${first} can only be the whole ${key}, naming a list`);
-    } else if (key === "headers" && JSON.stringify(value).match(/\{secret:[^}]*\$/)) {
+    } else if ((key === "headers" || key === "body") && JSON.stringify(value).match(/\{secret:[^}]*\$/)) {
       errors.push(`${first} can't name a secret`);
     }
   }

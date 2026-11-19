@@ -9,7 +9,7 @@ const DECLARED: Record<string, unknown> = {
   select: "quake", action: "Add", row: { title: "{title}" }, name: "{title}", template: "[[Book]]",
   open: "{path}", edit: ["status"], format: "0.0", labels: { a: "A" }, values: { code: { 0: "Clear" } },
   cells: { p: "progress" }, layout: "cards", compare: "previous", goal: 80, stack: true,
-  body: { query: "{ x }" }, start: "start", end: "end", shortcut: "took-meds", pin: "status", alert: ">= 5",
+  start: "start", end: "end", shortcut: "took-meds", pin: "status", alert: ">= 5",
 };
 
 test("keys declared for later features apply to no view yet", () => {
