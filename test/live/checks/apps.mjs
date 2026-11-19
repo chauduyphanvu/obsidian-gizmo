@@ -7,7 +7,7 @@ const METEO = "https://api.open-meteo.com/v1/forecast?latitude=51.51&longitude=-
 const NOAA = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
 /** What each app fetches, so a failure while that API is down is a SKIP. */
 export const NET = {
-  AAPL: [YAHOO], SPY: [YAHOO], Stocks: [YAHOO], Watchlist: [YAHOO], Movers: [YAHOO],
+  AAPL: [YAHOO], Portfolio: [YAHOO], Movers: [YAHOO],
   Weather: [METEO], "USD-EUR": ["https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR"],
   "Planet Earth": ["https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson", NOAA,
     "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json", METEO,
@@ -81,27 +81,43 @@ export default async function apps(t) {
     return "2 lines and a legend";
   }, { net: NET.Weather });
 
-  await check("Stocks: a choice redraws its panels and keeps typed text", async () => {
+  await check("Portfolio: asks only for Yahoo; picking a stock and a range redraws the Ticker; a buy recorded is held and worth something", async () => {
+    expect(JSON.stringify(prompts.Portfolio) === JSON.stringify(["Fetch data from query1.finance.yahoo.com — for [[Ticker]]"]), prompts.Portfolio);
     const r = await run(`
-      await na.open("Apps/Stocks");
+      await na.open("Apps/Portfolio");
       const el = na.view().contentEl;
-      const input = el.querySelector(".na-form input");
-      input.value = "watch";
-      const select = el.querySelector('select[aria-label="symbol"]');
-      select.value = "1";
-      select.dispatchEvent(new Event("change"));
-      for (let i = 0; i < 50 && el.querySelector(".na-stale, .na-loading"); i++) await na.sleep(100);
-      await na.sleep(300);
-      return {
-        title: el.querySelector(".na-view-number .na-title")?.textContent,
-        typed: el.querySelector(".na-form input")?.value,
+      const panel = (title) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === title);
+      const quiet = async () => { await na.sleep(300); await na.until(() => !el.querySelector(".na-stale, .na-loading"), 10000); await na.sleep(300); };
+      const everything = panel("Everything I hold");
+      na.choose(el.querySelector('select[aria-label="symbol"]'), "QQQ");
+      await quiet();
+      na.choose(el.querySelector('select[aria-label="range"]'), "1y");
+      await quiet();
+      const shown = {
+        price: el.querySelector(".na-view-number .na-title")?.textContent,
         chart: el.querySelector(".na-view-line .na-title")?.textContent,
         lines: el.querySelectorAll(".na-view-line path.na-line").length,
-        errors: na.errors(),
-      };`);
-    if (r.title !== "QQQ" || r.typed !== "watch" || r.chart !== "QQQ, last 6mo" || r.lines !== 1 || r.errors) throw new Error(JSON.stringify(r));
-    return "SPY → QQQ, typed text kept";
-  }, { net: NET.Stocks });
+        form: el.querySelector(".na-view-form .na-title")?.textContent,
+        kept: panel("Everything I hold") === everything,
+      };
+      const form = el.querySelector(".na-view-form");
+      const [date, shares, price] = form.querySelectorAll("input");
+      na.fill(date, "2026-11-10"); na.fill(shares, "4"); na.fill(price, "500");
+      na.button("Record", form).click();
+      await na.until(() => na.fm("Apps/Portfolio data.md")?.buys?.length, 3000);
+      await quiet();
+      const held = panel("What I hold").querySelector("tbody tr");
+      const heldText = held?.innerText.replace(/\\s+/g, " ");
+      held?.click();
+      await quiet();
+      return { shown, buys: na.fm("Apps/Portfolio data.md")?.buys, heldText, worth: panel("QQQ is worth")?.querySelector(".na-big")?.textContent,
+        all: [...panel("Everything I hold").querySelectorAll("tbody tr")].map((tr) => tr.innerText.replace(/\\s+/g, " ")), errors: na.errors() };`);
+    expect(JSON.stringify(r.shown) === JSON.stringify({ price: "QQQ", chart: "QQQ, last 1y", lines: 1, form: "Record a buy of QQQ", kept: true }), r.shown);
+    expect(JSON.stringify(r.buys?.map(({ at, ...b }) => b)) === JSON.stringify([{ symbol: "QQQ", date: "2026-11-10", shares: 4, price: 500 }]), r.buys);
+    expect(r.heldText === "QQQ 4 $2,000.00" && /^\$\d{1,3}(,\d{3})*\.\d\d$/.test(r.worth ?? "") && r.all.includes("QQQ 4 $2,000.00") && r.errors === 0, r);
+    await t.shot("portfolio-desktop.png", 1100, 760, 2);
+    return `QQQ over 1y; held ${r.heldText}, worth ${r.worth}`;
+  }, { net: NET.Portfolio });
 
   await check("Day: the date bar picks the notes", async () => {
     const r = await run(`
@@ -116,31 +132,16 @@ export default async function apps(t) {
     return "2027-01-15 → Eye exam";
   });
 
-  await check("Watchlist: Ticker twice, in tabs, sharing an input", async () => {
-    const r = await run(`
-      await na.open("Apps/Watchlist");
-      const el = na.view().contentEl;
-      const titles = (cls) => [...el.querySelectorAll(cls + " .na-title")].map((t) => t.textContent);
-      const before = titles(".na-view-number");
-      const select = el.querySelector('select[aria-label="range"]');
-      select.value = "1";
-      select.dispatchEvent(new Event("change"));
-      for (let i = 0; i < 50 && el.querySelector(".na-stale, .na-loading"); i++) await na.sleep(100);
-      await na.sleep(300);
-      return { tabs: [...el.querySelectorAll("button.na-tab")].map((b) => b.textContent), before, charts: titles(".na-view-line"), errors: na.errors() };`);
-    const want = { tabs: ["Index", "Apple"], before: ["SPY", "AAPL"], charts: ["SPY, last 1y", "AAPL, last 1y"], errors: 0 };
-    if (JSON.stringify(r) !== JSON.stringify(want)) throw new Error(JSON.stringify(r));
-    await t.shot("watchlist-desktop.png", 1100, 760, 2);
-    return "2 uses, range 6mo → 1y";
-  }, { net: NET.Watchlist });
-
-  await check("AAPL: a whole note from one component", async () => {
+  await check("AAPL: a whole note from one component, its price pinned to the status bar", async () => {
     const r = await run(`
       await na.open("Apps/AAPL");
       const el = na.view().contentEl;
-      return { description: el.querySelector(".na-description")?.textContent, title: el.querySelector(".na-view-number .na-title")?.textContent, errors: na.errors() };`);
-    if (r.description !== "Price and chart for one stock" || r.title !== "AAPL" || r.errors) throw new Error(JSON.stringify(r));
-    return "description and panels from [[Ticker]]";
+      const pinned = await na.until(() => na.status().find((s) => s.startsWith("AAPL: $")), 5000);
+      return { description: el.querySelector(".na-description")?.textContent, title: el.querySelector(".na-view-number .na-title")?.textContent,
+        form: el.querySelector(".na-view-form .na-title")?.textContent, pinned, errors: na.errors() };`);
+    expect(r.description === "Follow one stock, record what I buy of it, and see what my shares are worth" && r.title === "AAPL" && r.form === "Record a buy of AAPL" && r.pinned && !r.errors, r);
+    expect(JSON.stringify(prompts.AAPL) === JSON.stringify(["Fetch data from query1.finance.yahoo.com — for [[Ticker]]"]), prompts.AAPL);
+    return `description and panels from [[Ticker]]; status ${r.pinned}`;
   }, { net: NET.AAPL });
 
   // The fresh checks may have logged a dose already.
@@ -215,14 +216,14 @@ export default async function apps(t) {
     const r = await run(`
       const out = [];
       await na.open("Daily"); out.push(na.state());
-      await na.open("Apps/SPY"); out.push(na.state());
+      await na.open("Apps/Portfolio"); out.push(na.state());
       app.commands.executeCommandById("app:go-back"); await na.sleep(800); out.push(na.state());
       await na.open("Apps/Packing");
       [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Edit source").click();
       await na.sleep(800); out.push(na.state());
       app.commands.executeCommandById("note-apps:open-as-app"); await na.sleep(800); out.push(na.state());
       return out;`);
-    const want = ["markdown:Daily.md", "note-app:Apps/SPY.md", "markdown:Daily.md", "markdown:Apps/Packing.md", "note-app:Apps/Packing.md"];
+    const want = ["markdown:Daily.md", "note-app:Apps/Portfolio.md", "markdown:Daily.md", "markdown:Apps/Packing.md", "note-app:Apps/Packing.md"];
     if (JSON.stringify(r) !== JSON.stringify(want)) throw new Error(JSON.stringify(r));
     return "links, back, Edit source, Open as app";
   });
@@ -291,13 +292,13 @@ export default async function apps(t) {
   await check("editing a component asks again, naming it", async () => {
     const original = await run(`return await na.read("Components/Ticker.md");`);
     const r = await run(`
-      await na.open("Apps/Watchlist");
+      await na.open("Apps/Portfolio");
       await app.fileManager.processFrontMatter(app.vault.getFileByPath("Components/Ticker.md"), (fm) => {
         fm.panels = [...fm.panels, { view: "text", text: "news", source: "https://news.example.org/v1/$symbol" }];
       });
       await na.sleep(1500);
       return [...na.view().contentEl.querySelectorAll(".na-card li")].map((li) => li.textContent);`);
-    // Put the component back, so later checks see Watchlist as it was allowed.
+    // Put the component back, so later checks see Portfolio as it was allowed.
     await run(`await na.write("Components/Ticker.md", ${JSON.stringify(original)}); await na.sleep(500);`);
     expect(r.includes("NewFetch data from news.example.org — for [[Ticker]]") && r.includes("Fetch data from query1.finance.yahoo.com — for [[Ticker]]"), r);
     return "prompt names [[Ticker]], marks the new host";

@@ -1,7 +1,7 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
-import { test } from "node:test";
+import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { permissionsOf, readSpec } from "../src/spec.ts";
 import { fakeBackground, fakeEnv, raw } from "./support/fakes.ts";
@@ -40,11 +40,24 @@ test("no two notes in the test vault share a name, so every [[link]] means one n
   assert.deepEqual(names.filter((n, i) => names.indexOf(n) !== i), []);
 });
 
+/** Everything a test started, stopped afterwards: an app that refreshes keeps its timer, and the process, alive. */
+const started: { dispose(): void }[] = [];
+afterEach(() => {
+  for (const s of started.splice(0)) s.dispose();
+});
+
+/** Draws an app as its tab would, stopped after the test. */
+function mount(root: HTMLElement, path: string, env: ReturnType<typeof fakeEnv>["env"]) {
+  const controller = new AppController(root, path, env);
+  started.push(controller);
+  controller.load();
+}
+
 function openApp(path: string, notes: Parameters<typeof fakeEnv>[0], responses: Record<string, unknown> = {}) {
   const t = fakeEnv({ [path]: { fm: vaultNote(path).fm }, ...notes }, responses);
   const root = document.createElement("div");
   document.body.appendChild(root);
-  new AppController(root, path, t.env).load();
+  mount(root, path, t.env);
   return { ...t, root };
 }
 
@@ -455,10 +468,11 @@ async function background(paths: string[]) {
   t.env.opened = (path) => t.bg.opened(path);
   t.env.alerts = t.bg.alerts;
   await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
   const open = async (path: string) => {
     const root = document.createElement("div");
     document.body.appendChild(root);
-    new AppController(root, path, t.env).load();
+    mount(root, path, t.env);
     await settle();
     return root;
   };
@@ -527,4 +541,119 @@ test("Attention: what needs my attention across my apps, and the day's to-dos", 
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Attention data.md")!.fm!.done_today, ["Take meds"]);
   assert.match(text(root.querySelector(".na-view-checklist .na-title")), /1\/4/);
+});
+
+const YAHOO = "https://query1.finance.yahoo.com/v8/finance/chart/";
+/** Yahoo's chart answer for a symbol with these daily closes, the last one being the price now. */
+const yahoo = (symbol: string, closes: number[]) => ({
+  chart: {
+    result: [{
+      meta: { symbol, regularMarketPrice: closes.at(-1) },
+      timestamp: closes.map((_, i) => 1794493800 + i * 86_400),
+      indicators: { quote: [{ close: closes }] },
+    }],
+  },
+});
+const TICKER = { "Components/Ticker.md": { fm: vaultNote("Components/Ticker.md").fm } };
+const panelsOf = (root: Element) => [...root.querySelectorAll(".na-panel")];
+const cells = (tr: Element) => [...tr.querySelectorAll("td")].map((td) => text(td));
+
+test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what I hold of one and what it is worth", async () => {
+  const path = "Apps/Portfolio.md";
+  const spec = readSpec(vaultNote(path).fm, { path, notes: fakeEnv(TICKER).env.notes })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:query1.finance.yahoo.com"]);
+
+  const responses = { [`${YAHOO}SPY`]: yahoo("SPY", [523, 523.88, 517.99, 506.24, 508.29]), [`${YAHOO}AAPL`]: yahoo("AAPL", [200, 205, 210]) };
+  const { root, f } = openApp(path, TICKER, responses);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const panels = () => panelsOf(root);
+  const [price, session, chart, form, held, worth, , buys, everything, paid] = panels();
+  assert.equal(panels().length, 10);
+  assert.equal(text(price.querySelector(".na-title")), "SPY");
+  assert.equal(text(price.querySelector(".na-big")), "$508.29");
+  assert.equal(text(session.querySelector(".na-big")), "0.40%");
+  assert.equal(text(chart.querySelector(".na-title")), "SPY, last 6mo");
+  assert.ok(chart.querySelector(".na-chart-svg"));
+  assert.equal(text(form.querySelector(".na-title")), "Record a buy of SPY");
+  for (const empty of [held, buys, everything]) assert.equal(text(empty.querySelector(".na-empty")), "Nothing here yet.");
+  assert.equal(text(worth.querySelector(".na-waiting")), "Pick a row in “What I hold”");
+  assert.equal(text(paid.querySelector(".na-big")), "—");
+
+  const record = async (symbol: string, date: string, shares: string, price: string) => {
+    choose(root.querySelector('.na-inputs select[aria-label="symbol"]')!, symbol);
+    await settle();
+    const buy = panels()[3];
+    assert.equal(text(buy.querySelector(".na-title")), `Record a buy of ${symbol}`);
+    const fields = buy.querySelectorAll("input") as unknown as HTMLInputElement[];
+    [fields[0].value, fields[1].value, fields[2].value] = [date, shares, price];
+    buy.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+    await settle();
+  };
+  await record("SPY", "2026-11-10", "10", "500");
+  await record("SPY", "2026-11-12", "5", "510");
+  await record("AAPL", "2026-11-17", "5", "200");
+  assert.deepEqual(f.files.get("Apps/Portfolio data.md")!.fm!.buys, [
+    { symbol: "SPY", date: "2026-11-10", shares: 10, price: 500, at: "2026-11-18T12:00" },
+    { symbol: "SPY", date: "2026-11-12", shares: 5, price: 510, at: "2026-11-18T12:00" },
+    { symbol: "AAPL", date: "2026-11-17", shares: 5, price: 200, at: "2026-11-18T12:00" },
+  ]);
+  // The Ticker follows the pick; the totals cover every stock.
+  assert.equal(text(panels()[0].querySelector(".na-big")), "$210.00");
+  assert.deepEqual([...panels()[4].querySelectorAll("tbody tr")].map(cells), [["AAPL", "5", "$1,000.00"]]);
+  assert.deepEqual([...panels()[7].querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))), [""]);
+  assert.deepEqual([...panels()[8].querySelectorAll("tbody tr")].map(cells), [["AAPL", "5", "$1,000.00"], ["SPY", "15", "$7,550.00"]]);
+  assert.equal(text(panels()[9].querySelector(".na-big")), "$8,550.00");
+
+  // 5 AAPL at the last close of 210, against the $1,000 paid.
+  (panels()[4].querySelector("tbody tr") as HTMLElement).click();
+  await settle();
+  assert.equal(text(panels()[5].querySelector(".na-title")), "AAPL is worth");
+  assert.equal(text(panels()[5].querySelector(".na-big")), "$1,050.00");
+  assert.equal(text(panels()[6].querySelector(".na-big")), "$50.00");
+  assert.ok(f.requests.includes(`${YAHOO}AAPL?range=5d&interval=1d`));
+
+  // Sold out of AAPL: setting its buy's shares to 0 takes it out of what I hold.
+  const shares = panels()[7].querySelectorAll("tbody tr input")[1] as HTMLInputElement;
+  shares.value = "0";
+  shares.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal((f.files.get("Apps/Portfolio data.md")!.fm!.buys as { shares: number }[])[2].shares, 0);
+  assert.equal(text(panels()[4].querySelector(".na-empty")), "Nothing here yet.");
+  assert.deepEqual([...panels()[8].querySelectorAll("tbody tr")].map(cells), [["SPY", "15", "$7,550.00"]]);
+});
+
+test("AAPL: the whole note is the Ticker; its price is in the status bar, a 3% fall tells me, and a buy shows what it is worth", async () => {
+  const path = "Apps/AAPL.md";
+  const spec = readSpec(vaultNote(path).fm, { path, notes: fakeEnv(TICKER).env.notes })!;
+  assert.deepEqual(spec.errors, []);
+  assert.equal(spec.spec!.description, "Follow one stock, record what I buy of it, and see what my shares are worth");
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:query1.finance.yahoo.com"]);
+
+  // Closed: down from 205 to 198 in the last session.
+  const t = fakeBackground({ [path]: { fm: vaultNote(path).fm }, ...TICKER }, { [YAHOO]: yahoo("AAPL", [200, 205, 198]) });
+  await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
+  await settle();
+  assert.deepEqual(t.out.status, [{ appPath: path, text: "AAPL: $198.00", title: "AAPL" }]);
+  assert.deepEqual(t.notices, ["AAPL: Last session -3.41 %"]);
+
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  mount(root, path, t.env);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  assert.equal(text(root.querySelector(".na-description")), "Follow one stock, record what I buy of it, and see what my shares are worth");
+  const panels = () => panelsOf(root);
+  assert.equal(text(panels()[3].querySelector(".na-title")), "Record a buy of AAPL");
+  const fields = panels()[3].querySelectorAll("input") as unknown as HTMLInputElement[];
+  [fields[0].value, fields[1].value, fields[2].value] = ["2026-11-02", "10", "190"];
+  panels()[3].querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  await settle();
+  assert.deepEqual(t.f.files.get("Apps/AAPL data.md")!.fm!.buys, [{ symbol: "AAPL", date: "2026-11-02", shares: 10, price: 190, at: "2026-11-18T12:00" }]);
+  (panels()[4].querySelector("tbody tr") as HTMLElement).click();
+  await settle();
+  assert.equal(text(panels()[5].querySelector(".na-big")), "$1,980.00");
+  assert.equal(text(panels()[6].querySelector(".na-big")), "$80.00");
 });
