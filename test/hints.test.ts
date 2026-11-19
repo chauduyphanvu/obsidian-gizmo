@@ -69,10 +69,10 @@ test("the source words are the kinds of source that are one word, and each has i
 // ---- Suggestions -----------------------------------------------------------------------------------
 
 test("top-level keys depend on whether the note is an app or a component, and leave out what is typed", () => {
-  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "use", "with", "view"]);
-  assert.deepEqual(suggested("---\n‸\n---", true), ["component", "params", "data", "panels", "for", "spec"]);
-  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "use", "with", "view"]);
-  assert.deepEqual(suggested("---\ncomponent: C\nparams: [a]\n‸\n---", true), ["data", "panels", "for", "spec"]);
+  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view"]);
+  assert.deepEqual(suggested("---\n‸\n---", true), ["component", "params", "data", "panels", "tabs", "for", "spec"]);
+  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view"]);
+  assert.deepEqual(suggested("---\ncomponent: C\nparams: [a]\n‸\n---", true), ["data", "panels", "tabs", "for", "spec"]);
   assert.deepEqual(suggested(app("p‸")), ["panels", "spec", "inputs"]);
 });
 
@@ -85,8 +85,8 @@ test("a top-level key is matched by what it starts with, then by what it contain
 
 test("a single panel written at the top takes its view's keys too", () => {
   const keys = suggested("---\napp: A\nview: countdown\n‸\n---");
-  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "use", "with", "title", "tab", "span", "to", "label"]);
-  assert.deepEqual(suggested("---\ncomponent: C\nview: countdown\n‸\n---", true), ["params", "data", "panels", "for", "spec"]);
+  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "title", "tab", "span", "to", "label"]);
+  assert.deepEqual(suggested("---\ncomponent: C\nview: countdown\n‸\n---", true), ["params", "data", "panels", "tabs", "for", "spec"]);
 });
 
 test("in a panel with a view: the common keys and that view's, minus what is typed", () => {
@@ -126,7 +126,7 @@ test("the values of view, agg, per, layout, compare and pin", () => {
   assert.deepEqual(li.slice(0, 2), ["line", "list"]);
   assert.ok(li.every((v) => v.includes("li")));
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: ‸")), [...AGGS]);
-  assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: s‸")), ["sum", "streak", "first", "last"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: s‸")), ["sum", "streak", "share", "first", "last"]);
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    group: at\n    per: ‸")), [...PERIODS]);
   assert.deepEqual(suggested(app("panels:\n  - view: table\n    layout: ‸")), ["cards", "year"]);
   assert.deepEqual(suggested(app("panels:\n  - view: number\n    compare: ‸")), ["previous"]);
@@ -190,7 +190,7 @@ test("each suggestion carries its hint and kind", () => {
   assert.deepEqual(suggestionsFor(ctx, false), [{ kind: "key", text: "agg", hint: KEY_HINTS.agg }]);
   const value: Context = { where: "panel", position: "value", key: "agg", prefix: "str", present: [], from: { line: 1, ch: 0 }, view: "number" };
   assert.deepEqual(suggestionsFor(value, false), [{ kind: "value", text: "streak", hint: VALUE_HINTS.agg.streak }]);
-  assert.equal(KEY_HINTS.agg, "How rows become one value: count, sum, avg, min, max, first, last, streak");
+  assert.equal(KEY_HINTS.agg, "How rows become one value: count, sum, avg, min, max, first, last, streak, share");
   assert.equal(KEY_HINTS.select, "Name the clicked row so other panels can read $name.field");
 });
 

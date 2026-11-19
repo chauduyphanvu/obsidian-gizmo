@@ -1,6 +1,7 @@
 import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
 import { notePath, saveTarget, type Panel } from "./spec.ts";
 import { withoutDefinition } from "./store.ts";
+import { startOf } from "./views/common.ts";
 
 /**
  * What running a panel's actions needs, and nothing more: an open app passes its env; something
@@ -100,6 +101,14 @@ export function fillRow(templates: Record<string, string | number | boolean>, ct
 
 const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== "";
 
+/** The schema's fields with a `default` that a form doesn't show, each with its value now: saved beside the form's own. */
+function defaultsBeyond(p: Panel, now: Date): Row {
+  const shown = p.fields ?? p.schema ?? {};
+  return Object.fromEntries(Object.entries(p.fieldInfo ?? {})
+    .filter(([name, info]) => info.default !== undefined && Object.hasOwn(p.schema ?? {}, name) && !Object.hasOwn(shown, name))
+    .map(([name, info]) => [name, startOf(info, now)]));
+}
+
 /**
  * Creates one note in `folder` for a saved row: named by `name:` (else the row's name, its title,
  * or the time), with the row as its frontmatter and the `template:` note's body, filled, as its
@@ -125,8 +134,12 @@ async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: Ac
  * the new note. Failures are notified, never thrown.
  */
 export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promise<ActionResult> {
-  const stamp = stampParts(deps.now());
-  const row = p.row ? fillRow(p.row, { ...stamp, ...input }) : input;
+  const now = deps.now();
+  const stamp = stampParts(now);
+  const unshown = p.view === "form" ? defaultsBeyond(p, now) : {};
+  const given = p.row ? fillRow(p.row, { ...stamp, ...unshown, ...input }) : input;
+  // What `row` (or the form) gives wins key by key; the defaults come after it.
+  const row = { ...given, ...Object.fromEntries(Object.entries(unshown).filter(([k]) => !Object.hasOwn(given, k))) };
   const saved: Row = { ...Object.fromEntries(Object.entries(row)), at: stamp.at };
   const ctx: Row = { ...stamp, ...input, ...row };
   const target = p.target ?? (p.save ? saveTarget(p.save) : undefined);

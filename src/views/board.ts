@@ -60,7 +60,7 @@ function focusedKey(el: HTMLElement): string | undefined {
 
 export const board: ViewDef = {
   id: "board",
-  keys: [...DATA_KEYS, "group", "item", "label", "format", "values", "select"],
+  keys: [...DATA_KEYS, "group", "item", "label", "format", "values", "select", "detail"],
   span: 4,
   needsSource: true,
   // The board groups the raw rows itself, so cards keep what a write needs to find their note.

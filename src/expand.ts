@@ -3,10 +3,10 @@ import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, storeTarget } from "./store.ts";
 import {
-  InputRef, NAME, THIS, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
+  InputRef, NAME, THIS, fillParams, firstRef, namesIn, nearMisses, parseInputs, refsIn, refusedPlaces, secretIds, stringsIn, unsafeValue, type Kit,
 } from "./template.ts";
 import {
-  COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readValue, type PanelKey,
+  COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
 } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 import type { SaveTarget } from "./spec.ts";
@@ -53,10 +53,23 @@ export function blockChain(name: string, blocks: BlockSet): string[] {
   return chain;
 }
 
+/** The `fields` typed on the nearest block up a block's chain that has them, itself first. */
+function fieldsOf(name: string, blocks: BlockSet): Record<string, unknown> | undefined {
+  const holder = blockChain(name, blocks).reverse().find((n) => blockIn(blocks, n)?.fields !== undefined);
+  return holder === undefined ? undefined : blockIn(blocks, holder)!.fields as Record<string, unknown>;
+}
+
 /** The fields describing a block's rows: its own, or those of the nearest block up its chain that has them. */
 export function schemaOf(name: string, blocks: BlockSet): Record<string, string | string[]> | undefined {
-  const holder = blockChain(name, blocks).reverse().find((n) => blockIn(blocks, n)?.fields !== undefined);
-  return holder === undefined ? undefined : blockIn(blocks, holder)!.fields as Record<string, string | string[]>;
+  const fields = fieldsOf(name, blocks);
+  return fields && readFields(fields).types;
+}
+
+/** What those fields say besides their types (labels, formats, defaults), when any says something. */
+export function fieldInfoOf(name: string, blocks: BlockSet): Record<string, FieldInfo> | undefined {
+  const fields = fieldsOf(name, blocks);
+  const info = fields && readFields(fields).info;
+  return info && Object.keys(info).length ? info : undefined;
 }
 
 function readBlockKey(key: string, value: unknown, names: ReadonlySet<string>): { value?: unknown; errors: string[] } {
@@ -72,7 +85,9 @@ function readBlockKey(key: string, value: unknown, names: ReadonlySet<string>): 
   }
   const read = readValue(key as PanelKey, value);
   if ("error" in read) return { errors: [read.error] };
-  const errors = key === "fields" ? checkFields(read.value as Record<string, string | string[]>)
+  if (key === "fields" && Array.isArray(read.value)) return { errors: ["fields must be a set of name: type, e.g. fields: {status: [open, done]}"] };
+  const fields = key === "fields" ? readFields(read.value as Record<string, unknown>) : undefined;
+  const errors = fields ? [...fields.errors, ...checkFields(fields.types)]
     : key === "compute" ? computeErrors(read.value as Record<string, string | number>, names)
     : [];
   return errors.length ? { errors } : { value: read.value, errors };
@@ -178,9 +193,14 @@ const READS: Record<string, string> = { url: "a web address", base: "a base", ta
  * Where `save` writes when it names a block: the list at the root of the block's chain, or new
  * notes in the one folder a `notes` root reads. A root that reads a web address, a base, tasks, a
  * file or the note itself is an error, since no panel on the block would show what was saved.
+ * `fill` gives the root's `source` and `from` with their `$names` filled, or undefined when one
+ * is used where it can't be (it has said why).
  */
-function blockTarget(save: string, blocks: Blocks): { target: SaveTarget } | { error: string } {
-  const root = blocks.get(blockChain(save, blocks)[0])!;
+function blockTarget(save: string, blocks: Blocks, fill: (keys: Record<string, unknown>) => Record<string, unknown> | undefined):
+  { target: SaveTarget } | { error: string } | undefined {
+  const typed = blocks.get(blockChain(save, blocks)[0])!;
+  const root = fill({ source: typed.source, ...(typed.from === undefined ? {} : { from: typed.from }) });
+  if (!root) return undefined;
   const source = String(root.source);
   const kind = sourceDef(source).id;
   if (kind === "list") return { target: { kind: "list", name: source } };
@@ -211,6 +231,7 @@ export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): {
   template: Record<string, unknown>;
   stages: Stage[];
   schema?: Record<string, string | string[]>;
+  info?: Record<string, FieldInfo>;
   errors: string[];
 } {
   const name = raw.source;
@@ -238,7 +259,7 @@ export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): {
   const stages = chain.slice(0, -1)
     .map((n) => ({ block: n, keys: stageKeys(blocks.get(n)!) }))
     .filter((s) => Object.keys(s.keys).length > 0);
-  return { template, stages, schema: schemaOf(name as string, blocks), errors };
+  return { template, stages, schema: schemaOf(name as string, blocks), info: fieldInfoOf(name as string, blocks), errors };
 }
 
 // ---- Components ----------------------------------------------------------------------------------
@@ -267,6 +288,9 @@ export interface Produced {
  * it, so two uses of one component keep their selections apart; those names are also in `names`
  * and `params` (as references), and are refused where inputs are. In a component it also maps
  * `this` to itself, for the same reasons.
+ * `carried` holds the params whose value carries a run-time value (an input, a selection, `$this`)
+ * rather than text typed in the using note, each with the place it came in: `panel 1: with.folder`.
+ * Every other param is literal, and may say what the app reads and writes (see Kit).
  */
 interface Scope {
   path: string;
@@ -275,7 +299,18 @@ interface Scope {
   kind: "input" | "param";
   params: ReadonlyMap<string, unknown>;
   selects: ReadonlyMap<string, string>;
+  carried: ReadonlyMap<string, string>;
 }
+
+/** What a run-time value can't choose, by the key it would fill. */
+const CHOOSES: Record<string, string> = {
+  from: 'what "from" reads',
+  source: 'what "source" reads',
+  save: 'where "save" writes',
+  append: 'where "append" writes',
+  template: 'which note "template" reads',
+  tab: 'which tab a panel is in',
+};
 
 /** The name an entry selects, as typed; numbers are text, as for any text key. */
 export function selectOf(entry: unknown): string | undefined {
@@ -293,7 +328,40 @@ interface Component {
   /** Declared params; a value of undefined means the app must give it. */
   params: Map<string, unknown>;
   data: unknown;
-  panels: unknown[];
+  panels: Entry[];
+}
+
+/** One panel as a note lists it, and where it is written, for messages: "panel 2", "tabs.Score panel 1". */
+export interface Entry {
+  raw: unknown;
+  label: string;
+}
+
+/**
+ * The panels an app, a component or a `note-app` block lists: its `panels` items, then the items of
+ * each tab in `tabs`, in the order typed, each given `tab:` with its tab's name. `tab:` typed on a
+ * panel inside `tabs` is an error (the tab it is listed under wins), as is a `tabs` that isn't
+ * names with lists of panels.
+ */
+export function panelEntries(fm: Record<string, unknown>, errors: string[]): Entry[] {
+  const out: Entry[] = Array.isArray(fm.panels) ? fm.panels.map((raw, i) => ({ raw, label: `panel ${i + 1}` })) : [];
+  if (fm.tabs === undefined || fm.tabs === null) return out;
+  if (!isPlainObject(fm.tabs)) {
+    errors.push("tabs must be tab names, each with a list of panels, e.g. tabs: {Score: [{view: table, source: due}]}");
+    return out;
+  }
+  for (const [tab, list] of Object.entries(fm.tabs)) {
+    if (!Array.isArray(list)) {
+      errors.push(`tabs.${tab} must be a list of panels`);
+      continue;
+    }
+    list.forEach((raw, i) => {
+      const label = `tabs.${tab} panel ${i + 1}`;
+      if (isPlainObject(raw) && raw.tab !== undefined && raw.tab !== null) errors.push(`${label}: leave out tab; this panel is in the tab "${tab}" it is listed under`);
+      out.push({ raw: isPlainObject(raw) ? { ...raw, tab } : raw, label });
+    });
+  }
+  return out;
 }
 
 export function linkOf(value: unknown): string | undefined {
@@ -333,11 +401,14 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
     else if (n === THIS) errors.push(`${name}: ${TAKEN}`);
     if (v !== undefined && unsafeValue(v)) errors.push(`${name}: param "${n}" can't hold a secret or a line break`);
   }
-  if (!Array.isArray(fm.panels) || fm.panels.length === 0) {
+  const entryErrors: string[] = [];
+  const panels = panelEntries(fm, entryErrors);
+  errors.push(...entryErrors.map((e) => `${name} ${e}`));
+  if (panels.length === 0) {
     errors.push(`${name} needs panels`);
     return undefined;
   }
-  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels: fm.panels };
+  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels };
 }
 
 /** Why a param, input or selection can't be called `this`. */
@@ -430,15 +501,42 @@ export class Expander {
   private notes: NoteReader | undefined;
   private appPath: string;
   private uses = 0;
+  /** The names the app's own panels select. */
+  private appSelections: ReadonlySet<string> = new Set();
 
   constructor(notes: NoteReader | undefined, appPath: string) {
     this.notes = notes;
     this.appPath = appPath;
   }
 
-  /** `names` are the app's inputs and the names its panels select. */
-  appScope(blocks: Blocks, names: ReadonlySet<string>): Scope {
-    return { path: this.appPath, blocks, names, kind: "input", params: new Map(), selects: new Map() };
+  /** `names` are the app's inputs, the names its panels select (also in `selects`) and `this`. */
+  appScope(blocks: Blocks, names: ReadonlySet<string>, selects: ReadonlySet<string> = new Set()): Scope {
+    this.appSelections = selects;
+    return { path: this.appPath, blocks, names, kind: "input", params: new Map(), selects: new Map(), carried: new Map() };
+  }
+
+  /**
+   * Where a `with` value that carries a run-time value came in: where the caller got it, when it
+   * passes on a param of its own that carries one; else here.
+   */
+  private carriedFrom(typed: unknown, scope: Scope, here: string): string {
+    for (const n of namesIn(typed, scope.names)) {
+      const from = scope.carried.get(n);
+      if (from !== undefined) return from;
+    }
+    return here;
+  }
+
+  /**
+   * Tells, at the `with` entry it came in by, that a param carrying a run-time value was used where
+   * only a literal param may go: an input can't choose what an app reads or writes. Told once.
+   */
+  private carriedInto(name: string, key: string, scope: Scope): void {
+    const ref = firstRef(scope.params.get(name));
+    const who = ref?.input === THIS ? "$this"
+      : ref && (this.selections.has(ref.input) || this.appSelections.has(ref.input)) ? "a selection" : "an input";
+    const message = `${scope.carried.get(name)}: ${who} can't choose ${CHOOSES[key] ?? `"${key}"`}; type the value itself`;
+    if (!this.errors.includes(message)) this.errors.push(message);
   }
 
   /** The description of the component a link names, for an app that is one whole component. */
@@ -458,19 +556,8 @@ export class Expander {
         at('"with" needs "use"');
         raw = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "with"));
       }
-      const prepared = this.prepare(withoutInternal(raw, at), scope, at, true);
-      if (!prepared) return [];
-      const { typed, template } = prepared;
-      // A param may name a list for `source` or `save`, never a URL, notes or an app's input.
-      for (const key of ["source", "save"] as const) {
-        const written = typed[key];
-        const got = template[key];
-        if (scope.kind !== "param" || typeof written !== "string" || !/^\$[A-Za-z_]\w*$/.test(written) || !scope.names.has(written.slice(1))) continue;
-        if (got instanceof InputRef || typeof got !== "string" || (key === "source" && sourceDef(got).id !== "list")) {
-          at(`${written} can only name a list here; write a URL in the component with ${written} in its path or query`);
-          return [];
-        }
-      }
+      const template = this.prepare(withoutInternal(raw, at), scope, at, true);
+      if (!template) return [];
       return [{ template, label, writtenIn: Object.fromEntries(Object.keys(template).map((k) => [k, scope.path])) }];
     }
 
@@ -511,6 +598,7 @@ export class Expander {
 
     // `with` values are read where they were typed, so they can pass on the caller's names.
     const given = new Map<string, unknown>();
+    const carried = new Map<string, string>();
     if (raw.with !== undefined && raw.with !== null && !isPlainObject(raw.with)) at("with must be a set of params, e.g. with: {symbol: AAPL}");
     for (const [k, v] of Object.entries(isPlainObject(raw.with) ? raw.with : {})) {
       if (!component.params.has(k)) {
@@ -520,8 +608,11 @@ export class Expander {
         at(`with.${k} can't hold a secret or a line break`);
       } else {
         const fillErrors: string[] = [];
-        given.set(k, fill(v, scope, fillErrors, "with"));
+        const value = fill(v, scope, fillErrors, "with");
+        given.set(k, value);
         fillErrors.forEach(at);
+        // A value holding any reference is only known at run time; one with none is text typed in a note.
+        if (refsIn(value).length) carried.set(k, this.carriedFrom(v, scope, label ? `${label}: with.${k}` : `with.${k}`));
       }
     }
     const params = new Map<string, unknown>();
@@ -534,8 +625,8 @@ export class Expander {
 
     const blockErrors: string[] = [];
     const names = new Set(component.params.keys());
-    const stepOf = (j: number) => [...trail, `${name} panel ${j + 1}`];
-    const selects = this.ownSelects(component.panels, names, (j, e) => this.errors.push(`${stepLabel(base, stepOf(j))}: ${e}`));
+    const stepOf = (j: number) => [...trail, `${name} ${component.panels[j].label}`];
+    const selects = this.ownSelects(component.panels.map((e) => e.raw), names, (j, e) => this.errors.push(`${stepLabel(base, stepOf(j))}: ${e}`));
     for (const [typed, own] of selects) {
       names.add(typed);
       params.set(typed, new InputRef(own));
@@ -545,10 +636,10 @@ export class Expander {
     params.set(THIS, new InputRef(THIS));
     const refusedAsInput = new Map([...selects, [THIS, THIS]]);
     const inner: Scope = {
-      path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params, selects: refusedAsInput,
+      path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params, selects: refusedAsInput, carried,
     };
     blockErrors.forEach((e) => at(`${name} ${e}`));
-    const produced = component.panels.flatMap((entry, j) => {
+    const produced = component.panels.flatMap(({ raw: entry }, j) => {
       const step = stepOf(j);
       if (!isPlainObject(entry)) {
         this.errors.push(`${stepLabel(base, step)}: must be a set of keys`);
@@ -581,49 +672,84 @@ export class Expander {
   /**
    * One entry's keys with the block it names merged in and its `$names` filled. When the block reads
    * other blocks, `upstream` holds their stages (root first); `schema` is the chain's nearest
-   * `fields`. `typed` is the merged keys before filling. Undefined when a name is used where it
-   * can't go.
+   * `fields`. Undefined when a name is used where it can't go.
    */
-  private prepare(raw: Record<string, unknown>, scope: Scope, at: (e: string) => void, typos: boolean):
-    { typed: Record<string, unknown>; template: Record<string, unknown> } | undefined {
+  private prepare(raw: Record<string, unknown>, scope: Scope, at: (e: string) => void, typos: boolean): Record<string, unknown> | undefined {
     const merged = expandPanel(raw, scope.blocks);
     merged.errors.forEach(at);
     const parts = [merged.template, ...merged.stages.map((s) => s.keys)];
     if (typos) nearMisses(parts, scope.names, scope.kind).forEach(at);
-    // A component's own selections are values from the user, refused wherever inputs are.
-    const own = new Set(scope.selects.keys());
-    const params = own.size ? new Set([...scope.names].filter((n) => !own.has(n))) : scope.names;
-    const refused = parts.flatMap((part) => [...refusedPlaces(part, params, scope.kind), ...refusedPlaces(part, own, "input")]);
-    refused.forEach(at);
-    if (refused.length) return undefined;
+    const refuses = this.refuser(scope, at);
+    if (parts.map(refuses).includes(false)) return undefined;
     const fillErrors: string[] = [];
     const [template, ...stages] = parts.map((part) => withVars(fill(part, scope, fillErrors) as Record<string, unknown>, scope, at));
     fillErrors.forEach(at);
+    // A param's text may not finish a secret placeholder the component only began (`{$name`).
+    for (const key of scope.kind === "param" ? ["source", "headers", "body"] : []) {
+      const typed = new Set(stringsIn(merged.template[key]).flatMap(secretIds));
+      if (stringsIn(template[key]).flatMap(secretIds).every((id) => typed.has(id))) continue;
+      const used = [...namesIn(merged.template[key], scope.names)];
+      const culprit = used.find((n) => /secret:|[{}]/.test(stringsIn(scope.params.get(n)).join(""))) ?? used[0];
+      at(`$${culprit} can't name a secret`);
+      return undefined;
+    }
     if (stages.length) template.upstream = stages.map((keys, i) => ({ block: merged.stages[i].block, keys }));
     const kept = scope.kind === "param" ? wholeParams(merged.template.row, template.row, scope.params) : undefined;
     if (kept) template.kept = kept;
     if (merged.schema) template.schema = merged.schema;
+    if (merged.info) template.fieldInfo = merged.info;
     // A checklist's save is the list it ticks, never a block's target.
     if (typeof template.save === "string" && scope.blocks.has(template.save) && template.view !== "checklist") {
-      const saving = blockTarget(template.save, scope.blocks);
+      // Where the block reads is where the save writes, so its root's keys are checked as the panel's are.
+      const saving = blockTarget(template.save, scope.blocks, (keys) => (refuses(keys) ? fill(keys, scope, []) as Record<string, unknown> : undefined));
+      if (!saving) return undefined;
       if ("error" in saving) {
         at(saving.error);
         return undefined;
       }
       template.target = saving.target;
       const schema = schemaOf(template.save, scope.blocks);
-      if (schema && !template.schema) template.schema = schema;
+      if (schema && !template.schema) {
+        template.schema = schema;
+        const info = fieldInfoOf(template.save, scope.blocks);
+        if (info) template.fieldInfo = info;
+      }
     }
     const selected = selectOf(template);
     if (selected !== undefined && scope.selects.has(selected)) template.select = scope.selects.get(selected);
-    return { typed: merged.template, template };
+    return template;
+  }
+
+  /**
+   * Checks one set of keys for names used where they can't go, telling `at` (or, for a param that
+   * carries a run-time value, the `with` it came in by) why; false when one is. A component's own
+   * selections and `this` are refused wherever inputs are; its params whose values were typed
+   * literally may also say what is read and written (see Kit).
+   */
+  private refuser(scope: Scope, at: (e: string) => void): (keys: Record<string, unknown>) => boolean {
+    const own = new Set(scope.selects.keys());
+    const params = own.size ? new Set([...scope.names].filter((n) => !own.has(n))) : scope.names;
+    const literal = new Map([...params].filter((n) => !scope.carried.has(n)).map((n) => [n, scope.params.get(n)]));
+    return (keys) => {
+      let carried = false;
+      const kit: Kit | undefined = scope.kind === "param" ? {
+        literal,
+        carried: (name, key) => {
+          carried = true;
+          this.carriedInto(name, key, scope);
+        },
+      } : undefined;
+      const refused = [...refusedPlaces(keys, params, scope.kind, kit), ...refusedPlaces(keys, own, "input")];
+      refused.forEach(at);
+      return refused.length === 0 && !carried;
+    };
   }
 
   /** Keys beside `use` replace those keys in every panel the component makes that takes them. */
   private applyOverrides(raw: Record<string, unknown>, scope: Scope, produced: Produced[], name: string, at: (e: string) => void): void {
     const keys = withoutInternal(Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "use" && k !== "with")), at);
     if (Object.keys(keys).length === 0) return;
-    const filled = this.prepare(keys, scope, at, false)?.template;
+    const filled = this.prepare(keys, scope, at, false);
     if (!filled) return;
     const set = (t: Produced, key: string) => {
       const value = filled[key];
@@ -645,7 +771,7 @@ export class Expander {
       for (const t of targets) {
         set(t, key);
         // A chain's stages and schema come with the source that named it; formula values with the formulas.
-        if (key === "source") for (const k of ["upstream", "schema"]) set(t, k);
+        if (key === "source") for (const k of ["upstream", "schema", "fieldInfo"]) set(t, k);
         if (key === "compute") set(t, "vars");
         if (key === "save") set(t, "target");
         if (key === "row") set(t, "kept");

@@ -55,6 +55,8 @@ function scalar(text: string): unknown {
 function plain(s: string): unknown {
   if (s.startsWith('"')) return JSON.parse(s);
   if (s.startsWith("'")) return s.slice(1, -1).replace(/''/g, "'");
+  // Obsidian's parser refuses an unquoted value holding ": " or ending in ":", and then drops the whole frontmatter.
+  if (/:(\s|$)/.test(s)) throw new Error(`a plain value can't hold ": " or end in ":"; quote it: ${s}`);
   if (s === "true" || s === "false") return s === "true";
   if (s === "null" || s === "~" || s === "") return null;
   if (/^-?\d+(\.\d+)?$/.test(s)) return Number(s);

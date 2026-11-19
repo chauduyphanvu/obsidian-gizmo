@@ -135,7 +135,7 @@ test("an app input passed through with stays live, whole or inside text", () => 
   assert.deepEqual([qqq.title, qqq.source], ["QQQ", "https://query.example.com/chart/QQQ?range=1%20QQQ"]);
 });
 
-test("params may name a list for source and save, never a URL, notes or an input", () => {
+test("a param typed in with may name a list, or a URL the prompt then names, for source and save; an input passed in may not", () => {
   const habit = { component: "habit", params: ["log"], panels: [
     { view: "button", label: "Done", save: "$log" },
     { view: "number", source: "$log", agg: "count" },
@@ -143,10 +143,17 @@ test("params may name a list for source and save, never a URL, notes or an input
   const ok = read({ app: "x", panels: [{ use: "[[Habit]]", with: { log: "stretches" } }] }, { "Habit.md": habit });
   assert.deepEqual(ok.errors, []);
   assert.deepEqual(ok.spec!.panels.map((ps) => ps.panel.save ?? ps.panel.source), ["stretches", "stretches"]);
+  // Typed in the note that uses it, a URL is as static as one typed in the component.
   const url = read({ app: "x", panels: [{ use: "[[Habit]]", with: { log: "https://evil.example.com/x" } }] }, { "Habit.md": habit });
-  assert.deepEqual(url.errors, ["panel 1 (from [[Habit]] panel 2): $log can only name a list here; write a URL in the component with $log in its path or query"]);
+  assert.deepEqual(url.errors, []);
+  assert.deepEqual(permissionsOf(url.spec!, APP), ["net:evil.example.com"]);
+  assert.deepEqual([...askersOf(url.spec!, APP).get("net:evil.example.com")!], ["Habit.md"]);
   const input = read({ app: "x", inputs: { l: ["a"] }, panels: [{ use: "[[Habit]]", with: { log: "$l" } }] }, { "Habit.md": habit });
-  assert.match(input.errors[0], /\$log can only name a list here/);
+  assert.deepEqual(input.errors, [
+    'panel 1: with.log: an input can\'t choose where "save" writes; type the value itself',
+    'panel 1: with.log: an input can\'t choose what "source" reads; type the value itself',
+    'input "l" isn\'t used by any panel',
+  ]);
 });
 
 test("a value passed through two components is encoded once", () => {

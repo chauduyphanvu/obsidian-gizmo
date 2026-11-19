@@ -14,6 +14,7 @@ export const KEY_HINTS: Record<string, string> = {
   data: "Named sources panels share: data: {name: {source: https://…}}",
   inputs: "Controls above the panels: a list of choices, date, or text for a search box",
   panels: "The panels this app shows, one list item each",
+  tabs: "Panels grouped in tabs: tabs: {Score: [ …panels… ], Waiting: [ … ]}",
   use: "Use a component note here, e.g. use: \"[[Ticker]]\"",
   with: "Give the component its params, e.g. with: {symbol: AAPL}",
   component: "Makes this note a reusable component; the text says what it is",
@@ -40,7 +41,7 @@ export const KEY_HINTS: Record<string, string> = {
   x: "The field along the bottom of a chart, or the first field of a scatter",
   y: "The field (or list of fields) a chart draws",
   field: "The field a number or progress panel reads",
-  agg: "How rows become one value: count, sum, avg, min, max, first, last, streak",
+  agg: "How rows become one value: count, sum, avg, min, max, first, last, streak, share",
   label: "A small caption under the panel",
   unit: "Text after the value, e.g. °F or km/s",
   decimals: "How many decimal places to show",
@@ -62,7 +63,7 @@ export const KEY_HINTS: Record<string, string> = {
   start: "The field a timeline bar starts at",
   end: "The field a timeline bar ends at",
   // Acting
-  fields: "A form's inputs, or a data block's schema: text, number, date, time, checkbox, textarea, or a list of choices",
+  fields: "A form's inputs or a block's schema: name: type (or a list of choices), or name: {type, label, format, default}",
   save: "Where a click saves its row: a list name, or a folder ending in /",
   append: "A note to add a line to",
   line: "The line to add with append; {fields} and {date} fill in",
@@ -73,7 +74,9 @@ export const KEY_HINTS: Record<string, string> = {
   name: "The new note's file name, e.g. \"{title}\"",
   template: "A note whose text becomes the body of each new note",
   open: "Open this note afterwards, e.g. \"{path}\"",
-  edit: "Table columns to change in place: edit: [status, done]",
+  edit: "Table columns to change in place: edit: [status, done], or true for every field of the block shown",
+  detail: "A sentence about the row you pick, shown under the rows: \"{name}: due {due}\"",
+  of: "With agg: share, the rows to count, e.g. of: {outcome: right}",
   shortcut: "Gives this button or form a command and link; letters, digits and -",
   // Background
   pin: "status shows this panel's value in the status bar",
@@ -114,6 +117,7 @@ const AGG_HINTS: Record<(typeof AGGS)[number], string> = {
   first: "The first row's value",
   last: "The last row's value",
   streak: "Days in a row, up to the latest",
+  share: "The fraction of rows that match of, as a percent",
 };
 
 const PER_HINTS: Record<(typeof PERIODS)[number], string> = {
@@ -162,8 +166,8 @@ export interface Suggestion {
 }
 
 const TOP_KEYS = {
-  app: ["app", "spec", "refresh", "store", "data", "inputs", "panels", "use", "with", "view"],
-  component: ["component", "params", "data", "panels", "for", "spec"],
+  app: ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view"],
+  component: ["component", "params", "data", "panels", "tabs", "for", "spec"],
 };
 
 /** Keys a panel with this view takes. */

@@ -231,7 +231,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn 
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "action", ...ACTION_KEYS, "edit", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "of", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "detail", "action", ...ACTION_KEYS, "edit", "alert"],
   span: 4,
   needsSource: true,
   validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p), ...cellProblems(p)],
@@ -266,6 +266,7 @@ export const table: ViewDef = {
     { panel: { view: "table", source: "https://api.example.com/tasks", edit: ["done"] }, errors: ["edit works on notes and saved lists"] },
     { panel: { view: "table", source: "notes", from: "Books", group: "status", edit: ["status"] }, errors: ["edit can't change grouped rows"] },
     { panel: { view: "table", source: "notes", from: "Books", columns: ["name"], edit: ["status"] }, errors: ['edit: "status" isn\'t one of the columns'] },
+    { panel: { view: "table", source: "notes", from: "Books", columns: ["name", "status"], edit: true }, errors: ["edit: true needs fields on the block; or list the columns to edit"] },
     {
       panel: { view: "table", source: "notes", from: "Books", compute: { left: "pages - read" }, edit: ["left", "path"] },
       errors: ['edit: "left" is computed', 'edit: "path" comes from the note\'s file, not its properties'],
@@ -305,7 +306,7 @@ function plainItem(p: Panel, r: Row, now: Date): string {
 
 export const list: ViewDef = {
   id: "list",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "action", ...ACTION_KEYS, "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "detail", "action", ...ACTION_KEYS, "alert"],
   span: 4,
   needsSource: true,
   validate: (p) => [...rowActionErrors("list", p), ...formatErrors(p)],
@@ -327,6 +328,7 @@ export const list: ViewDef = {
     },
     { panel: { view: "list", source: "s", notify: "hi", row: { a: "{a}" } }, errors: ['"notify" needs "action" on a list', '"row" needs "action" on a list'] },
     { panel: { view: "list", source: "s", action: "Add" }, errors: ['"action" needs at least one of save, append, notify, open'] },
+    { panel: { view: "list", source: "notes", from: "Books", detail: "{name} by {author}, {pages} pages" } },
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p, p.label);

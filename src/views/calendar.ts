@@ -2,7 +2,7 @@ import { getPath, stampParts, toNumber, type Row } from "../data.ts";
 import { display, formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { svg } from "./chart.ts";
-import { DATA_KEYS, groupedTotals, heading, rowsOf, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS, groupedTotals, heading, picks, rowsOf, selectable, seriesNames } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /** Shades a day can have besides none; the classes are na-step-1 to na-step-5. */
@@ -83,7 +83,7 @@ function markDay(el: Element, p: Panel, ctx: PanelCtx, days: Days, date: string,
   const step = days.step(date);
   if (step) el.classList.add(`na-step-${step}`);
   if (date === today) el.classList.add("na-today");
-  if (p.select) {
+  if (picks(p)) {
     selectable(el, p, ctx, days.row(date), label);
   } else {
     el.setAttribute("role", "img");
@@ -146,7 +146,7 @@ type Nav = "prev" | "next" | "today";
 
 export const calendar: ViewDef = {
   id: "calendar",
-  keys: [...DATA_KEYS, "group", "per", "y", "agg", "label", "layout", "format", "values", "select"],
+  keys: [...DATA_KEYS, "group", "per", "y", "agg", "of", "label", "layout", "format", "values", "select", "detail"],
   span: 4,
   needsSource: true,
   // Days are the only period, so the pipeline groups per day whatever was typed.

@@ -1,9 +1,10 @@
-import type { Row } from "../data.ts";
+import { fillWith, stampParts, type Row } from "../data.ts";
+import { checkFormat, display } from "../format.ts";
 import { ROW_INDEX } from "../sources/list.ts";
 import { sourceDef } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import { definitionReason } from "../store.ts";
-import type { PanelCtx } from "./registry.ts";
+import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /**
  * `names` is one field name or a list of them (several chart series); `json` is text or any set of
@@ -12,10 +13,10 @@ import type { PanelCtx } from "./registry.ts";
  */
 export type KeyType =
   | "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where"
-  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
+  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap" | "edit";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept"] as const;
+export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept", "fieldInfo"] as const;
 export type InternalKey = (typeof INTERNAL_KEYS)[number];
 /** A key that can be typed on a panel. */
 export type PanelKey = Exclude<keyof Panel, InternalKey>;
@@ -30,9 +31,9 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
   line: "string", notify: "string",
   compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
-  open: "string", edit: "strings", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
+  open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
-  end: "string", shortcut: "string", pin: "string", alert: "alert",
+  end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string", of: "where",
 };
 
 /** What a wrong value should have been, for the types whose names don't say it plainly. */
@@ -44,6 +45,8 @@ const EXPECTED: Partial<Record<KeyType, string>> = {
   alert: "a condition, or a set of field: condition",
   compute: "a set of name: formula",
   textMap: "a set of name: text",
+  fieldMap: "a set of name: type, or a list of field names",
+  edit: "a list of fields, or true",
 };
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -68,8 +71,10 @@ function checkType(value: unknown, type: KeyType): boolean {
     case "where":
       return isPlainObject(value) && Object.values(value).every(scalar);
     case "fieldMap":
+      // A list of names picks fields of the block a form saves to.
+      if (Array.isArray(value)) return value.length > 0 && value.every(isText);
       return isPlainObject(value) && Object.values(value).every(
-        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)),
+        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)) || isMap(v),
       );
     case "json": return isText(value) || isMap(value);
     case "format":
@@ -78,6 +83,7 @@ function checkType(value: unknown, type: KeyType): boolean {
     case "textMap": return scalarMap(value);
     case "valueMap": return isMap(value) && Object.values(value).every(scalarMap);
     case "compute": return isMap(value) && Object.values(value).every(isText);
+    case "edit": return value === true || (Array.isArray(value) && value.every(scalar));
   }
 }
 
@@ -108,6 +114,85 @@ export function checkFields(fields: Record<string, string | string[]>): string[]
   return Object.entries(fields)
     .filter(([, type]) => typeof type === "string" && !FIELD_TYPES.includes(type))
     .map(([name]) => `field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+}
+
+/** What a field written as a map carries besides its type: its display name, its format, and the value it starts with. */
+export interface FieldInfo {
+  label?: string;
+  format?: string;
+  default?: unknown;
+}
+
+const FIELD_KEYS = ["type", "label", "format", "default"];
+
+/** Why a field's `default` can't be used, or undefined; `today` and `now` are words for a date and a time. */
+function defaultProblem(name: string, type: string | string[], value: unknown): string | undefined {
+  const at = `field "${name}" default`;
+  if (Array.isArray(type)) return type.some((c) => String(c) === String(value)) ? undefined : `${at} must be one of its choices: ${type.join(", ")}`;
+  if (type === "date") return value === "today" || value instanceof Date || /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? undefined : `${at} must be today or a date, e.g. 2026-01-31`;
+  if (type === "time") return value === "now" || /^\d{1,2}:\d{2}$/.test(String(value)) ? undefined : `${at} must be now or a time, e.g. 09:30`;
+  if (type === "number") return typeof value === "number" ? undefined : `${at} must be a number`;
+  if (type === "checkbox") return typeof value === "boolean" ? undefined : `${at} must be true or false`;
+  return ["string", "number", "boolean"].includes(typeof value) ? undefined : `${at} must be text`;
+}
+
+/**
+ * Reads a `fields` map: each field a type word, a list of choices, or a map `{type, label, format,
+ * default}` (`type` text when left out). Gives each field's type, what the maps say besides, and
+ * the problems with the maps (a map with a problem leaves its field out); type words are checked
+ * by checkFields.
+ */
+export function readFields(fields: Record<string, unknown>): { types: Record<string, string | string[]>; info: Record<string, FieldInfo>; errors: string[] } {
+  const types: Record<string, string | string[]> = {};
+  const info: Record<string, FieldInfo> = {};
+  const errors: string[] = [];
+  for (const [name, written] of Object.entries(fields)) {
+    if (!isMap(written)) {
+      types[name] = written as string | string[];
+      continue;
+    }
+    const unknown = Object.keys(written).filter((k) => !FIELD_KEYS.includes(k));
+    if (unknown.length) {
+      errors.push(`field "${name}" has no key "${unknown[0]}" (it takes ${FIELD_KEYS.join(", ")})`);
+      continue;
+    }
+    const type = written.type ?? "text";
+    if (!(typeof type === "string" || (Array.isArray(type) && type.length > 0 && type.every(scalar)))) {
+      errors.push(`field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+      continue;
+    }
+    const one: FieldInfo = {};
+    const problems: string[] = [];
+    for (const key of ["label", "format"] as const) {
+      const v = written[key];
+      if (v === undefined || v === null) continue;
+      if (!isText(v)) problems.push(`field "${name}" ${key} must be text`);
+      else one[key] = String(v);
+    }
+    const formatProblem = one.format === undefined ? undefined : checkFormat(one.format);
+    if (formatProblem) problems.push(`field "${name}": ${formatProblem}`);
+    if (written.default !== undefined && written.default !== null) {
+      const problem = defaultProblem(name, type, written.default);
+      if (problem) problems.push(problem);
+      // A choice keeps the type it was typed with in the list: `default: 70` is the number 70 there.
+      else one.default = Array.isArray(type) ? type.find((c) => String(c) === String(written.default)) : written.default instanceof Date ? written.default.toISOString().slice(0, 10) : written.default;
+    }
+    if (problems.length) {
+      errors.push(...problems);
+      continue;
+    }
+    types[name] = type;
+    if (Object.keys(one).length) info[name] = one;
+  }
+  return { types, info, errors };
+}
+
+/** The value a field starts with: its `default`, with `today` and `now` read as the date and time it is. */
+export function startOf(info: FieldInfo | undefined, now: Date): unknown {
+  const d = info?.default;
+  if (d === "today") return stampParts(now).date;
+  if (d === "now") return stampParts(now).time;
+  return d;
 }
 
 /** Keys every view accepts. */
@@ -141,6 +226,8 @@ export function groupedTotals(p: Panel, fields: readonly string[], what: string)
   if (!p.group) return p.agg ? [`"agg" needs "group" here`] : [];
   if (p.agg === "streak") return ["agg: streak only works on number and progress"];
   const totalled = fields.filter((f) => f !== p.group && f !== "count");
+  const other = totalled.find((f) => f !== "share");
+  if (p.agg === "share") return other === undefined ? [] : [`agg: share gives each group its share; use share in ${what}, not "${other}"`];
   return totalled.length && !p.agg ? [`group with ${what} needs agg (sum, avg, min, max, first or last)`] : [];
 }
 
@@ -197,8 +284,82 @@ export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void):
 
 // ---- Selection -----------------------------------------------------------------------------------
 
-/** What each selectable element picks, so picking one can mark the others in its panel again. */
-const PICKS = new WeakMap<Element, { p: Panel; ctx: PanelCtx; row: Row }>();
+/**
+ * What each selectable element picks, so picking one can mark the others in its panel again;
+ * `root` is the element of its panel when that panel shows `detail`.
+ */
+const PICKS = new WeakMap<Element, Picker>();
+
+interface Picker {
+  p: Panel;
+  ctx: PanelCtx;
+  row: Row;
+  root?: Element;
+}
+
+/** A panel drawn with `detail`, and the row picked in it when it has no `select` to keep that in. */
+interface Detailed {
+  p: Panel;
+  ctx: PanelCtx;
+  pick?: Row;
+}
+
+/** Panels that show `detail`, by the element the panel is drawn in. */
+const DETAILED = new WeakMap<Element, Detailed>();
+
+/** The element of the panel `el` is drawn in, when that panel shows `detail`. */
+function detailedOf(el: Element): Element | undefined {
+  for (let x: Element | null = el; x; x = x.parentElement) if (DETAILED.has(x)) return x;
+  return undefined;
+}
+
+/** The row picked in a panel: its selection, or with `detail` and no `select`, the panel's own pick. */
+function pickedIn(p: Panel, ctx: PanelCtx, root: Element | undefined): Row | undefined {
+  return p.select !== undefined ? ctx.selected(p.select) : root ? DETAILED.get(root)?.pick : undefined;
+}
+
+/**
+ * Draws a panel's detail area, last in the panel, for the row picked in it as the panel shows that
+ * row now; takes it away when nothing is picked or the row isn't shown any more. A note's row gets
+ * an Open link.
+ */
+function drawDetail(root: Element): void {
+  const d = DETAILED.get(root)!;
+  for (const old of [...root.children]) if (old.classList.contains("na-detail")) old.remove();
+  const want = pickedIn(d.p, d.ctx, root);
+  const rows = [...root.querySelectorAll(".na-selectable")].map((item) => PICKS.get(item)?.row);
+  const row = want && rows.find((r): r is Row => !!r && sameRow(d.p, want, r));
+  if (!row) {
+    d.pick = undefined;
+    return;
+  }
+  const area = (root as HTMLElement).createDiv({ cls: "na-detail", attr: { role: "status" } });
+  area.createSpan({ cls: "na-detail-text", text: fillWith(d.p.detail!, row, (path, v) => display(d.p, path, v, d.ctx.now, "text")) });
+  const note = rowNote(d.p, row);
+  if (note) noteLink(area, "Open", note, d.ctx);
+}
+
+/**
+ * Mounts a view in its panel's element. A panel with `detail` gets its detail area drawn again,
+ * under the rows, each time the view draws them; a row it picked stays picked across those draws.
+ */
+export function mountView(def: ViewDef, el: HTMLElement, p: Panel, ctx: PanelCtx, key: string): PanelHandle {
+  if (p.detail === undefined) {
+    DETAILED.delete(el);
+    return def.mount(el, p, ctx, key);
+  }
+  DETAILED.set(el, { p, ctx, pick: DETAILED.get(el)?.pick });
+  const handle = def.mount(el, p, ctx, key);
+  const resize = handle.resize;
+  return {
+    ...handle,
+    update(data) {
+      handle.update(data);
+      drawDetail(el);
+    },
+    ...(resize ? { resize(width: number) { resize.call(handle, width); drawDetail(el); } } : {}),
+  };
+}
 
 /** What tells a row apart from the others of its panel across reloads: its place in a saved list, or its note. */
 export function rowKey(r: Row): unknown {
@@ -234,31 +395,41 @@ function markAll(el: Element): void {
   if (scope === el) while (scope.parentElement) scope = scope.parentElement;
   for (const item of scope.querySelectorAll(".na-selectable")) {
     const pick = PICKS.get(item);
-    if (pick) mark(item, sameRow(pick.p, pick.ctx.selected(pick.p.select!), pick.row));
+    if (pick) mark(item, sameRow(pick.p, pickedIn(pick.p, pick.ctx, pick.root), pick.row));
   }
+}
+
+/** Whether a panel's rows can be picked: it names a selection, or shows a detail of the picked row. */
+export function picks(p: Panel): boolean {
+  return p.select !== undefined || p.detail !== undefined;
 }
 
 /**
  * Makes `el` (a list item, a table row, a bar, a slice, a legend entry) pick `row` as the panel's
- * `select`: a button for the mouse and keyboard (Enter or Space), marked `na-selected` while its
- * row is the selection. Picking it again clears the selection. Every element of the panel is marked
- * again in place, so the panel isn't redrawn. Does nothing when the panel has no `select`.
+ * `select`, and for its `detail`: a button for the mouse and keyboard (Enter or Space), marked
+ * `na-selected` while its row is the one picked. Picking it again clears the pick. Every element
+ * of the panel is marked again in place, so the panel isn't redrawn; its detail area is drawn
+ * again. Does nothing when the panel has neither `select` nor `detail`.
  * Returns what a view that updates rows in place calls with the row's new values: the element then
  * picks those, and a selection of this row takes them too.
  */
 export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string): (row: Row) => void {
-  if (!p.select) return () => {};
+  if (!picks(p)) return () => {};
   const name = p.select;
-  const pick = { p, ctx, row };
+  const root = detailedOf(el);
+  const pick: Picker = { p, ctx, row, root };
   PICKS.set(el, pick);
   el.classList.add("na-selectable");
   el.setAttribute("role", "button");
   el.setAttribute("tabindex", "0");
   if (label) el.setAttribute("aria-label", label);
-  mark(el, sameRow(p, ctx.selected(name), row));
+  mark(el, sameRow(p, pickedIn(p, ctx, root), row));
   const toggle = () => {
-    ctx.select(name, sameRow(p, ctx.selected(name), pick.row) ? undefined : pick.row);
+    const next = sameRow(p, pickedIn(p, ctx, root), pick.row) ? undefined : pick.row;
+    if (name !== undefined) ctx.select(name, next);
+    else if (root) DETAILED.get(root)!.pick = next;
     markAll(el);
+    if (root) drawDetail(root);
   };
   el.addEventListener("click", (e) => { if (!fromControl(e, el)) toggle(); });
   el.addEventListener("keydown", (e) => {
@@ -269,6 +440,7 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
   });
   return (next) => {
     pick.row = next;
+    if (name === undefined) return;
     const current = ctx.selected(name);
     if (current && current !== next && sameRow(p, current, next) && JSON.stringify(current) !== JSON.stringify(next)) ctx.select(name, next);
   };

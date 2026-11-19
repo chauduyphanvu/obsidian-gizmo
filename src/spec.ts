@@ -8,11 +8,13 @@ import {
 } from "./template.ts";
 import { namesIn } from "./template.ts";
 import {
-  Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, readBlocks, readFor, selectOf, typedName,
+  Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, panelEntries, readBlocks, readFor, selectOf, typedName,
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
-import { COMMON_KEYS, KEY_TYPES, editPermissions, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
+import {
+  COMMON_KEYS, KEY_TYPES, editErrors, editPermissions, editableSource, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
+} from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { backgroundKeyErrors } from "./views/alerts.ts";
 
@@ -73,6 +75,10 @@ export interface Panel {
   shortcut?: string;
   pin?: string;
   alert?: string | Record<string, string | number | boolean>;
+  /** A sentence about the row picked in the panel, drawn under its rows. */
+  detail?: string;
+  /** With `agg: share`: the rows counted, as a `where`-style map. */
+  of?: Record<string, string | number | boolean>;
   /** Internal: the pipelines of the blocks above the one the panel names, root first. */
   upstream?: PipelineKeys[];
   /** Internal: the fields of the nearest block with `fields` up the panel's chain. */
@@ -83,6 +89,8 @@ export interface Panel {
   target?: SaveTarget;
   /** Internal: the secrets typed whole in its source, headers and body; its requests may fill no other. */
   secrets?: string[];
+  /** Internal: what its fields (a form's own, and the schema's) say besides their types. */
+  fieldInfo?: Record<string, FieldInfo>;
 }
 
 /**
@@ -207,7 +215,7 @@ function absentThis(t: Record<string, unknown>, note: unknown): Record<string, u
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, vars, target, secrets, kept, ...keys } = t;
+  const { upstream, schema, vars, target, secrets, kept, fieldInfo, ...keys } = t;
   const stageErrors: string[] = [];
   const stages: PipelineKeys[] = [];
   let stopped = false;
@@ -223,6 +231,7 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   if (vars) internal.vars = vars as Panel["vars"];
   if (target) internal.target = target as SaveTarget;
   if (secrets) internal.secrets = secrets as string[];
+  if (fieldInfo) internal.fieldInfo = fieldInfo as Panel["fieldInfo"];
   const r = checkPanel(keys, strict, internal);
   // Checking makes `row` text; values that were one whole param keep the param's type.
   if (r.panel?.row && isPlainObject(kept)) {
@@ -296,9 +305,13 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     delete panel.compute;
   }
   const p = { ...panel, ...internal } as Panel;
+  const fieldProblems = settleFields(p);
   // A checklist's save is the list it ticks; anything else may save to a folder.
   if (p.save && def.id !== "checklist") p.target ??= saveTarget(p.save);
   const problems = [
+    ...fieldProblems,
+    ...schemaDefaults(p, def.keys),
+    ...shareDefaults(p, def.keys),
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
@@ -313,7 +326,84 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...definitionProblems(p, def.id),
     ...backgroundKeyErrors(p),
   ];
-  return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
+  if (problems.length) return { errors: [...errors, ...problems] };
+  showFields(p);
+  return { panel: p, errors };
+}
+
+/**
+ * A form's `fields` as plain types: picked from the schema of the block it saves to when they are
+ * a list of names, else read as typed, where a field written as a map adds its label, format and
+ * default to `fieldInfo` (over the schema's, field by field).
+ */
+function settleFields(p: Panel): string[] {
+  const written = p.fields as unknown;
+  if (written === undefined) return [];
+  if (Array.isArray(written)) {
+    const schema = p.schema;
+    // Told here, not again as a form without fields.
+    p.fields = {};
+    if (!schema) return ["fields as a list names fields of the block the form saves to; save to a block with fields, or give each field a type"];
+    const names = written.map(String);
+    const missing = names.find((n) => !Object.hasOwn(schema, n));
+    if (missing !== undefined) return [`fields: "${missing}" isn't a field of the block it saves to (it has ${Object.keys(schema).join(", ")})`];
+    p.fields = Object.fromEntries(names.map((n) => [n, schema[n]]));
+    return [];
+  }
+  const { types, info, errors } = readFields(written as Record<string, unknown>);
+  p.fields = types;
+  const merged = { ...p.fieldInfo };
+  for (const [name, own] of Object.entries(info)) merged[name] = { ...merged[name], ...own };
+  if (Object.keys(merged).length) p.fieldInfo = merged;
+  return errors;
+}
+
+/**
+ * What a block's fields give a table that doesn't say: its columns (a note's name, then the fields
+ * in the order typed), and with `edit: true` every field among its columns that can be changed.
+ */
+function schemaDefaults(p: Panel, keys: readonly string[]): string[] {
+  if (keys.includes("columns") && p.columns === undefined && p.schema && !p.group) {
+    const kind = p.source ? sourceDef(p.source).id : undefined;
+    const named = kind === "notes" || kind === "tasks" || kind === "base";
+    p.columns = [...new Set([...(named ? ["name"] : []), ...Object.keys(p.schema)])];
+  }
+  if ((p.edit as unknown) !== true) return [];
+  const schema = p.schema;
+  if (!schema) {
+    delete p.edit;
+    return ["edit: true needs fields on the block; or list the columns to edit"];
+  }
+  // A note's name, a computed column and the like are fields a table may show but never write.
+  const writable = (f: string) => !editableSource(p) || editErrors(p, [f]).length === 0;
+  p.edit = (p.columns ?? Object.keys(schema)).filter((f) => Object.hasOwn(schema, f) && writable(f));
+  return p.edit.length ? [] : ["edit: true finds no field of the block among the columns; list the columns to edit"];
+}
+
+/**
+ * `agg: share` and `of` go together; grouped, each group's share is the `share` column, which a
+ * panel naming no series or columns shows.
+ */
+function shareDefaults(p: Panel, keys: readonly string[]): string[] {
+  if (p.of !== undefined && p.agg !== "share") return ['"of" needs agg: share'];
+  if (p.agg !== "share") return [];
+  if (p.of === undefined) return ["agg: share needs of, e.g. of: {outcome: right}"];
+  if (p.group && keys.includes("y") && p.y === undefined) p.y = "share";
+  if (p.group && keys.includes("columns") && p.columns === undefined) p.columns = [p.group, "share"];
+  return [];
+}
+
+/**
+ * Labels and formats the fields give fill in for those the panel doesn't; a share reads as a
+ * percent unless the panel gives a format.
+ */
+function showFields(p: Panel): void {
+  const info = Object.entries(p.fieldInfo ?? {});
+  const labels = Object.fromEntries(info.flatMap(([f, i]) => (i.label === undefined ? [] : [[f, i.label]])));
+  if (Object.keys(labels).length) p.labels = { ...labels, ...p.labels };
+  if (p.agg === "share" && p.format === undefined) p.format = p.group ? { share: "0%" } : "0%";
+  const formats = Object.fromEntries(info.flatMap(([f, i]) => (i.format === undefined ? [] : [[f, i.format]])));
+  if (typeof p.format !== "string" && Object.keys(formats).length) p.format = { ...formats, ...p.format };
 }
 
 /**
@@ -370,7 +460,7 @@ export function readSpec(
   errors.push(...inputErrors);
   const start = startingValues(inputs, opts.now ?? new Date());
   const expander = new Expander(opts.notes, opts.path ?? "");
-  const scope = expander.appScope(blocks, names);
+  const scope = expander.appScope(blocks, names, selects);
   const isSelection = (n: string) => selects.has(n) || expander.selections.has(n);
   // Names whose values only come at run time, from whoever types or picks them.
   const typed = (n: string) => isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
@@ -483,15 +573,17 @@ export function readSpec(
     }
   };
   if (fm.use !== undefined) {
-    if (fm.panels !== undefined) errors.push("put - use: … inside panels to mix a component with other panels");
+    if (fm.panels !== undefined || fm.tabs !== undefined) errors.push("put - use: … inside panels to mix a component with other panels");
     else entry({ use: fm.use, with: fm.with }, "", true);
     if (!description) description = expander.describe(fm.use);
-  } else if (Array.isArray(fm.panels)) {
-    if (fm.panels.length === 0) return { errors, empty: true };
-    fm.panels.forEach((raw, i) => {
-      if (isPlainObject(raw)) entry(raw, `panel ${i + 1}`, true);
-      else errors.push(`panel ${i + 1}: must be a set of keys`);
-    });
+  } else if (Array.isArray(fm.panels) || (fm.tabs !== undefined && fm.tabs !== null)) {
+    const before = errors.length;
+    const entries = panelEntries(fm, errors);
+    if (entries.length === 0 && errors.length === before) return { errors, empty: true };
+    for (const { raw, label } of entries) {
+      if (isPlainObject(raw)) entry(raw, label, true);
+      else errors.push(`${label}: must be a set of keys`);
+    }
   } else if (fm.view !== undefined) {
     // The note's other properties aren't part of the panel.
     entry(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES)), "", false);
@@ -536,13 +628,14 @@ export function readSpec(
 
 /** The names an app's own panel entries select (beside `use` too), checked. */
 function appSelects(fm: Record<string, unknown>, inputs: ReadonlySet<string>, errors: string[]): Set<string> {
-  const listed = Array.isArray(fm.panels);
-  const entries: unknown[] = fm.use !== undefined ? [] : listed ? fm.panels as unknown[] : fm.view !== undefined ? [fm] : [];
+  // A tabs problem is told once, where the panels are read.
+  const listed = Array.isArray(fm.panels) || (fm.tabs !== undefined && fm.tabs !== null);
+  const entries = fm.use !== undefined ? [] : listed ? panelEntries(fm, []) : fm.view !== undefined ? [{ raw: fm, label: "" }] : [];
   const out = new Set<string>();
-  entries.forEach((entry, i) => {
+  entries.forEach(({ raw: entry, label }) => {
     const name = selectOf(entry);
     if (name === undefined || out.has(name)) return;
-    const at = listed ? `panel ${i + 1}: ` : "";
+    const at = label ? `${label}: ` : "";
     if (!NAME.test(name)) errors.push(`${at}select: "${name}" can only use letters, digits and _`);
     else if (name === THIS) errors.push(`${at}select: ${TAKEN}`);
     else if (inputs.has(name)) errors.push(`${at}select: "${name}" is already an input`);

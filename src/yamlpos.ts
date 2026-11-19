@@ -227,6 +227,9 @@ function whereOf(hops: Hop[]): Where {
     if (key(0) === "panels" && item(1)) return "panel";
     return key(0) === "data" && key(1) !== undefined ? "block" : "other";
   }
+  // A panel listed under a tab, `tabs: {Score: [ ... ]}`, is a panel one level down.
+  const tabbed = key(0) === "tabs" && key(1) !== undefined && path.length >= 3 && item(2);
+  if (tabbed) return path.length === 3 ? "panel" : path.length === 4 && (key(3) === "with" || key(3) === "fields") ? key(3) as Where : "other";
   if (path.length === 3 && key(2) === "with" && key(0) === "panels" && item(1)) return "with";
   if (path.length === 3 && key(2) === "fields" && ((key(0) === "panels" && item(1)) || (key(0) === "data" && key(1) !== undefined))) return "fields";
   return "other";
@@ -314,16 +317,18 @@ export function contextAt(raw: string[], line: number, ch: number): Context | un
 // ---- Errors that name a place ---------------------------------------------------------------------
 
 /** The thing an error message starts by naming. */
-export type Label = { kind: "panel"; n: number } | { kind: "data" | "input"; name: string };
+export type Label = { kind: "panel"; n: number } | { kind: "tab"; tab: string; n: number } | { kind: "data" | "input"; name: string };
 
 /**
  * What an error from `readSpec` names at its start: `panel 2`, `panel 2 (from [[Ticker]] panel 1)`,
- * `data.quakes`, `inputs.period`, `input "period"`. Anything else, such as a message with no
+ * `tabs.Score panel 1`, `data.quakes`, `inputs.period`, `input "period"`. Anything else, such as a message with no
  * location, names nothing. Takes the whole message or just its label.
  */
 export function labelOf(error: string): Label | undefined {
   const panel = /^panel (\d+)(?: \(from .*?\))?(?=: |$)/.exec(error);
   if (panel) return { kind: "panel", n: Number(panel[1]) };
+  const tab = /^tabs\.(.+?) panel (\d+)(?: \(from .*?\))?(?=: |$)/.exec(error);
+  if (tab) return { kind: "tab", tab: tab[1], n: Number(tab[2]) };
   const data = /^data\.(.+?)(?=: | → | needs a source| must be a set of keys| use each other| is more than|$)/.exec(error);
   if (data) return { kind: "data", name: data[1] };
   const input = /^inputs\.(.+?)(?=: | must be |$)/.exec(error) ?? /^input "([^"]*)"/.exec(error) ?? /^inputs: "([^"]*)"/.exec(error);
@@ -349,13 +354,12 @@ function childKey(fm: Frontmatter, parent: number, name: string): number | undef
   return undefined;
 }
 
-/** The line of the Nth item under the top-level `panels:`. */
-function panelLine(fm: Frontmatter, n: number): number | undefined {
-  const panels = topKey(fm, "panels");
-  if (panels === undefined) return undefined;
+/** The line of the Nth item of the list under the key on line `list` (the top-level `panels:`, a tab under `tabs:`). */
+function itemLine(fm: Frontmatter, list: number | undefined, n: number): number | undefined {
+  if (list === undefined) return undefined;
   let dash: number | undefined;
   let seen = 0;
-  for (let i = panels + 1; i < fm.end; i++) {
+  for (let i = list + 1; i < fm.end; i++) {
     const row = fm.rows[i];
     if (row.skip) continue;
     dash ??= row.dash;
@@ -370,14 +374,19 @@ function panelLine(fm: Frontmatter, n: number): number | undefined {
 }
 
 /**
- * The 0-based line where the thing an error names starts: the Nth panel, a data block, an input.
+ * The 0-based line where the thing an error names starts: the Nth panel (of `panels`, or of a tab
+ * in `tabs`), a data block, an input.
  * `label` is the error message or its leading label; undefined when it names nothing this note has.
  */
 export function lineOf(raw: string[], label: string): number | undefined {
   const fm = frontmatter(raw);
   const target = labelOf(label);
   if (!fm || !target) return undefined;
-  if (target.kind === "panel") return panelLine(fm, target.n);
+  if (target.kind === "panel") return itemLine(fm, topKey(fm, "panels"), target.n);
+  if (target.kind === "tab") {
+    const tabs = topKey(fm, "tabs");
+    return itemLine(fm, tabs === undefined ? undefined : childKey(fm, tabs, target.tab), target.n);
+  }
   const section = topKey(fm, target.kind === "data" ? "data" : "inputs");
   return section === undefined ? undefined : childKey(fm, section, target.name);
 }
