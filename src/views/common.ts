@@ -15,7 +15,7 @@ export type KeyType =
   | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets"] as const;
+export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept"] as const;
 export type InternalKey = (typeof INTERNAL_KEYS)[number];
 /** A key that can be typed on a panel. */
 export type PanelKey = Exclude<keyof Panel, InternalKey>;

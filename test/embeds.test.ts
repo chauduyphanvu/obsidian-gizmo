@@ -421,3 +421,27 @@ test("save: this doesn't bring back a note that has gone", async () => {
   assert.deepEqual(t.writes, []);
   assert.deepEqual(t.notices, ["That note is gone"]);
 });
+
+test("an embed wider than an app's tab draws its panels at its own width; an app note stays at 960 px", async () => {
+  const panel = { view: "line", source: "weights", x: "at", y: "kg" };
+  const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
+  const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
+  const viewBox = (root: HTMLElement) => root.querySelector(".na-chart-svg")!.getAttribute("viewBox");
+  const widen = async (root: HTMLElement, resize: () => void) => {
+    Object.defineProperty(root.querySelector(".note-app"), "clientWidth", { value: 1400, configurable: true });
+    resize();
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 10));
+  };
+  const own = fakeEnv(data);
+  const ownRoot = document.createElement("div");
+  document.body.appendChild(ownRoot);
+  const full = new AppController(ownRoot, "Apps/W.md", own.env);
+  full.load();
+  await settle();
+  await widen(ownRoot, () => full.resize());
+  assert.equal(viewBox(ownRoot), "0 0 894 220", "960 less 32 of padding, less the panel's 34");
+  const t = embed(panel, data);
+  await settle();
+  await widen(t.root, () => t.app.resize());
+  assert.equal(viewBox(t.root), "0 0 1366 220", "1400 less the panel's 34");
+});

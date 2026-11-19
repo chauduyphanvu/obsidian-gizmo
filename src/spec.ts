@@ -207,7 +207,7 @@ function absentThis(t: Record<string, unknown>, note: unknown): Record<string, u
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, vars, target, secrets, ...keys } = t;
+  const { upstream, schema, vars, target, secrets, kept, ...keys } = t;
   const stageErrors: string[] = [];
   const stages: PipelineKeys[] = [];
   let stopped = false;
@@ -224,6 +224,11 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   if (target) internal.target = target as SaveTarget;
   if (secrets) internal.secrets = secrets as string[];
   const r = checkPanel(keys, strict, internal);
+  // Checking makes `row` text; values that were one whole param keep the param's type.
+  if (r.panel?.row && isPlainObject(kept)) {
+    const row = r.panel.row;
+    r.panel.row = { ...row, ...Object.fromEntries(Object.entries(kept).filter(([k]) => k in row)) } as Panel["row"];
+  }
   const errors = [...r.errors, ...stageErrors];
   return !r.panel || stopped ? { errors } : { panel: r.panel, errors };
 }

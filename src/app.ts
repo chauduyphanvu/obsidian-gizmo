@@ -13,7 +13,7 @@ import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { labelOf, lineOf } from "./yamlpos.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
-import { APP_PAD, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
+import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
@@ -356,17 +356,17 @@ export class AppController {
   /** The drawing width inside a panel, from the grid arithmetic rather than measuring it. */
   private widthOf(id: string): number {
     const m = this.mounted.get(id);
-    return widthFor(m?.span ?? MAX_COLUMNS, this.columns, this.shell.clientWidth, this.shellPad());
+    return widthFor(m?.span ?? MAX_COLUMNS, this.columns, this.shell.clientWidth, ...this.shellBox());
   }
 
-  /** An app in an embed or a lens has no padding of its own (see styles.css). */
-  private shellPad(): number {
-    return this.hosting ? HOSTED_PAD : APP_PAD;
+  /** The shell's padding and widest width: an app in an embed or a lens has neither of its own (see styles.css). */
+  private shellBox(): [pad: number, max: number] {
+    return this.hosting ? [HOSTED_PAD, HOSTED_MAX] : [APP_PAD, APP_MAX];
   }
 
   /** Sets the column count and each panel's span and visibility as classes. */
   private layout(): void {
-    this.columns = columnsFor(this.shell.clientWidth, this.shellPad());
+    this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     if (!this.grid) return;
     this.grid.className = `na-grid na-cols-${this.columns}`;
     for (const m of this.mounted.values()) {
@@ -449,7 +449,7 @@ export class AppController {
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });
-    this.columns = columnsFor(this.shell.clientWidth, this.shellPad());
+    this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     this.syncInputs(spec);
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const keep = new Set(ids);

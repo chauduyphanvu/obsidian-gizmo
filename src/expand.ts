@@ -401,6 +401,19 @@ function withVars(part: Record<string, unknown>, scope: Scope, at: (e: string) =
   return Object.keys(vars).length ? { ...part, vars } : part;
 }
 
+/**
+ * The `row` values that were exactly one param and got a number or true/false from it: checking
+ * makes `row` text, and these keep their type, as a value that is one whole `$reference` does.
+ */
+function wholeParams(typed: unknown, filled: unknown, params: ReadonlyMap<string, unknown>): Record<string, unknown> | undefined {
+  if (!isPlainObject(typed) || !isPlainObject(filled)) return undefined;
+  const out = Object.fromEntries(Object.entries(typed).filter(([k, v]) => {
+    const name = typeof v === "string" ? /^\$([A-Za-z_]\w*)(?:\.\w+)*$/.exec(v)?.[1] : undefined;
+    return name !== undefined && params.has(name) && (typeof filled[k] === "number" || typeof filled[k] === "boolean");
+  }).map(([k]) => [k, filled[k]]));
+  return Object.keys(out).length ? out : undefined;
+}
+
 function fill(value: unknown, scope: Scope, errors: string[], key = ""): unknown {
   return scope.kind === "input" ? parseInputs(value, scope.names, key) : fillParams(value, scope.params, errors, key);
 }
@@ -589,6 +602,8 @@ export class Expander {
     const [template, ...stages] = parts.map((part) => withVars(fill(part, scope, fillErrors) as Record<string, unknown>, scope, at));
     fillErrors.forEach(at);
     if (stages.length) template.upstream = stages.map((keys, i) => ({ block: merged.stages[i].block, keys }));
+    const kept = scope.kind === "param" ? wholeParams(merged.template.row, template.row, scope.params) : undefined;
+    if (kept) template.kept = kept;
     if (merged.schema) template.schema = merged.schema;
     // A checklist's save is the list it ticks, never a block's target.
     if (typeof template.save === "string" && scope.blocks.has(template.save) && template.view !== "checklist") {
@@ -635,6 +650,7 @@ export class Expander {
         if (key === "source") for (const k of ["upstream", "schema"]) set(t, k);
         if (key === "compute") set(t, "vars");
         if (key === "save") set(t, "target");
+        if (key === "row") set(t, "kept");
       }
     }
   }

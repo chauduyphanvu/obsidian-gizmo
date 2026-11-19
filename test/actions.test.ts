@@ -269,3 +269,25 @@ test("save can't name a block that reads a base, tasks, a file or the note itsel
   assert.deepEqual(read({ source: "notes", from: "Books" }).errors, []);
   assert.deepEqual(read({ source: "https://api.example.com/x" }).spec!.panels[0].panel.target, { kind: "list", name: "shelf" });
 });
+
+test("row: a value that is exactly one param keeps the param's type, as a whole $reference does", async () => {
+  const notes: Record<string, Record<string, unknown>> = {
+    "Components/Tally.md": { component: "Tally", params: ["n", "paid", "who"], panels: [
+      { view: "button", label: "Add", save: "tally", row: { count: "$n", paid: "$paid", who: "$who", text: "$n items", literal: 5 } },
+    ] },
+  };
+  const reader = { resolve: (l: string) => Object.keys(notes).find((p) => p.endsWith(`/${l}.md`)), frontmatter: (p: string) => notes[p] };
+  const r = readSpec({ app: "x", inputs: { k: [7, 8] }, panels: [
+    { use: "[[Tally]]", with: { n: 5, paid: false, who: "Ann" } },
+    { use: "[[Tally]]", with: { n: "$k", paid: true, who: "Bo" } },
+    { use: "[[Tally]]", with: { n: 1, paid: true, who: "Cy" }, row: { count: "$k", note: "x" } },
+  ] }, { notes: reader, path: "Apps/X.md" })!;
+  assert.deepEqual(r.errors, []);
+  const [fixed, passed, beside] = r.spec!.panels;
+  assert.deepEqual(fixed.panel.row, { count: 5, paid: false, who: "Ann", text: "5 items", literal: "5" });
+  assert.deepEqual(resolvePanel(passed, { k: 8 }).panel!.row, { count: 8, paid: true, who: "Bo", text: "8 items", literal: "5" });
+  assert.deepEqual(resolvePanel(beside, { k: 7 }).panel!.row, { count: 7, note: "x" });
+  const { d, data } = deps();
+  await runActions(fixed.panel, {}, d);
+  assert.deepEqual(data, { tally: [{ count: 5, paid: false, who: "Ann", text: "5 items", literal: "5", at: "2026-11-18T12:00" }] });
+});

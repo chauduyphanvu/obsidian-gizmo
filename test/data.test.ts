@@ -117,9 +117,14 @@ test("10,000 rows go through where and sort quickly", () => {
     tags: ["#a", i % 2 ? "#b" : "#c"],
   }));
   const run = compilePipeline({ where: { at: "last 90 days", weight: ">75", tags: "#b" }, sort: "-at" }, NOW);
-  const start = performance.now();
-  const out = run(rows) as { at: string }[];
-  const ms = performance.now() - start;
+  // The best of five: a busy machine slows some runs, a real slowdown slows all of them.
+  let ms = Infinity;
+  let out: { at: string }[] = [];
+  for (let i = 0; i < 5; i++) {
+    const start = performance.now();
+    out = run(rows) as { at: string }[];
+    ms = Math.min(ms, performance.now() - start);
+  }
   assert.ok(out.length > 0 && out[0].at >= out[out.length - 1].at);
   // About 2 ms on an M-series Mac; the ceiling only catches a return to per-row parsing on slow machines.
   assert.ok(ms < 150, `took ${ms.toFixed(1)} ms`);

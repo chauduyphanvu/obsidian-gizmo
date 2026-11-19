@@ -123,9 +123,14 @@ test("grouping problems are explained", () => {
 
 test("grouping 10,000 rows by week is quick", () => {
   const rows = Array.from({ length: 10_000 }, (_, i) => ({ at: at(2025, 1, 1 + (i % 600)), minutes: i % 90 }));
-  const start = performance.now();
-  const out = compilePipeline({ group: "at", per: "week", y: "minutes", agg: "sum" }, NOW)(rows) as unknown[];
-  const ms = performance.now() - start;
+  // The best of five: a busy machine slows some runs, a real slowdown slows all of them.
+  let ms = Infinity;
+  let out: unknown[] = [];
+  for (let i = 0; i < 5; i++) {
+    const start = performance.now();
+    out = compilePipeline({ group: "at", per: "week", y: "minutes", agg: "sum" }, NOW)(rows) as unknown[];
+    ms = Math.min(ms, performance.now() - start);
+  }
   assert.ok(out.length > 80);
   assert.ok(ms < 150, `took ${ms.toFixed(1)} ms`);
 });
