@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AGGS, PERIODS } from "../src/data.ts";
 import { BLOCK_KEYS, BLOCK_ONLY } from "../src/expand.ts";
-import { KEY_HINTS, VALUE_HINTS, VIEW_HINTS, completion, suggestionsFor, type Suggestion } from "../src/hints.ts";
+import { KEY_HINTS, VALUE_HINTS, VIEW_HINTS, completion, suggestionsAt, suggestionsFor, type Suggestion } from "../src/hints.ts";
 import { COMMON_KEYS, FIELD_TYPES, KEY_TYPES } from "../src/views/common.ts";
 import { VIEW_DEFS } from "../src/views/registry.ts";
 import { contextAt, type Context } from "../src/yamlpos.ts";
@@ -180,4 +180,37 @@ test("picking a key adds its colon and space unless a colon is already there; a 
   assert.equal(completion(key, ":"), "title");
   assert.equal(completion(value, ""), "bar");
   assert.equal(completion(value, " # note"), "bar");
+});
+
+/** suggestionsAt at the ‸: where the replaced text starts, what was typed, and what is offered. */
+function popup(snippet: string) {
+  const lines = snippet.split("\n");
+  const line = lines.findIndex((l) => l.includes(MARK));
+  const ch = lines[line].indexOf(MARK);
+  lines[line] = lines[line].replace(MARK, "");
+  const found = suggestionsAt(lines, line, ch);
+  return found && { from: found.from, prefix: found.prefix, texts: found.suggestions.map((s) => s.text) };
+}
+
+test("a pop-up opens only in an app or a component", () => {
+  assert.deepEqual(popup(app("panels:\n  - vi‸")), { from: { line: 3, ch: 4 }, prefix: "vi", texts: ["view"] });
+  assert.deepEqual(popup("---\ncomponent: C\npanels:\n  - vi‸\n---"), { from: { line: 3, ch: 4 }, prefix: "vi", texts: ["view"] });
+  assert.equal(popup("---\ntitle: T\npanels:\n  - vi‸\n---"), undefined);
+  assert.equal(popup("---\nvi‸\n---"), undefined);
+  assert.equal(popup("vi‸"), undefined);
+  assert.deepEqual(popup(app("panels:\n  - vi‸") + "\nbody"), popup(app("panels:\n  - vi‸")));
+});
+
+test("a key pops up once a letter is typed; a value as soon as it is asked for", () => {
+  assert.equal(popup(app("panels:\n  - view: bar\n    ‸")), undefined);
+  assert.equal(popup(app("panels:\n  - view: bar\n    t‸"))?.prefix, "t");
+  assert.deepEqual(popup(app("panels:\n  - view: ‸"))?.from, { line: 3, ch: 10 });
+  assert.equal(popup(app("panels:\n  - view: ‸"))?.texts.includes("table"), true);
+});
+
+test("nothing pops up where nothing is offered", () => {
+  assert.equal(popup(app("panels:\n  - view: bar\n    title: Hel‸")), undefined);
+  assert.equal(popup(app("panels:\n  - view: bar\n    zzz‸")), undefined);
+  assert.equal(popup(app("panels:\n  - view: table‸")), undefined);
+  assert.equal(popup("---\napp: A\n---\nvi‸"), undefined);
 });

@@ -4,6 +4,7 @@ import {
 import { DataLayer } from "./datalayer.ts";
 import { obsidianHost } from "./host.ts";
 import { defaultDataPath } from "./store.ts";
+import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
 interface StoredData {
@@ -24,6 +25,7 @@ export default class NoteAppsPlugin extends Plugin {
     this.dataLayer = new DataLayer(obsidianHost(this.app));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
+    registerAuthoring(this);
 
     this.routeAppNotes();
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());

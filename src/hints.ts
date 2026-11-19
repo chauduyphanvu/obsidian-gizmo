@@ -2,7 +2,7 @@ import { AGGS, PERIODS } from "./data.ts";
 import { BLOCK_KEYS } from "./expand.ts";
 import { COMMON_KEYS, FIELD_TYPES } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import type { Context } from "./yamlpos.ts";
+import { contextAt, noteKind, type Context, type Position } from "./yamlpos.ts";
 
 /** One plain-language line for every key a note can hold: the note's own, a panel's, a data block's. */
 export const KEY_HINTS: Record<string, string> = {
@@ -212,4 +212,18 @@ export function suggestionsFor(ctx: Context, isComponent: boolean): Suggestion[]
 /** What replaces the typed text when a suggestion is picked; a key gets its colon unless one is already there. */
 export function completion(s: Suggestion, after: string): string {
   return s.kind === "key" && !after.startsWith(":") ? `${s.text}: ` : s.text;
+}
+
+/**
+ * What to pop up at a cursor in a note whose lines (up to the end of its frontmatter) are given:
+ * only in an app or component, and a key only once a letter of it is typed, since a list on every
+ * empty line would take Enter and the arrow keys from someone just moving about. Undefined when
+ * there is nothing to offer.
+ */
+export function suggestionsAt(lines: string[], line: number, ch: number): { from: Position; prefix: string; suggestions: Suggestion[] } | undefined {
+  const kind = noteKind(lines);
+  const ctx = kind && contextAt(lines, line, ch);
+  if (!ctx || (ctx.position === "key" && !ctx.prefix)) return undefined;
+  const suggestions = suggestionsFor(ctx, kind === "component");
+  return suggestions.length ? { from: ctx.from, prefix: ctx.prefix, suggestions } : undefined;
 }
