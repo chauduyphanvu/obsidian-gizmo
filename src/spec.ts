@@ -492,6 +492,8 @@ export function notePath(path: string): string {
 }
 
 export function describePermission(perm: string): string {
+  if (perm === "read:*") return "Read any note in the vault";
+  if (perm === "edit:*") return "Change properties of notes anywhere in the vault";
   const [kind, ...rest] = perm.split(":");
   const what = rest.join(":");
   switch (kind) {
@@ -504,6 +506,7 @@ export function describePermission(perm: string): string {
     case "store": return `Save its data in ${what}`;
     case "create": return `Create notes in ${what}`;
     case "edit": return `Change properties of notes in ${what}`;
+    case "tasks": return `Tick tasks in notes in ${what}`;
     default: return perm;
   }
 }

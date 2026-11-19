@@ -1,6 +1,8 @@
 import type { AppEnv } from "../../src/app.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
+import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
+import { parseYaml } from "./yaml.ts";
 
 /** A web response sent as written, with its content type. */
 class Raw {
@@ -19,6 +21,8 @@ type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; bod
 /** An in-memory vault and network. `flush()` delivers batched change notifications. */
 export function fakeHost(notes: Notes = {}) {
   const files = new Map(Object.entries(notes));
+  /** Files that aren't notes (a .base, say): path → text. */
+  const others = new Map<string, string>();
   const requests: string[] = [];
   /** Every request with what was sent besides the URL. */
   const calls: { url: string; headers: Record<string, string>; method: string; body?: string }[] = [];
@@ -48,12 +52,20 @@ export function fakeHost(notes: Notes = {}) {
       if (raw === undefined) throw new Error(`Can't find ${path}`);
       return raw;
     },
-    resolveFile: (link) => [...files.keys()].find((p) => p === link || p.endsWith(`/${link}`)),
+    // A fake note keeps its frontmatter apart, so its text is its body and lines count from there.
+    async readText(path) {
+      const text = files.has(path) ? files.get(path)!.body ?? "" : others.get(path);
+      if (text === undefined) throw new Error(`can't find ${path}`);
+      return text;
+    },
+    resolveFile: (link) => [...files.keys(), ...others.keys()].find((p) => p === link || p.endsWith(`/${link}`) || p === `${link}.md`),
+    parseYaml,
   };
   return {
     host,
     secrets,
     files,
+    others,
     requests,
     calls,
     advance: (ms: number) => { clock += ms; },
@@ -118,6 +130,15 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
       const path = resolve(storeTarget(link));
       if (!path) throw new Error(`can't find [[${storeTarget(link)}]]`);
       return f.files.get(path)?.body ?? "";
+    },
+    setTaskDone: async (path, line, text, done) => {
+      const note = f.files.get(path);
+      const next = note ? tickLine(note.body ?? "", line, text, done) : undefined;
+      if (!note || next === undefined) return false;
+      writes.push(path);
+      note.body = next;
+      changed(path);
+      return true;
     },
     notify: (m) => { notices.push(m); },
     openNote: (path) => { opened.push(path); },

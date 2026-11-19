@@ -102,7 +102,7 @@ test("a card says what item says, else name, title or its first text; a note's c
   const link = card(el, "Garden · home").querySelector("a.internal-link") as HTMLElement;
   link.click();
   assert.deepEqual(opened, ["Projects/Garden.md"]);
-  const plain = mount({ source: "tasks" }, [{ title: "Pay rent", status: "idea" }, { room: "kitchen", status: "idea" }], undefined, { schema: SCHEMA });
+  const plain = mount({ source: "todos" }, [{ title: "Pay rent", status: "idea" }, { room: "kitchen", status: "idea" }], undefined, { schema: SCHEMA });
   assert.deepEqual(cards(plain.el).map((c) => [text(c.querySelector(".na-board-text")), c.querySelector("a")]), [["Pay rent", null], ["kitchen", null]]);
 });
 

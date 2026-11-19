@@ -11,6 +11,7 @@ import type { InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
+import { sourceDef } from "./sources/registry.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
 import { editErrors, editableSource } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
@@ -40,6 +41,11 @@ export interface AppEnv {
   createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<boolean>;
   /** The text after the frontmatter of the note a path or link names, resolved from the app as `store` is. */
   readBody(path: string): Promise<string>;
+  /**
+   * Ticks or unticks a task in a note, re-reading it as it writes (see tickLine); false, writing
+   * nothing, when the note no longer holds that task where it can be found for sure.
+   */
+  setTaskDone(path: string, line: number, text: string, done: boolean): Promise<boolean>;
   notify(message: string): void;
   openNote(path: string, fromPath: string): void;
   showSource(): void;
@@ -601,16 +607,19 @@ export class AppController {
 
   /**
    * Writes one field of a row a panel shows back where it came from, as far as the panel's checked
-   * keys allow: a note in its `from` (granted as edit:<from>), or the row's place in the list it
-   * reads, which must still hold the row that was shown.
+   * keys allow: a note in its `from` (granted as edit:<from>; any note for a base, edit:*), a task
+   * line in a note in its `from` (tasks:<from>), or the row's place in the list it reads, which
+   * must still hold the row that was shown.
    */
   private async editRow(id: string, row: Row, field: string, value: unknown): Promise<void> {
     const m = this.mounted.get(id);
     if (!m || m.idle || editErrors(m.p, [field]).length) return;
     try {
+      if (editableSource(m.p) === "tasks") return await this.tickTask(m, row, value);
       if (editableSource(m.p) === "notes") {
         const path = row.path;
-        if (typeof path !== "string" || !this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
+        const scope = sourceDef(m.p.source!).id === "base" ? this.env.data.allNotes() : this.env.data.notes(m.p.from ?? "");
+        if (typeof path !== "string" || !scope.some((r) => r.path === path)) return;
         await this.env.writeFrontmatter(path, (fm) => { fm[field] = value; });
         return;
       }
@@ -637,6 +646,16 @@ export class AppController {
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
+  }
+
+  /** Ticks the task a row shows, in a note of the panel's `from`; when it has moved or changed, shows the notes as they are. */
+  private async tickTask(m: Mounted, row: Row, done: unknown): Promise<void> {
+    const { path, line, text } = row;
+    if (typeof path !== "string" || typeof line !== "number" || typeof text !== "string" || typeof done !== "boolean") return;
+    if (!this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
+    if (await this.env.setTaskDone(path, line, text, done)) return;
+    this.env.notify("That task has changed; reload");
+    void this.loadPanel(m);
   }
 
   async runActions(p: Panel, row: Row): Promise<void> {
