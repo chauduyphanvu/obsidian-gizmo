@@ -1,4 +1,4 @@
-import type { ActionDeps } from "./actions.ts";
+import { runActions, type ActionDeps } from "./actions.ts";
 import { panelIds } from "./app.ts";
 import { fillTemplate, parseDuration, stampParts, toNumber, toTime, valueOf, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
@@ -9,6 +9,7 @@ import {
   permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
+import { InputRef, valueProblem } from "./template.ts";
 import { rowsOf } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 
@@ -87,6 +88,8 @@ export class Background {
   private sampling = new Set<string>();
   /** Problems already told this session. */
   private told = new Set<string>();
+  /** The command list last published, as JSON. */
+  private commands = "";
 
   constructor(env: BackgroundEnv) {
     this.env = env;
@@ -94,8 +97,9 @@ export class Background {
 
   /** Reads every app note once (after the layout is ready) and does what is due. */
   start(): Promise<void> {
-    this.running = true;
     for (const path of this.env.appPaths()) this.index(path);
+    this.running = true;
+    this.publishCommands();
     return this.tick();
   }
 
@@ -157,6 +161,74 @@ export class Background {
     }
   }
 
+  // ---- Shortcuts ----------------------------------------------------------------------------
+
+  /** Runs the command `<app path>:<shortcut>`. */
+  runCommand(id: string): Promise<void> {
+    const cut = id.lastIndexOf(":");
+    return this.runShortcut(id.slice(0, cut), id.slice(cut + 1));
+  }
+
+  /**
+   * Answers `obsidian://note-apps?app=…&do=…&field=value…`. Any web page can send one, so it only
+   * runs a panel its author marked with `shortcut`, in an app the user already allowed; the other
+   * parameters only fill that form's fields, checked against their types.
+   */
+  async runUri(params: Record<string, string>): Promise<void> {
+    const name = params.app ?? "";
+    const exact = this.apps.get(name) ?? this.apps.get(`${name}.md`);
+    const found = exact ? [exact] : [...this.apps.values()].filter((e) => e.name === name);
+    if (found.length === 0) return this.say(`No app called “${name}”`);
+    if (found.length > 1) return this.say(`Several apps are called “${name}”; use its path`);
+    return this.runShortcut(found[0].path, params.do ?? "", params);
+  }
+
+  /**
+   * Runs an app's shortcut panel without opening the app: a button's actions, or a form's with the
+   * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
+   * result: the panel's own `notify`, else that it's done.
+   */
+  async runShortcut(appPath: string, shortcut: string, params?: Record<string, string>): Promise<void> {
+    const entry = this.apps.get(appPath);
+    const ps = entry?.shortcuts.get(shortcut);
+    if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
+    if (!this.granted(entry)) return this.say(`Open ${entry.name} once to allow it`);
+    const now = this.env.now();
+    const r = resolvePanel(ps, startingValues(entry.spec.inputs, now));
+    if (!r.panel) return this.env.sink.openApp(entry.path);
+    const p = r.panel;
+    let input: Row = {};
+    if (p.view === "form") {
+      if (!params) {
+        this.env.sink.openApp(entry.path);
+        return this.say(`${entry.name}: fill in the form`);
+      }
+      // Rule 0.2: whatever a link carries is refused whole if any of it holds a secret or a line break.
+      const problem = Object.entries(params).map(([k, v]) => valueProblem(new InputRef(k), v, true)).find(Boolean);
+      if (problem) return this.say(`${entry.name}: ${problem}`);
+      const filled = formRow(p.fields ?? p.schema ?? {}, params, now);
+      if ("error" in filled) return this.say(`${entry.name}: ${filled.error}`);
+      input = filled.row;
+    }
+    const result = await runActions(p, input, this.env.actionDeps(entry.path, entry.dataPath));
+    if (result.ok && !p.notify) this.say(`${entry.name}: ${labelOf(p, shortcut)} done`);
+  }
+
+  private say(message: string): void {
+    this.env.sink.notify(message);
+  }
+
+  /** Every app's shortcuts as commands, published when that list changes. */
+  private publishCommands(): void {
+    const list = [...this.apps.values()]
+      .flatMap((e) => [...e.shortcuts].map(([id, ps]) => ({ id: `${e.path}:${id}`, name: `${e.name}: ${labelOf(ps.panel, id)}` })))
+      .sort((a, b) => a.id.localeCompare(b.id));
+    const json = JSON.stringify(list);
+    if (json === this.commands) return;
+    this.commands = json;
+    this.env.sink.setCommands(list);
+  }
+
   // ---- Record -------------------------------------------------------------------------------
 
   /**
@@ -215,7 +287,13 @@ export class Background {
     if (old && spec && old.definition === definition) return old;
     old?.stop();
     this.apps.delete(path);
-    if (!spec) return undefined;
+    const entry = spec && this.entry(path, spec, definition);
+    if (this.running) this.publishCommands();
+    return entry;
+  }
+
+  /** A new entry for an app, listening for changes to what defines it. */
+  private entry(path: string, spec: AppSpec, definition: string): AppEntry {
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const shortcuts = new Map<string, PanelSpec>();
     for (const ps of spec.panels) if (ps.panel.shortcut && !shortcuts.has(ps.panel.shortcut)) shortcuts.set(ps.panel.shortcut, ps);
@@ -239,6 +317,53 @@ export class Background {
     });
     this.apps.set(path, entry);
     return entry;
+  }
+}
+
+/** What a command or notice calls a panel. */
+function labelOf(p: Panel, fallback: string): string {
+  return p.label ?? p.title ?? fallback;
+}
+
+/**
+ * A form's row from a link's parameters, each read as its field's type; a field the link doesn't
+ * give is what an untouched form saves. Parameters that aren't fields are ignored.
+ */
+function formRow(fields: Record<string, string | string[]>, params: Record<string, string>, now: Date): { row: Row } | { error: string } {
+  const row: Row = {};
+  for (const [name, type] of Object.entries(fields)) {
+    if (!Object.hasOwn(params, name)) {
+      row[name] = Array.isArray(type) ? String(type[0] ?? "")
+        : type === "checkbox" ? false : type === "number" ? null : type === "date" ? stampParts(now).date : "";
+      continue;
+    }
+    const value = typedValue(type, params[name]);
+    if (value === undefined) return { error: `${name} ${expectedOf(type)}` };
+    row[name] = value;
+  }
+  return { row };
+}
+
+/** Link text as a field of this type holds it; undefined when it can't. */
+function typedValue(type: string | string[], raw: string): unknown {
+  if (Array.isArray(type)) return type.map(String).find((o) => o === raw);
+  const word = raw.trim().toLowerCase();
+  switch (type) {
+    case "number": return word !== "" && Number.isFinite(Number(raw)) ? Number(raw) : undefined;
+    case "checkbox": return ["true", "1", "yes"].includes(word) ? true : ["false", "0", "no"].includes(word) ? false : undefined;
+    case "date": return /^\d{4}-\d{2}-\d{2}$/.test(raw) && !Number.isNaN(Date.parse(raw)) ? raw : undefined;
+    case "time": return /^([01]\d|2[0-3]):[0-5]\d$/.test(raw) ? raw : undefined;
+    default: return raw;
+  }
+}
+
+function expectedOf(type: string | string[]): string {
+  if (Array.isArray(type)) return `must be one of ${type.join(", ")}`;
+  switch (type) {
+    case "number": return "must be a number";
+    case "checkbox": return "must be true or false";
+    case "date": return "must be a date like 2026-11-18";
+    default: return "must be a time like 08:30";
   }
 }
 

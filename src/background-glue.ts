@@ -22,6 +22,8 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
     return file ? obsidianAppEnv(plugin, undefined as unknown as WorkspaceLeaf, file) : undefined;
   };
   const openApp = (path: string) => void app.workspace.openLinkText(path, "", false);
+  /** Command id (without the plugin's prefix) → name, as registered. */
+  const commands = new Map<string, string>();
   let stopped = false;
 
   const bg: Background = new Background({
@@ -47,7 +49,20 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
     now: () => new Date(),
     sink: {
       notify: (message) => { new Notice(message); },
-      setCommands: () => {},
+      // Commands come and go with the apps that declare them; a hotkey stays bound to the id.
+      setCommands(list) {
+        const next = new Map(list.map((c) => [c.id, c.name]));
+        for (const [id, name] of commands) {
+          if (next.get(id) === name) continue;
+          plugin.removeCommand(id);
+          commands.delete(id);
+        }
+        for (const [id, name] of next) {
+          if (commands.has(id)) continue;
+          plugin.addCommand({ id, name, callback: () => void bg.runCommand(id) });
+          commands.set(id, name);
+        }
+      },
       setStatus: () => {},
       openApp,
     },
@@ -55,6 +70,10 @@ export function registerBackground(plugin: NoteAppsPlugin): Background {
 
   plugin.registerEvent(app.metadataCache.on("changed", (file) => bg.noteChanged(file.path)));
   plugin.registerEvent(app.vault.on("rename", (file) => bg.noteChanged(file.path)));
+  // A link may open Obsidian; it's answered once the apps are known.
+  plugin.registerObsidianProtocolHandler("note-apps", (params) => {
+    app.workspace.onLayoutReady(() => void bg.runUri({ ...params }));
+  });
   app.workspace.onLayoutReady(() => {
     if (stopped) return;
     void bg.start();
