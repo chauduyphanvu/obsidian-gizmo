@@ -1,5 +1,8 @@
-import { PERIODS, type Agg, type Per } from "./data.ts";
+import { PERIODS, stampParts, type Agg, type Per } from "./data.ts";
 import { storeTarget } from "./store.ts";
+import {
+  namesIn, nearMisses, parseInputs, readInputs, refusedPlaces, resolveInputs, type InputDef, type InputValue,
+} from "./template.ts";
 import { expandPanel, readBlocks } from "./expand.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
@@ -47,6 +50,10 @@ export interface PanelSpec {
   panel: Panel;
   /** Where the panel is written, for messages: "panel 2"; empty for a single top-level panel. */
   label: string;
+  /** Inputs the panel uses; it is drawn again when one of them changes. */
+  inputs: string[];
+  /** Panels in a `panels` list are checked strictly; a single top-level panel isn't. */
+  strict: boolean;
 }
 
 export interface AppSpec {
@@ -55,6 +62,18 @@ export interface AppSpec {
   description: string;
   panels: PanelSpec[];
   refreshMs?: number;
+  inputs: InputDef[];
+}
+
+/** Where each input starts: its first choice, or today. */
+export function startingValues(defs: InputDef[], now: Date): Record<string, InputValue> {
+  return Object.fromEntries(defs.map((d) => [d.name, d.kind === "date" ? stampParts(now).date : d.options[0]]));
+}
+
+/** The panel with these input values filled in, checked. */
+export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, InputValue>>): { panel?: Panel; errors: string[] } {
+  if (ps.inputs.length === 0) return { panel: ps.panel, errors: [] };
+  return checkPanel(resolveInputs(ps.template, values) as Record<string, unknown>, ps.strict);
 }
 
 /** The language version this plugin reads. */
@@ -138,7 +157,7 @@ function checkVersion(value: unknown): string | undefined {
 }
 
 /** Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. */
-export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | undefined {
+export function readSpec(fm: Record<string, unknown> | undefined, opts: { now?: Date } = {}): SpecResult | undefined {
   if (!fm || fm.app === undefined || fm.app === null || fm.app === false) return undefined;
   const description = fm.app === true ? "" : String(fm.app);
   const versionError = checkVersion(fm.spec);
@@ -147,13 +166,35 @@ export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | 
   const errors: string[] = [];
   const panels: PanelSpec[] = [];
   const blocks = readBlocks(fm.data, errors);
+  const inputs = readInputs(fm.inputs, errors);
+  const names = new Set(inputs.map((d) => d.name));
+  const start = startingValues(inputs, opts.now ?? new Date());
+  const used = new Set<string>();
   const add = (raw: Record<string, unknown>, label: string, strict: boolean) => {
     const at = (e: string) => (label ? `${label}: ${e}` : e);
     const expanded = expandPanel(raw, blocks);
     errors.push(...expanded.errors.map(at));
-    const r = checkPanel(expanded.template, strict);
+    errors.push(...nearMisses(expanded.template, names, "input").map(at));
+    const refused = refusedPlaces(expanded.template, names, "input");
+    errors.push(...refused.map(at));
+    if (refused.length) return;
+    const template = parseInputs(expanded.template, names) as Record<string, unknown>;
+    const uses = [...namesIn(template, names)];
+    for (const n of uses) used.add(n);
+    const r = checkPanel(resolveInputs(template, start) as Record<string, unknown>, strict);
     errors.push(...r.errors.map(at));
-    if (r.panel) panels.push({ template: expanded.template, panel: r.panel, label });
+    // Any choice can be picked, so each must make a valid panel too.
+    for (const def of inputs) {
+      if (def.kind !== "choice" || !uses.includes(def.name)) continue;
+      for (const option of def.options.slice(1)) {
+        const other = checkPanel(resolveInputs(template, { ...start, [def.name]: option }) as Record<string, unknown>, strict)
+          .errors.filter((e) => !r.errors.includes(e));
+        if (other.length === 0) continue;
+        errors.push(...other.map((e) => at(`${e} (when $${def.name} is ${option})`)));
+        break;
+      }
+    }
+    if (r.panel) panels.push({ template, panel: r.panel, label, inputs: uses, strict });
   };
 
   if (Array.isArray(fm.panels)) {
@@ -170,6 +211,8 @@ export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | 
     return { errors, empty: true };
   }
 
+  for (const d of inputs) if (!used.has(d.name)) errors.push(`input "${d.name}" isn't used by any panel`);
+
   let refreshMs: number | undefined;
   if (fm.refresh !== undefined) {
     refreshMs = parseDuration(fm.refresh);
@@ -181,7 +224,7 @@ export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | 
     if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
     else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
   }
-  return { spec: { description, panels, refreshMs, store }, errors, empty: false };
+  return { spec: { description, panels, refreshMs, store, inputs }, errors, empty: false };
 }
 
 export function secretsIn(text: string | undefined): string[] {
