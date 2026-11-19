@@ -1,10 +1,10 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AppController, panelIds, type AppEnv } from "../src/app.ts";
+import { AppController, type AppEnv } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { schemaOf, type NoteReader } from "../src/expand.ts";
-import { askersOf, permissionsOf, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
+import { askersOf, panelIds, permissionsOf, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
 import { fakeHost } from "./support/fakes.ts";
 
 const APP = "Apps/X.md";

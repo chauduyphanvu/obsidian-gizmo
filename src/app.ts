@@ -1,11 +1,13 @@
 import { runActions as runPanelActions } from "./actions.ts";
-import { stableJson, type Change, type NewEntry } from "./activity.ts";
+import type { Change, NewEntry } from "./activity.ts";
 import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
+import { fileDep, nameDep } from "./deps.ts";
+import { stableJson } from "./hash.ts";
 import { typedName, type NoteReader } from "./expand.ts";
 import {
-  askersOf, describePermission, isUrl, permissionsOf, pickPanels, readComponentPreview, readSpec,
+  askersOf, describePermission, isUrl, panelIds, permissionsOf, pickPanels, readComponentPreview, readSpec,
   resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
@@ -153,20 +155,6 @@ function plainTitle(ps: PanelSpec): string | undefined {
 function holds(stored: unknown, shown: Row, field: string): stored is Row {
   if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return false;
   return Object.entries(stored).every(([k, v]) => k === field || JSON.stringify(v) === JSON.stringify(shown[k]));
-}
-
-/** A stable identity for a panel: its keys as written, plus a counter when two panels are identical. */
-export function panelIds(templates: Record<string, unknown>[]): string[] {
-  const seen = new Map<string, number>();
-  return templates.map((t) => {
-    const json = stableJson(t);
-    let h = 0x811c9dc5;
-    for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
-    const base = (h >>> 0).toString(36);
-    const n = (seen.get(base) ?? 0) + 1;
-    seen.set(base, n);
-    return n === 1 ? base : `${base}-${n}`;
-  });
 }
 
 /**
@@ -616,8 +604,8 @@ export class AppController {
    * and the note it sits in, which `$this` reads (and a lens's params).
    */
   private definitionDeps(): string[] {
-    const host = this.hostPath === this.appPath ? [] : [`file:${this.hostPath}`];
-    return [`file:${this.appPath}`, ...host, ...this.links.map((l) => `name:${l}`)];
+    const host = this.hostPath === this.appPath ? [] : [fileDep(this.hostPath)];
+    return [fileDep(this.appPath), ...host, ...this.links.map(nameDep)];
   }
 
   private destroyPanels(): void {
@@ -640,7 +628,7 @@ export class AppController {
     const deps = new Set(definition);
     for (const m of this.mounted.values()) for (const d of m.deps) deps.add(d);
     // An embed's keys are in its block, not in the note it names as its path.
-    const self = this.hosting?.kind === "embed" ? "" : `file:${this.appPath}`;
+    const self = this.hosting?.kind === "embed" ? "" : fileDep(this.appPath);
     this.unsubscribe = this.env.data.subscribe(deps, (changed) => {
       // Lists typed into the app note are part of its definition, so a change there is
       // handled by reconcile, which reloads the panels it keeps.

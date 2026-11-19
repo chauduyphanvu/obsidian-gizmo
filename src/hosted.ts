@@ -1,6 +1,8 @@
 import { AppController, newMemory, type AppEnv, type AppMemory, type Hosting } from "./app.ts";
 import type { Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
+import { nameDep } from "./deps.ts";
+import { fnv1a } from "./hash.ts";
 import { componentParams, linkOf, readFor } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
 import { basename, defaultDataPath, isComponent, isSet, runsAsApp } from "./store.ts";
@@ -47,9 +49,7 @@ export function parseHosted(value: unknown): HostedBlock {
 /** A block's identity for grants and kept state: its note and a hash of its text, so changing the text asks again. */
 export function blockKey(hostPath: string, source: string): string {
   const text = source.trimEnd();
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
-  return `${hostPath}#${(h >>> 0).toString(36)}`;
+  return `${hostPath}#${fnv1a(text).toString(36)}`;
 }
 
 /**
@@ -145,7 +145,7 @@ export class HostedApp {
       this.start(this.hostPath, { kind: "embed", grantKey: this.key, hostPath: this.hostPath, definition: () => block.definition, memory: this.memory });
       return;
     }
-    this.unsubscribe = this.env.data.subscribe([`name:${basename(block.link)}`], () => {
+    this.unsubscribe = this.env.data.subscribe([nameDep(basename(block.link))], () => {
       if (this.env.notes.resolve(block.link, this.hostPath) !== this.appPath) this.linkApp(block.link, block.panels);
     });
     this.linkApp(block.link, block.panels);

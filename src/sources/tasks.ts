@@ -1,4 +1,5 @@
 import type { Row } from "../data.ts";
+import { notesDep } from "../deps.ts";
 import type { SourceDef } from "./types.ts";
 
 /** One checkbox line of a note. `line` counts from 0 at the top of the file. */
@@ -88,7 +89,7 @@ export const tasks: SourceDef = {
   validate: (p) => (p.from ? [] : ['source "tasks" needs "from" (a #tag or folder)']),
   permissions: (p) => (p.from ? [[`read:${p.from}`, "from"]] : []),
   // Any change to a note in scope is heard under this key, a change to its text alone included.
-  deps: (p) => [`notes:${p.from ?? ""}`],
+  deps: (p) => [notesDep(p.from ?? "")],
   async load(p, _files, layer) {
     const notes = layer.notes(p.from ?? "");
     // A note deleted while this loads has no tasks; its deletion reloads the panel anyway.

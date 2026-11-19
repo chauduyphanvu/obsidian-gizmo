@@ -1,3 +1,4 @@
+import { notesDep } from "../deps.ts";
 import type { SourceDef } from "./types.ts";
 
 /** `source: notes`: one row per note in the `from` scopes (#tags or folders). */
@@ -6,6 +7,6 @@ export const notes: SourceDef = {
   matches: (source) => source === "notes",
   validate: (p) => (p.from ? [] : ['source "notes" needs "from" (a #tag or folder)']),
   permissions: (p) => (p.from ? [[`read:${p.from}`, "from"]] : []),
-  deps: (p) => [`notes:${p.from ?? ""}`],
+  deps: (p) => [notesDep(p.from ?? "")],
   load: (p, _files, layer) => layer.notes(p.from ?? ""),
 };

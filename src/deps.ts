@@ -1,0 +1,13 @@
+/**
+ * What the data layer tells its listeners changed, as keys: a file by path, a note name that links
+ * resolve by, a web source, and a scope of notes (`*` for every note).
+ */
+export const fileDep = (path: string) => `file:${path}`;
+export const nameDep = (name: string) => `name:${name}`;
+export const urlDep = (source: string) => `url:${source}`;
+export const notesDep = (scope: string) => `notes:${scope}`;
+
+/** The scope of a notes key; undefined for any other key. */
+export function scopeOfDep(dep: string): string | undefined {
+  return dep.startsWith("notes:") ? dep.slice(6) : undefined;
+}

@@ -1,4 +1,5 @@
 import { toNumber, toTime } from "../data.ts";
+import { nameDep, notesDep } from "../deps.ts";
 import type { SourceDef } from "./types.ts";
 
 /** What a base's filters read of one note: its properties, its path and its tags (`#a/b`). */
@@ -253,7 +254,7 @@ export const base: SourceDef = {
   // A base's filters can change what it matches at any time, so it may read any note.
   permissions: () => [["read:*", "source"]],
   // The link can't be resolved here, so the base file is heard by name.
-  deps: (p) => [`name:${baseTarget(p.source!)!.split("/").pop()}`, "notes:*"],
+  deps: (p) => [nameDep(baseTarget(p.source!)!.split("/").pop()!), notesDep("*")],
   async load(p, files, layer) {
     const source = p.source!;
     const path = layer.host.resolveFile(baseTarget(source)!, files.appPath);

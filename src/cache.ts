@@ -1,3 +1,5 @@
+import { fnv1a } from "./hash.ts";
+
 /**
  * The disk copy of web responses: one JSON file per request under the plugin's `cache` folder, so
  * an app paints at once after a restart and still shows something when the network is down.
@@ -26,9 +28,7 @@ export const MAX_ENTRY_BYTES = 1_000_000;
 export const MAX_ENTRIES = 200;
 
 function fnv(text: string, seed: number): string {
-  let h = seed;
-  for (let i = 0; i < text.length; i++) h = Math.imul(h ^ text.charCodeAt(i), 0x01000193);
-  return (h >>> 0).toString(16).padStart(8, "0");
+  return fnv1a(text, seed).toString(16).padStart(8, "0");
 }
 
 /** A file name for a key: two FNV-1a passes with different seeds. Files hold their key, so a collision is caught on read. */

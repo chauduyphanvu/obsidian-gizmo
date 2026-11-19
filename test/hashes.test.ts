@@ -1,10 +1,11 @@
 import "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { stableJson, textHash } from "../src/activity.ts";
-import { panelIds } from "../src/app.ts";
+import { textHash } from "../src/activity.ts";
 import { cacheHash } from "../src/cache.ts";
+import { stableJson } from "../src/hash.ts";
 import { blockKey } from "../src/hosted.ts";
+import { panelIds } from "../src/spec.ts";
 
 // Each of these is kept on disk (triggers.json, data.json, the cache's file names, activity.json),
 // so the same input must give the same text in every version.

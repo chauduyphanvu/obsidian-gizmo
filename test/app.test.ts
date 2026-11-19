@@ -1,9 +1,9 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AppController, panelIds, type AppEnv } from "../src/app.ts";
+import { AppController, type AppEnv } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
-import { checkPanel, type Panel } from "../src/spec.ts";
+import { checkPanel, panelIds, type Panel } from "../src/spec.ts";
 import { seriesNames } from "../src/views/common.ts";
 import { VIEW_DEFS, type PanelCtx } from "../src/views/registry.ts";
 import { fakeHost } from "./support/fakes.ts";

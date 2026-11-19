@@ -1,5 +1,6 @@
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
+import { fnv1a, stableJson } from "./hash.ts";
 import { rowsAreNotes, sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
 import {
@@ -128,6 +129,18 @@ export interface PanelSpec {
   strict: boolean;
   /** The note each key was typed in, so a permission can name the component that asks for it. */
   writtenIn: Record<string, string>;
+}
+
+/** A stable identity for a panel: its keys as written, plus a counter when two panels are identical. */
+export function panelIds(templates: Record<string, unknown>[]): string[] {
+  const seen = new Map<string, number>();
+  return templates.map((t) => {
+    const json = stableJson(t);
+    const base = fnv1a(json).toString(36);
+    const n = (seen.get(base) ?? 0) + 1;
+    seen.set(base, n);
+    return n === 1 ? base : `${base}-${n}`;
+  });
 }
 
 export interface AppSpec {

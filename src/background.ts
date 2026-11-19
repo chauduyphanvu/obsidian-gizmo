@@ -1,13 +1,14 @@
 import { fillLine, runActions, type ActionDeps } from "./actions.ts";
-import { stableJson, type Actor, type LogStore } from "./activity.ts";
-import { panelIds } from "./app.ts";
+import type { Actor, LogStore } from "./activity.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
+import { fileDep, nameDep } from "./deps.ts";
+import { stableJson } from "./hash.ts";
 import type { NoteReader } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
 import {
-  permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
+  panelIds, permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
 import { basename, defaultDataPath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
@@ -594,7 +595,7 @@ export class Background {
       refreshMs: spec.refreshMs ?? DEFAULT_REFRESH_MS,
       stop: () => {},
     };
-    const definitionDeps = [`file:${path}`, ...spec.links.map((l) => `name:${l}`)];
+    const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
     const files = { appPath: path, dataPath: entry.dataPath };
     const start = this.valuesOf(path, spec, this.env.now());
     const dataDeps = entry.watched.flatMap(({ ps }) => {

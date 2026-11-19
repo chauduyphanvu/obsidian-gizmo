@@ -1,4 +1,5 @@
 import { parseBody } from "../data.ts";
+import { fileDep, nameDep } from "../deps.ts";
 import type { SourceDef } from "./types.ts";
 
 const CONTENT_TYPES: Record<string, string> = { csv: "text/csv", json: "application/json", ics: "text/calendar" };
@@ -20,7 +21,7 @@ export const file: SourceDef = {
   // A link may name the file by its name alone, so a change under that name counts too.
   deps(p) {
     const target = fileTarget(p.source!);
-    return [`file:${target}`, `name:${target.split("/").pop()}`];
+    return [fileDep(target), nameDep(target.split("/").pop()!)];
   },
   load(p, files, layer, opts) {
     const target = fileTarget(p.source!);

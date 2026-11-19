@@ -1,9 +1,11 @@
 import type { CacheEntry } from "./cache.ts";
 import { parseBody, stampParts, type Row } from "./data.ts";
+import { fileDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
 import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
 import type { Panel } from "./spec.ts";
+import { basename } from "./store.ts";
 import { secretIds, stringsIn } from "./template.ts";
 
 export interface FileInfo {
@@ -278,29 +280,30 @@ export class DataLayer {
     for (const key of [...this.http.keys()]) {
       if (sources.some((s) => key.startsWith(`${s}|`))) this.http.delete(key);
     }
-    for (const s of sources) this.pending.add(`url:${s}`);
+    for (const s of sources) this.pending.add(urlDep(s));
     this.queueFlush();
   }
 
   private touch(path: string, before: Row | undefined, after: Row | undefined): void {
-    this.pending.add(`file:${path}`);
+    this.pending.add(fileDep(path));
     this.parsedFiles.delete(path);
     // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
-    this.pending.add(`name:${path.split("/").pop()!.replace(/\.md$/i, "")}`);
+    this.pending.add(nameDep(basename(path)));
     // Heard by whatever reads every note, such as a base.
-    if (before || after) this.pending.add("notes:*");
+    if (before || after) this.pending.add(notesDep("*"));
     for (const [key] of this.queries) {
       const scopes = splitScopes(key);
       if ((before && inScopes(before, scopes)) || (after && inScopes(after, scopes))) {
         this.queries.delete(key);
-        this.pending.add(`notes:${key}`);
+        this.pending.add(notesDep(key));
       }
     }
     // A scope nobody has queried yet still matters to listeners waiting on it.
     for (const l of this.listeners) {
       for (const dep of l.deps) {
-        if (!dep.startsWith("notes:") || this.pending.has(dep)) continue;
-        const scopes = splitScopes(dep.slice(6));
+        const scope = scopeOfDep(dep);
+        if (scope === undefined || this.pending.has(dep)) continue;
+        const scopes = splitScopes(scope);
         if ((before && inScopes(before, scopes)) || (after && inScopes(after, scopes))) this.pending.add(dep);
       }
     }

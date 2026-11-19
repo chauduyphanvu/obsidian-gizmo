@@ -1,4 +1,5 @@
 import type { Row } from "../data.ts";
+import { fileDep } from "../deps.ts";
 import { THIS } from "../template.ts";
 import type { SourceDef } from "./types.ts";
 
@@ -22,7 +23,7 @@ export const thisNote: SourceDef = {
   id: "this",
   matches: (source) => source === THIS,
   permissions: () => [],
-  deps: (_p, files) => [`file:${files.hostPath ?? files.appPath}`],
+  deps: (_p, files) => [fileDep(files.hostPath ?? files.appPath)],
   load(_p, files, layer) {
     const path = files.hostPath ?? files.appPath;
     return thisValues(path, layer.host.frontmatter(path), layer.host.tags(path));

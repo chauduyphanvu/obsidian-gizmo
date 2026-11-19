@@ -1,5 +1,6 @@
 import { withLine } from "./actions.ts";
 import { formatValue, type Row } from "./data.ts";
+import { fnv1a, stableJson } from "./hash.ts";
 import { basename } from "./store.ts";
 
 /**
@@ -49,25 +50,7 @@ export interface LogStore {
 
 /** A short fingerprint of a note's text, to tell whether it changed after the app wrote it. */
 export function textHash(text: string): string {
-  let h = 0x811c9dc5;
-  for (let i = 0; i < text.length; i++) {
-    h ^= text.charCodeAt(i);
-    h = Math.imul(h, 0x01000193);
-  }
-  return `${(h >>> 0).toString(16)}:${text.length}`;
-}
-
-/**
- * JSON with object keys sorted, so the order keys were written in doesn't matter; a key holding
- * undefined is left out, as JSON and a note's properties leave it out.
- */
-export function stableJson(v: unknown): string {
-  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
-  if (v !== null && typeof v === "object" && !(v instanceof Date)) {
-    const o = v as Record<string, unknown>;
-    return `{${Object.keys(o).filter((k) => o[k] !== undefined).sort().map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(",")}}`;
-  }
-  return JSON.stringify(v) ?? "null";
+  return `${fnv1a(text).toString(16)}:${text.length}`;
 }
 
 const same = (a: unknown, b: unknown) => stableJson(a) === stableJson(b);

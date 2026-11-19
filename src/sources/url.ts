@@ -1,3 +1,4 @@
+import { urlDep } from "../deps.ts";
 import { secretIds } from "../template.ts";
 import type { SourceDef } from "./types.ts";
 
@@ -29,7 +30,7 @@ export const url: SourceDef = {
     }
     return out;
   },
-  deps: (p) => [`url:${p.source}`],
+  deps: (p) => [urlDep(p.source!)],
   // Only the secrets typed in the panel's own keys may be filled, whatever its values make of the text.
   load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force, p.body, p.secrets ?? []),
 };
