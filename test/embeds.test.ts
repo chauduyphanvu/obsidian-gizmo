@@ -233,6 +233,18 @@ test("save: this: a form holds the note's properties and writes each change back
   assert.equal(note.value, "half-typed");
 });
 
+test("a save: this form is drawn once, with no Loading… line left beside it once its note's properties arrive", async () => {
+  const value = { view: "form", title: "Update", fields: { page: "number" }, save: "this" };
+  const host = "Books/Dune.md";
+  const t = embed(value, { [host]: { fm: { page: 120 } } }, { host });
+  await settle();
+  const panel = t.root.querySelector(".na-view-form")!;
+  assert.deepEqual([...panel.querySelectorAll(".na-title")].map(text), ["Update"]);
+  assert.equal(panel.querySelector(".na-empty"), null);
+  assert.equal(panel.classList.contains("na-loading"), false);
+  assert.equal((panel.querySelector("input") as HTMLInputElement).value, "120");
+});
+
 test("save: this goes on a form only, and nothing else that acts goes beside it", () => {
   const r = readSpec({
     app: "",

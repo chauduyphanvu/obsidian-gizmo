@@ -673,8 +673,12 @@ export class AppController {
     m.handle = def.mount(el, p, this.ctxFor(id), id);
     if (source) {
       el.addClass("na-loading");
-      el.createDiv({ cls: "na-title", text: p.title ?? p.label ?? "" });
-      el.createDiv({ cls: "na-empty", text: "Loading…" });
+      // A view that draws itself at once (a save: this form) fills in its values in place, so a
+      // stand-in added beside it would never be taken away.
+      if (!el.hasChildNodes()) {
+        el.createDiv({ cls: "na-title", text: p.title ?? p.label ?? "" });
+        el.createDiv({ cls: "na-empty", text: "Loading…" });
+      }
       void this.loadPanel(m);
     } else {
       m.handle.update(undefined);
