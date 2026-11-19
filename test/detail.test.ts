@@ -130,6 +130,22 @@ test("every view that picks rows takes detail: a list, a table, a bar, a pie, a 
   assert.match(pickIn(scatterP, ".na-scatter-dot"), / at \d+%$/);
 });
 
+test("on a board, the detail is the card picked, not the first card of its column", async () => {
+  const app = open([{ view: "board", source: "notes", from: "Decisions", group: "outcome", detail: "{name}: {expect}" }]);
+  await settle();
+  const board = app.panels()[0];
+  const open_ = [...board.querySelectorAll(".na-board-col")].find((c) => c.getAttribute("aria-label") === "open")!;
+  const cards = [...open_.querySelectorAll(".na-board-card")];
+  assert.deepEqual(cards.map((c) => text(c.querySelector(".na-board-text"))), ["Phone plan", "Running"]);
+  event(cards[1], "click");
+  assert.equal(text(board.querySelector(".na-detail-text")), "Running: Still running in February");
+  assert.deepEqual([...board.querySelectorAll(".na-board-card.na-selected")].map((c) => text(c.querySelector(".na-board-text"))), ["Running"]);
+  event(board.querySelector(".na-detail a")!, "click");
+  assert.deepEqual(app.opened, ["Decisions/Running.md"]);
+  event(cards[0], "click");
+  assert.equal(text(board.querySelector(".na-detail-text")), "Phone plan: Coverage is as good");
+});
+
 test("a view mounted without a detail is drawn as it was; one picks rows only with select or detail", () => {
   const ctx = { now: new Date(2026, 10, 18), width: () => 600, selected: () => undefined, select: () => {}, openNote: () => {} } as unknown as PanelCtx;
   const draw = (keys: Record<string, unknown>) => {

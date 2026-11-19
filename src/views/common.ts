@@ -327,8 +327,9 @@ function drawDetail(root: Element): void {
   const d = DETAILED.get(root)!;
   for (const old of [...root.children]) if (old.classList.contains("na-detail")) old.remove();
   const want = pickedIn(d.p, d.ctx, root);
-  const rows = [...root.querySelectorAll(".na-selectable")].map((item) => PICKS.get(item)?.row);
-  const row = want && rows.find((r): r is Row => !!r && sameRow(d.p, want, r));
+  // Each element compares as it was made selectable: a board's cards are rows of their own, not its groups.
+  const picks = [...root.querySelectorAll(".na-selectable")].map((item) => PICKS.get(item));
+  const row = want && picks.find((pick) => pick && sameRow(pick.p, want, pick.row))?.row;
   if (!row) {
     d.pick = undefined;
     return;
