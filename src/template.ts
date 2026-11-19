@@ -11,6 +11,11 @@ import { isPlainObject } from "./views/common.ts";
  */
 const TOKEN = /\$([A-Za-z_][A-Za-z0-9_]*)((?:\.[A-Za-z0-9_]+)*)/g;
 export const NAME = /^[A-Za-z_][A-Za-z0-9_]*$/;
+/**
+ * `$this.<property>`: the note an app sits in (an embed's or lens's note; an app note opened on
+ * its own is its own). Declared in every app and component, filled at run time like a selection.
+ */
+export const THIS = "this";
 
 export type InputValue = string | number | boolean;
 

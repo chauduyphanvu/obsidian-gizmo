@@ -3,7 +3,7 @@ import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, storeTarget } from "./store.ts";
 import {
-  InputRef, NAME, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
+  InputRef, NAME, THIS, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
 } from "./template.ts";
 import {
   COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readValue, type PanelKey,
@@ -93,6 +93,10 @@ export function readBlocks(value: unknown, errors: string[], names: ReadonlySet<
     }
     if (name === "tasks") {
       errors.push(`data: "tasks" can't be a name; source: tasks already means tasks in notes`);
+      continue;
+    }
+    if (name === THIS) {
+      errors.push(`data: "this" can't be a name; source: this already means the note the app is in`);
       continue;
     }
     if (!isPlainObject(raw)) {
@@ -250,7 +254,8 @@ export interface Produced {
  * The note an entry was written in: its names, data blocks and how `$names` are filled there.
  * `selects` maps the names a component's own panels select to the app-wide names of this use of
  * it, so two uses of one component keep their selections apart; those names are also in `names`
- * and `params` (as references), and are refused where inputs are.
+ * and `params` (as references), and are refused where inputs are. In a component it also maps
+ * `this` to itself, for the same reasons.
  */
 interface Scope {
   path: string;
@@ -308,10 +313,13 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
   if (fm.app !== undefined) errors.push(`${name} has both app and component; a note is one or the other`);
   if (fm.inputs !== undefined) errors.push(`${name}: inputs belong in the app; take a param, and let the app pass with: {name: $name}`);
   for (const key of ["refresh", "store"]) if (fm[key] !== undefined) errors.push(`${name}: ${key} belongs in the app that uses it`);
+  const lens = fm.for === undefined || fm.for === null ? undefined : readFor(fm.for);
+  if (lens && "error" in lens) errors.push(`${name}: ${lens.error}`);
   const params = componentParams(fm.params);
   if (!params) errors.push(`${name}: params must be a list of names or names with defaults`);
   for (const [n, v] of params ?? []) {
     if (!NAME.test(n)) errors.push(`${name}: param "${n}" can only use letters, digits and _`);
+    else if (n === THIS) errors.push(`${name}: ${TAKEN}`);
     if (v !== undefined && unsafeValue(v)) errors.push(`${name}: param "${n}" can't hold a secret or a line break`);
   }
   if (!Array.isArray(fm.panels) || fm.panels.length === 0) {
@@ -319,6 +327,24 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
     return undefined;
   }
   return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels: fm.panels };
+}
+
+/** Why a param, input or selection can't be called `this`. */
+export const TAKEN = `"this" is taken: $this is the note the app is in`;
+
+/**
+ * A lens's `for`: folders or #tags, comma-separated, as `from` takes them; folders without their
+ * trailing slash, so `for: Books/` and a table's `from: Books` ask for the same permission.
+ * Run-time names can't choose which notes a lens shows on.
+ */
+export function readFor(value: unknown): { scope: string } | { error: string } {
+  const text = typeof value === "string" ? value : "";
+  const name = text.match(/\$([A-Za-z_]\w*)/);
+  if (name) return { error: `$${name[1]} can't be used in "for"` };
+  const parts = text.split(",").map((s) => s.trim());
+  const ok = parts.every((s) => (s.startsWith("#") ? /^#[^\s#,]+$/.test(s) : /^[^#[\]|^:*?"<>\\/][^#[\]|^:*?"<>\\]*$/.test(s) && s.replace(/\/+$/, "") !== ""));
+  if (!text.trim() || !ok) return { error: "for must be a folder or #tag, e.g. for: Books/" };
+  return { scope: parts.map((s) => (s.startsWith("#") ? s : s.replace(/\/+$/, ""))).join(", ") };
 }
 
 /** A component's params, each with its default; undefined means the app must give it. */
@@ -490,7 +516,13 @@ export class Expander {
       names.add(typed);
       params.set(typed, new InputRef(own));
     }
-    const inner: Scope = { path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params, selects };
+    // $this is the note the app sits in, a value from the user like a selection, refused where inputs are.
+    names.add(THIS);
+    params.set(THIS, new InputRef(THIS));
+    const refusedAsInput = new Map([...selects, [THIS, THIS]]);
+    const inner: Scope = {
+      path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params, selects: refusedAsInput,
+    };
     blockErrors.forEach((e) => at(`${name} ${e}`));
     const produced = component.panels.flatMap((entry, j) => {
       const step = stepOf(j);
@@ -512,6 +544,7 @@ export class Expander {
       const name = selectOf(entry);
       if (name === undefined || out.has(name)) return;
       if (!NAME.test(name)) at(j, `select: "${name}" can only use letters, digits and _`);
+      else if (name === THIS) at(j, `select: ${TAKEN}`);
       else if (params.has(name)) at(j, `select: "${name}" is already a param`);
       else {
         out.set(name, `${name}@${use}`);

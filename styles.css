@@ -379,3 +379,34 @@
 .note-app .na-tree .na-t-null, .note-app .na-tree .na-t-meta { color: var(--text-muted); }
 .note-app .na-tree .na-copied { color: var(--text-accent); margin-right: var(--size-4-2); font-family: var(--font-interface); }
 .note-app .na-tree .na-inspect-more { color: var(--text-faint); }
+/* Embeds and lenses */
+/* In a note the app sits at the text's width, not in the 960px shell of an app tab. */
+.na-embed .note-app,
+.na-lens .note-app { padding: 0; max-width: none; margin: 0; }
+.na-embed { margin: var(--size-4-2) 0; }
+/* The lens sits above the editor and the preview, which share what is left of the view's height. */
+.view-content:has(> .na-lens) { display: flex; flex-direction: column; }
+.view-content:has(> .na-lens) > .markdown-source-view,
+.view-content:has(> .na-lens) > .markdown-reading-view { flex: 1 1 0; min-height: 0; }
+.na-lens {
+  flex: none;
+  max-height: 50%;
+  overflow-y: auto;
+  padding: var(--size-4-2) var(--size-4-4);
+  border-bottom: 1px solid var(--background-modifier-border);
+}
+.na-lens-item { max-width: var(--file-line-width); margin: 0 auto; }
+.na-lens-item + .na-lens-item { margin-top: var(--size-4-2); }
+.na-lens-head { display: flex; align-items: center; gap: var(--size-4-1); font-size: var(--font-ui-small); }
+.na-lens-head .na-lens-name { color: var(--text-muted); text-decoration: none; }
+.na-lens-head .na-lens-name:hover { color: var(--text-normal); }
+button.na-lens-toggle {
+  background: none;
+  box-shadow: none;
+  border: none;
+  height: auto;
+  padding: 0 var(--size-4-1);
+  color: var(--text-faint);
+}
+.na-lens-body .note-app { padding-top: var(--size-4-2); }
+.na-lens-item.is-folded .na-lens-body { display: none; }

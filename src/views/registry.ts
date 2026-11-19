@@ -38,6 +38,11 @@ export interface PanelCtx {
    * the panel updates when the write lands.
    */
   editRow(row: Row, field: string, value: unknown): Promise<void>;
+  /**
+   * Writes one field of a `save: this` form as a property of the note the app sits in; the panel
+   * updates when the write lands. Absent outside an app.
+   */
+  setProperty?(field: string, value: unknown): Promise<void>;
 }
 
 export interface PanelHandle {
@@ -61,8 +66,8 @@ export interface ViewDef {
    * board (`group: undefined`) groups the raw rows itself.
    */
   pipeline?: Pick<Partial<Panel>, "group" | "per">;
-  /** The list this view shows when it has no `source:` (a checklist's ticked items). */
-  implicitSource?(p: Panel): string;
+  /** What this view shows when it has no `source:` (a checklist's ticked items), if anything. */
+  implicitSource?(p: Panel): string | undefined;
   /** Problems beyond key types and applicability, as plain sentences. */
   validate?(p: Panel): string[];
   examples: { panel: Record<string, unknown>; errors?: string[] }[];

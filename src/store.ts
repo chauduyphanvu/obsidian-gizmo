@@ -5,7 +5,7 @@
  */
 
 /** Top-level keys that define an app or component; lists may never be named after them. */
-export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params"];
+export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params", "for", "this"];
 
 export function defaultDataPath(appPath: string): string {
   return `${appPath.replace(/\.md$/i, "")} data.md`;

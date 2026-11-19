@@ -369,12 +369,12 @@ test("Shelf: the books Books.base picks, by status, set in place", async () => {
   const [shelf, byStatus] = [...root.querySelectorAll(".na-panel")];
   const rows = [...shelf.querySelectorAll("tbody tr")];
   assert.deepEqual(rows.map((tr) => text(tr.querySelector("td"))), ["Dune", "Middlemarch", "Piranesi", "The Overstory"]);
-  assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["(none) · 4"]);
+  assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["done · 4"]);
 
   choose(rows[0].querySelector("select")!, "reading");
   await settle();
-  assert.deepEqual(t.f.files.get("Books/Dune.md")!.fm, { finished: "2026-02-10", status: "reading" });
-  assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["(none) · 3", "reading · 1"]);
+  assert.deepEqual(t.f.files.get("Books/Dune.md")!.fm, { finished: "2026-02-10", status: "reading", page: 412, pages: 412 });
+  assert.deepEqual([...byStatus.querySelectorAll("li")].map((li) => text(li)), ["done · 3", "reading · 1"]);
 });
 
 test("Spending: log a purchase, see the week against last, the stack against the budget, and fix a category", async () => {

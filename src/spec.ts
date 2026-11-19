@@ -3,10 +3,10 @@ import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, storeTarget } from "./store.ts";
 import {
-  InputRef, InputText, NAME, readInputs, readRef, refsIn, resolveInputs, resolveWith, type InputDef, type InputValue,
+  InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, type InputDef, type InputValue,
 } from "./template.ts";
 import {
-  Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, selectOf, typedName,
+  Expander, MAX_PANELS, TAKEN, basename, checkVersion, componentParams, readBlocks, readFor, selectOf, typedName,
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
@@ -80,11 +80,16 @@ export interface Panel {
   target?: SaveTarget;
 }
 
-/** Where a panel's `save` writes: a list in the app's data note, or one new note per save in a folder. */
-export type SaveTarget = { kind: "list"; name: string } | { kind: "folder"; folder: string };
+/**
+ * Where a panel's `save` writes: a list in the app's data note, one new note per save in a folder,
+ * or the properties of the note the app sits in (`save: this`; a lens's `scope` is its `for`, which
+ * writing there needs permission for).
+ */
+export type SaveTarget = { kind: "list"; name: string } | { kind: "folder"; folder: string } | { kind: "this"; scope?: string };
 
-/** What `save` text names on its own: a folder when it ends in a slash (`Books/`), else a list. */
+/** What `save` text names on its own: the note the app sits in, a folder when it ends in a slash (`Books/`), else a list. */
 export function saveTarget(save: string): SaveTarget {
+  if (save === THIS) return { kind: "this" };
   return save.endsWith("/") ? { kind: "folder", folder: save.replace(/^\/+|\/+$/g, "") } : { kind: "list", name: save };
 }
 
@@ -138,8 +143,28 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unkn
   const waiting = ps.inputs.find((n) => values[n] === undefined);
   if (waiting !== undefined) return { errors: [], waiting };
   const problems: string[] = [];
-  const filled = resolveInputs(ps.template, values, problems) as Record<string, unknown>;
+  const template = ps.inputs.includes(THIS) ? absentThis(ps.template, values[THIS]) : ps.template;
+  const filled = resolveInputs(template, values, problems) as Record<string, unknown>;
   return problems.length ? { errors: problems } : checkTemplate(filled, ps.strict);
+}
+
+/** A `where` condition no value meets: a comparison with nothing to compare against. */
+const NO_ROW = "< (none)";
+
+/**
+ * A `$this` property the note doesn't have fills text as empty; as a `where` condition it matches no
+ * row, rather than every row whose field is empty too.
+ */
+function absentThis(t: Record<string, unknown>, note: unknown): Record<string, unknown> {
+  const fix = (keys: Record<string, unknown>): Record<string, unknown> => {
+    if (!isPlainObject(keys.where)) return keys;
+    const where = Object.entries(keys.where).map(([k, v]) =>
+      [k, v instanceof InputRef && v.input === THIS && (readRef(note, v.path) ?? null) === null ? NO_ROW : v]);
+    return { ...keys, where: Object.fromEntries(where) };
+  };
+  const out = { ...fix(t) };
+  if (Array.isArray(t.upstream)) out.upstream = (t.upstream as Stage[]).map((s) => ({ ...s, keys: fix(s.keys) }));
+  return out;
 }
 
 /**
@@ -241,7 +266,8 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
     ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
-    ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
+    ...(p.save && RESERVED.includes(p.save) && p.target?.kind !== "this" ? [`save can't use "${p.save}", which names part of the app`] : []),
+    ...(p.target?.kind === "this" && def.id !== "form" ? ["save: this works on a form"] : []),
     ...(p.target?.kind === "folder" && !p.target.folder ? ["save needs a folder before the /, e.g. save: Books/"] : []),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
@@ -252,10 +278,21 @@ export function isListName(source: string | undefined): source is string {
   return !!source && sourceDef(source).id === "list";
 }
 
-/** Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. */
+/** The note an embed or a lens sits in, for `save: this`; a lens's `for` scope, which writing there needs permission for. */
+export interface HostNote {
+  scope?: string;
+}
+
+/** What `save: this` says in an app note opened on its own, which Obsidian would reformat if it were written. */
+export const SAVE_THIS_HOSTED = 'save: this works in an embed or a lens, where "this" is the note it sits in';
+
+/**
+ * Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. `host` is
+ * given when the app sits in another note (an embed, a lens), where `save: this` writes that note.
+ */
 export function readSpec(
   fm: Record<string, unknown> | undefined,
-  opts: { now?: Date; notes?: NoteReader; path?: string } = {},
+  opts: { now?: Date; notes?: NoteReader; path?: string; host?: HostNote } = {},
 ): SpecResult | undefined {
   if (!fm || fm.app === undefined || fm.app === null || fm.app === false) return undefined;
   let description = fm.app === true ? "" : String(fm.app);
@@ -264,11 +301,12 @@ export function readSpec(
   if (versionError) return { errors: [versionError], empty: false };
   const errors: string[] = [];
   const inputErrors: string[] = [];
-  const inputs = readInputs(fm.inputs, inputErrors);
+  const inputs = readInputs(fm.inputs, inputErrors).filter((d) => d.name !== THIS);
+  if (isPlainObject(fm.inputs) && THIS in fm.inputs) inputErrors.push(`inputs: ${TAKEN}`);
   const inputNames = new Set(inputs.map((d) => d.name));
   const selects = appSelects(fm, inputNames, inputErrors);
-  // Selections are names like inputs, known before any `$name` is read.
-  const names = new Set([...inputNames, ...selects]);
+  // Selections are names like inputs, known before any `$name` is read; so is the note the app is in.
+  const names = new Set([...inputNames, ...selects, THIS]);
   const blocks = readBlocks(fm.data, errors, names);
   errors.push(...inputErrors);
   const start = startingValues(inputs, opts.now ?? new Date());
@@ -276,7 +314,7 @@ export function readSpec(
   const scope = expander.appScope(blocks, names);
   const isSelection = (n: string) => selects.has(n) || expander.selections.has(n);
   // Names whose values only come at run time, from whoever types or picks them.
-  const late = (n: string) => isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
+  const late = (n: string) => n === THIS || isSelection(n) || inputs.some((d) => d.name === n && d.kind === "text");
 
   const panels: PanelSpec[] = [];
   const used = new Set<string>();
@@ -287,10 +325,17 @@ export function readSpec(
     const at = (e: string) => (p.label ? `${p.label}: ${e}` : e);
     const uses = refsIn(p.template);
     for (const n of uses) used.add(n);
-    const bare = bareRefs(p.template).filter(isSelection);
+    const bare = bareRefs(p.template).filter((n) => n === THIS || isSelection(n));
     if (bare.length) {
-      errors.push(...[...new Set(bare)].map((n) => at(`say which field: $${typedName(n)}.id`)));
+      errors.push(...[...new Set(bare)].map((n) => at(n === THIS ? "say which property: $this.rating" : `say which field: $${typedName(n)}.id`)));
       return;
+    }
+    if (p.template.save === THIS) {
+      if (!opts.host) {
+        errors.push(at(SAVE_THIS_HOSTED));
+        return;
+      }
+      p.template.target = { kind: "this", ...(opts.host.scope ? { scope: opts.host.scope } : {}) };
     }
     const selected = selectOf(p.template);
     if (selected !== undefined && isSelection(selected)) {
@@ -380,6 +425,7 @@ function appSelects(fm: Record<string, unknown>, inputs: ReadonlySet<string>, er
     if (name === undefined || out.has(name)) return;
     const at = listed ? `panel ${i + 1}: ` : "";
     if (!NAME.test(name)) errors.push(`${at}select: "${name}" can only use letters, digits and _`);
+    else if (name === THIS) errors.push(`${at}select: ${TAKEN}`);
     else if (inputs.has(name)) errors.push(`${at}select: "${name}" is already an input`);
     else out.add(name);
   });
@@ -426,6 +472,8 @@ export interface ComponentPreview {
   usage: string;
   /** Params without a default; the preview needs them all filled. */
   missing: string[];
+  /** A lens's `for` scope: it runs on the notes there, so it isn't previewed on its own. */
+  lens?: string;
 }
 
 export function isComponent(fm: Record<string, unknown> | undefined): boolean {
@@ -441,20 +489,40 @@ export function readComponentPreview(fm: Record<string, unknown>, opts: { now?: 
   const params = componentParams(fm.params) ?? new Map<string, unknown>();
   const missing = [...params].filter(([, v]) => v === undefined).map(([k]) => k);
   const self = opts.path.replace(/\.md$/i, "");
+  const lens = fm.for === undefined || fm.for === null ? undefined : readFor(fm.for);
+  const scope = lens && "scope" in lens ? lens.scope : undefined;
+  // A lens is checked as it runs: sitting in a note of its scope.
   const result = readSpec({
     app: fm.component === true ? "" : String(fm.component),
     use: `[[${self}]]`,
     with: Object.fromEntries(missing.map((n) => [n, n])),
-  }, opts)!;
+  }, scope ? { ...opts, host: { scope } } : opts)!;
   const values = [...params].map(([k, v]) => `${k}: ${v === undefined ? "…" : typeof v === "string" ? v : JSON.stringify(v)}`);
   const usage = `panels:\n  - use: "[[${basename(opts.path)}]]"${values.length ? `\n    with: {${values.join(", ")}}` : ""}`;
-  return { result, usage, missing };
+  return { result, usage, missing, lens: scope };
+}
+
+/**
+ * The panels whose title or label (as typed) is one of `names`, for an embed that shows part of an
+ * app, with the inputs those panels use. `app` names the app in messages.
+ */
+export function pickPanels(spec: AppSpec, names: readonly string[], app: string): { spec: AppSpec; errors: string[] } {
+  const namesOf = (ps: PanelSpec) => [ps.template.title, ps.template.label].filter((v): v is string => typeof v === "string");
+  const panels = spec.panels.filter((ps) => namesOf(ps).some((n) => names.includes(n)));
+  const known = spec.panels.map((ps) => namesOf(ps)[0]).filter((n) => n !== undefined);
+  const has = known.length ? `it has ${known.join(", ")}` : "none of its panels has a title or label";
+  const errors = names.filter((n) => !spec.panels.some((ps) => namesOf(ps).includes(n)))
+    .map((n) => `panels: ${app} has no panel called "${n}" (${has})`);
+  const inputs = spec.inputs.filter((d) => panels.some((ps) => ps.inputs.includes(d.name)));
+  return { spec: { ...spec, panels, inputs }, errors };
 }
 
 /** A panel's permissions, each with the key that asks for it. */
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   const out: [string, keyof Panel][] = p.source ? sourceDef(p.source).permissions(p, selfPath) : [];
   if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
+  // A lens writes the properties of whichever note in its scope it is shown on.
+  if (p.target?.kind === "this" && p.target.scope) out.push([`edit:${p.target.scope}`, "save"]);
   if (p.target?.kind === "folder") {
     out.push([`create:${p.target.folder}`, "save"]);
     if (p.template) out.push([`read:${notePath(storeTarget(p.template))}`, "template"]);
