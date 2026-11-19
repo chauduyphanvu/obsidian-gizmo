@@ -18,10 +18,12 @@ export const list: SourceDef = {
   validate: (p) => (RESERVED.includes(p.source!) ? [`source can't use "${p.source}", which names part of the app`] : []),
   permissions: () => [],
   deps: (_p, files) => [fileDep(files.dataPath), fileDep(files.appPath)],
-  load(p, files, layer) {
+  // One copy per version of the two notes, shared by every panel and the background: nothing
+  // downstream changes a loaded row or list in place.
+  load: (p, files, layer) => layer.kept(`list\n${files.dataPath}\n${files.appPath}\n${p.source}`, [files.dataPath, files.appPath], () => {
     const value = resolveList(p.source!, layer.host.frontmatter(files.dataPath), layer.host.frontmatter(files.appPath) ?? {});
     // Copies: the rows in the metadata cache are never changed. Not enumerable, so rows still
     // compare and serialise as typed.
     return Array.isArray(value) ? value.map((r, i) => (isRow(r) ? Object.defineProperty({ ...r }, ROW_INDEX, { value: i }) : r)) : value;
-  },
+  }),
 };

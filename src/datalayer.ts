@@ -71,6 +71,8 @@ export class DataLayer {
   private parsedFiles = new Map<string, Promise<unknown>>();
   /** What each parse made of a note's text, by note path; dropped when the note changes. */
   private parsed = new Map<string, Map<unknown, Promise<unknown>>>();
+  /** What `kept` made, by key, with the files it was made from; dropped when one of them changes. */
+  private made = new Map<string, { paths: string[]; value: unknown }>();
 
   /** What sources read the vault through. */
   readonly host: Host;
@@ -201,6 +203,18 @@ export class DataLayer {
     return promise;
   }
 
+  /**
+   * What `make` returns, made once and kept until one of `paths` changes, is deleted or is renamed.
+   * For work that reads only those files' frontmatter, which every panel on them would otherwise repeat.
+   */
+  kept<T>(key: string, paths: string[], make: () => T): T {
+    const hit = this.made.get(key);
+    if (hit) return hit.value as T;
+    const value = make();
+    this.made.set(key, { paths, value });
+    return value;
+  }
+
   // ---- Notes --------------------------------------------------------------------------------
 
   /** Notes in any of the comma-separated scopes (a #tag, which includes its sub-tags, or a folder). */
@@ -287,6 +301,7 @@ export class DataLayer {
   private touch(path: string, before: Row | undefined, after: Row | undefined): void {
     this.pending.add(fileDep(path));
     this.parsedFiles.delete(path);
+    for (const [key, made] of this.made) if (made.paths.includes(path)) this.made.delete(key);
     // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
     this.pending.add(nameDep(basename(path)));
     // Heard by whatever reads every note, such as a base.
