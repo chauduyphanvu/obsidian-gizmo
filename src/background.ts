@@ -244,7 +244,7 @@ export class Background {
     if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
     if (!this.granted(entry)) return this.say(`Open ${entry.name} once to allow it`);
     const now = this.env.now();
-    const r = resolvePanel(ps, startingValues(entry.spec.inputs, now));
+    const r = resolvePanel(ps, this.valuesOf(entry.path, entry.spec, now));
     if (!r.panel) return this.env.sink.openApp(entry.path);
     const p = r.panel;
     let input: Row = {};

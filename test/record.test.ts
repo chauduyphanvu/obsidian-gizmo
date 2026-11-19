@@ -168,3 +168,13 @@ test("a recorded block whose keys can't be read as a panel says why, and records
   await t.bg.start();
   assert.deepEqual(t.f.requests, []);
 });
+
+test("a recorded block may read $this, the app note, as the app's panels do", async () => {
+  const KPC = "https://api.example.com/kp";
+  const fm = { app: "Kp", city: "Oslo", data: { kp: { source: `${KPC}?city=$this.city`, pick: "current", record: "1h" } }, panels: [{ view: "number", source: "kp_log", agg: "count" }] };
+  assert.deepEqual(readSpec(fm, { path: "Apps/Kp.md" })!.errors, []);
+  const t = fakeBackground({ "Apps/Kp.md": { fm } }, { [KPC]: { current: { kp: 4 } } });
+  await t.bg.start();
+  assert.deepEqual(t.f.requests, [`${KPC}?city=Oslo`]);
+  assert.deepEqual(t.f.files.get("Apps/Kp data.md")!.fm!.kp_log, [{ at: "2026-11-18T12:00", kp: 4 }]);
+});

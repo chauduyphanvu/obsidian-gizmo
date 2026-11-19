@@ -117,3 +117,22 @@ test("a link names its app by path or name; none or several is said so", async (
   assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
   assert.equal(t.data("doses"), undefined);
 });
+
+test("a shortcut reading $this runs with the app note as $this, as its panel does when the app is open", async () => {
+  const fm = {
+    app: "Walk", city: "Oslo",
+    panels: [
+      { view: "button", label: "Walked", save: "walks", row: { city: "$this.city" }, notify: "Walked in $this.city", shortcut: "walked" },
+      { view: "form", fields: { km: "number" }, save: "legs", row: { km: "{km}", city: "$this.city" }, shortcut: "leg" },
+    ],
+  };
+  const t = fakeBackground({ "Apps/Walk.md": { fm } });
+  await t.bg.start();
+  await t.bg.runCommand("Apps/Walk.md:walked");
+  await t.bg.runUri({ app: "Walk", do: "leg", km: "3" });
+  const data = t.f.files.get("Apps/Walk data.md")?.fm;
+  assert.deepEqual(data?.walks, [{ city: "Oslo", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(data?.legs, [{ km: 3, city: "Oslo", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.notices, ["Walked in Oslo", "Walk: leg done"]);
+  assert.deepEqual(t.out.apps, [], "nothing opened the app");
+});
