@@ -119,17 +119,42 @@ export default async function apps(t) {
     return `QQQ over 1y; held ${r.heldText}, worth ${r.worth}`;
   }, { net: NET.Portfolio });
 
-  await check("Day: the date bar picks the notes", async () => {
+  await check("Appointments: a day in the bar shows that day and keeps a half-typed booking; booking for tomorrow makes a note, pins it and tells me; Done writes the note", async () => {
+    const want = ["Change properties of notes in Health", "Create notes in Health", "Read notes in Health"];
+    expect(JSON.stringify([...(prompts.Appointments ?? [])].sort()) === JSON.stringify(want), prompts.Appointments);
     const r = await run(`
-      await na.open("Apps/Day");
+      await na.open("Apps/Appointments");
       const el = na.view().contentEl;
-      const date = el.querySelector('.na-inputs input[type="date"]');
-      date.value = "2027-01-15";
-      date.dispatchEvent(new Event("change"));
+      const panel = (start) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent.startsWith(start));
+      const items = (start) => [...panel(start).querySelectorAll("li")].map((li) => li.textContent);
+      const form = panel("Book an appointment");
+      const [what, date, who] = form.querySelectorAll("input");
+      na.fill(what, "Blood test");
+      na.fill(el.querySelector('.na-inputs input[type="date"]'), "2027-01-15");
+      await na.until(() => panel("On ")?.querySelector(".na-title").textContent === "On 2027-01-15" && !el.querySelector(".na-stale"), 3000);
+      await na.sleep(300);
+      const picked = { title: panel("On ").querySelector(".na-title").textContent, items: items("On "), typed: form.querySelector("input").value };
+      const d = new Date(); d.setDate(d.getDate() + 1);
+      const tomorrow = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      na.fill(date, tomorrow); na.fill(who, "Dr. Kim");
+      const mark = na.notices.length;
+      na.button("Book", form).click();
+      const note = "Health/Blood test " + tomorrow + ".md";
+      const fm = await na.until(() => na.fm(note), 3000);
+      const notices = await na.noticesSince(mark, "Next appointment", 5000);
+      const pinned = await na.until(() => na.status().find((s) => s === "Next appointment: 1 day"), 3000);
+      await na.sleep(500);
+      const first = items("Coming up")[0];
+      const row = [...panel("All appointments").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td").textContent === "Blood test " + tomorrow);
+      row.querySelector('input[type="checkbox"]').click();
+      const done = await na.until(() => na.fm(note)?.done === true, 3000);
       await na.sleep(800);
-      return { title: el.querySelector(".na-view-list .na-title")?.textContent, items: [...el.querySelectorAll(".na-view-list li")].map((li) => li.textContent) };`);
-    if (r.title !== "On 2027-01-15" || JSON.stringify(r.items) !== JSON.stringify(["Eye exam (Dr. Patel)"])) throw new Error(JSON.stringify(r));
-    return "2027-01-15 → Eye exam";
+      return { picked, tomorrow, fm, notices: notices.slice(0), pinned, first, done, after: items("Coming up"), errors: na.errors() };`);
+    expect(JSON.stringify(r.picked) === JSON.stringify({ title: "On 2027-01-15", items: ["Eye exam with Dr. Patel"], typed: "Blood test" }), r.picked);
+    expect(r.fm?.what === "Blood test" && r.fm?.date === r.tomorrow && r.fm?.who === "Dr. Kim" && r.fm?.at, r.fm);
+    expect(r.notices.includes(`Booked Blood test on ${r.tomorrow}`) && r.notices.includes("Appointments: Next appointment (1 row)") && r.pinned, r);
+    expect(r.first === "tomorrow · Blood test with Dr. Kim" && r.done && !r.after.some((i) => i.includes("Blood test")) && r.errors === 0, r);
+    return `${r.picked.items[0]} on ${r.picked.title.slice(3)}; booked for ${r.tomorrow}, told and pinned; ticked done`;
   });
 
   await check("AAPL: a whole note from one component, its price pinned to the status bar", async () => {
@@ -207,8 +232,9 @@ export default async function apps(t) {
       await na.open("Apps/Appointments");
       await app.fileManager.processFrontMatter(app.vault.getFileByPath("Health/Dentist.md"), (fm) => { fm.date = "2026-12-20"; });
       await na.sleep(1500);
-      return na.text();`);
-    if (!r.includes("2026-12-20")) throw new Error(r.slice(0, 160));
+      const row = [...na.view().contentEl.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.querySelector("td").textContent === "Dentist");
+      return row?.querySelector('input[type="date"]')?.value;`);
+    if (r !== "2026-12-20") throw new Error(String(r));
     return "updated without reopening";
   });
 

@@ -658,3 +658,71 @@ test("AAPL: the whole note is the Ticker; its price is in the status bar, a 3% f
   assert.equal(text(panels()[5].querySelector(".na-big")), "$1,980.00");
   assert.equal(text(panels()[6].querySelector(".na-big")), "$80.00");
 });
+
+/** The Health folder of the test vault, as notes. */
+function health() {
+  const names = readdirSync(new URL("./vault/Health", import.meta.url)).filter((n) => n.endsWith(".md"));
+  return Object.fromEntries(names.map((n) => [`Health/${n}`, { fm: vaultNote(`Health/${n}`).fm }]));
+}
+
+test("Appointments: what's coming up, a day's appointments, book one, and tick it off or move it", async () => {
+  const path = "Apps/Appointments.md";
+  const spec = readSpec(vaultNote(path).fm, { path })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["create:Health", "edit:Health", "read:Health"]);
+
+  const t = fakeBackground({ [path]: { fm: vaultNote(path).fm }, ...health() });
+  await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
+  assert.deepEqual(t.out.status, [{ appPath: path, text: "Next appointment: 16 days", title: "Appointments" }]);
+  assert.deepEqual(t.notices, []);
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  mount(root, path, t.env);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [coming, next, form, day, all] = panelsOf(root);
+  const items = (panel: Element) => [...panel.querySelectorAll("li")].map((li) => text(li));
+  // The physical in September is past, so it is only in the table.
+  assert.deepEqual(items(coming), ["in 16 days · Dentist with Dr. Lee", "in 58 days · Eye exam with Dr. Patel"]);
+  assert.equal(text(next.querySelector(".na-big")), "16 days");
+  assert.equal(text(day.querySelector(".na-title")), "On 2026-11-18");
+  assert.equal(text(day.querySelector(".na-empty")), "Nothing here yet.");
+  assert.deepEqual([...all.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))), ["Eye exam", "Dentist", "Physical"]);
+
+  // Half-way through booking, look at another day: the form keeps what was typed.
+  const [what, date, who] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
+  what.value = "Blood test";
+  const bar = root.querySelector('.na-inputs input[type="date"]') as HTMLInputElement;
+  bar.value = "2027-01-15";
+  bar.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal(text(panelsOf(root)[3].querySelector(".na-title")), "On 2027-01-15");
+  assert.deepEqual(items(panelsOf(root)[3]), ["Eye exam with Dr. Patel"]);
+  assert.equal((panelsOf(root)[2].querySelector("input") as HTMLInputElement).value, "Blood test");
+
+  // Booked for tomorrow: a note in Health, first in line, in the status bar, and told.
+  [date.value, who.value] = ["2026-11-19", "Dr. Kim"];
+  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  await settle();
+  assert.deepEqual(t.f.files.get("Health/Blood test 2026-11-19.md")!.fm, { what: "Blood test", date: "2026-11-19", who: "Dr. Kim", at: "2026-11-18T12:00" });
+  assert.deepEqual(items(panelsOf(root)[0])[0], "tomorrow · Blood test with Dr. Kim");
+  assert.equal(text(panelsOf(root)[1].querySelector(".na-big")), "1 day");
+  assert.deepEqual(t.notices, ["Booked Blood test on 2026-11-19", "Appointments: Next appointment (1 row)"]);
+  assert.equal(t.out.status[0].text, "Next appointment: 1 day");
+
+  // Done: it leaves what's coming up. The dentist moves to the 20th.
+  const row = (name: string) => [...panelsOf(root)[4].querySelectorAll("tbody tr")].find((tr) => text(tr.querySelector("td")) === name)!;
+  const tick = row("Blood test 2026-11-19").querySelector('input[type="checkbox"]') as HTMLInputElement;
+  tick.checked = true;
+  tick.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal(t.f.files.get("Health/Blood test 2026-11-19.md")!.fm!.done, true);
+  const moved = row("Dentist").querySelector('input[type="date"]') as HTMLInputElement;
+  moved.value = "2026-12-20";
+  moved.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal(t.f.files.get("Health/Dentist.md")!.fm!.date, "2026-12-20");
+  assert.deepEqual(items(panelsOf(root)[0]), ["in 32 days · Dentist with Dr. Lee", "in 58 days · Eye exam with Dr. Patel"]);
+  assert.equal(t.out.status[0].text, "Next appointment: 32 days");
+});
