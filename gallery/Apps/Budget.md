@@ -4,9 +4,12 @@ data:
   spend:
     source: spend
     fields:
-      amount: number
+      amount: {type: number, label: Spent, format: "$0,0.00"}
       category: [food, home, transport, fun, other]
       note: text
+  month:
+    source: spend
+    where: {at: this month}
 panels:
   - view: form
     title: Spent something
@@ -14,17 +17,14 @@ panels:
     label: Add
   - view: number
     title: This month
-    source: spend
-    where: {at: this month}
+    source: month
     field: amount
     agg: sum
     compare: previous
-    format: "$0,0.00"
     label: spent so far
   - view: progress
     title: Against my limit
-    source: spend
-    where: {at: this month}
+    source: month
     field: amount
     agg: sum
     max: 2000
@@ -54,9 +54,9 @@ panels:
     sort: -at
     limit: 10
     columns: [at, amount, category, note]
-    labels: {at: When, amount: Spent}
-    format: {amount: "$0,0.00", at: relative}
-    edit: [amount, category, note]
+    labels: {at: When}
+    format: {at: relative}
+    edit: true
 ---
 Add each purchase as you make it. You get a notice once the month's total reaches the limit (the
 2000 in `max` and `alert`), and the bars stack each week by category against the `goal` line;

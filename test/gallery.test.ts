@@ -266,6 +266,9 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   const root = await t.open(path);
   assert.equal(root.querySelector(".na-error"), null);
   const [form, month, limit, chart, recent] = panels(root);
+  // The amount field carries its label and money format to the form, the number and the table.
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["Spent", "category", "note"]);
+  assert.deepEqual([...recent.querySelectorAll("th")].map(text), ["When", "Spent", "category", "note"]);
   assert.equal(text(month.querySelector(".na-big")), "$700.00");
   assert.equal(text(limit.querySelector(".na-big")), "$700/ $2,000");
   assert.equal(text(month.querySelector(".na-compare")), "▼ $1,100.00 (61%) vs previous");
