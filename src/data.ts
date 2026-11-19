@@ -11,7 +11,7 @@ export type Row = Record<string, unknown>;
  */
 export function copyRow(row: Row): Row {
   const out: Row = { ...row };
-  for (const s of Object.getOwnPropertySymbols(row)) (out as Record<symbol, unknown>)[s] = (row as Record<symbol, unknown>)[s];
+  for (const s of Object.getOwnPropertySymbols(row)) Object.defineProperty(out, s, Object.getOwnPropertyDescriptor(row, s)!);
   return out;
 }
 

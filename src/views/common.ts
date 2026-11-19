@@ -1,4 +1,6 @@
 import type { Row } from "../data.ts";
+import { ROW_INDEX } from "../sources/list.ts";
+import { sourceDef } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import type { PanelCtx } from "./registry.ts";
 
@@ -188,11 +190,18 @@ export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void):
 /** What each selectable element picks, so picking one can mark the others in its panel again. */
 const PICKS = new WeakMap<Element, { p: Panel; ctx: PanelCtx; row: Row }>();
 
-/** Whether two rows of one panel are the same row: by group key, then note path, then content. */
+/** What tells a row apart from the others of its panel across reloads: its place in a saved list, or its note. */
+export function rowKey(r: Row): unknown {
+  const index = (r as Record<symbol, unknown>)[ROW_INDEX];
+  return typeof index === "number" ? index : typeof r.path === "string" ? r.path : undefined;
+}
+
+/** Whether two rows of one panel are the same row: by group key, then list place or note, then content. */
 export function sameRow(p: Panel, a: Row | undefined, b: Row): boolean {
   if (!a) return false;
   if (p.group) return a[p.group] === b[p.group];
-  if (typeof a.path === "string" && typeof b.path === "string") return a.path === b.path;
+  const key = rowKey(a);
+  if (key !== undefined) return key === rowKey(b);
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
@@ -223,27 +232,65 @@ function markAll(el: Element): void {
  * `select`: a button for the mouse and keyboard (Enter or Space), marked `na-selected` while its
  * row is the selection. Picking it again clears the selection. Every element of the panel is marked
  * again in place, so the panel isn't redrawn. Does nothing when the panel has no `select`.
+ * Returns what a view that updates rows in place calls with the row's new values: the element then
+ * picks those, and a selection of this row takes them too.
  */
-export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string): void {
-  if (!p.select) return;
+export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string): (row: Row) => void {
+  if (!p.select) return () => {};
   const name = p.select;
-  PICKS.set(el, { p, ctx, row });
+  const pick = { p, ctx, row };
+  PICKS.set(el, pick);
   el.classList.add("na-selectable");
   el.setAttribute("role", "button");
   el.setAttribute("tabindex", "0");
   if (label) el.setAttribute("aria-label", label);
   mark(el, sameRow(p, ctx.selected(name), row));
-  const pick = () => {
-    ctx.select(name, sameRow(p, ctx.selected(name), row) ? undefined : row);
+  const toggle = () => {
+    ctx.select(name, sameRow(p, ctx.selected(name), pick.row) ? undefined : pick.row);
     markAll(el);
   };
-  el.addEventListener("click", (e) => { if (!fromControl(e, el)) pick(); });
+  el.addEventListener("click", (e) => { if (!fromControl(e, el)) toggle(); });
   el.addEventListener("keydown", (e) => {
     const key = (e as KeyboardEvent).key;
     if ((key !== "Enter" && key !== " ") || fromControl(e, el)) return;
     e.preventDefault();
-    pick();
+    toggle();
   });
+  return (next) => {
+    pick.row = next;
+    const current = ctx.selected(name);
+    if (current && current !== next && sameRow(p, current, next) && JSON.stringify(current) !== JSON.stringify(next)) ctx.select(name, next);
+  };
+}
+
+// ---- Edit in place -------------------------------------------------------------------------------
+
+/** Fields of a notes row that come from the file, not from its properties. */
+const FILE_FIELDS = ["name", "path", "tags", "mtime", "ctime"];
+
+/** What a panel's rows can be written back to: their notes, or their saved list; else undefined. */
+export function editableSource(p: Panel): "notes" | "list" | undefined {
+  const id = p.source ? sourceDef(p.source).id : undefined;
+  return id === "notes" || id === "list" ? id : undefined;
+}
+
+/**
+ * Problems with changing these fields of a panel's rows where they came from (a table's `edit`;
+ * a board's group field). The source is decided by the root of its chain; computed columns and a
+ * note's file fields can't be written.
+ */
+export function editErrors(p: Panel, fields: readonly string[]): string[] {
+  const kind = editableSource(p);
+  if (!kind) return ["edit works on notes and saved lists"];
+  const computed = new Set([p, ...(p.upstream ?? [])].flatMap((s) => Object.keys(s.compute ?? {})));
+  return fields.flatMap((f) => (computed.has(f) ? [`edit: "${f}" is computed`]
+    : kind === "notes" && FILE_FIELDS.includes(f) ? [`edit: "${f}" comes from the note's file, not its properties`]
+    : []));
+}
+
+/** The permission changing a panel's rows needs, asked by `key`: notes in its `from`; a saved list is the app's own. */
+export function editPermissions(p: Panel, key: keyof Panel): [string, keyof Panel][] {
+  return editableSource(p) === "notes" && p.from ? [[`edit:${p.from}`, key]] : [];
 }
 
 /** A handle whose update simply redraws the panel's contents. */

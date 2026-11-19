@@ -10,7 +10,9 @@ import {
 import type { InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
-import { defaultDataPath } from "./store.ts";
+import { ROW_INDEX } from "./sources/list.ts";
+import { defaultDataPath, resolveList } from "./store.ts";
+import { editErrors, editableSource } from "./views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import { formatClock } from "./views/timer.ts";
 
@@ -70,6 +72,12 @@ function plainTitle(ps: PanelSpec): string | undefined {
   return typeof ps.template.title === "string" ? ps.template.title : undefined;
 }
 
+/** Whether a stored list row still holds what was shown for it, apart from the field being changed. */
+function holds(stored: unknown, shown: Row, field: string): stored is Row {
+  if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return false;
+  return Object.entries(stored).every(([k, v]) => k === field || JSON.stringify(v) === JSON.stringify(shown[k]));
+}
+
 /** JSON with object keys sorted, so the order keys were typed in doesn't matter. */
 function stableJson(v: unknown): string {
   if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
@@ -127,7 +135,8 @@ export class AppController {
   private barFor = "";
   /** Names of the component notes the app links to; a change to any of them redraws it. */
   private links: string[] = [];
-  private ctx: PanelCtx;
+  /** What every panel may ask; each gets its own copy that knows which panel it is (see ctxFor). */
+  private ctx: Omit<PanelCtx, "editRow">;
 
   constructor(root: HTMLElement, appPath: string, env: AppEnv) {
     this.root = root;
@@ -458,7 +467,7 @@ export class AppController {
       this.halt(m, r.waiting, r.errors);
       return m;
     }
-    m.handle = def.mount(el, p, this.ctx, id);
+    m.handle = def.mount(el, p, this.ctxFor(id), id);
     if (source) {
       el.addClass("na-loading");
       el.createDiv({ cls: "na-title", text: p.title ?? p.label ?? "" });
@@ -489,7 +498,7 @@ export class AppController {
     if (m.remount) {
       m.handle.destroy?.();
       m.el.empty();
-      m.handle = m.def.mount(m.el, m.p, this.ctx, m.id);
+      m.handle = m.def.mount(m.el, m.p, this.ctxFor(m.id), m.id);
       m.remount = false;
     }
     m.el.removeClass("na-loading", "na-error", "na-stale");
@@ -578,6 +587,53 @@ export class AppController {
 
   private writeData(fn: (fm: Record<string, unknown>) => void): Promise<void> {
     return this.env.writeFrontmatter(this.dataPath, fn);
+  }
+
+  /** A panel's own view of the app: what every panel may ask, and edits that know whose rows they are. */
+  private ctxFor(id: string): PanelCtx {
+    return Object.assign(Object.create(this.ctx) as PanelCtx, {
+      editRow: (row: Row, field: string, value: unknown) => this.editRow(id, row, field, value),
+    });
+  }
+
+  /**
+   * Writes one field of a row a panel shows back where it came from, as far as the panel's checked
+   * keys allow: a note in its `from` (granted as edit:<from>), or the row's place in the list it
+   * reads, which must still hold the row that was shown.
+   */
+  private async editRow(id: string, row: Row, field: string, value: unknown): Promise<void> {
+    const m = this.mounted.get(id);
+    if (!m || m.idle || editErrors(m.p, [field]).length) return;
+    try {
+      if (editableSource(m.p) === "notes") {
+        const path = row.path;
+        if (typeof path !== "string" || !this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
+        await this.env.writeFrontmatter(path, (fm) => { fm[field] = value; });
+        return;
+      }
+      const index = (row as Record<symbol, unknown>)[ROW_INDEX];
+      if (typeof index !== "number") return;
+      const name = m.p.source!;
+      let changed = false;
+      await this.writeData((fm) => {
+        const list = resolveList(name, fm, this.env.frontmatter(this.appPath) ?? {});
+        const stored = Array.isArray(list) ? list[index] : undefined;
+        if (!Array.isArray(list) || !holds(stored, row, field)) {
+          changed = true;
+          return;
+        }
+        const next = [...list];
+        next[index] = { ...stored, [field]: value };
+        fm[name] = next;
+      });
+      if (changed) {
+        this.env.notify("That row has changed; reload");
+        // Shows the list as it is now, putting back what the input claimed.
+        void this.loadPanel(m);
+      }
+    } catch (e) {
+      this.env.notify(`Couldn't save: ${(e as Error).message}`);
+    }
   }
 
   async runActions(p: Panel, row: Row): Promise<void> {

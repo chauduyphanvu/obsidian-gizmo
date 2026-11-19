@@ -10,7 +10,7 @@ import {
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
-import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
+import { COMMON_KEYS, KEY_TYPES, editPermissions, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 
 export { parseDuration };
@@ -458,6 +458,9 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
     out.push([`create:${p.target.folder}`, "save"]);
     if (p.template) out.push([`read:${notePath(storeTarget(p.template))}`, "template"]);
   }
+  // A board moves cards by changing their group field, so it edits without an `edit` key.
+  if (p.edit?.length) out.push(...editPermissions(p, "edit"));
+  else if (p.view === "board") out.push(...editPermissions(p, "group"));
   return out;
 }
 
@@ -498,6 +501,7 @@ export function describePermission(perm: string): string {
     case "write": return `Add lines to ${what}`;
     case "store": return `Save its data in ${what}`;
     case "create": return `Create notes in ${what}`;
+    case "edit": return `Change properties of notes in ${what}`;
     default: return perm;
   }
 }

@@ -206,3 +206,5 @@
 .note-app .na-bar.na-selected, .note-app .na-slice.na-selected { stroke: var(--text-normal); stroke-width: 1.5; }
 .note-app .na-row-action { margin-left: var(--size-4-2); }
 .note-app td.na-row-actions { text-align: right; white-space: nowrap; }
+.note-app .na-table .na-edit { width: 100%; min-width: 4em; }
+.note-app .na-table input.na-edit[type="checkbox"] { width: auto; min-width: 0; }

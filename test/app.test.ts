@@ -59,7 +59,7 @@ test("every view's examples draw", () => {
     runActions: async () => {}, toggleChecked: async () => {}, clearChecked: async () => {},
     openNote: () => {}, timer: () => ({ remainingMs: 60_000 }),
     startTimer: () => {}, pauseTimer: () => {}, resetTimer: () => {},
-    select: () => {}, selected: () => undefined,
+    select: () => {}, selected: () => undefined, editRow: async () => {},
   };
   for (const def of VIEW_DEFS) {
     for (const ex of def.examples.filter((e) => !e.errors)) {

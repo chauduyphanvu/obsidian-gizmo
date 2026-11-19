@@ -28,6 +28,12 @@ export interface PanelCtx {
   /** Sets the selection `name` (a panel's `select`) to a row, or clears it; panels reading it follow. */
   select(name: string, row: Row | undefined): void;
   selected(name: string): Row | undefined;
+  /**
+   * Writes one field of a row this panel shows back where the row came from: the note's
+   * frontmatter (a notes row), or its place in the saved list. Problems are notified, not thrown;
+   * the panel updates when the write lands.
+   */
+  editRow(row: Row, field: string, value: unknown): Promise<void>;
 }
 
 export interface PanelHandle {
