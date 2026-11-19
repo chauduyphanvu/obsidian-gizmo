@@ -66,6 +66,20 @@ export function toTime(v: unknown): number | undefined {
   return undefined;
 }
 
+/** The UTC date of a time as YYYY-MM-DD; undefined outside years 0 to 9999, which that can't write. */
+function utcDay(t: number): string | undefined {
+  if (!(Math.abs(t) <= 8.64e15)) return undefined;
+  const iso = new Date(t).toISOString();
+  return iso.length === 24 ? iso.slice(0, 10) : undefined;
+}
+
+/** Whether text is shaped like a stamp, YYYY-MM-DD or YYYY-MM-DDTHH:MM, whatever its numbers. */
+function stampShape(v: string): boolean {
+  if (v.length !== 10 && v.length !== 16) return false;
+  if (twoDigits(v, 0) < 0 || twoDigits(v, 2) < 0 || v.charCodeAt(4) !== 45 || twoDigits(v, 5) < 0 || v.charCodeAt(7) !== 45 || twoDigits(v, 8) < 0) return false;
+  return v.length === 10 || (v.charCodeAt(10) === 84 && twoDigits(v, 11) >= 0 && v.charCodeAt(13) === 58 && twoDigits(v, 14) >= 0);
+}
+
 /** The two digits at i as a number, or -1. */
 function twoDigits(s: string, i: number): number {
   const a = s.charCodeAt(i) - 48, b = s.charCodeAt(i + 1) - 48;
@@ -191,7 +205,13 @@ function compileCondition(cond: string | number | boolean, now: Date): Test {
   const window = dateWindow(cond, now);
   if (window) {
     const [from, to] = window;
+    // A stamp dated a week or more outside the window can't be in it in any time zone (an offset is
+    // under a day; a day past the month's end, day 00 or hour 24 moves it three days at most), so
+    // most rows of a long list are ruled out by their text, without being read as a time.
+    const before = utcDay(from - 7 * DAY) ?? "";
+    const after = `${utcDay(to + 7 * DAY) ?? "~"}T~`;
     return (v) => {
+      if (typeof v === "string" && (v < before || v > after) && stampShape(v)) return false;
       const t = toTime(v);
       return t !== undefined && t >= from && t < to;
     };
