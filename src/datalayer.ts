@@ -1,7 +1,8 @@
 import { parseBody, stampParts, type Row } from "./data.ts";
 import { compilePipeline } from "./pipeline.ts";
-import { isUrl, type Panel } from "./spec.ts";
-import { resolveList } from "./store.ts";
+import { sourceDef } from "./sources/registry.ts";
+import type { LoadOpts } from "./sources/types.ts";
+import type { Panel } from "./spec.ts";
 
 export interface FileInfo {
   path: string;
@@ -52,7 +53,8 @@ export class DataLayer {
   private pending = new Set<string>();
   private flushQueued = false;
 
-  private host: Host;
+  /** What sources read the vault through. */
+  readonly host: Host;
 
   constructor(host: Host) {
     this.host = host;
@@ -63,22 +65,13 @@ export class DataLayer {
   /** The dependency keys a panel's data comes from, so its app knows when to update it. */
   depsOf(source: string | undefined, p: Panel, files: AppFiles): string[] {
     if (!source) return [];
-    if (isUrl(source)) return [`url:${source}`];
-    if (source === "notes") return [`notes:${p.from ?? ""}`];
-    return [`file:${files.dataPath}`, `file:${files.appPath}`];
+    return sourceDef(source).deps(withSource(p, source), files);
   }
 
-  async panelData(
-    source: string | undefined,
-    p: Panel,
-    files: AppFiles,
-    opts: { ttlMs: number; force?: boolean; now: Date },
-  ): Promise<unknown> {
+  /** `source` may differ from `p.source`: a checklist reads the list it saves to. */
+  async panelData(source: string | undefined, p: Panel, files: AppFiles, opts: LoadOpts): Promise<unknown> {
     if (!source) return undefined;
-    let data: unknown;
-    if (isUrl(source)) data = await this.fetch(source, p.headers, opts.ttlMs, opts.force);
-    else if (source === "notes") data = this.notes(p.from ?? "");
-    else data = resolveList(source, this.host.frontmatter(files.dataPath), this.host.frontmatter(files.appPath) ?? {});
+    const data = await sourceDef(source).load(withSource(p, source), files, this, opts);
     return compilePipeline(p, opts.now)(data);
   }
 
@@ -211,6 +204,10 @@ export class DataLayer {
       }
     });
   }
+}
+
+function withSource(p: Panel, source: string): Panel {
+  return p.source === source ? p : { ...p, source };
 }
 
 function splitScopes(from: string): string[] {

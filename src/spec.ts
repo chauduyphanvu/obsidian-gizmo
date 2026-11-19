@@ -1,5 +1,6 @@
 import { PERIODS, stampParts, type Agg, type Per } from "./data.ts";
-import { storeTarget } from "./store.ts";
+import { sourceDef } from "./sources/registry.ts";
+import { RESERVED, storeTarget } from "./store.ts";
 import {
   readInputs, refsIn, resolveInputs, type InputDef, type InputValue,
 } from "./template.ts";
@@ -84,9 +85,6 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, Inpu
 }
 
 
-/** Top-level keys that define an app or component; lists may never be named after them. */
-export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params"];
-
 export interface SpecResult {
   spec?: AppSpec;
   errors: string[];
@@ -95,7 +93,7 @@ export interface SpecResult {
 }
 
 export function isUrl(source: string | undefined): source is string {
-  return !!source && /^https?:\/\//i.test(source);
+  return !!source && sourceDef(source).id === "url";
 }
 
 export function parseDuration(value: unknown): number | undefined {
@@ -134,23 +132,20 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
   const problems = [
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
-    ...(p.source === "notes" && !p.from ? ['source "notes" needs "from" (a #tag or folder)'] : []),
-    ...(p.source && /^http:\/\//i.test(p.source) ? ["source must use https"] : []),
+    ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
     ...(p.per && !p.group ? ['"per" needs "group"'] : []),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
     ...(p.per && !PERIODS.includes(p.per) ? [`per must be one of ${PERIODS.join(", ")}`] : []),
     ...(p.group === "count" ? ['group can\'t be "count"; every group gets a count'] : []),
     ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
-    ...(isListName(p.source) && RESERVED.includes(p.source) ? [`source can't use "${p.source}", which names part of the app`] : []),
-    ...(p.source && /^https?:\/\/[^/?#]*\{secret:/i.test(p.source) ? ["a secret can't be part of the host; put it in the path, the query or headers"] : []),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
 }
 
 /** A source that names a list in the data note or app note (not a URL, not `notes`). */
 export function isListName(source: string | undefined): source is string {
-  return !!source && source !== "notes" && !isUrl(source);
+  return !!source && sourceDef(source).id === "list";
 }
 
 /** Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. */
@@ -268,23 +263,9 @@ export function readComponentPreview(fm: Record<string, unknown>, opts: { now?: 
   return { result, usage, missing };
 }
 
-export function secretsIn(text: string | undefined): string[] {
-  return [...(text ?? "").matchAll(/\{secret:([a-z0-9-]+)\}/g)].map((m) => m[1]);
-}
-
 /** A panel's permissions, each with the key that asks for it. */
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
-  const out: [string, keyof Panel][] = [];
-  if (isUrl(p.source)) {
-    try {
-      out.push([`net:${new URL(p.source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host}`, "source"]);
-    } catch {
-      out.push([`net:${p.source}`, "source"]);
-    }
-  }
-  for (const id of secretsIn(p.source)) out.push([`secret:${id}`, "source"]);
-  for (const id of Object.values(p.headers ?? {}).flatMap(secretsIn)) out.push([`secret:${id}`, "headers"]);
-  if (p.source === "notes" && p.from) out.push([`read:${p.from}`, "from"]);
+  const out: [string, keyof Panel][] = p.source ? sourceDef(p.source).permissions(p, selfPath) : [];
   if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
   return out;
 }

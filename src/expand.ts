@@ -1,3 +1,4 @@
+import { sourceDef } from "./sources/registry.ts";
 import type { Panel } from "./spec.ts";
 import { storeTarget } from "./store.ts";
 import {
@@ -71,7 +72,7 @@ export function readBlocks(value: unknown, errors: string[]): Blocks {
  */
 export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): { template: Record<string, unknown>; errors: string[] } {
   const name = raw.source;
-  const block = typeof name === "string" && !/^https?:\/\//i.test(name) && name !== "notes" ? blocks.get(name) : undefined;
+  const block = typeof name === "string" && sourceDef(name).id === "list" ? blocks.get(name) : undefined;
   if (!block) return { template: raw, errors: [] };
   const def = typeof raw.view === "string" ? viewDef(raw.view) : undefined;
   const allowed = new Set<string>(def ? [...COMMON_KEYS, ...def.keys] : []);
@@ -229,7 +230,7 @@ export class Expander {
         const typed = merged.template[key];
         const got = template[key];
         if (scope.kind !== "param" || typeof typed !== "string" || !/^\$[A-Za-z_]\w*$/.test(typed) || !scope.names.has(typed.slice(1))) continue;
-        if (got instanceof InputRef || typeof got !== "string" || (key === "source" && (got === "notes" || /^https?:\/\//i.test(got)))) {
+        if (got instanceof InputRef || typeof got !== "string" || (key === "source" && sourceDef(got).id !== "list")) {
           at(`${typed} can only name a list here; write a URL in the component with ${typed} in its path or query`);
           return [];
         }
