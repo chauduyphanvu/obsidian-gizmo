@@ -252,13 +252,29 @@ export function valueOf(p: Panel, data: unknown, now = new Date()): unknown {
   return data;
 }
 
+const numberFormats = new Map<string, Intl.NumberFormat>();
+
+/**
+ * `n.toLocaleString(undefined, …)` with that many decimals: the same text, but the formatter is made
+ * once per set of options, since toLocaleString makes a new one on every call.
+ */
+export function localeNumber(n: number, decimals: number, group: boolean): string {
+  const key = `${decimals}|${group}`;
+  let format = numberFormats.get(key);
+  if (!format) {
+    format = new Intl.NumberFormat(undefined, { minimumFractionDigits: decimals, maximumFractionDigits: decimals, useGrouping: group });
+    numberFormats.set(key, format);
+  }
+  return format.format(n);
+}
+
 /** A value as text. Numbers get thousands separators unless `group` is false (inside a sentence, a year stays 1965). */
 export function formatValue(v: unknown, decimals?: number, group = true): string {
   if (v === undefined || v === null) return "—";
   const n = typeof v === "number" ? v : undefined;
   if (n !== undefined) {
     const d = decimals ?? (Number.isInteger(n) ? 0 : Math.abs(n) >= 100 ? 0 : Math.abs(n) >= 1 ? 1 : 2);
-    return n.toLocaleString(undefined, { minimumFractionDigits: d, maximumFractionDigits: d, useGrouping: group });
+    return localeNumber(n, d, group);
   }
   if (Array.isArray(v)) return v.map((x) => formatValue(x, decimals, group)).join(", ");
   if (typeof v === "object") return JSON.stringify(v);

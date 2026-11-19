@@ -1,4 +1,4 @@
-import { formatValue, periodStart, toNumber, toTime } from "./data.ts";
+import { formatValue, localeNumber, periodStart, toNumber, toTime } from "./data.ts";
 import type { Panel } from "./spec.ts";
 
 const DAY = 86_400_000;
@@ -45,9 +45,7 @@ function numeric(v: unknown): number | undefined {
 
 function withPattern(n: number, p: NumberPattern): string {
   const scaled = p.percent ? n * 100 : n;
-  const body = Math.abs(scaled).toLocaleString(undefined, {
-    minimumFractionDigits: p.decimals, maximumFractionDigits: p.decimals, useGrouping: p.group,
-  });
+  const body = localeNumber(Math.abs(scaled), p.decimals, p.group);
   // A value that rounds to zero has no sign.
   const sign = scaled < 0 && Number(Math.abs(scaled).toFixed(p.decimals)) !== 0 ? "-" : "";
   return `${sign}${p.prefix}${body}${p.percent ? "%" : ""}${p.suffix}`;
