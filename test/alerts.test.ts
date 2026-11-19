@@ -204,3 +204,22 @@ test("a pinned panel that reads $this works while the app is closed, with the ap
   await settle();
   assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 0", "Under my name: 0", "Not a property: 0"]);
 });
+
+test("a pinned compare panel's status says the number its view shows, the current window's sum", async () => {
+  // This week (from Monday the 16th) spent 20; the week before, 100.
+  const fm = { app: "Spend", panels: [{
+    view: "number", title: "This week", source: "spend", field: "amount", agg: "sum",
+    where: { at: "this week" }, compare: "previous", pin: "status", alert: ">= 50",
+  }] };
+  const spend = [{ at: "2026-11-10T09:00", amount: 100 }, { at: "2026-11-17T09:00", amount: 20 }];
+  const t = fakeBackground({ "Apps/Spend.md": { fm }, "Apps/Spend data.md": { fm: { spend } } });
+  await t.bg.start();
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  new AppController(root, "Apps/Spend.md", t.env).load();
+  await settle(8);
+  const shown = root.querySelector(".na-big")?.textContent;
+  assert.equal(shown, "20");
+  assert.deepEqual(t.out.status.map((s) => s.text), [`This week: ${shown}`]);
+  assert.deepEqual(t.notices, [], "120 across both weeks would have been told");
+});
