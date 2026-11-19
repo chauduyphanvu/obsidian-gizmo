@@ -118,3 +118,13 @@ test("three panels on one data block make one request", async () => {
   await Promise.all(spec.panels.map(({ panel: p }) => dl.panelData(p.source, p, FILES, { ttlMs: 60_000, now: NOW })));
   assert.equal(f.requests.length, 1);
 });
+
+test("the one file reader serves a note's body, a file's text and a stored file, and rejects with one message", async () => {
+  const f = fakeHost({ "Notes/a.md": { fm: { x: 1 }, body: "- [ ] task" }, "Finance/bank.csv": { raw: "a,b\n1,2" } });
+  f.others.set("Books.base", "filters: x");
+  assert.equal(await f.host.readFile("Notes/a.md"), "- [ ] task");
+  assert.equal(await f.host.readFile("Finance/bank.csv"), "a,b\n1,2");
+  assert.equal(await f.host.readFile("Books.base"), "filters: x");
+  await assert.rejects(f.host.readFile("Nope.md"), { message: "Can't find Nope.md" });
+  await assert.rejects(f.host.readFile("Nope.csv"), { message: "Can't find Nope.csv" });
+});

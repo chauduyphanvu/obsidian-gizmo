@@ -77,15 +77,11 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
     secret: (id) => secrets[id] ?? null,
     now: () => clock,
     schedule: (cb) => { queued.push(cb); },
-    readFile: async (path) => {
-      const raw = files.get(path)?.raw;
-      if (raw === undefined) throw new Error(`Can't find ${path}`);
-      return raw;
-    },
     // A fake note keeps its frontmatter apart, so its text is its body and lines count from there.
-    async readText(path) {
-      const text = files.has(path) ? files.get(path)!.body ?? "" : others.get(path);
-      if (text === undefined) throw new Error(`can't find ${path}`);
+    readFile: async (path) => {
+      const entry = files.get(path);
+      const text = entry && isNote(path) ? entry.body ?? "" : entry?.raw ?? others.get(path);
+      if (text === undefined) throw new Error(`Can't find ${path}`);
       return text;
     },
     resolveFile: (link) => [...files.keys(), ...others.keys()].find((p) => p === link || p.endsWith(`/${link}`) || p === `${link}.md`),

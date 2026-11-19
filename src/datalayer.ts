@@ -23,12 +23,10 @@ export interface Host {
   now(): number;
   /** Runs cb once, soon; used to batch change notifications. */
   schedule(cb: () => void): void;
-  /** The text of any file in the vault; rejects with `Can't find <path>` when there is none. */
+  /** The whole text of any file in the vault (a note's frontmatter included); rejects with `Can't find <path>` when there is none. */
   readFile(path: string): Promise<string>;
   /** The vault path a link or file name points at from the note at `from`, or undefined when no file matches. */
   resolveFile(link: string, from: string): string | undefined;
-  /** The whole text of a file in the vault, a note's frontmatter included. */
-  readText(path: string): Promise<string>;
   /** YAML text as data; throws when it isn't YAML. */
   parseYaml(text: string): unknown;
   /** The disk copy of a web response, by its cache key (which holds secret placeholders, never secrets). */
@@ -208,7 +206,7 @@ export class DataLayer {
     if (!byParse) this.parsed.set(path, (byParse = new Map()));
     const hit = byParse.get(parse) as Promise<T> | undefined;
     if (hit) return hit;
-    const promise = this.host.readText(path).then(parse);
+    const promise = this.host.readFile(path).then(parse);
     byParse.set(parse, promise);
     promise.catch(() => { if (this.parsed.get(path)?.get(parse) === promise) this.parsed.get(path)!.delete(parse); });
     return promise;

@@ -53,11 +53,6 @@ export function obsidianHost(app: App, pluginDir?: string): Host {
       return app.vault.cachedRead(f);
     },
     resolveFile: (link, from) => (file(normalizePath(link)) ?? app.metadataCache.getFirstLinkpathDest(link, from))?.path,
-    async readText(path) {
-      const f = file(path);
-      if (!f) throw new Error(`can't find ${path}`);
-      return app.vault.cachedRead(f);
-    },
     parseYaml: (text) => parseYaml(text) as unknown,
     cacheRead: async (key) => disk?.read(key),
     cacheWrite: async (key, entry) => disk?.write(key, entry),

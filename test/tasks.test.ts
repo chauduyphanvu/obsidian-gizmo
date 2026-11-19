@@ -139,8 +139,8 @@ test("each note is read once; a change re-reads only that note", async () => {
   const notes = Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`Projects/p${i}.md`, { body: `- [ ] task ${i}` }]));
   const f = fakeHost(notes);
   const read: string[] = [];
-  const readText = f.host.readText;
-  f.host.readText = (path) => { read.push(path); return readText(path); };
+  const readFile = f.host.readFile;
+  f.host.readFile = (path) => { read.push(path); return readFile(path); };
   const dl = new DataLayer(f.host);
   const p = checkPanel({ view: "number", source: "tasks", from: "Projects", where: { done: true } }, true).panel as Panel;
   const load = async () => (await dl.panelData(p.source, p, FILES, { ttlMs: 0, now: NOW }) as unknown[]).length;

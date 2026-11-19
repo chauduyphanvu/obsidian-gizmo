@@ -252,7 +252,7 @@ export const base: SourceDef = {
     if (!path) throw new Error(`can't find ${source}`);
     let config: unknown;
     try {
-      config = layer.host.parseYaml(await layer.host.readText(path));
+      config = layer.host.parseYaml(await layer.host.readFile(path));
     } catch (e) {
       throw new Error(`can't read ${source}: ${(e as Error).message}`);
     }
