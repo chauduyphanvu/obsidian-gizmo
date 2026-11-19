@@ -1,4 +1,4 @@
-import type { Agg } from "./data.ts";
+import { PERIODS, type Agg, type Per } from "./data.ts";
 import { storeTarget } from "./store.ts";
 import { expandPanel, readBlocks } from "./expand.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
@@ -14,6 +14,8 @@ export interface Panel {
   where?: Record<string, string | number | boolean>;
   sort?: string;
   limit?: number;
+  group?: string;
+  per?: Per;
   x?: string;
   y?: string;
   field?: string;
@@ -109,6 +111,9 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     ...(p.source === "notes" && !p.from ? ['source "notes" needs "from" (a #tag or folder)'] : []),
     ...(p.source && /^http:\/\//i.test(p.source) ? ["source must use https"] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
+    ...(p.per && !p.group ? ['"per" needs "group"'] : []),
+    ...(p.per && !PERIODS.includes(p.per) ? [`per must be one of ${PERIODS.join(", ")}`] : []),
+    ...(p.group === "count" ? ['group can\'t be "count"; every group gets a count'] : []),
     ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
     ...(isListName(p.source) && RESERVED.includes(p.source) ? [`source can't use "${p.source}", which names part of the app`] : []),
     ...(p.source && /^https?:\/\/[^/?#]*\{secret:/i.test(p.source) ? ["a secret can't be part of the host; put it in the path, the query or headers"] : []),

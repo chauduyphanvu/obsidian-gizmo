@@ -1,6 +1,6 @@
-import { extent, formatValue, seriesOf, toTime, type Point } from "../data.ts";
+import { extent, formatValue, seriesOf, toTime, type Per, type Point } from "../data.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, heading } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading } from "./common.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 const NS = "http://www.w3.org/2000/svg";
@@ -23,8 +23,11 @@ function niceTicks(min: number, max: number, count = 4): number[] {
   return ticks;
 }
 
-function formatTime(t: number, span: number): string {
+function formatTime(t: number, span: number, per?: Per): string {
   const d = new Date(t);
+  if (per === "year") return String(d.getFullYear());
+  if (per === "month") return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
+  if (per) return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   if (span < 2 * 86_400_000) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
   if (span < 400 * 86_400_000) return d.toLocaleDateString(undefined, { month: "short", day: "numeric" });
   return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
@@ -36,6 +39,8 @@ export interface ChartOptions {
   width: number;
   unit?: string;
   decimals?: number;
+  /** Grouped by period: axis labels name the period. */
+  per?: Per;
 }
 
 export function renderChart(parent: HTMLElement, points: Point[], opts: ChartOptions): void {
@@ -63,7 +68,7 @@ export function renderChart(parent: HTMLElement, points: Point[], opts: ChartOpt
     opts.kind === "bar" || span === 0 ? L + bandW * (i + 0.5) : L + ((x - xMin) / span) * (W - L - R);
   const sy = (y: number) => T + (1 - (y - yMin) / (yMax - yMin)) * (H - T - B);
   const fmt = (v: number) => formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
-  const xLabel = (p: (typeof pts)[number]) => (isTime ? formatTime(p.x, span) : String(p.label ?? ""));
+  const xLabel = (p: (typeof pts)[number]) => (isTime ? formatTime(p.x, span, opts.per) : String(p.label ?? ""));
 
   const wrap = parent.createDiv({ cls: "na-chart" });
   const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "na-chart-svg", role: "img" }, wrap);
@@ -73,9 +78,12 @@ export function renderChart(parent: HTMLElement, points: Point[], opts: ChartOpt
     svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "na-gridline" }, root);
     svg("text", { x: L - 8, y: y + 4, class: "na-axis", "text-anchor": "end" }, root).textContent = formatValue(t);
   }
-  const labelIdx = pts.length <= 1 ? [0] : [0, Math.floor((pts.length - 1) / 2), pts.length - 1];
+  // Categories each get a label while they fit; a time axis gets its ends and middle.
+  const labelIdx = !isTime && opts.kind === "bar" && pts.length <= 12 ? pts.map((_, i) => i)
+    : pts.length <= 1 ? [0] : [0, Math.floor((pts.length - 1) / 2), pts.length - 1];
+  const every = labelIdx.length > 3;
   for (const i of new Set(labelIdx)) {
-    const anchor = i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle";
+    const anchor = every ? "middle" : i === 0 ? "start" : i === pts.length - 1 ? "end" : "middle";
     svg("text", { x: sx(pts[i].x, i), y: H - 6, class: "na-axis", "text-anchor": anchor }, root).textContent = xLabel(pts[i]);
   }
 
@@ -123,11 +131,17 @@ export function renderChart(parent: HTMLElement, points: Point[], opts: ChartOpt
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, "x", "y", "label", "unit", "decimals"],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals"],
     wide: true,
     needsSource: true,
-    validate: (p: Panel) => (p.x && p.y ? [] : [`${kind} needs x and y`]),
+    validate: (p: Panel) => p.group
+      ? [...(p.x ? ["leave out x: the x axis is the group"] : []), ...groupedTotals(p, p.y ? [p.y] : [], "y")]
+      : [...(p.x && p.y ? [] : [`${kind} needs x and y`]), ...groupedTotals(p, [], "y")],
     examples: [
+      { panel: { view: kind, source: "sessions", group: "at", per: "week", y: "minutes", agg: "sum", where: { at: "last 8 weeks" } } },
+      { panel: { view: kind, source: "notes", from: "Books", group: "genre" } },
+      { panel: { view: kind, source: "sessions", group: "at", per: "week", y: "minutes" }, errors: ["group with y needs agg (sum, avg, min, max, first or last)"] },
+      { panel: { view: kind, source: "sessions", group: "at", x: "at" }, errors: ["leave out x: the x axis is the group"] },
       { panel: { view: kind, source: "weights", x: "at", y: "weight", unit: "kg" } },
       { panel: { view: kind, source: "https://api.example.com/hourly", pick: "hourly", x: "time", y: "temperature_2m" } },
       { panel: { view: kind, source: "weights", x: "at" }, errors: [`${kind} needs x and y`] },
@@ -138,7 +152,9 @@ function chartView(kind: "line" | "bar"): ViewDef {
       const draw = () => {
         el.empty();
         heading(el, p, p.label);
-        renderChart(el, seriesOf(last, p.x!, p.y!), { kind, unit: p.unit, decimals: p.decimals, width });
+        const x = p.group ?? p.x!;
+        const y = p.y ?? "count";
+        renderChart(el, seriesOf(last, x, y), { kind, unit: p.unit, decimals: p.decimals, width, per: p.per });
       };
       return {
         update(data) { last = data; draw(); },

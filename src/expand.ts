@@ -1,9 +1,9 @@
 import type { Panel } from "./spec.ts";
-import { COMMON_KEYS, DATA_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
+import { COMMON_KEYS, DATA_KEYS, GROUP_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 
 /** Keys a named source in `data:` may hold. */
-const BLOCK_KEYS: readonly string[] = DATA_KEYS;
+const BLOCK_KEYS: readonly string[] = [...DATA_KEYS, ...GROUP_KEYS];
 
 /** Named sources from `data:`, checked once; panels take their keys by naming them in `source`. */
 export type Blocks = Map<string, Record<string, unknown>>;

@@ -7,7 +7,8 @@ export type KeyType = "string" | "number" | "strings" | "stringMap" | "fieldMap"
 /** Every panel key and the YAML shape it takes. Which views accept which keys is in each ViewDef. */
 export const KEY_TYPES: Record<keyof Panel, KeyType> = {
   view: "string", title: "string", source: "string", headers: "stringMap", pick: "string",
-  from: "string", where: "where", sort: "string", limit: "number", x: "string", y: "string",
+  from: "string", where: "where", sort: "string", limit: "number", group: "string", per: "string",
+  x: "string", y: "string",
   field: "string", agg: "string", label: "string", unit: "string", decimals: "number",
   text: "string", item: "string", columns: "strings", max: "number", to: "string",
   minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
@@ -46,11 +47,24 @@ export function readValue(key: keyof Panel, value: unknown): { value: unknown } 
 export const COMMON_KEYS = ["view", "title"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */
 export const DATA_KEYS = ["source", "headers", "pick", "from", "where", "sort", "limit"] as const;
+/** Keys that turn rows into one row per group or period. */
+export const GROUP_KEYS = ["group", "per"] as const;
 /** Keys that make a panel write or notify when used. */
 export const ACTION_KEYS = ["save", "append", "line", "notify"] as const;
 
 export function needsAction(view: string, p: Panel): string[] {
   return p.save || p.append || p.notify ? [] : [`${view} needs at least one of save, append, notify`];
+}
+
+/**
+ * Checks for a panel that totals fields per group: those other than count need an agg, and a
+ * streak belongs on number and progress.
+ */
+export function groupedTotals(p: Panel, fields: readonly string[], what: string): string[] {
+  if (!p.group) return p.agg ? [`"agg" needs "group" here`] : [];
+  if (p.agg === "streak") return ["agg: streak only works on number and progress"];
+  const totalled = fields.filter((f) => f !== p.group && f !== "count");
+  return totalled.length && !p.agg ? [`group with ${what} needs agg (sum, avg, min, max, first or last)`] : [];
 }
 
 export function heading(el: HTMLElement, p: Panel, fallback?: string): void {

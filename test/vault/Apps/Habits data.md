@@ -1,0 +1,12 @@
+---
+stretches:
+  - {at: 2026-10-19T07:30, mood: good}
+  - {at: 2026-10-20T07:40, mood: good}
+  - {at: 2026-10-21T07:35, mood: stiff}
+  - {at: 2026-10-27T07:30, mood: good}
+  - {at: 2026-10-28T07:45, mood: stiff}
+  - {at: 2026-11-02T07:30, mood: good}
+  - {at: 2026-11-03T07:30, mood: sore}
+  - {at: 2026-11-04T07:30, mood: good}
+  - {at: 2026-11-05T07:30, mood: good}
+---

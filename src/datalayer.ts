@@ -1,4 +1,5 @@
-import { compilePipeline, parseBody, stampParts, type Row } from "./data.ts";
+import { parseBody, stampParts, type Row } from "./data.ts";
+import { compilePipeline } from "./pipeline.ts";
 import { isUrl, type Panel } from "./spec.ts";
 import { resolveList } from "./store.ts";
 

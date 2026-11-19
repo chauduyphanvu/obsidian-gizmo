@@ -1,12 +1,16 @@
 import type { Panel } from "./spec.ts";
 
-export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last"] as const;
+export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last", "streak"] as const;
 export type Agg = (typeof AGGS)[number];
 
 export type Row = Record<string, unknown>;
 
 export function getPath(data: unknown, path: string | undefined): unknown {
   if (!path) return data;
+  // A key that itself contains dots ("Adj. Close", or a total stored under its field's path) wins.
+  if (data !== null && typeof data === "object" && !Array.isArray(data) && Object.hasOwn(data, path)) {
+    return (data as Row)[path];
+  }
   let cur: unknown = data;
   for (const part of path.split(".")) {
     if (cur === null || cur === undefined) return undefined;
@@ -75,26 +79,57 @@ function startOfDay(d: Date): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-function dateWindow(cond: string, now: Date): [number, number] | undefined {
+export const PERIODS = ["day", "week", "month", "year"] as const;
+export type Per = (typeof PERIODS)[number];
+
+/** Start of the local day, week (from Monday), month or year containing t. */
+export function periodStart(t: number, per: Per): number {
+  const d = new Date(t);
+  const [y, m, day] = [d.getFullYear(), d.getMonth(), d.getDate()];
+  switch (per) {
+    case "day": return new Date(y, m, day).getTime();
+    case "week": return new Date(y, m, day - ((d.getDay() + 6) % 7)).getTime();
+    case "month": return new Date(y, m, 1).getTime();
+    case "year": return new Date(y, 0, 1).getTime();
+  }
+}
+
+/** The start of the period n periods away, counted in calendar units so clock changes don't matter. */
+export function shiftPeriod(start: number, per: Per, n: number): number {
+  const d = new Date(start);
+  const [y, m, day] = [d.getFullYear(), d.getMonth(), d.getDate()];
+  switch (per) {
+    case "day": return new Date(y, m, day + n).getTime();
+    case "week": return new Date(y, m, day + 7 * n).getTime();
+    case "month": return new Date(y, m + n, 1).getTime();
+    case "year": return new Date(y + n, 0, 1).getTime();
+  }
+}
+
+/** The [from, to) times a date condition covers, or undefined when it isn't one. */
+export function dateWindow(cond: string, now: Date): [number, number] | undefined {
   const c = cond.trim().toLowerCase();
-  const today = startOfDay(now);
-  if (c === "today") return [today, today + DAY];
-  if (c === "yesterday") return [today - DAY, today];
-  if (c === "this week") {
-    const monday = today - ((now.getDay() + 6) % 7) * DAY;
-    return [monday, monday + 7 * DAY];
-  }
-  if (c === "this month") {
-    return [new Date(now.getFullYear(), now.getMonth(), 1).getTime(), new Date(now.getFullYear(), now.getMonth() + 1, 1).getTime()];
-  }
-  if (c === "this year") {
-    return [new Date(now.getFullYear(), 0, 1).getTime(), new Date(now.getFullYear() + 1, 0, 1).getTime()];
-  }
-  let m = c.match(/^last (\d+) days?$/);
-  if (m) return [today - (Number(m[1]) - 1) * DAY, today + DAY];
+  const t = now.getTime();
+  const today = periodStart(t, "day");
+  const span = (per: Per, back: number): [number, number] => {
+    const current = periodStart(t, per);
+    return [shiftPeriod(current, per, -back), shiftPeriod(current, per, 1)];
+  };
+  if (c === "today") return span("day", 0);
+  if (c === "yesterday") return [shiftPeriod(today, "day", -1), today];
+  let m = c.match(/^this (week|month|year)$/);
+  if (m) return span(m[1] as Per, 0);
+  m = c.match(/^last (\d+) (day|week|month|year)s?$/);
+  if (m) return span(m[2] as Per, Number(m[1]) - 1);
   m = c.match(/^next (\d+) days?$/);
-  if (m) return [today, today + (Number(m[1]) + 1) * DAY];
-  if (c === "past") return [-Infinity, now.getTime()];
+  if (m) return [today, shiftPeriod(today, "day", Number(m[1]) + 1)];
+  // A bare date is that whole day, so it matches timestamps on it.
+  m = c.match(/^(\d{4})-(\d{2})-(\d{2})$/);
+  if (m) {
+    const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
+    return [day, shiftPeriod(day, "day", 1)];
+  }
+  if (c === "past") return [-Infinity, t];
   if (c === "upcoming") return [today, Infinity];
   return undefined;
 }
@@ -137,7 +172,7 @@ export function matches(value: unknown, cond: string | number | boolean, now: Da
   return compileCondition(cond, now)(value);
 }
 
-function compileWhere(where: NonNullable<Panel["where"]>, now: Date): (row: unknown) => boolean {
+export function compileWhere(where: NonNullable<Panel["where"]>, now: Date): (row: unknown) => boolean {
   const tests = Object.entries(where).map(([path, cond]) => [path, compileCondition(cond, now)] as const);
   return (row) => tests.every(([path, test]) => test(getPath(row, path)));
 }
@@ -161,18 +196,6 @@ export function sortRows(rows: unknown[], sort: string | undefined): unknown[] {
     return desc ? -cmp : cmp;
   });
   return keyed.map((k) => k.row);
-}
-
-/** A panel's pick, where, sort and limit as one function, with its conditions parsed up front. */
-export function compilePipeline(p: Pick<Panel, "pick" | "where" | "sort" | "limit">, now: Date): (input: unknown) => unknown {
-  const keep = p.where ? compileWhere(p.where, now) : undefined;
-  return (input) => {
-    let data = getPath(input, p.pick);
-    if (!Array.isArray(data)) return data;
-    if (keep) data = data.filter(keep);
-    data = sortRows(data as unknown[], p.sort);
-    return p.limit ? (data as unknown[]).slice(0, p.limit) : data;
-  };
 }
 
 export function aggregate(rows: unknown[], field: string | undefined, agg: Agg): unknown {

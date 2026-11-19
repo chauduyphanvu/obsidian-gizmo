@@ -1,8 +1,9 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import {
-  aggregate, compilePipeline, daysUntil, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
+  aggregate, daysUntil, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
 } from "../src/data.ts";
+import { compilePipeline } from "../src/pipeline.ts";
 
 const NOW = new Date(2026, 10, 18, 14, 30); // Wed 18 Nov 2026, local time
 

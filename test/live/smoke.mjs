@@ -114,6 +114,21 @@ try {
     });
   }
 
+  await check("Habits: streak, weekly bars and groups", async () => {
+    const r = await run(`
+      await na.open("Apps/Habits");
+      const panel = (cls) => na.view().contentEl.querySelector(cls);
+      const streak = () => panel(".na-view-number .na-big")?.textContent;
+      const before = streak();
+      const bars = panel(".na-view-bar").querySelectorAll("rect.na-bar").length;
+      const groups = panel(".na-view-list").innerText;
+      na.button("Stretched").click(); await na.sleep(1200);
+      return { before, after: streak(), bars, groups };`);
+    if (r.before !== "0days" || r.after !== "1days") throw new Error(JSON.stringify(r));
+    if (r.bars !== 8 || !r.groups.includes("good · 6\nstiff · 2\nsore · 1")) throw new Error(JSON.stringify(r));
+    return `streak 0 → 1, ${r.bars} weekly bars`;
+  });
+
   await check("Meds button logs twice", async () => {
     const r = await run(`
       await na.open("Apps/Meds");
@@ -244,6 +259,8 @@ try {
   // Obsidian's first-open "trust the author" dialog can arrive late; plugins are already on, so accept it.
   await run(`[...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Trust author and enable plugins")?.click(); await na.sleep(300);`);
   await page.shot(join(work, "weather-desktop.png"), 1100, 760);
+  await run(`await na.open("Apps/Habits");`);
+  await page.shot(join(work, "habits-desktop.png"), 1100, 760);
   await run(`app.workspace.leftSplit.collapse(); await na.open("Apps/Weight");`);
   await page.shot(join(work, "weight-phone.png"), 420, 900);
 } finally {
