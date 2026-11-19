@@ -27,18 +27,30 @@ function insert(lines: string[], item = ITEM, eol = "\n") {
 
 const HEAD = ["---", "app: Money"];
 
+test("the cursor lands on the first value to change, after view:; a panel of view: alone leaves it at the end of that line", () => {
+  const first = insert([...HEAD, "panels:", "  - view: number", "    source: spending", "---"]);
+  assert.deepEqual([first.out[first.cursor.line], first.onCursor], ["    source: spending", "spending"]);
+  const quoted = insert([...HEAD, "---"], skeleton(viewDef("countdown")!));
+  assert.deepEqual([quoted.out[quoted.cursor.line], quoted.onCursor], ['    to: "2027-10-03"', '"2027-10-03"']);
+  for (const lines of [[...HEAD, "panels:", "  - view: number", "---"], [...HEAD, "panels: []", "---"], [...HEAD, "---"]]) {
+    const alone = insert(lines, ["view: alerts"]);
+    assert.equal(alone.out[alone.cursor.line], "  - view: alerts");
+    assert.equal(alone.cursor.ch, "  - view: alerts".length);
+  }
+});
+
 test("a list with items gets the panel after the last one, written like the others", () => {
   const { out, onCursor } = insert([...HEAD, "panels:", "  - view: number", "    source: spending", "  - view: text", "    text: hi", "---", "Body"]);
   assert.deepEqual(out, [...HEAD, "panels:", "  - view: number", "    source: spending", "  - view: text", "    text: hi",
     "  - view: table", "    source: spending", "    columns: [at, amount]", "---", "Body"]);
-  assert.equal(onCursor, "table");
+  assert.equal(onCursor, "spending");
 });
 
 test("an empty list, with the key alone or with brackets, gets two spaces before the dash", () => {
   for (const key of ["panels:", "panels: []", "panels: [ ]"]) {
     const { out, onCursor } = insert([...HEAD, key, "---"]);
     assert.deepEqual(out, [...HEAD, "panels:", "  - view: table", "    source: spending", "    columns: [at, amount]", "---"]);
-    assert.equal(onCursor, "table");
+    assert.equal(onCursor, "spending");
   }
 });
 
@@ -68,8 +80,8 @@ test("no panels: key adds it, with the panel, just before the closing fence", ()
   const { out, cursor, onCursor } = insert([...HEAD, "refresh: 5m", "data:", "  a:", "    source: x", "---", "Body"]);
   assert.deepEqual(out, [...HEAD, "refresh: 5m", "data:", "  a:", "    source: x",
     "panels:", "  - view: table", "    source: spending", "    columns: [at, amount]", "---", "Body"]);
-  assert.equal(out[cursor.line - 1], "panels:");
-  assert.equal(onCursor, "table");
+  assert.deepEqual([out[cursor.line - 2], out[cursor.line]], ["panels:", "    source: spending"]);
+  assert.equal(onCursor, "spending");
 });
 
 test("a note with nothing but app: gets panels: too", () => {
@@ -83,7 +95,7 @@ test("line endings stay as the note has them", () => {
   assert.ok("edit" in found);
   const after = apply(text, found.edit);
   assert.equal(after, ["---", "app: Money", "panels:", "  - view: number", "    source: a", "  - view: table", "    source: spending", "    columns: [at, amount]", "tabs:", "  A: []", "---", "Body"].join("\r\n"));
-  assert.equal(after.split("\r\n")[found.cursor.line].slice(found.cursor.ch), "table");
+  assert.equal(after.split("\r\n")[found.cursor.line].slice(found.cursor.ch), "spending");
 
   const bare = insertPanel(["---", "app: Money", "---"].join("\r\n"), ITEM);
   assert.ok("edit" in bare);
@@ -93,14 +105,14 @@ test("line endings stay as the note has them", () => {
 test("odd indentation is matched: four spaces, a dash at the left edge, a wide gap after the dash", () => {
   const four = insert([...HEAD, "panels:", "    - view: number", "      source: a", "---"]);
   assert.deepEqual(four.out.slice(3), ["    - view: number", "      source: a", "    - view: table", "      source: spending", "      columns: [at, amount]", "---"]);
-  assert.equal(four.onCursor, "table");
+  assert.equal(four.onCursor, "spending");
 
   const flush = insert([...HEAD, "panels:", "- view: number", "  source: a", "refresh: 5m", "---"]);
   assert.deepEqual(flush.out.slice(2), ["panels:", "- view: number", "  source: a", "- view: table", "  source: spending", "  columns: [at, amount]", "refresh: 5m", "---"]);
 
   const wide = insert([...HEAD, "panels:", "  -   view: number", "      source: a", "---"]);
   assert.deepEqual(wide.out.slice(3), ["  -   view: number", "      source: a", "  -   view: table", "      source: spending", "      columns: [at, amount]", "---"]);
-  assert.equal(wide.onCursor, "table");
+  assert.equal(wide.onCursor, "spending");
 });
 
 test("a note with one panel typed at the top level is refused, and left alone", () => {

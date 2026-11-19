@@ -56,8 +56,9 @@ export function refusalFor(text: string): string | undefined {
 }
 
 /**
- * Where a new panel goes in a note's text, and where the cursor lands: on the value of the new
- * panel's first line. `item` is the panel's lines (see `skeleton`). The panel becomes the last
+ * Where a new panel goes in a note's text, and where the cursor lands: on the first value the
+ * person will change, the one after `view:` (at the end of the `view:` line when the panel has
+ * nothing else). `item` is the panel's lines (see `skeleton`). The panel becomes the last
  * item of the top-level `panels:` list, written like the items already there; with no `panels:`
  * it is added with its key just before the closing `---`. Only inserts; the rest of the text is
  * left as typed, apart from an empty `[]` after `panels:`, which a list can't follow.
@@ -68,8 +69,9 @@ export function insertPanel(text: string, item: string[]): Insertion {
   const end = closingFence(lines);
   if (end < 0) return { refusal: "This note has no frontmatter to add a panel to" };
 
-  // The cursor goes on the value of the panel's first line.
-  const ch = (pad: string) => pad.length + item[0].indexOf(": ") + 2;
+  // The line of the item the cursor goes on.
+  const at = item.length > 1 ? 1 : 0;
+  const ch = (pad: string) => pad.length + (at ? item[at].indexOf(": ") + 2 : item[0].length);
   const panels = topKey(lines, end, "panels");
   if (panels < 0) {
     if (topKey(lines, end, "view") >= 0) return { refusal: ONE_PANEL };
@@ -77,7 +79,7 @@ export function insertPanel(text: string, item: string[]): Insertion {
     const out = ["panels:", ...item.map((l, i) => (i ? "    " : pad) + l)];
     return {
       edit: { from: { line: end, ch: 0 }, to: { line: end, ch: 0 }, text: out.join(eol) + eol },
-      cursor: { line: end + 1, ch: ch(pad) },
+      cursor: { line: end + 1 + at, ch: ch(pad) },
     };
   }
 
@@ -102,7 +104,7 @@ export function insertPanel(text: string, item: string[]): Insertion {
   const cont = " ".repeat(pad.length);
   const added = item.map((l, i) => (i ? cont : pad) + l);
 
-  const cursor = { line: (empty ? panels : last) + 1, ch: ch(pad) };
+  const cursor = { line: (empty ? panels : last) + 1 + at, ch: ch(pad) };
   if (empty) {
     // The brackets go, and a comment after them stays on the key's line.
     const comment = lines[panels].slice(lines[panels].indexOf("]") + 1);

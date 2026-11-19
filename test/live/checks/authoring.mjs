@@ -225,7 +225,7 @@ export default async function authoring(t) {
     return run(`return [...document.querySelectorAll(".prompt .suggestion-item")].map((i) => i.textContent);`);
   };
 
-  await check("Insert panel: choosing table adds exactly its lines at the end of panels:, and one undo takes them away", async () => {
+  await check("Insert panel: choosing table adds exactly its lines at the end of panels:, the cursor on its source, and one undo takes them away", async () => {
     await run(`
       await na.write("Scratch/Insert.md", ${JSON.stringify(INSERT)});
       await na.sleep(800);
@@ -248,12 +248,13 @@ export default async function authoring(t) {
       const c = ed.getCursor();
       return { text: ed.getValue(), line: ed.getLine(c.line), at: c, rest: ed.getLine(c.line).slice(c.ch), modal: !!document.querySelector(".prompt") };`);
     expect(r.text === WITH_TABLE, { got: r.text.split("\n").slice(AT - 2, AT + 6) });
-    expect(r.at.line === AT && r.rest === "table" && r.line === "  - view: table" && !r.modal, r);
+    // The cursor is on the first value to change, the source after view: table.
+    expect(r.at.line === AT + 1 && r.rest === "spending" && r.line === "    source: spending" && !r.modal, r);
     const undone = await run(`const ed = na.view().editor; ed.undo(); return ed.getValue();`);
     expect(undone === INSERT, "one undo should restore the original text");
     const redone = await run(`const ed = na.view().editor; ed.redo(); return ed.getValue();`);
     expect(redone === WITH_TABLE, "redo should bring the panel back");
-    return `table at line ${AT}, cursor on "${r.rest}"; one undo restores`;
+    return `table at line ${AT}, cursor on "${r.rest}" at line ${r.at.line}; one undo restores`;
   });
 
   await check("Insert panel: the note with the new panel still opens as an app with no problems card", async () => {
