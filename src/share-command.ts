@@ -2,20 +2,12 @@ import { Modal, Notice, parseYaml, type App, type TFile } from "obsidian";
 import {
   fromBundle, fromFetched, previewInstall, sharedUrl, thenTargets, toBundle, type BundleNote, type InstallPreview,
 } from "./bundle.ts";
-import type { NoteReader } from "./expand.ts";
 import { existingNotes, installNotes } from "./gallery-command.ts";
+import { copyText, vaultNotes } from "./host.ts";
 import { planCopy } from "./gallery.ts";
 import type GizmoPlugin from "./main.ts";
 import { readComponentPreview, readSpec } from "./spec.ts";
 import { basename, isApp, isComponent, storeTarget } from "./store.ts";
-
-function vaultReader(app: App): NoteReader {
-  const frontmatter = (path: string) => {
-    const f = app.vault.getFileByPath(path);
-    return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
-  };
-  return { resolve: (link, from) => app.metadataCache.getFirstLinkpathDest(link, from)?.path, frontmatter };
-}
 
 /**
  * The notes sharing an app takes along: the note itself, every component it reads at any depth,
@@ -23,7 +15,7 @@ function vaultReader(app: App): NoteReader {
  */
 async function notesToShare(app: App, file: TFile): Promise<{ notes: BundleNote[]; about: string; runs: string[] } | { error: string }> {
   const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-  const notes = vaultReader(app);
+  const notes = vaultNotes(app);
   const component = isComponent(fm);
   if (!fm || (!component && !isApp(fm))) return { error: "Only an app or a component can be shared" };
   const opts = { now: new Date(), notes, path: file.path };
@@ -73,10 +65,7 @@ class ShareModal extends Modal {
     area.value = this.text;
     const row = el.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { cls: "mod-cta", text: "Copy" }).addEventListener("click", () => {
-      navigator.clipboard.writeText(this.text).then(
-        () => { new Notice(`Copied ${this.name}; paste it in a gist or a message to share it`); this.close(); },
-        () => { new Notice("Couldn't copy to the clipboard"); },
-      );
+      copyText(this.text, () => { new Notice(`Copied ${this.name}; paste it in a gist or a message to share it`); this.close(); });
     });
   }
 
@@ -153,7 +142,7 @@ class InstallModal extends Modal {
     const preview = previewInstall(got.notes, {
       folder: folder === "/" ? "" : folder,
       existing: (name) => existing[name] ?? [],
-      notes: vaultReader(this.app),
+      notes: vaultNotes(this.app),
       parse: parseYaml,
     });
     if ("error" in preview) return this.say(cap(preview.error), "gz-error-text");

@@ -1,4 +1,4 @@
-import { runActions as runPanelActions } from "./actions.ts";
+import { actionDepsOf, runActions as runPanelActions } from "./actions.ts";
 import type { Change, NewEntry } from "./activity.ts";
 import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
@@ -19,10 +19,10 @@ import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts"
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { basename, defaultDataPath, isComponent, resolveList } from "./store.ts";
+import { basename, dataPathOf, isComponent, resolveList } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { editErrors, editableSource } from "./edit.ts";
-import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
+import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";
 import { formatClock } from "./views/timer.ts";
 
@@ -408,7 +408,7 @@ export class AppController {
     this.definition = definition;
     this.links = result?.spec?.links ?? [];
     this.spec = picked?.spec ?? result?.spec;
-    this.dataPath = h?.dataPath ?? (this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath));
+    this.dataPath = h?.dataPath ?? dataPathOf(this.spec?.store, this.appPath, (store, from) => this.env.storePath(store, from));
 
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
     const header = createDivIn(this.shell, "gz-header");
@@ -568,7 +568,7 @@ export class AppController {
     if (!r.panel) return this.halt(m, r.waiting, r.errors);
     m.idle = false;
     m.p = r.panel;
-    m.source = m.p.source ?? m.def.implicitSource?.(m.p);
+    m.source = sourceOf(m.p);
     m.deps = this.env.data.depsOf(m.source, m.p, this.files());
     m.remount = true;
     m.el.addClass("gz-stale");
@@ -652,7 +652,7 @@ export class AppController {
     const p = r.panel ?? { ...ps.panel, title: plainTitle(ps) };
     const def = viewDef(p.view)!;
     const el = createDivIn(this.grid!, `gz-panel gz-view-${p.view}`);
-    const source = r.panel ? p.source ?? def.implicitSource?.(p) : undefined;
+    const source = r.panel ? sourceOf(p) : undefined;
     const m = {
       id, ps, p, def, el, source, remount: false, idle: false,
       span: p.span ?? def.span,
@@ -965,15 +965,7 @@ export class AppController {
   async runActions(p: Panel, row: Row): Promise<void> {
     const env = this.env;
     await runPanelActions(p, row, {
-      now: () => env.now(),
-      dataPath: this.dataPath,
-      appPath: this.appPath,
-      writeFrontmatter: (path, fn) => env.writeFrontmatter(path, fn),
-      appendLine: (path, line) => env.appendLine(path, line),
-      createNote: (path, fm, body) => env.createNote(path, fm, body),
-      readBody: (path) => env.readBody(path),
-      notify: (message) => env.notify(message),
-      openNote: (path, from) => env.openNote(path, from),
+      ...actionDepsOf(env, this.appPath, this.dataPath),
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(this.appPath, panel.then, ctx); },
     });

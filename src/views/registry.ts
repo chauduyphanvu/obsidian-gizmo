@@ -88,3 +88,8 @@ const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));
 export function viewDef(id: string): ViewDef | undefined {
   return BY_ID.get(id);
 }
+
+/** Where a panel's data comes from: its `source`, else what its view reads without one. */
+export function sourceOf(p: Panel): string | undefined {
+  return p.source ?? viewDef(p.view)?.implicitSource?.(p);
+}

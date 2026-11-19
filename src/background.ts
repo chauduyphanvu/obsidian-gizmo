@@ -11,11 +11,11 @@ import {
   panelIds, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
 import { permissionsOf } from "./permissions.ts";
-import { basename, defaultDataPath, resolveList, storeTarget } from "./store.ts";
+import { basename, dataPathOf, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { startOf } from "./keys.ts";
-import { viewDef } from "./views/registry.ts";
+import { sourceOf } from "./views/registry.ts";
 import { panelValue } from "./views/value.ts";
 
 /** The plugin's one timer ticks this often; an app without `refresh` is checked this often. */
@@ -214,7 +214,7 @@ export class Background {
     const r = resolvePanel(ps, this.valuesOf(appPath, entry.spec, now));
     if (!r.panel) return r.waiting !== undefined ? { waiting: r.waiting } : { error: r.errors.join("; ") };
     const p = r.panel;
-    const source = p.source ?? viewDef(p.view)?.implicitSource?.(p);
+    const source = sourceOf(p);
     try {
       const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath }, { ttlMs: entry.refreshMs, now, force });
       const rows = splitByWindow(p, loaded, now).current;
@@ -588,7 +588,7 @@ export class Background {
       name: basename(path),
       definition,
       spec,
-      dataPath: spec.store ? this.env.storePath(spec.store, path) : defaultDataPath(path),
+      dataPath: dataPathOf(spec.store, path, (store, from) => this.env.storePath(store, from)),
       wanted: permissionsOf(spec, path),
       records: recordJobs(spec),
       shortcuts,
@@ -601,7 +601,7 @@ export class Background {
     const start = this.valuesOf(path, spec, this.env.now());
     const dataDeps = entry.watched.flatMap(({ ps }) => {
       const p = resolvePanel(ps, start).panel;
-      return p ? this.env.data.depsOf(p.source ?? viewDef(p.view)?.implicitSource?.(p), p, files) : [];
+      return p ? this.env.data.depsOf(sourceOf(p), p, files) : [];
     });
     entry.stop = this.env.data.subscribe([...definitionDeps, ...dataDeps], (changed) => {
       if (this.apps.get(path) !== entry) return;

@@ -1,6 +1,7 @@
-import { Notice, Platform, normalizePath, type WorkspaceLeaf } from "obsidian";
+import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
+import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
-import { obsidianAppEnv } from "./host.ts";
+import { obsidianAppEnv, pluginFile, vaultFrontmatter, vaultNotes } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { openInstall } from "./share-command.ts";
 import { isApp, notePath, storeTarget } from "./store.ts";
@@ -11,10 +12,7 @@ import { isApp, notePath, storeTarget } from "./store.ts";
  */
 export function registerBackground(plugin: GizmoPlugin): Background {
   const app = plugin.app;
-  const frontmatter = (path: string) => {
-    const f = app.vault.getFileByPath(path);
-    return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
-  };
+  const frontmatter = vaultFrontmatter(app);
   // An env without a tab: actions never ask for the source view, the only thing a leaf is for.
   const envFor = (path: string) => {
     const file = app.vault.getFileByPath(path);
@@ -30,7 +28,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
   const bg: Background = new Background({
     data: plugin.dataLayer,
     frontmatter,
-    notes: { resolve: (link, from) => app.metadataCache.getFirstLinkpathDest(link, from)?.path, frontmatter },
+    notes: vaultNotes(app),
     appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
     isGranted: (path, wanted) => plugin.isGranted(path, wanted, true),
     storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
@@ -38,22 +36,12 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       const env = envFor(appPath);
       if (!env) throw new Error(`can't find ${appPath}`);
       return {
-        now: () => env.now(), dataPath, appPath,
-        writeFrontmatter: (path, fn) => env.writeFrontmatter(path, fn),
-        appendLine: (path, line) => env.appendLine(path, line),
-        createNote: (path, fm, body) => env.createNote(path, fm, body),
-        readBody: (path) => env.readBody(path),
-        notify: (message) => env.notify(message),
-        openNote: (path, from) => env.openNote(path, from),
+        ...actionDepsOf(env, appPath, dataPath),
         log: actor ? (what, changes) => void plugin.activity.add({ app: appPath, actor, what, changes }) : undefined,
       };
     },
     now: () => new Date(),
-    triggers: (() => {
-      const path = normalizePath(`${plugin.manifest.dir ?? ""}/triggers.json`);
-      const adapter = app.vault.adapter;
-      return { read: async () => ((await adapter.exists(path)) ? adapter.read(path) : undefined), write: (text: string) => adapter.write(path, text) };
-    })(),
+    triggers: pluginFile(plugin, "triggers.json"),
     sink: {
       notify: (message) => { new Notice(message); },
       // Commands come and go with the apps that declare them; a hotkey stays bound to the id.

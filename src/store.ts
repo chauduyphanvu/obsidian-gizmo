@@ -69,6 +69,11 @@ export function defaultDataPath(appPath: string): string {
   return `${appPath.replace(/\.md$/i, "")} data.md`;
 }
 
+/** An app's data note: the note its `store` names, else its default one. */
+export function dataPathOf(store: string | undefined, appPath: string, storePath: (store: string, fromPath: string) => string): string {
+  return store ? storePath(store, appPath) : defaultDataPath(appPath);
+}
+
 /** The note a `store:` value points at, as link text: `[[Logs/Weight|w]]` and `Logs/Weight.md` both give `Logs/Weight`. */
 export function storeTarget(store: string): string {
   const inner = store.trim().replace(/^\[\[/, "").replace(/\]\]$/, "");

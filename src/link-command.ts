@@ -1,12 +1,10 @@
 import { FuzzySuggestModal, Notice, type App } from "obsidian";
 import { linkNotice, type ShortcutLink } from "./background.ts";
+import { copyText } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 
 export function copyShortcutLink(s: ShortcutLink): void {
-  navigator.clipboard.writeText(s.link).then(
-    () => { new Notice(linkNotice(s)); },
-    () => { new Notice("Couldn't copy to the clipboard"); },
-  );
+  copyText(s.link, () => { new Notice(linkNotice(s)); });
 }
 
 /** Every app's shortcuts, each with its app and whether it's allowed yet. */

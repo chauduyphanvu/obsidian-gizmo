@@ -29,6 +29,22 @@ export interface ActionDeps {
   then?(p: Panel, ctx: Row): Promise<void>;
 }
 
+/** What an app gives runActions to write and tell with. */
+export type ActionIO = Pick<ActionDeps, "now" | "writeFrontmatter" | "appendLine" | "createNote" | "readBody" | "notify" | "openNote">;
+
+/** The deps an app's actions run with, through `io`; the caller adds `log` and `then`. */
+export function actionDepsOf(io: ActionIO, appPath: string, dataPath: string): ActionDeps {
+  return {
+    now: () => io.now(), dataPath, appPath,
+    writeFrontmatter: (path, fn) => io.writeFrontmatter(path, fn),
+    appendLine: (path, line) => io.appendLine(path, line),
+    createNote: (path, fm, body) => io.createNote(path, fm, body),
+    readBody: (path) => io.readBody(path),
+    notify: (message) => io.notify(message),
+    openNote: (path, from) => io.openNote(path, from),
+  };
+}
+
 /** How a run went: `ok` is false when it stopped on an error or a note that already exists. */
 export interface ActionResult {
   ok: boolean;

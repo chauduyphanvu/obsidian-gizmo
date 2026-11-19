@@ -1,5 +1,5 @@
 import {
-  MarkdownView, Plugin, TFile, WorkspaceLeaf, normalizePath, type ViewState,
+  MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
@@ -8,7 +8,7 @@ import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { dropGrants, isAllowed, moveGrants } from "./hosted.ts";
-import { obsidianHost, obsidianUndoIO } from "./host.ts";
+import { obsidianHost, obsidianUndoIO, pluginFile } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import { registerLinkCommand } from "./link-command.ts";
@@ -39,12 +39,7 @@ export default class GizmoPlugin extends Plugin {
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
-    const logPath = normalizePath(`${this.manifest.dir ?? ""}/activity.json`);
-    const adapter = this.app.vault.adapter;
-    this.activity = new ActivityLog({
-      read: async () => ((await adapter.exists(logPath)) ? adapter.read(logPath) : undefined),
-      write: (text) => adapter.write(logPath, text),
-    });
+    this.activity = new ActivityLog(pluginFile(this, "activity.json"));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
     // Notes that change reach the data layer through the metadata event above; any other file only through here.
