@@ -1,4 +1,5 @@
 import type { Panel } from "../spec.ts";
+import { secretIds } from "../template.ts";
 import { heading, noteLink } from "./common.ts";
 import type { ViewDef } from "./registry.ts";
 
@@ -31,7 +32,36 @@ export function backgroundKeyErrors(p: Panel): string[] {
     ...(typeof p.alert === "string" && p.view !== "number" && p.view !== "progress"
       ? [`alert on a ${p.view} needs a field, e.g. alert: {amount: "> 100"}`] : []),
     ...(p.alert !== undefined && !p.source && p.view === "text" ? ["alert needs a source"] : []),
+    ...(p.then && !SHORTCUT.test(p.then.do) ? ["then: do must be the other app's shortcut: lowercase letters, digits and -"] : []),
+    ...(p.then && !/\S/.test(p.then.app.replace(/^\[\[|\]\]$/g, "")) ? ["then: app must name an app, e.g. \"[[Task inbox]]\""] : []),
+    ...(p.then && p.view !== "button" && p.view !== "form" && p.alert === undefined
+      ? [`then on a ${p.view} needs alert: it runs when the alert turns true`] : []),
+    ...fillErrors(p),
   ];
+}
+
+/**
+ * Mistakes in `then`'s fill that can be seen before it runs: a secret, which never fills there,
+ * and on a form or button a {name} its run never has (its fields, `row` keys, the time, and after
+ * a save to a folder the note's path). An alert's rows can hold anything, so a name a row lacks
+ * fills as empty there, as in notify and line.
+ */
+function fillErrors(p: Panel): string[] {
+  const texts = Object.values(p.then?.fill ?? {});
+  const secret = texts.flatMap(secretIds)[0];
+  if (secret !== undefined) return [`then: fill can't use {secret:${secret}}; secrets only go into web requests`];
+  if (p.view !== "form" && p.view !== "button") return [];
+  const fields = p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
+  const own = [...new Set([...fields, ...Object.keys(p.row ?? {}), ...(p.target?.kind === "folder" ? ["path"] : [])])];
+  const known = new Set([...own, "date", "time", "at"]);
+  for (const text of texts) {
+    for (const [, raw] of text.matchAll(/\{([^{}]+)\}/g)) {
+      const name = raw.trim();
+      if (known.has(name.split(".")[0])) continue;
+      return [`then: fill reads {${name}}, which this ${p.view} never has (it has ${own.length ? `${own.join(", ")}, and ` : ""}date, time, at)`];
+    }
+  }
+  return [];
 }
 
 /** `view: alerts`: every alert true now, across the vault, each linking to its app. */

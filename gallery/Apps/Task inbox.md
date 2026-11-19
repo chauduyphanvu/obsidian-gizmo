@@ -11,6 +11,7 @@ panels:
     append: Tasks/Inbox
     line: "- [ ] {task}"
     label: Add
+    shortcut: add
   - view: table
     title: Open
     source: work
@@ -32,5 +33,6 @@ panels:
     item: "{text} · {name}"
 ---
 Every checkbox in the notes under Tasks, with undated ones first. New tasks are added as a line in
-Tasks/Inbox, and ticking one in the table ticks it in its note; it asks to read the notes in Tasks,
-tick tasks in them, and add lines to Tasks/Inbox.md.
+Tasks/Inbox, and ticking one in the table ticks it in its note; `obsidian://gizmo?app=Task inbox&do=add&task=…`
+adds one from outside Obsidian (a phone shortcut, say). It asks to read the notes in Tasks, tick
+tasks in them, and add lines to Tasks/Inbox.md.

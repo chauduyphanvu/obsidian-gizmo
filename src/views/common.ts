@@ -13,7 +13,7 @@ import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
  */
 export type KeyType =
   | "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where"
-  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap" | "edit";
+  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap" | "edit" | "then";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
 export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept", "fieldInfo"] as const;
@@ -34,6 +34,7 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
   end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string", of: "where",
+  then: "then",
 };
 
 /** What a wrong value should have been, for the types whose names don't say it plainly. */
@@ -47,6 +48,7 @@ const EXPECTED: Partial<Record<KeyType, string>> = {
   textMap: "a set of name: text",
   fieldMap: "a set of name: type, or a list of field names",
   edit: "a list of fields, or true",
+  then: 'a set like {app: "[[Task inbox]]", do: add, fill: {task: "Renew {what}"}}',
 };
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
@@ -84,6 +86,9 @@ function checkType(value: unknown, type: KeyType): boolean {
     case "valueMap": return isMap(value) && Object.values(value).every(scalarMap);
     case "compute": return isMap(value) && Object.values(value).every(isText);
     case "edit": return value === true || (Array.isArray(value) && value.every(scalar));
+    case "then":
+      return isMap(value) && typeof value.app === "string" && isText(value.do)
+        && (value.fill === undefined || scalarMap(value.fill)) && Object.keys(value).every((k) => ["app", "do", "fill"].includes(k));
   }
 }
 
@@ -100,6 +105,10 @@ export function readValue(key: PanelKey, value: unknown): { value: unknown } | {
       return { value: isText(value) ? String(value) : value };
     case "format": return { value: isText(value) ? String(value) : textOf(value as Record<string, unknown>) };
     case "textMap": return { value: textOf(value as Record<string, unknown>) };
+    case "then": {
+      const t = value as Record<string, unknown>;
+      return { value: { app: String(t.app), do: String(t.do), ...(t.fill ? { fill: textOf(t.fill as Record<string, unknown>) } : {}) } };
+    }
     case "valueMap":
       return { value: Object.fromEntries(Object.entries(value as Record<string, Record<string, unknown>>).map(([k, v]) => [k, textOf(v)])) };
     default: return { value };
@@ -207,9 +216,9 @@ export const GROUP_KEYS = ["group", "per"] as const;
  */
 export const ACTION_KEYS = ["save", "append", "line", "notify", "open", "row", "name", "template"] as const;
 
-/** A panel that acts needs something to do; opening a note alone is enough. */
+/** A panel that acts needs something to do; opening a note, or running another app's shortcut, alone is enough. */
 export function needsAction(view: string, p: Panel): string[] {
-  return p.save || p.append || p.notify || p.open ? [] : [`${view} needs at least one of save, append, notify`];
+  return p.save || p.append || p.notify || p.open || p.then ? [] : [`${view} needs at least one of save, append, notify`];
 }
 
 /** On a list or table, the action keys need `action` (the button each row gets), and it needs one of them. */

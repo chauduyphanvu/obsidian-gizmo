@@ -392,6 +392,17 @@ test("an embed's panels are drawn 32 px wider than the same panel in an app's ow
   assert.equal(viewBox(t.root), "0 0 666 220");
 });
 
+test("then in an embed or a lens says it works only in an app note, and asks for nothing it can't do there", () => {
+  const fm = { app: "", panels: [{ view: "button", label: "Go", save: "x", then: { app: "[[Errands]]", do: "add", fill: { errand: "x" } } }] };
+  for (const host of [{}, { scope: "Notes" }]) {
+    const hosted = readSpec(fm, { path: "Notes/Day.md", host })!;
+    assert.deepEqual(hosted.errors, ["panel 1: then works in an app note, not in an embed or a lens"]);
+    assert.deepEqual(permissionsOf(hosted.spec!, "Notes/Day.md"), []);
+    assert.equal(hosted.spec!.panels[0].panel.then, undefined, "the panel still draws, without the then");
+  }
+  assert.deepEqual(permissionsOf(readSpec(fm, { path: "Apps/Day.md" })!.spec!, "Apps/Day.md"), ["run:Errands#add"]);
+});
+
 test("record, pin, alert and shortcut work in an app note; in an embed or a lens they say so", () => {
   const fm = {
     app: "", data: { kp: { source: "https://api.example.com/kp", record: "1h" } },

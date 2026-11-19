@@ -263,6 +263,47 @@ export default async function gallery(t) {
     return `Books/${r.title}.md; lens: ${r.lens.slice(0, 80)}`;
   }, { net: NET["Book finder"] });
 
+  await check("Share Weight shows its text with the Tracker kit; installed under another name it reuses the kit and opens; under its own name it's refused", async () => {
+    const r = await run(`
+      await na.open("Apps/Weight");
+      app.commands.executeCommandById("gizmo:share-app");
+      const shared = await na.until(() => activeDocument.querySelector(".modal .gz-share-text"), 3000);
+      const modal = shared.closest(".modal");
+      const text = shared.value;
+      const said = na.text(modal);
+      modal.querySelector(".modal-close-button, .modal-header-button").click();
+      await na.sleep(300);
+
+      const install = async (bundle) => {
+        app.commands.executeCommandById("gizmo:install-app");
+        const area = await na.until(() => activeDocument.querySelector(".modal .gz-share-text"), 3000);
+        const m = area.closest(".modal");
+        area.value = bundle;
+        [...m.querySelectorAll("button")].find((b) => b.textContent === "Preview").click();
+        const preview = await na.until(() => m.querySelector(".gz-install-preview h4, .gz-install-preview .gz-error-text") && na.text(m.querySelector(".gz-install-preview")), 3000);
+        return { m, preview, button: [...m.querySelectorAll("button")].find((b) => b.textContent === "Install") };
+      };
+      const refused = await install(text);
+      const refusedDisabled = refused.button.disabled;
+      refused.m.querySelector(".modal-close-button, .modal-header-button").click();
+      await na.sleep(300);
+
+      const copy = text.replace(/^# Weight$/m, "# Weight copy").replace("gizmo-note Weight\\n", "gizmo-note Weight copy\\n");
+      const fresh = await install(copy);
+      fresh.button.click();
+      const opened = await na.until(() => na.state() === "gizmo:" + (app.fileManager.getNewFileParent("").path === "/" ? "" : app.fileManager.getNewFileParent("").path + "/") + "Weight copy.md" && na.state(), 5000);
+      await na.settle?.();
+      await na.sleep(800);
+      const copies = app.vault.getMarkdownFiles().filter((f) => f.basename === "Tracker kit").length;
+      return { text, said, refused: refused.preview, refusedDisabled, preview: fresh.preview, opened, copies, errors: na.errors(), app: na.text() };`);
+    expect(r.text.startsWith("# Weight\n") && r.text.includes("````gizmo-note Weight\n") && r.text.includes("````gizmo-note Tracker kit\n"), r.text.slice(0, 200));
+    expect(r.said.includes("It takes Tracker kit along with Weight."), r.said);
+    expect(r.refused.includes("“Weight” already exists") && r.refusedDisabled, r);
+    expect(r.preview.includes("Creates Weight copy, and uses your Tracker kit.") && r.preview.includes("It asks for nothing"), r.preview);
+    expect(r.opened && r.copies === 1 && r.errors === 0, r);
+    return `refused as taken; installed: ${r.preview.slice(0, 90)}`;
+  });
+
   // Screenshots of every gallery app, light and dark at desktop width, and at phone width.
   for (const theme of ["light", "dark"]) {
     await t.theme(theme);

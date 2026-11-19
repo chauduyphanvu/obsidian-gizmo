@@ -81,6 +81,7 @@ export const KEY_HINTS: Record<string, string> = {
   // Background
   pin: "status shows this panel's value in the status bar",
   alert: "Tell me when this is true, e.g. \">= 5\" or {kp: \">= 5\"}",
+  then: "Then run another app's shortcut: {app: \"[[Task inbox]]\", do: add, fill: {task: \"Renew {what}\"}}",
   // Data blocks only
   record: "Save a sample of this source on a timer: 10m, 1h, 1d",
   into: "The saved list a record writes to; default is <block>_log",

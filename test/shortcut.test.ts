@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { linkNotice } from "../src/background.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const MEDS = {
@@ -135,4 +136,54 @@ test("a shortcut reading $this runs with the app note as $this, as its panel doe
   assert.deepEqual(data?.legs, [{ km: 3, city: "Oslo", at: "2026-11-18T12:00" }]);
   assert.deepEqual(t.notices, ["Walked in Oslo", "Walk: leg done"]);
   assert.deepEqual(t.out.apps, [], "nothing opened the app");
+});
+
+/** The parameters Obsidian hands the handler for a link: its own `action`, then the query's. */
+function paramsOf(link: string): Record<string, string> {
+  const url = new URL(link);
+  return { action: url.host, ...Object.fromEntries(url.searchParams) };
+}
+
+test("each shortcut has the link that runs it, and copying one says how a form's fields are filled", async () => {
+  const t = meds({ "Apps/Weight.md": { fm: { app: "w", view: "form", fields: { kg: "number" }, save: "weights", shortcut: "weigh-in" } } });
+  t.denied.add("Apps/Weight.md");
+  await t.bg.start();
+  const links = t.bg.shortcutLinks();
+  assert.deepEqual(links.map((l) => [l.path, l.shortcut, l.label, l.fields, l.link, l.allowed]), [
+    ["Apps/Meds.md", "effects", "Side effects", ["note", "severity", "dizzy", "hours", "on", "when"], "obsidian://gizmo?app=Meds&do=effects", true],
+    ["Apps/Meds.md", "took-meds", "Took meds", [], "obsidian://gizmo?app=Meds&do=took-meds", true],
+    ["Apps/Weight.md", "weigh-in", "weigh-in", ["kg"], "obsidian://gizmo?app=Weight&do=weigh-in", false],
+  ]);
+  assert.equal(linkNotice(links[1]), "Copied the link to “Took meds” in Meds.");
+  assert.equal(linkNotice(links[2]), "Copied the link to “weigh-in” in Weight. Add &kg=… to fill the form. Open Weight once to allow it; until then the link is refused.");
+
+  await t.bg.runUri(paramsOf(links[1].link));
+  await t.bg.runUri(paramsOf(`${links[0].link}&note=${encodeURIComponent("a bit sick")}&severity=mild`));
+  assert.deepEqual(t.data("doses"), [{ at: "2026-11-18T12:00" }]);
+  assert.equal(t.data("effects")![0].note, "a bit sick");
+});
+
+test("a shortcut's link names its app by path when another app has its name, and a name with spaces is encoded", async () => {
+  const t = meds({ "Old/Meds.md": { fm: MEDS }, "Apps/Med log.md": { fm: { ...MEDS, panels: [MEDS.panels[0]] } } });
+  await t.bg.start();
+  const link = (path: string) => t.bg.shortcutLinks().find((l) => l.path === path && l.shortcut === "took-meds")!.link;
+  assert.equal(link("Apps/Meds.md"), "obsidian://gizmo?app=Apps%2FMeds&do=took-meds");
+  assert.equal(link("Old/Meds.md"), "obsidian://gizmo?app=Old%2FMeds&do=took-meds");
+  assert.equal(link("Apps/Med log.md"), "obsidian://gizmo?app=Med%20log&do=took-meds");
+  await t.bg.runUri(paramsOf(link("Old/Meds.md")));
+  await t.bg.runUri(paramsOf(link("Apps/Med log.md")));
+  assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Med log data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
+  assert.equal(t.data("doses"), undefined);
+});
+
+test("a link's own parameters (action, app, do) never fill a form's fields of those names", async () => {
+  const fm = { app: "Jobs", view: "form", fields: { do: "text", app: "text", action: "text", who: "text" }, save: "jobs", shortcut: "job" };
+  const t = fakeBackground({ "Apps/Jobs.md": { fm } });
+  await t.bg.start();
+  await t.bg.runUri({ action: "gizmo", app: "Jobs", do: "job", who: "me" });
+  const jobs = t.f.files.get("Apps/Jobs data.md")?.fm?.jobs as Record<string, unknown>[];
+  assert.deepEqual(jobs, [{ do: "", app: "", action: "", who: "me", at: "2026-11-18T12:00" }]);
+  const [link] = t.bg.shortcutLinks();
+  assert.equal(linkNotice(link), "Copied the link to “job” in Jobs. Add &who=… to fill the form. A link can't fill do, app, action; rename those fields to fill them.");
 });

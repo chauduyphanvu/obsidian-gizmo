@@ -1,6 +1,8 @@
-import { FileView, type TFile, type WorkspaceLeaf } from "obsidian";
+import { FileView, type Menu, type TFile, type WorkspaceLeaf } from "obsidian";
 import { AppController } from "./app.ts";
 import { obsidianAppEnv } from "./host.ts";
+import { openActivity } from "./activity-view.ts";
+import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
 
 export const VIEW_TYPE = "gizmo";
@@ -23,6 +25,16 @@ export class AppView extends FileView {
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
     this.addAction("search-code", "Inspect data", () => void this.controller?.toggleInspector());
     this.addAction("refresh-cw", "Reload data", () => this.controller?.reload());
+    this.addAction("history", "Activity", () => this.file && openActivity(this.plugin, this.file.path));
+  }
+
+  /** The tab's menu offers the link to each of this app's shortcuts. */
+  onPaneMenu(menu: Menu, source: string): void {
+    super.onPaneMenu(menu, source);
+    const path = this.file?.path;
+    for (const s of this.plugin.background?.shortcutLinks().filter((l) => l.path === path) ?? []) {
+      menu.addItem((item) => item.setTitle(`Copy link: ${s.label}`).setIcon("link").setSection("action").onClick(() => copyShortcutLink(s)));
+    }
   }
 
   async onLoadFile(file: TFile): Promise<void> {

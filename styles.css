@@ -444,3 +444,29 @@ button.gz-lens-toggle {
 
 /* Edit in place: a dropdown in an edited column is as wide as its longest choice, never cut short. */
 .gizmo .gz-table select.gz-edit { width: auto; min-width: max-content; }
+
+/* Share and install windows */
+.gizmo.gz-share { padding: 0; }
+.gizmo.gz-share .gz-share-text {
+  width: 100%;
+  font-family: var(--font-monospace);
+  font-size: var(--font-smaller);
+  resize: vertical;
+}
+.gizmo.gz-share .gz-muted { color: var(--text-muted); font-size: var(--font-smaller); }
+.gizmo.gz-share .gz-error-text { color: var(--text-error); }
+.gizmo.gz-share .gz-warning-text { color: var(--text-warning); }
+.gizmo.gz-share .gz-install-preview h4 { margin: var(--size-4-3) 0 var(--size-4-1); }
+.gizmo.gz-share .gz-install-preview ul { margin-top: 0; }
+
+/* Activity */
+.gizmo.gz-activity { padding: 0; }
+.gizmo.gz-activity .gz-muted { color: var(--text-muted); }
+.gizmo .gz-activity-entry { padding: var(--size-4-2) 0; border-bottom: 1px solid var(--background-modifier-border); }
+.gizmo .gz-activity-entry:last-child { border-bottom: none; }
+.gizmo .gz-activity-head { display: flex; align-items: baseline; gap: var(--size-4-2); }
+.gizmo .gz-activity-when { color: var(--text-muted); font-size: var(--font-ui-small); white-space: nowrap; }
+.gizmo .gz-activity-who { flex: 1; font-weight: var(--font-semibold); }
+.gizmo .gz-activity-undone { color: var(--text-faint); font-size: var(--font-ui-small); }
+.gizmo .gz-activity-entry ul { margin: var(--size-4-1) 0 0; }
+.gizmo .gz-activity-entry li.gz-undone { color: var(--text-faint); text-decoration: line-through; }

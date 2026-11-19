@@ -631,13 +631,17 @@ test("Task inbox: add a task to the inbox, see what is open and due this week, t
   submit(form.querySelector("form")!);
   await settle();
   assert.deepEqual(writes, ["Tasks/Inbox.md"]);
+  assert.equal(f.files.get("Tasks/Inbox.md")!.body, "- [ ] Book the dentist\n");
+  // The inbox is a note in Tasks, so the new task is open too, undated with the others.
+  assert.deepEqual(openRows(), [["Buy stamps", "Home", "—"], ["Book the dentist", "Inbox", "—"], ["Water plants 📅 2026-11-19", "Home", "2026-11-19"]]);
 
-  const box = open.querySelectorAll("tbody tr")[1].querySelector('input[type="checkbox"]') as HTMLInputElement;
+  const water = [...open.querySelectorAll("tbody tr")].find((tr) => text(tr.querySelector("td")).startsWith("Water plants"))!;
+  const box = water.querySelector('input[type="checkbox"]') as HTMLInputElement;
   box.checked = true;
   change(box);
   await settle();
   assert.equal(f.files.get("Tasks/Home.md")!.body, "# Home\n\n- [x] Water plants 📅 2026-11-19\n- [ ] Buy stamps\n- [x] Call the bank 📅 2026-11-17\n");
-  assert.equal(openRows().length, 1);
+  assert.equal(openRows().length, 2);
   assert.equal(text(soon.querySelector(".gz-big")), "0");
   assert.deepEqual([...done.querySelectorAll("li")].map(text), ["Water plants 📅 2026-11-19 · Home", "Call the bank 📅 2026-11-17 · Home"]);
 });

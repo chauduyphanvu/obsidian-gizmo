@@ -1,14 +1,18 @@
 import {
-  MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
+  MarkdownView, Plugin, TFile, WorkspaceLeaf, normalizePath, type ViewState,
 } from "obsidian";
+import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
+import { registerActivity } from "./activity-view.ts";
 import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { dropGrants, isAllowed, moveGrants } from "./hosted.ts";
-import { obsidianHost } from "./host.ts";
+import { obsidianHost, obsidianUndoIO } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
+import { registerLinkCommand } from "./link-command.ts";
+import { registerShareCommands } from "./share-command.ts";
 import { defaultDataPath } from "./store.ts";
 import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
@@ -26,6 +30,8 @@ export default class GizmoPlugin extends Plugin {
   dataLayer!: DataLayer;
   /** Works for allowed apps while their notes are closed: records, shortcuts, status bar, alerts. */
   background: ReturnType<typeof registerBackground> | undefined;
+  /** What every app changed in the vault, kept in the plugin's folder so it can be shown and undone. */
+  activity!: ActivityLog;
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
@@ -33,6 +39,12 @@ export default class GizmoPlugin extends Plugin {
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
+    const logPath = normalizePath(`${this.manifest.dir ?? ""}/activity.json`);
+    const adapter = this.app.vault.adapter;
+    this.activity = new ActivityLog({
+      read: async () => ((await adapter.exists(logPath)) ? adapter.read(logPath) : undefined),
+      write: (text) => adapter.write(logPath, text),
+    });
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
     // Notes that change reach the data layer through the metadata event above; any other file only through here.
@@ -55,11 +67,15 @@ export default class GizmoPlugin extends Plugin {
       this.dataLayer.fileRenamed(file.path, oldPath);
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
       if (moveGrants(this.store.grants, oldPath, file.path)) void this.saveData(this.store);
+      void this.activity.rename(oldPath, file.path);
     }));
     registerEmbeds(this);
     registerLenses(this);
     registerInsertPanel(this);
     registerGalleryCommand(this);
+    registerLinkCommand(this);
+    registerShareCommands(this);
+    registerActivity(this);
 
     this.addCommand({
       id: "open-as-app",
@@ -84,6 +100,13 @@ export default class GizmoPlugin extends Plugin {
       const file = (leaf.view as AppView).file;
       if (file) void leaf.setViewState({ type: "markdown", state: { file: file.path } });
     }
+  }
+
+  /** Undoes what's left of an entry's changes, newest first, and keeps how far it got. */
+  async undo(entry: Entry): Promise<UndoResult> {
+    const result = await undoEntry(entry, obsidianUndoIO(this));
+    await this.activity.setUndone(entry.id, result.undone);
+    return result;
   }
 
   /** A renamed or moved app takes its default data note along, so its recorded data stays attached. */

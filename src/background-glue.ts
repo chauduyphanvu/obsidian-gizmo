@@ -1,7 +1,8 @@
-import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
+import { Notice, Platform, normalizePath, type WorkspaceLeaf } from "obsidian";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
+import { openInstall } from "./share-command.ts";
 import { notePath } from "./spec.ts";
 import { storeTarget } from "./store.ts";
 
@@ -35,7 +36,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     appPaths: () => app.vault.getMarkdownFiles().filter((f) => isSet(frontmatter(f.path)?.app)).map((f) => f.path),
     isGranted: (path, wanted) => plugin.isGranted(path, wanted, true),
     storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
-    actionDeps(appPath, dataPath) {
+    actionDeps(appPath, dataPath, actor) {
       const env = envFor(appPath);
       if (!env) throw new Error(`can't find ${appPath}`);
       return {
@@ -46,9 +47,15 @@ export function registerBackground(plugin: GizmoPlugin): Background {
         readBody: (path) => env.readBody(path),
         notify: (message) => env.notify(message),
         openNote: (path, from) => env.openNote(path, from),
+        log: actor ? (what, changes) => void plugin.activity.add({ app: appPath, actor, what, changes }) : undefined,
       };
     },
     now: () => new Date(),
+    triggers: (() => {
+      const path = normalizePath(`${plugin.manifest.dir ?? ""}/triggers.json`);
+      const adapter = app.vault.adapter;
+      return { read: async () => ((await adapter.exists(path)) ? adapter.read(path) : undefined), write: (text: string) => adapter.write(path, text) };
+    })(),
     sink: {
       notify: (message) => { new Notice(message); },
       // Commands come and go with the apps that declare them; a hotkey stays bound to the id.
@@ -88,9 +95,13 @@ export function registerBackground(plugin: GizmoPlugin): Background {
 
   plugin.registerEvent(app.metadataCache.on("changed", (file) => bg.noteChanged(file.path)));
   plugin.registerEvent(app.vault.on("rename", (file) => bg.noteChanged(file.path)));
-  // A link may open Obsidian; it's answered once the apps are known.
+  // A link may open Obsidian; it's answered once the apps are known. An install link only opens
+  // the install window, which writes nothing until the person says so.
   plugin.registerObsidianProtocolHandler("gizmo", (params) => {
-    app.workspace.onLayoutReady(() => void bg.runUri({ ...params }));
+    app.workspace.onLayoutReady(() => {
+      if (typeof params.install === "string") return openInstall(plugin, params.install);
+      void bg.runUri({ ...params });
+    });
   });
   app.workspace.onLayoutReady(() => {
     if (stopped) return;

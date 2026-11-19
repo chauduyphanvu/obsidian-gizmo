@@ -1,4 +1,5 @@
-import { runActions, type ActionDeps } from "./actions.ts";
+import { fillLine, runActions, type ActionDeps } from "./actions.ts";
+import { stableJson, type Actor, type LogStore } from "./activity.ts";
 import { panelIds } from "./app.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, stampParts, toTime, type Row } from "./data.ts";
@@ -6,9 +7,9 @@ import type { DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
 import {
-  permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec,
+  permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
-import { defaultDataPath, resolveList } from "./store.ts";
+import { defaultDataPath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { rowsOf, startOf } from "./views/common.ts";
@@ -22,6 +23,10 @@ export const DEFAULT_REFRESH_MS = 10 * 60_000;
 export const MIN_RECORD_MS = 60_000;
 /** A recorded list keeps this many rows, the newest. */
 export const MAX_SAMPLES = 10_000;
+/** How many shortcuts one action may run through `then`, one app after another. */
+export const MAX_CHAIN = 4;
+/** How many times one `then` may run in an hour; more is a loop going through data. */
+export const MAX_RUNS_PER_HOUR = 20;
 
 /** One status bar item: `<panel title>: <value>`, and the name of the app a click opens. */
 export interface StatusItem {
@@ -48,10 +53,16 @@ export interface BackgroundEnv {
   /** Whether the app was opened in its own tab and is allowed exactly `wanted`, even when that is nothing. */
   isGranted(path: string, wanted: string[]): boolean;
   storePath(store: string, fromPath: string): string;
-  actionDeps(appPath: string, dataPath: string): ActionDeps;
+  /** What running an app's actions writes with; with an actor, what they change is kept in the activity log. */
+  actionDeps(appPath: string, dataPath: string, actor?: Actor): ActionDeps;
   now(): Date;
   sink: BackgroundSink;
+  /** Where the alerts that run a `then` keep what they already ran for, across restarts. */
+  triggers?: LogStore;
 }
+
+/** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
+type Fired = { on: boolean } | { rows: string[] };
 
 /**
  * A panel worked out without drawing it: its value, that value as its view shows it (`shown`, unit
@@ -116,6 +127,12 @@ export class Background {
   private alertOn = new Map<string, boolean>();
   private listeners = new Set<() => void>();
   private alertsShown = "[]";
+  /** By watched panel key, what each alert with `then` already ran for; read once from `env.triggers`. */
+  private fired: Promise<Record<string, Fired>> | undefined;
+  private firedSaved = "{}";
+  private firedSaving: Promise<void> = Promise.resolve();
+  /** When each `then` ran in the last hour, by source app and target shortcut. */
+  private runs = new Map<string, number[]>();
 
   /** Alerts true now across the vault, for `view: alerts`. */
   readonly alerts: AlertFeed = {
@@ -216,7 +233,7 @@ export class Background {
   /** Runs the command `<app path>:<shortcut>`. */
   runCommand(id: string): Promise<void> {
     const cut = id.lastIndexOf(":");
-    return this.runShortcut(id.slice(0, cut), id.slice(cut + 1));
+    return this.runShortcut(id.slice(0, cut), id.slice(cut + 1), "shortcut");
   }
 
   /**
@@ -225,12 +242,26 @@ export class Background {
    * parameters only fill that form's fields, checked against their types.
    */
   async runUri(params: Record<string, string>): Promise<void> {
-    const name = params.app ?? "";
-    const exact = this.apps.get(name) ?? this.apps.get(`${name}.md`);
-    const found = exact ? [exact] : [...this.apps.values()].filter((e) => e.name === name);
+    const { action: _action, app: name = "", do: shortcut = "", ...fields } = params;
+    const found = appsNamed(this.apps, name);
     if (found.length === 0) return this.say(`No app called “${name}”`);
     if (found.length > 1) return this.say(`Several apps are called “${name}”; use its path`);
-    return this.runShortcut(found[0].path, params.do ?? "", params);
+    return this.runShortcut(found[0].path, shortcut, "link", fields);
+  }
+
+  /** Every app's shortcuts with the link that runs each, whether or not the app is allowed yet. */
+  shortcutLinks(): ShortcutLink[] {
+    return [...this.apps.values()]
+      .flatMap((e) => [...e.shortcuts].map(([shortcut, ps]): ShortcutLink => {
+        const p = ps.panel;
+        const fields = p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
+        return {
+          path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), fields,
+          link: shortcutLink(this.apps, e.path, shortcut),
+          allowed: this.granted(e),
+        };
+      }))
+      .sort((a, b) => a.path.localeCompare(b.path) || a.shortcut.localeCompare(b.shortcut));
   }
 
   /**
@@ -238,17 +269,23 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  private async runShortcut(appPath: string, shortcut: string, params?: Record<string, string>): Promise<void> {
+  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[]): Promise<void> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
     if (!this.granted(entry)) return this.say(`Open ${entry.name} once to allow it`);
     const now = this.env.now();
     const r = resolvePanel(ps, this.valuesOf(entry.path, entry.spec, now));
-    if (!r.panel) return this.env.sink.openApp(entry.path);
+    // Another app's trigger never opens an app: what it can't run is told instead.
+    const triggered = chain !== undefined;
+    if (!r.panel) return triggered ? this.say(`${entry.name}: “${shortcut}” waits for a choice in the app, so it can't run from ${by(actor)}`) : this.env.sink.openApp(entry.path);
     const p = r.panel;
     let input: Row = {};
+    if (triggered && p.view !== "form" && params && Object.keys(params).length) {
+      return this.say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
+    }
     if (p.view === "form") {
+      if (!params && triggered) return this.say(`${entry.name}: “${shortcut}” is a form; give ${by(actor)}'s then a fill with its values`);
       if (!params) {
         this.env.sink.openApp(entry.path);
         return this.say(`${entry.name}: fill in the form`);
@@ -260,8 +297,58 @@ export class Background {
       if ("error" in filled) return this.say(`${entry.name}: ${filled.error}`);
       input = filled.row;
     }
-    const result = await runActions(p, input, this.env.actionDeps(entry.path, entry.dataPath));
-    if (result.ok && !p.notify) this.say(`${entry.name}: ${labelOf(p, shortcut)} done`);
+    const trail = chain ?? [`${entry.path}#${shortcut}`];
+    // Said before what its `then` runs says, in the order they happen.
+    let told = false;
+    const done = () => {
+      if (told || p.notify) return;
+      told = true;
+      this.say(`${entry.name}: ${labelOf(p, shortcut)} done${triggered ? ` for ${by(actor)}` : ""}`);
+    };
+    const deps: ActionDeps = {
+      ...this.env.actionDeps(entry.path, entry.dataPath, actor),
+      then: async (panel, ctx) => {
+        done();
+        if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail);
+      },
+    };
+    const result = await runActions(p, input, deps);
+    if (result.ok) done();
+  }
+
+  /**
+   * Runs a panel's `then`: the named app's shortcut, as a link would, with `fill` filled from the
+   * row the panel ran with. Both apps must be allowed. A shortcut already run in this chain, a
+   * chain longer than MAX_CHAIN, or more than MAX_RUNS_PER_HOUR runs of one `then` is a loop, and
+   * stops with a notice naming it. Never rejects.
+   */
+  async runThen(fromPath: string, then: Then, ctx: Row, chain: string[] = []): Promise<void> {
+    try {
+      const from = this.apps.get(fromPath) ?? (this.running ? this.index(fromPath) : undefined);
+      if (!from || !this.granted(from)) return;
+      // Found as Obsidian finds the link from the app's note, as `use` links are.
+      const name = storeTarget(then.app);
+      const path = this.env.notes.resolve(name, from.path);
+      if (!path) return this.say(`${from.name}: no app called “${name}” to run “${then.do}” in`);
+      const target = this.apps.get(path) ?? (this.running ? this.index(path) : undefined);
+      if (!target) return this.say(`${from.name}: “${name}” isn't an app, so it can't run “${then.do}”`);
+      const key = `${target.path}#${then.do}`;
+      const names = (keys: string[]) => keys.map((k) => basename(k.slice(0, k.lastIndexOf("#")))).join(" → ");
+      if (chain.includes(key)) return this.say(`${from.name}: stopped a loop: ${names([...chain, key])}`);
+      if (chain.length >= MAX_CHAIN) return this.say(`${from.name}: stopped after ${MAX_CHAIN} apps in a row: ${names([...chain, key])}`);
+      const now = this.env.now().getTime();
+      const rateKey = `${from.path}\n${key}`;
+      const recent = (this.runs.get(rateKey) ?? []).filter((t) => now - t < 3_600_000);
+      if (recent.length >= MAX_RUNS_PER_HOUR) {
+        this.runs.set(rateKey, recent);
+        return this.say(`${from.name}: stopped running “${then.do}” in ${target.name}: it ran ${MAX_RUNS_PER_HOUR} times this hour`);
+      }
+      this.runs.set(rateKey, [...recent, now]);
+      const params = Object.fromEntries(Object.entries(then.fill ?? {}).map(([k, v]) => [k, fillLine(v, ctx)]));
+      await this.runShortcut(target.path, then.do, `trigger:${from.name}`, then.fill ? params : undefined, [...chain, key]);
+    } catch (e) {
+      this.say(`${basename(fromPath)}: couldn't run “${then.do}”: ${(e as Error).message}`);
+    }
   }
 
   private say(message: string): void {
@@ -315,10 +402,13 @@ export class Background {
       const { shown } = r;
       if (p.pin === "status") this.pins.set(key, { appPath: entry.path, text: `${title}: ${shown}`, title: entry.name });
       if (p.alert === undefined) continue;
-      const matching = typeof p.alert === "string" ? undefined : rowsOf(r.rows).filter(compileWhere(p.alert, now)).length;
+      const rows = typeof p.alert === "string" ? undefined : rowsOf(r.rows).filter(compileWhere(p.alert, now));
+      const matching = rows?.length;
       const on = matching === undefined ? matches(r.value, p.alert as string, now) : matching > 0;
       const was = this.alertOn.get(key);
       this.alertOn.set(key, on);
+      if (p.then) await this.alertThen(entry, key, p.then, r.value, on, rows);
+      if (this.apps.get(entry.path) !== entry) return;
       if (!on) {
         this.active.delete(key);
         continue;
@@ -331,6 +421,53 @@ export class Background {
     this.publish();
   }
 
+  /**
+   * Runs an alert's `then` for what is new since it last ran: once when a condition on its value
+   * turns true, and once for each row that newly matches a condition on rows. With nothing kept for
+   * the alert yet (the app was just allowed, the panel is new or was edited), it only notes what is
+   * true now, so already-true alerts don't all run at once.
+   */
+  private async alertThen(entry: AppEntry, key: string, then: Then, value: unknown, on: boolean, rows: Row[] | undefined): Promise<void> {
+    const fired = await this.firedState();
+    const before = fired[key];
+    if (rows === undefined) {
+      fired[key] = { on };
+      this.saveFired();
+      if (before && "on" in before && !before.on && on) await this.runThen(entry.path, then, { value });
+      return;
+    }
+    const ids = rows.map(rowId);
+    fired[key] = { rows: [...new Set(ids)] };
+    this.saveFired();
+    if (!before || !("rows" in before)) return;
+    const seen = new Set(before.rows);
+    for (const [i, row] of rows.entries()) if (!seen.has(ids[i])) await this.runThen(entry.path, then, { ...row, value });
+  }
+
+  private firedState(): Promise<Record<string, Fired>> {
+    this.fired ??= (async () => {
+      try {
+        const text = await this.env.triggers?.read();
+        const parsed = text ? JSON.parse(text) as unknown : {};
+        this.firedSaved = text ?? "{}";
+        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, Fired> : {};
+      } catch {
+        return {};
+      }
+    })();
+    return this.fired;
+  }
+
+  /** Writes what alerts ran for when it changed, one write after another. */
+  private saveFired(): void {
+    void this.fired?.then((fired) => {
+      const text = JSON.stringify(fired);
+      if (text === this.firedSaved) return;
+      this.firedSaved = text;
+      this.firedSaving = this.firedSaving.then(() => this.env.triggers?.write(text)).catch(() => {});
+    });
+  }
+
   /** Drops an app's status items and alerts (it's gone, or no longer allowed); `keep` are panels it still watches. */
   private forget(path: string, keep: ReadonlySet<string> = new Set()): void {
     let dropped = false;
@@ -341,6 +478,16 @@ export class Background {
         dropped = true;
       }
     }
+    // An alert's `then` that is dropped starts over, noting what is true when it's back.
+    void this.fired?.then((fired) => {
+      let gone = false;
+      for (const key of Object.keys(fired)) {
+        if (!key.startsWith(`${path}\n`) || keep.has(key)) continue;
+        delete fired[key];
+        gone = true;
+      }
+      if (gone) this.saveFired();
+    });
     if (dropped) this.publish();
   }
 
@@ -463,6 +610,57 @@ export class Background {
     this.apps.set(path, entry);
     return entry;
   }
+}
+
+/** A shortcut as a link from outside Obsidian (a phone's shortcut, a tag, a bookmark) runs it. */
+export interface ShortcutLink {
+  path: string;
+  app: string;
+  shortcut: string;
+  label: string;
+  /** A form's fields, each filled by `&field=value`; none for a button. */
+  fields: string[];
+  link: string;
+  allowed: boolean;
+}
+
+/** A link's own parameters; a form field of one of these names can't be filled from a link. */
+export const LINK_PARAMS = ["action", "app", "do"];
+
+/** What copying a shortcut's link tells: which link, how a form's fields are filled, and what stops it. */
+export function linkNotice(s: ShortcutLink): string {
+  const parts = [`Copied the link to “${s.label}” in ${s.app}.`];
+  const fillable = s.fields.filter((f) => !LINK_PARAMS.includes(f));
+  if (fillable.length) parts.push(`Add ${fillable.map((f) => `&${f}=…`).join("")} to fill the form.`);
+  const stuck = s.fields.filter((f) => LINK_PARAMS.includes(f));
+  if (stuck.length) parts.push(`A link can't fill ${stuck.join(", ")}; rename ${stuck.length === 1 ? "that field" : "those fields"} to fill ${stuck.length === 1 ? "it" : "them"}.`);
+  if (!s.allowed) parts.push(`Open ${s.app} once to allow it; until then the link is refused.`);
+  return parts.join(" ");
+}
+
+/** The apps a link's `app=` names: the one at that path (`.md` optional), else every app of that name. */
+function appsNamed<T extends { path: string; name: string }>(apps: ReadonlyMap<string, T>, name: string): T[] {
+  const exact = apps.get(name) ?? apps.get(`${name}.md`);
+  return exact ? [exact] : [...apps.values()].filter((e) => e.name === name);
+}
+
+/** The link that runs an app's shortcut: it names the app by name, or by path when another app has that name. */
+export function shortcutLink(apps: ReadonlyMap<string, { path: string; name: string }>, path: string, shortcut: string): string {
+  const name = basename(path);
+  const app = appsNamed(apps, name).length === 1 ? name : path.replace(/\.md$/i, "");
+  return `obsidian://gizmo?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}`;
+}
+
+/** Who ran a shortcut, as a notice names them. */
+function by(actor: Actor): string {
+  return actor.startsWith("trigger:") ? actor.slice("trigger:".length) : actor === "link" ? "a link" : "a command";
+}
+
+/** A row as an alert's `then` remembers it: its note (and task text), else when it was saved, else all of it. */
+function rowId(row: Row): string {
+  if (typeof row.path === "string") return typeof row.text === "string" ? `${row.path}\n${row.text}` : row.path;
+  if (typeof row.at === "string") return `at:${row.at}`;
+  return stableJson(row);
 }
 
 /** What a command or notice calls a panel. */
