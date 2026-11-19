@@ -6,6 +6,7 @@ import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
 import { dropGrants, isAllowed, moveGrants } from "./hosted.ts";
 import { obsidianHost } from "./host.ts";
+import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import { defaultDataPath } from "./store.ts";
 import { registerAuthoring } from "./suggest.ts";
@@ -56,6 +57,7 @@ export default class NoteAppsPlugin extends Plugin {
     }));
     registerEmbeds(this);
     registerLenses(this);
+    registerInsertPanel(this);
 
     this.addCommand({
       id: "open-as-app",
