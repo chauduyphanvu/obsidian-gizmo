@@ -34,16 +34,29 @@ export interface Panel {
   notify?: string;
 }
 
+/** One panel of an app, as written and as drawn. */
+export interface PanelSpec {
+  /** The panel's keys as written; hashing them gives the panel its identity. */
+  template: Record<string, unknown>;
+  /** The checked keys the panel draws with. */
+  panel: Panel;
+  /** Where the panel is written, for messages: "panel 2"; empty for a single top-level panel. */
+  label: string;
+}
+
 export interface AppSpec {
   /** Link or path of the note that holds recorded data, when not the default `<App> data.md`. */
   store?: string;
   description: string;
-  panels: Panel[];
+  panels: PanelSpec[];
   refreshMs?: number;
 }
 
-/** Top-level keys that define the app; recorded data may never be written under these names. */
-const RESERVED = ["app", "panels", "refresh", "store"];
+/** The language version this plugin reads. */
+export const SPEC_VERSION = 1;
+
+/** Top-level keys that define an app or component; lists may never be named after them. */
+export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params"];
 
 export interface SpecResult {
   spec?: AppSpec;
@@ -122,29 +135,50 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     ...(p.source && /^http:\/\//i.test(p.source) ? ["source must use https"] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
     ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
+    ...(isListName(p.source) && RESERVED.includes(p.source) ? [`source can't use "${p.source}", which names part of the app`] : []),
+    ...(p.source && /^https?:\/\/[^/?#]*\{secret:/i.test(p.source) ? ["a secret can't be part of the host; put it in the path, the query or headers"] : []),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
+}
+
+/** A source that names a list in the data note or app note (not a URL, not `notes`). */
+export function isListName(source: string | undefined): source is string {
+  return !!source && source !== "notes" && !isUrl(source);
+}
+
+function checkVersion(value: unknown): string | undefined {
+  if (value === undefined || value === null || value === SPEC_VERSION) return undefined;
+  if (typeof value === "number" && Number.isInteger(value) && value > SPEC_VERSION) {
+    return `spec: ${value} needs a newer Note Apps (this one reads spec ${SPEC_VERSION})`;
+  }
+  return `spec must be ${SPEC_VERSION}`;
 }
 
 /** Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. */
 export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | undefined {
   if (!fm || fm.app === undefined || fm.app === null || fm.app === false) return undefined;
   const description = fm.app === true ? "" : String(fm.app);
+  const versionError = checkVersion(fm.spec);
+  // Keys written for a newer version may mean something else, so nothing is drawn.
+  if (versionError) return { errors: [versionError], empty: false };
   const errors: string[] = [];
-  const panels: Panel[] = [];
+  const panels: PanelSpec[] = [];
 
   if (Array.isArray(fm.panels)) {
     fm.panels.forEach((raw, i) => {
-      if (!isPlainObject(raw)) return errors.push(`panel ${i + 1}: must be a set of keys`);
+      const label = `panel ${i + 1}`;
+      if (!isPlainObject(raw)) return errors.push(`${label}: must be a set of keys`);
       const r = checkPanel(raw, true);
-      errors.push(...r.errors.map((e) => `panel ${i + 1}: ${e}`));
-      if (r.panel) panels.push(r.panel);
+      errors.push(...r.errors.map((e) => `${label}: ${e}`));
+      if (r.panel) panels.push({ template: raw, panel: r.panel, label });
     });
     if (fm.panels.length === 0) return { errors, empty: true };
   } else if (fm.view !== undefined) {
     const r = checkPanel(fm, false);
     errors.push(...r.errors);
-    if (r.panel) panels.push(r.panel);
+    // The note's other properties aren't part of the panel.
+    const template = Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES));
+    if (r.panel) panels.push({ template, panel: r.panel, label: "" });
   } else {
     return { errors, empty: true };
   }
@@ -170,7 +204,7 @@ export function secretsIn(text: string | undefined): string[] {
 /** What an app is allowed to do, as stable strings. Writes to the note itself need no grant. */
 export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
   const out = new Set<string>();
-  for (const p of spec.panels) {
+  for (const { panel: p } of spec.panels) {
     if (isUrl(p.source)) {
       try {
         out.add(`net:${new URL(p.source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host}`);

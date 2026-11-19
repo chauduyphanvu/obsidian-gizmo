@@ -71,6 +71,7 @@ test("panel ids are stable and tell identical panels apart", () => {
   const ids = panelIds([a, b, a]);
   assert.equal(new Set(ids).size, 3);
   assert.deepEqual(panelIds([b, a]), [ids[1], ids[0]]);
+  assert.deepEqual(panelIds([{ to: "2027-01-01", view: "countdown" }]), [ids[0]]);
 });
 
 test("a slow web source doesn't hold up the other panels", async () => {

@@ -14,7 +14,7 @@ test("an app line alone has no panels yet", () => {
 test("top-level keys make one panel and ignore unrelated properties", () => {
   const r = readSpec({ app: "Days to renewal", view: "countdown", to: "2026-10-03", tags: ["benefits"], created: "x" });
   assert.deepEqual(r?.errors, []);
-  assert.deepEqual(r?.spec?.panels, [{ view: "countdown", to: "2026-10-03" }]);
+  assert.deepEqual(r?.spec?.panels.map((ps) => ps.panel), [{ view: "countdown", to: "2026-10-03" }]);
 });
 
 test("panels are checked strictly", () => {
@@ -32,7 +32,7 @@ test("panels are checked strictly", () => {
     "panel 3: view must be one of number, text, line, bar, table, list, button, form, checklist, countdown, progress, timer",
   ]);
   // A stray key is reported but doesn't stop an otherwise valid panel from showing.
-  assert.deepEqual(r?.spec?.panels, [{ view: "number", source: "weights" }]);
+  assert.deepEqual(r?.spec?.panels.map((ps) => ps.panel), [{ view: "number", source: "weights" }]);
 });
 
 test("actions only apply to action views, and buttons need one", () => {
@@ -75,4 +75,37 @@ test("save can't write over the app's own keys", () => {
     'panel 1: save can\'t use "panels", which names part of the app',
     'panel 2: save can\'t use "app", which names part of the app',
   ]);
+});
+
+test("spec 1 or none is read; anything else draws nothing", () => {
+  const panel = { view: "countdown", to: "2027-01-01" };
+  assert.equal(readSpec({ app: "x", ...panel })?.spec?.panels.length, 1);
+  assert.equal(readSpec({ app: "x", spec: 1, ...panel })?.spec?.panels.length, 1);
+  const newer = readSpec({ app: "x", spec: 2, ...panel });
+  assert.equal(newer?.spec, undefined);
+  assert.deepEqual(newer?.errors, ["spec: 2 needs a newer Note Apps (this one reads spec 1)"]);
+  assert.deepEqual(readSpec({ app: "x", spec: "1", ...panel })?.errors, ["spec must be 1"]);
+});
+
+test("lists can't be named after the app's own keys, and secrets stay out of hosts", () => {
+  const r = readSpec({
+    app: "x",
+    panels: [
+      { view: "number", source: "data" },
+      { view: "number", source: "https://{secret:k}.example.com/v1" },
+      { view: "number", source: "https://api.example.com/v1?key={secret:k}" },
+    ],
+  });
+  assert.deepEqual(r?.errors, [
+    'panel 1: source can\'t use "data", which names part of the app',
+    "panel 2: a secret can't be part of the host; put it in the path, the query or headers",
+  ]);
+  assert.equal(r?.spec?.panels.length, 1);
+});
+
+test("a single top-level panel's identity ignores the note's other properties", () => {
+  const a = readSpec({ app: "x", tags: ["a"], view: "countdown", to: "2027-01-01" })!.spec!.panels[0];
+  const b = readSpec({ app: "y", tags: ["b"], view: "countdown", to: "2027-01-01" })!.spec!.panels[0];
+  assert.deepEqual(a.template, b.template);
+  assert.deepEqual(a.template, { view: "countdown", to: "2027-01-01" });
 });

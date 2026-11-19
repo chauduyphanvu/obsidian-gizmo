@@ -1,6 +1,6 @@
 import { fillTemplate, stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
-import { describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel } from "./spec.ts";
+import { describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel, type PanelSpec } from "./spec.ts";
 import { defaultDataPath } from "./store.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import { formatClock } from "./views/timer.ts";
@@ -36,11 +36,21 @@ interface Mounted {
   seq: number;
 }
 
-/** A stable identity for a panel: its keys, plus a counter when two panels are identical. */
-export function panelIds(panels: Panel[]): string[] {
+/** JSON with object keys sorted, so the order keys were typed in doesn't matter. */
+function stableJson(v: unknown): string {
+  if (Array.isArray(v)) return `[${v.map(stableJson).join(",")}]`;
+  if (v !== null && typeof v === "object" && !(v instanceof Date)) {
+    const o = v as Record<string, unknown>;
+    return `{${Object.keys(o).sort().map((k) => `${JSON.stringify(k)}:${stableJson(o[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(v) ?? "null";
+}
+
+/** A stable identity for a panel: its keys as written, plus a counter when two panels are identical. */
+export function panelIds(templates: Record<string, unknown>[]): string[] {
   const seen = new Map<string, number>();
-  return panels.map((p) => {
-    const json = JSON.stringify(p);
+  return templates.map((t) => {
+    const json = stableJson(t);
     let h = 0x811c9dc5;
     for (let i = 0; i < json.length; i++) h = Math.imul(h ^ json.charCodeAt(i), 0x01000193);
     const base = (h >>> 0).toString(36);
@@ -125,7 +135,7 @@ export class AppController {
 
   /** Refetches this app's web sources; the panels that use them update when the data arrives. */
   reload(): void {
-    this.env.data.forgetUrls((this.spec?.panels ?? []).map((p) => p.source).filter(isUrl));
+    this.env.data.forgetUrls((this.spec?.panels ?? []).map((ps) => ps.panel.source).filter(isUrl));
   }
 
   resize(): void {
@@ -187,7 +197,7 @@ export class AppController {
 
     this.setRefresh(spec);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "na-grid" });
-    const ids = panelIds(spec.panels);
+    const ids = panelIds(spec.panels.map((ps) => ps.template));
     const keep = new Set(ids);
     for (const [id, m] of this.mounted) {
       if (!keep.has(id)) {
@@ -254,7 +264,8 @@ export class AppController {
 
   // ---- Panels -------------------------------------------------------------------------------
 
-  private mount(id: string, p: Panel, files: AppFiles): Mounted {
+  private mount(id: string, ps: PanelSpec, files: AppFiles): Mounted {
+    const p = ps.panel;
     const def = viewDef(p.view)!;
     const el = createDivIn(this.grid!, `na-panel na-view-${p.view}${def.wide ? " na-wide" : ""}`);
     const source = p.source ?? def.implicitSource?.(p);

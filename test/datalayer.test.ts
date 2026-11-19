@@ -19,7 +19,7 @@ test("three panels on one URL make one request", async () => {
       { view: "line", source: WEATHER, pick: "hourly", x: "time", y: "t" },
     ],
   })!.spec!;
-  const data = await Promise.all(spec.panels.map((p) => dl.panelData(p.source, p, FILES, { ttlMs: 60_000, now: NOW })));
+  const data = await Promise.all(spec.panels.map(({ panel: p }) => dl.panelData(p.source, p, FILES, { ttlMs: 60_000, now: NOW })));
   assert.equal(f.requests.length, 1);
   assert.deepEqual(data[0], { t: 7 });
   assert.deepEqual(data[2], { time: ["a", "b"], t: [1, 2] });
@@ -56,7 +56,7 @@ test("lists come from the data note first, then the app note, through the pipeli
     "Apps/X data.md": { fm: { doses: [{ at: "2026-11-18T08:00" }, { at: "2026-11-17T08:00" }] } },
   });
   const dl = new DataLayer(f.host);
-  const p = readSpec({ app: "x", view: "number", source: "doses", where: { at: "today" } })!.spec!.panels[0];
+  const p = readSpec({ app: "x", view: "number", source: "doses", where: { at: "today" } })!.spec!.panels[0].panel;
   assert.deepEqual(await dl.panelData("doses", p, FILES, { ttlMs: 0, now: NOW }), [{ at: "2026-11-18T08:00" }]);
   assert.deepEqual(await dl.panelData("books", p, FILES, { ttlMs: 0, now: NOW }), []);
 });
