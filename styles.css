@@ -208,3 +208,45 @@
 .note-app td.na-row-actions { text-align: right; white-space: nowrap; }
 .note-app .na-table .na-edit { width: 100%; min-width: 4em; }
 .note-app .na-table input.na-edit[type="checkbox"] { width: auto; min-width: 0; }
+
+/* Display: format, cells, cards, compare, goal */
+.note-app .na-cell-bar { height: 8px; min-width: 56px; border-radius: 4px; background: var(--background-modifier-border); overflow: hidden; }
+.note-app .na-cell-fill { height: 100%; background: var(--interactive-accent); }
+.note-app .na-spark { display: block; overflow: visible; }
+.note-app .na-spark-line { fill: none; stroke: var(--na-c); stroke-width: 1.5; stroke-linejoin: round; stroke-linecap: round; }
+.note-app .na-spark-dot { fill: var(--na-c); }
+.note-app .na-check {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 1.2em;
+  height: 1.2em;
+  border: 1px solid var(--background-modifier-border-hover);
+  border-radius: var(--radius-s);
+  font-size: var(--font-ui-smaller);
+  line-height: 1;
+}
+.note-app .na-check.is-on { background: var(--interactive-accent); border-color: var(--interactive-accent); color: var(--text-on-accent); }
+.note-app .na-cell-img { display: block; height: 40px; width: auto; max-width: 100%; border-radius: var(--radius-s); object-fit: cover; }
+.note-app .na-table td a.external-link { display: inline-block; max-width: 18em; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; vertical-align: bottom; }
+
+.note-app .na-cards { display: grid; grid-template-columns: repeat(auto-fill, minmax(160px, 1fr)); gap: var(--size-4-3); }
+.note-app .na-rowcard {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  min-width: 0;
+  padding: var(--size-4-2) var(--size-4-3);
+  background: var(--background-primary);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
+  font-size: var(--font-ui-small);
+}
+.note-app .na-rowcard.na-selected { background: var(--background-modifier-hover); border-color: var(--interactive-accent); }
+.note-app .na-rowcard-image .na-cell-img { height: 120px; width: 100%; }
+.note-app .na-rowcard-title { font-weight: var(--font-semibold); overflow-wrap: anywhere; }
+.note-app .na-rowcard-line { display: flex; justify-content: space-between; gap: var(--size-4-2); }
+.note-app .na-rowcard-label { color: var(--text-muted); }
+.note-app .na-rowcard-value { min-width: 0; text-align: right; overflow-wrap: anywhere; }
+.note-app .na-rowcard-value .na-edit { max-width: 100%; }
+.note-app .na-rowcard-actions { margin-top: auto; text-align: right; }

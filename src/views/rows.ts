@@ -1,6 +1,7 @@
 import { fillWith, getPath, type Row } from "../data.ts";
 import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
+import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
   ACTION_KEYS, DATA_KEYS, GROUP_KEYS, busy, editErrors, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowsOf,
   selectable, shownRows,
@@ -31,13 +32,29 @@ function columnsOf(p: Panel, rows: Row[]): string[] {
   return [...first, ...(p.edit ?? []).filter((f) => !first.includes(f))];
 }
 
-/** A cell's value as text; a note's name links to the note. */
-function fillCell(td: HTMLElement, p: Panel, ctx: PanelCtx, r: Row, c: string): void {
+const cellKind = (p: Panel, c: string) => (p.cells && Object.hasOwn(p.cells, c) ? p.cells[c] : undefined);
+
+/** `cells` and `layout` problems: kinds that aren't one, and cells for columns that aren't shown. */
+function cellProblems(p: Panel): string[] {
+  const kinds = Object.entries(p.cells ?? {}).flatMap(([field, kind]) => [
+    ...(CELL_KINDS.includes(kind) ? [] : [`cells.${field}: must be one of ${CELL_KINDS.join(", ")}`]),
+    ...(p.columns && !p.columns.includes(field) ? [`cells: "${field}" isn't one of the columns`] : []),
+  ]);
+  return [...kinds, ...(p.layout !== undefined && p.layout !== "cards" ? ["layout must be cards"] : [])];
+}
+
+/**
+ * A cell's value: drawn as its `cells` kind, else as text. A note's name links to the note, and so
+ * does a card's title, when the row is a note.
+ */
+function fillCell(box: HTMLElement, p: Panel, ctx: PanelCtx, r: Row, c: string, title = false): void {
   const v = getPath(r, c);
+  const kind = cellKind(p, c);
+  if (kind) return drawCell(box, kind, v, r, p, ctx, c);
   const text = display(p, c, v, ctx.now, "cell");
-  if (c === "name" && typeof r.path === "string") noteLink(td, text, r.path, ctx);
-  else td.setText(text);
-  td.classList.toggle("na-num", typeof v === "number");
+  if ((c === "name" || title) && typeof r.path === "string") noteLink(box, text, r.path, ctx);
+  else box.setText(text);
+  box.classList.toggle("na-num", typeof v === "number");
 }
 
 /** How an edited column is typed in: the block's field type when it has `fields`, else what its values are. */
@@ -103,7 +120,7 @@ function editCell(td: HTMLElement, field: string, type: string | string[], write
   };
 }
 
-/** A drawn table: what it shows, and how to show new values of the same rows in place. */
+/** A drawn table or set of cards: what it shows, and how to show new values of the same rows in place. */
 interface Drawn {
   columns: string[];
   keys: unknown[];
@@ -112,42 +129,88 @@ interface Drawn {
 
 const sameList = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
 
-function drawTable(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn | undefined {
+/** What drawing one row needs, whether it is a table row or a card. */
+interface RowEnv {
+  p: Panel;
+  ctx: PanelCtx;
+  columns: string[];
+  edited: Map<string, string | string[]>;
+  /** The rows as last shown: buttons and inputs read their row here, so it stays current. */
+  current: Row[];
+}
+
+/** A drawn row: its element, and what shows the row's new values in it. */
+interface DrawnRow {
+  el: HTMLElement;
+  show(row: Row): void;
+}
+
+/** One column of row `i` in `box` (a table cell, a card's line): an input when edited, else what the cell draws. */
+function column(box: HTMLElement, env: RowEnv, c: string, i: number, title = false): (row: Row) => void {
+  const type = env.edited.get(c);
+  if (type === undefined) return (row) => { box.empty(); fillCell(box, env.p, env.ctx, row, c, title); };
+  const show = editCell(box, c, type, (value) => env.ctx.editRow(env.current[i], c, value));
+  return (row) => show(getPath(row, c));
+}
+
+function tableRow(body: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
+  const tr = body.createEl("tr");
+  const cells = env.columns.map((c) => column(tr.createEl("td"), env, c, i));
+  for (const cell of cells) cell(r);
+  if (env.p.action) rowAction(tr.createEl("td", { cls: "na-row-actions" }), env.p, env.ctx, () => env.current[i]);
+  return { el: tr, show: (row) => cells.forEach((cell) => cell(row)) };
+}
+
+/** A card: the first picture on top, the next column as the title, the others as label and value lines. */
+function card(grid: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
+  const { p } = env;
+  const el = grid.createDiv({ cls: "na-rowcard" });
+  const image = env.columns.find((c) => cellKind(p, c) === "image" && !env.edited.has(c));
+  const [title, ...rest] = env.columns.filter((c) => c !== image);
+  const shows: ((row: Row) => void)[] = [];
+  if (image) shows.push(column(el.createDiv({ cls: "na-rowcard-image" }), env, image, i));
+  if (title) shows.push(column(el.createDiv({ cls: "na-rowcard-title" }), env, title, i, true));
+  for (const c of rest) {
+    const line = el.createDiv({ cls: "na-rowcard-line" });
+    line.createSpan({ cls: "na-rowcard-label", text: labelOf(p, c) });
+    shows.push(column(line.createSpan({ cls: "na-rowcard-value" }), env, c, i));
+  }
+  for (const show of shows) show(r);
+  if (p.action) rowAction(el.createDiv({ cls: "na-rowcard-actions" }), p, env.ctx, () => env.current[i]);
+  return { el, show: (row) => shows.forEach((show) => show(row)) };
+}
+
+function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn | undefined {
   heading(el, p, p.label);
   if (rows.length === 0) { el.createDiv({ cls: "na-empty", text: "Nothing here yet." }); return undefined; }
-  const columns = columnsOf(p, rows);
-  const edited = new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)]));
-  const table = el.createDiv({ cls: "na-table-wrap" }).createEl("table", { cls: "na-table" });
-  const head = table.createEl("thead").createEl("tr");
-  for (const c of columns) head.createEl("th", { text: labelOf(p, c) });
-  if (p.action) head.createEl("th");
-  const body = table.createEl("tbody");
-  // The rows as last shown: buttons and inputs read their row here, so it stays current.
-  const current = [...rows];
+  const env: RowEnv = {
+    p, ctx, columns: columnsOf(p, rows), edited: new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)])), current: [...rows],
+  };
+  const cards = p.layout === "cards";
+  let parent: HTMLElement;
+  if (cards) {
+    parent = el.createDiv({ cls: "na-cards" });
+  } else {
+    const table = el.createDiv({ cls: "na-table-wrap" }).createEl("table", { cls: "na-table" });
+    const head = table.createEl("thead").createEl("tr");
+    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c) });
+    if (p.action) head.createEl("th");
+    parent = table.createEl("tbody");
+  }
   const updates: ((r: Row) => void)[] = [];
-  shownRows(el, current, (r) => {
-    const i = updates.length;
-    const tr = body.createEl("tr");
-    const cells = columns.map((c) => {
-      const td = tr.createEl("td");
-      const type = edited.get(c);
-      if (type === undefined) return (row: Row) => { td.empty(); fillCell(td, p, ctx, row, c); };
-      const show = editCell(td, c, type, (value) => ctx.editRow(current[i], c, value));
-      return (row: Row) => show(getPath(row, c));
-    });
-    for (const cell of cells) cell(r);
-    if (p.action) rowAction(tr.createEl("td", { cls: "na-row-actions" }), p, ctx, () => current[i]);
-    const repick = selectable(tr, p, ctx, r);
+  shownRows(el, env.current, (r) => {
+    const drawn = (cards ? card : tableRow)(parent, env, r, updates.length);
+    const repick = selectable(drawn.el, p, ctx, r);
     updates.push((row) => {
-      for (const cell of cells) cell(row);
+      drawn.show(row);
       repick(row);
     });
   });
   return {
-    columns,
+    columns: env.columns,
     keys: rows.map(rowKey),
     patch(next) {
-      current.splice(0, current.length, ...next);
+      env.current.splice(0, env.current.length, ...next);
       next.forEach((r, i) => updates[i]?.(r));
     },
   };
@@ -155,16 +218,27 @@ function drawTable(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals", "format", "labels", "values", "select", "action", ...ACTION_KEYS, "edit"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "action", ...ACTION_KEYS, "edit"],
   span: 4,
   needsSource: true,
-  validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p)],
+  validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p), ...cellProblems(p)],
   examples: [
     { panel: { view: "table", source: "spending", columns: ["at", "amount", "category"], format: { amount: "$0,0.00", at: "date" } } },
     { panel: { view: "table", source: "spending", format: "0.0.0" }, errors: ['format "0.0.0" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
     { panel: { view: "table", source: "https://api.example.com/daily", pick: "daily", columns: ["time", "weathercode"], labels: { weathercode: "Sky" }, values: { weathercode: { 0: "Clear", 1: "Mostly clear" } } } },
     { panel: { view: "table", source: "spending", labels: "Amount" }, errors: ['"labels" has the wrong type (expected a set of name: text)'] },
     { panel: { view: "table", source: "spending", values: { category: "Food" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
+    {
+      panel: {
+        view: "table", source: "notes", from: "Books", columns: ["name", "progress", "trend", "url", "cover", "done"], max: 100,
+        cells: { progress: "progress", trend: "sparkline", url: "link", cover: "image", done: "check" },
+      },
+    },
+    { panel: { view: "table", source: "notes", from: "Books", columns: ["name", "cover"], cells: { cover: "poster" } }, errors: ["cells.cover: must be one of progress, sparkline, link, image, check"] },
+    { panel: { view: "table", source: "notes", from: "Books", columns: ["name"], cells: { x: "link" } }, errors: ['cells: "x" isn\'t one of the columns'] },
+    { panel: { view: "table", source: "notes", from: "Books", columns: ["name", "cover", "status"], cells: { cover: "image" }, layout: "cards", select: "book" } },
+    { panel: { view: "table", source: "notes", from: "Books", layout: "cards", action: "Open", open: "{path}", edit: ["status"] } },
+    { panel: { view: "table", source: "notes", from: "Books", layout: "grid" }, errors: ["layout must be cards"] },
     { panel: { view: "table", source: "notes", from: "Books", group: "genre", columns: ["genre", "count", "pages"], agg: "sum", sort: "-count" } },
     { panel: { view: "table", source: "sessions", group: "at", per: "month", columns: ["at", "minutes"] }, errors: ["group with columns needs agg (sum, avg, min, max, first or last)"] },
     { panel: { view: "table", source: "notes", from: "Health", sort: "-date", columns: ["name", "date", "who"] } },
@@ -196,7 +270,7 @@ export const table: ViewDef = {
           return;
         }
         el.empty();
-        drawn = drawTable(el, p, ctx, rows);
+        drawn = drawRows(el, p, ctx, rows);
       },
     };
   },
