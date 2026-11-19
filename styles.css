@@ -270,3 +270,7 @@
 .note-app .na-board-card.na-busy { opacity: 0.5; pointer-events: none; }
 .note-app .na-board-card.na-selected { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
 .note-app select.na-move { font-size: var(--font-ui-smaller); color: var(--text-muted); height: auto; padding: 1px var(--size-4-2); }
+.note-app .na-scatter-dot { fill: var(--na-c); fill-opacity: 0.7; stroke: none; }
+.note-app .na-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.note-app .na-scatter-dot.na-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
+.note-app .na-chart-svg:has(.na-scatter-dot.na-selected) .na-scatter-dot:not(.na-selected) { opacity: 0.35; }
