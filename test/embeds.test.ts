@@ -352,3 +352,30 @@ test("a renamed or deleted note takes its embeds' grants along", () => {
   assert.deepEqual(grants, { "AB.md#k3": "net:z", "B.md": "net:w" });
   assert.equal(dropGrants(grants, "Nope.md"), false);
 });
+
+test("an embed's panels are drawn 32 px wider than the same panel in an app's own tab, which has padding the embed lacks", async () => {
+  const panel = { view: "line", source: "weights", x: "at", y: "kg" };
+  const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
+  const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
+  const viewBox = (root: HTMLElement) => root.querySelector(".na-chart-svg")!.getAttribute("viewBox");
+  const widen = async (root: HTMLElement, resize: () => void) => {
+    Object.defineProperty(root.querySelector(".note-app"), "clientWidth", { value: 700, configurable: true });
+    resize();
+    for (let i = 0; i < 20; i++) await new Promise((r) => setTimeout(r, 10));
+  };
+
+  const own = fakeEnv(data);
+  const ownRoot = document.createElement("div");
+  document.body.appendChild(ownRoot);
+  const full = new AppController(ownRoot, "Apps/W.md", own.env);
+  full.load();
+  await settle();
+  await widen(ownRoot, () => full.resize());
+  // 700 less the shell's 32 px of padding, less the panel's own 34, in three columns of the grid.
+  assert.equal(viewBox(ownRoot), "0 0 634 220");
+
+  const t = embed(panel, data);
+  await settle();
+  await widen(t.root, () => t.app.resize());
+  assert.equal(viewBox(t.root), "0 0 666 220");
+});
