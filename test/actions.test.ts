@@ -246,3 +246,26 @@ test("a row's Add button saves it as a note, and a notes panel on that folder sh
   await settle();
   assert.deepEqual(notices, ["Added Emma", "“Emma” already exists"]);
 });
+
+test("save can't name a block that reads a base, tasks, a file or the note itself: nothing would show what it saved", () => {
+  const read = (block: Record<string, unknown>) => readSpec({
+    app: "S", data: { shelf: { ...block, fields: { title: "text" } } },
+    panels: [{ view: "form", save: "shelf" }, { view: "table", source: "shelf" }],
+  }, { path: "Apps/S.md" })!;
+  const cases: [Record<string, unknown>, string][] = [
+    [{ source: "[[Books.base]]" }, "a base"],
+    [{ source: "tasks", from: "Tasks" }, "tasks"],
+    [{ source: "Finance/bank.csv" }, "a file"],
+    [{ source: "[[family.ics]]" }, "a file"],
+    [{ source: "this" }, "the note itself"],
+  ];
+  for (const [block, what] of cases) {
+    const r = read(block);
+    assert.deepEqual(r.errors, [`panel 1: save: "shelf" reads ${what}; name a list or a folder`], JSON.stringify(block));
+    assert.equal(r.spec!.panels.length, 1, "the form isn't drawn");
+  }
+  // A block over a list, or a folder of notes, is where saving goes, as before; so is one over a web address.
+  assert.deepEqual(read({ source: "books" }).errors, []);
+  assert.deepEqual(read({ source: "notes", from: "Books" }).errors, []);
+  assert.deepEqual(read({ source: "https://api.example.com/x" }).spec!.panels[0].panel.target, { kind: "list", name: "shelf" });
+});

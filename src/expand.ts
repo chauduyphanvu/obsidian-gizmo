@@ -171,16 +171,21 @@ function checkChains(blocks: Blocks, errors: string[]): void {
   }
 }
 
+/** What a block's root reads, for a `save` naming it, by kind of source. */
+const READS: Record<string, string> = { base: "a base", tasks: "tasks", file: "a file", this: "the note itself" };
+
 /**
  * Where `save` writes when it names a block: the list at the root of the block's chain, or new
- * notes in the one folder a `notes` root reads. Undefined when the block's root is neither (it
- * then names a list, as any other text does).
+ * notes in the one folder a `notes` root reads. A root that reads a base, tasks, a file or the
+ * note itself is an error, since no panel on the block would show what was saved. Undefined for a
+ * web address (it then names a list, as any other text does).
  */
 function blockTarget(save: string, blocks: Blocks): { target: SaveTarget } | { error: string } | undefined {
   const root = blocks.get(blockChain(save, blocks)[0])!;
   const source = String(root.source);
   const kind = sourceDef(source).id;
   if (kind === "list") return { target: { kind: "list", name: source } };
+  if (Object.hasOwn(READS, kind)) return { error: `save: "${save}" reads ${READS[kind]}; name a list or a folder` };
   if (kind !== "notes") return undefined;
   const from = typeof root.from === "string" ? root.from.trim() : "";
   if (!from || from.startsWith("#") || from.includes(",")) return { error: `save: "${save}" reads ${from || "no folder"}; name a folder to save notes into` };
