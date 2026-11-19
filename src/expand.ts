@@ -151,15 +151,9 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
   if (fm.app !== undefined) errors.push(`${name} has both app and component; a note is one or the other`);
   if (fm.inputs !== undefined) errors.push(`${name}: inputs belong in the app; take a param, and let the app pass with: {name: $name}`);
   for (const key of ["refresh", "store"]) if (fm[key] !== undefined) errors.push(`${name}: ${key} belongs in the app that uses it`);
-  const params = new Map<string, unknown>();
-  if (Array.isArray(fm.params)) {
-    for (const n of fm.params) params.set(String(n), undefined);
-  } else if (isPlainObject(fm.params)) {
-    for (const [n, v] of Object.entries(fm.params)) params.set(n, v === null || v === "" ? undefined : v);
-  } else if (fm.params !== undefined && fm.params !== null) {
-    errors.push(`${name}: params must be a list of names or names with defaults`);
-  }
-  for (const [n, v] of params) {
+  const params = componentParams(fm.params);
+  if (!params) errors.push(`${name}: params must be a list of names or names with defaults`);
+  for (const [n, v] of params ?? []) {
     if (!NAME.test(n)) errors.push(`${name}: param "${n}" can only use letters, digits and _`);
     if (v !== undefined && unsafeValue(v)) errors.push(`${name}: param "${n}" can't hold a secret or a line break`);
   }
@@ -167,7 +161,16 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
     errors.push(`${name} needs panels`);
     return undefined;
   }
-  return { description: fm.component === true ? "" : String(fm.component), params, data: fm.data, panels: fm.panels };
+  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels: fm.panels };
+}
+
+/** A component's params, each with its default; undefined means the app must give it. */
+export function componentParams(value: unknown): Map<string, unknown> | undefined {
+  const params = new Map<string, unknown>();
+  if (Array.isArray(value)) for (const n of value) params.set(String(n), undefined);
+  else if (isPlainObject(value)) for (const [n, v] of Object.entries(value)) params.set(n, v === null || v === "" ? undefined : v);
+  else if (value !== undefined && value !== null) return undefined;
+  return params;
 }
 
 function fill(value: unknown, scope: Scope, errors: string[], key = ""): unknown {

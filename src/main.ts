@@ -74,9 +74,11 @@ export default class NoteAppsPlugin extends Plugin {
     await this.app.fileManager.renameFile(data, target);
   }
 
-    isApp(file: TFile): boolean {
-    const app = this.app.metadataCache.getFileCache(file)?.frontmatter?.app;
-    return app !== undefined && app !== null && app !== false;
+  /** Notes that open as apps: apps, and components (which show how to use them). */
+  isApp(file: TFile): boolean {
+    const fm = this.app.metadataCache.getFileCache(file)?.frontmatter;
+    const set = (v: unknown) => v !== undefined && v !== null && v !== false;
+    return !!fm && (set(fm.app) || set(fm.component));
   }
 
   /** Whether a leaf about to show this markdown state should show the app instead. */

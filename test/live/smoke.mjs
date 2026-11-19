@@ -350,6 +350,18 @@ try {
     if (!r.includes("London weather")) throw new Error(r);
     return "Weather";
   });
+  await check("a component opens as an app that shows how to use it", async () => {
+    const r = await run(`
+      await na.open("Components/Ticker");
+      const el = na.view().contentEl;
+      return { state: na.state(), usage: el.querySelector(".na-example")?.textContent, text: na.text(), panels: el.querySelectorAll(".na-panel").length };`);
+    const usage = 'panels:\n  - use: "[[Ticker]]"\n    with: {symbol: …, range: 6mo}';
+    if (r.state !== "note-app:Components/Ticker.md" || r.usage !== usage || !r.text.includes("Give every param a default") || r.panels) {
+      throw new Error(JSON.stringify(r));
+    }
+    return "usage shown, no preview without a symbol";
+  });
+
   await check("editing a component asks again, naming it", async () => {
     const r = await run(`
       await na.open("Apps/Watchlist");

@@ -2,7 +2,8 @@ import { fillTemplate, stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
 import {
-  askersOf, describePermission, isUrl, notePath, permissionsOf, readSpec, resolvePanel, startingValues,
+  askersOf, describePermission, isComponent, isUrl, notePath, permissionsOf, readComponentPreview, readSpec,
+  resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec,
 } from "./spec.ts";
 import type { InputValue } from "./template.ts";
@@ -199,7 +200,10 @@ export class AppController {
   /** Brings the drawn app in line with the note's keys, keeping panels whose keys didn't change. */
   private reconcile(): void {
     const fm = this.env.frontmatter(this.appPath) ?? {};
-    const result = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path: this.appPath });
+    const opts = { now: this.env.now(), notes: this.env.notes, path: this.appPath };
+    // A component note opened on its own shows how to use it, and a preview when it can.
+    const component: ComponentPreview | undefined = isComponent(fm) ? readComponentPreview(fm, opts) : undefined;
+    const result = component?.result ?? readSpec(fm, opts);
     // The app is its own keys plus those of every component it uses.
     const definition = JSON.stringify([fm, result?.spec?.read ?? null]);
     if (definition === this.definition) return;
@@ -218,6 +222,7 @@ export class AppController {
     }
     const description = this.spec?.description ?? String(fm.app ?? "");
     if (description) header.createDiv({ cls: "na-description", text: description });
+    if (component) this.renderUsage(header, component);
     if (result.empty) {
       this.renderEmpty(header);
       return this.showOnly(header);
@@ -229,7 +234,7 @@ export class AppController {
       for (const e of result.errors) ul.createEl("li", { text: e });
     }
     const spec = this.spec;
-    if (!spec?.panels.length) return this.showOnly(header);
+    if (!spec?.panels.length || component?.missing.length) return this.showOnly(header);
 
     const wanted = permissionsOf(spec, this.appPath);
     if (!this.env.isGranted(this.appPath, wanted)) {
@@ -460,6 +465,13 @@ export class AppController {
       this.load();
     });
     row.createEl("button", { text: "Edit source" }).addEventListener("click", () => this.env.showSource());
+  }
+
+  private renderUsage(header: HTMLElement, c: ComponentPreview): void {
+    const card = header.createDiv({ cls: "na-card" });
+    card.createDiv({ text: "A component. Use it in an app's panels:" });
+    card.createEl("pre", { cls: "na-example", text: c.usage });
+    if (c.missing.length) card.createDiv({ cls: "na-label", text: "Give every param a default to preview it here." });
   }
 
   private renderEmpty(header: HTMLElement): void {

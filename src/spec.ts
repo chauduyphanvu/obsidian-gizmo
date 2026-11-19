@@ -3,7 +3,9 @@ import { storeTarget } from "./store.ts";
 import {
   readInputs, refsIn, resolveInputs, type InputDef, type InputValue,
 } from "./template.ts";
-import { Expander, MAX_PANELS, checkVersion, readBlocks, type NoteReader, type Produced } from "./expand.ts";
+import {
+  Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, type NoteReader, type Produced,
+} from "./expand.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 
@@ -233,6 +235,37 @@ export function readSpec(
   }
   const spec = { description, panels, refreshMs, store, inputs, read: expander.read, links: [...expander.links] };
   return { spec, errors, empty: false };
+}
+
+/** What opening a component note shows: how to use it, and a preview when every param has a default. */
+export interface ComponentPreview {
+  result: SpecResult;
+  usage: string;
+  /** Params without a default; the preview needs them all filled. */
+  missing: string[];
+}
+
+export function isComponent(fm: Record<string, unknown> | undefined): boolean {
+  return !!fm && fm.component !== undefined && fm.component !== null && fm.component !== false && fm.app === undefined;
+}
+
+/**
+ * Reads a component note as an app that uses it. Params without a default are filled with their
+ * own names, so its keys can still be checked; only a component whose params all have defaults
+ * is drawn.
+ */
+export function readComponentPreview(fm: Record<string, unknown>, opts: { now?: Date; notes?: NoteReader; path: string }): ComponentPreview {
+  const params = componentParams(fm.params) ?? new Map<string, unknown>();
+  const missing = [...params].filter(([, v]) => v === undefined).map(([k]) => k);
+  const self = opts.path.replace(/\.md$/i, "");
+  const result = readSpec({
+    app: fm.component === true ? "" : String(fm.component),
+    use: `[[${self}]]`,
+    with: Object.fromEntries(missing.map((n) => [n, n])),
+  }, opts)!;
+  const values = [...params].map(([k, v]) => `${k}: ${v === undefined ? "…" : typeof v === "string" ? v : JSON.stringify(v)}`);
+  const usage = `panels:\n  - use: "[[${basename(opts.path)}]]"${values.length ? `\n    with: {${values.join(", ")}}` : ""}`;
+  return { result, usage, missing };
 }
 
 export function secretsIn(text: string | undefined): string[] {

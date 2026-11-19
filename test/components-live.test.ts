@@ -9,7 +9,7 @@ const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) =
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
 
 /** A controller on a fake vault, with grants kept the way the plugin keeps them. */
-function setup(notes: Parameters<typeof fakeHost>[0], grants: Record<string, string[]> = {}) {
+function setup(notes: Parameters<typeof fakeHost>[0], grants: Record<string, string[]> = {}, appPath = "Apps/W.md") {
   const f = fakeHost(notes);
   const data = new DataLayer(f.host);
   const change = async (path: string, fm: Record<string, unknown>) => {
@@ -38,7 +38,7 @@ function setup(notes: Parameters<typeof fakeHost>[0], grants: Record<string, str
   };
   const root = document.createElement("div");
   document.body.appendChild(root);
-  const app = new AppController(root, "Apps/W.md", env);
+  const app = new AppController(root, appPath, env);
   app.load();
   return { root, change };
 }
@@ -83,4 +83,22 @@ test("a component that adds a host asks again, naming itself and marking what's 
   (root.querySelector(".na-card button.mod-cta") as HTMLButtonElement).click();
   await settle();
   assert.equal(root.querySelectorAll(".na-panel").length, 3);
+});
+
+test("a component opened on its own shows how to use it and previews with its defaults", async () => {
+  const { root } = setup({ "Components/C.md": { fm: COUNTDOWN } }, {}, "Components/C.md");
+  await settle();
+  assert.equal(text(root.querySelector(".na-example")), 'panels:\n  - use: "[[C]]"\n    with: {when: 2027-01-01}');
+  assert.equal(root.querySelectorAll(".na-panel").length, 1);
+  assert.match(text(root.querySelector(".na-label")), /^until 2027-01-01/);
+});
+
+test("a component with a required param isn't drawn, but its problems are shown", async () => {
+  const fm = { component: "t", params: ["symbol"], panels: [{ view: "number", source: "https://a.example.com/$symbol", colour: "red" }] };
+  const { root } = setup({ "T.md": { fm } }, {}, "T.md");
+  await settle();
+  assert.equal(text(root.querySelector(".na-example")), 'panels:\n  - use: "[[T]]"\n    with: {symbol: …}');
+  assert.match(text(root.querySelector(".na-card")), /Give every param a default to preview it here\./);
+  assert.deepEqual([...root.querySelectorAll(".na-card.na-error li")].map((li) => text(li)), ['[[T]] panel 1: unknown key "colour"']);
+  assert.equal(root.querySelectorAll(".na-panel").length, 0);
 });
