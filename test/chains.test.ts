@@ -120,6 +120,18 @@ test("blocks keep fields, record and into, checked", () => {
   assert.deepEqual(r.spec!.blocks.c, { source: URL_Q, record: 5 });
 });
 
+test("into can't name a kind of source", () => {
+  const r = readSpec({
+    app: "x",
+    data: { a: { source: URL_Q, record: "1h", into: "tasks" }, b: { source: URL_Q, record: "1h", into: "notes" } },
+    panels: [{ view: "number", source: "a" }],
+  })!;
+  assert.deepEqual(r.errors, [
+    'data.a: into can\'t use "tasks", which names a kind of source',
+    'data.b: into can\'t use "notes", which names a kind of source',
+  ]);
+});
+
 test("a panel gets the nearest fields up its chain as its schema, never as fields", () => {
   const r = readSpec({
     app: "x",

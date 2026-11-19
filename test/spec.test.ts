@@ -77,6 +77,16 @@ test("save can't write over the app's own keys", () => {
   ]);
 });
 
+test("save can't be named after a kind of source, since source: would read the kind instead", () => {
+  const r = readSpec({ app: "x", panels: [{ view: "button", save: "tasks" }, { view: "form", fields: { a: "text" }, save: "notes" }, { view: "button", save: "tasks/" }] });
+  assert.deepEqual(r?.errors, [
+    'panel 1: save can\'t use "tasks", which names a kind of source',
+    'panel 2: save can\'t use "notes", which names a kind of source',
+  ]);
+  // `this` keeps its own meaning on a form.
+  assert.deepEqual(readSpec({ app: "x", panels: [{ view: "form", fields: { a: "text" }, save: "this" }] }, { host: {} })?.errors, []);
+});
+
 test("spec 1 or none is read; anything else draws nothing", () => {
   const panel = { view: "countdown", to: "2027-01-01" };
   assert.equal(readSpec({ app: "x", ...panel })?.spec?.panels.length, 1);

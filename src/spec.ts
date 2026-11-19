@@ -1,7 +1,7 @@
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { RESERVED, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, storeTarget } from "./store.ts";
 import {
   InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, type InputDef, type InputValue,
 } from "./template.ts";
@@ -269,6 +269,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
     ...(p.save && RESERVED.includes(p.save) && p.target?.kind !== "this" ? [`save can't use "${p.save}", which names part of the app`] : []),
+    ...(p.save && SOURCE_WORDS.includes(p.save) ? [`save can't use "${p.save}", which names a kind of source`] : []),
     ...(p.target?.kind === "this" && def.id !== "form" ? ["save: this works on a form"] : []),
     ...(p.target?.kind === "folder" && !p.target.folder ? ["save needs a folder before the /, e.g. save: Books/"] : []),
     ...backgroundKeyErrors(p),

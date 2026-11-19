@@ -1,7 +1,7 @@
 import { parseDuration } from "./data.ts";
 import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { RESERVED, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, storeTarget } from "./store.ts";
 import {
   InputRef, NAME, THIS, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
 } from "./template.ts";
@@ -65,6 +65,7 @@ function readBlockKey(key: string, value: unknown, names: ReadonlySet<string>): 
   }
   if (key === "into") {
     const name = typeof value === "string" || typeof value === "number" ? String(value) : "";
+    if (SOURCE_WORDS.includes(name)) return { errors: [`into can't use "${name}", which names a kind of source`] };
     if (!name || sourceDef(name).id !== "list") return { errors: ["into must name a list, e.g. into: kp_log"] };
     if (RESERVED.includes(name)) return { errors: [`into can't use "${name}", which names part of the app`] };
     return { value: name, errors: [] };

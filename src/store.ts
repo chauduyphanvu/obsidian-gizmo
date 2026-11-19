@@ -7,6 +7,9 @@
 /** Top-level keys that define an app or component; lists may never be named after them. */
 export const RESERVED = ["app", "panels", "refresh", "store", "spec", "data", "inputs", "use", "with", "component", "params", "for", "this"];
 
+/** Kinds of source that are one word (`this` is in RESERVED): `source:` reads the kind, so a list can't be named after one. */
+export const SOURCE_WORDS = ["notes", "tasks"];
+
 export function defaultDataPath(appPath: string): string {
   return `${appPath.replace(/\.md$/i, "")} data.md`;
 }
