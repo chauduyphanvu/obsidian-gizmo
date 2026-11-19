@@ -183,6 +183,11 @@ export function refusedPlaces(raw: Record<string, unknown>, names: ReadonlySet<s
   return errors;
 }
 
+/** The ids of the `{secret:id}` placeholders in a text, as the data layer fills them. */
+export function secretIds(text: string): string[] {
+  return [...text.matchAll(/\{secret:([a-z0-9-]+)\}/g)].map((m) => m[1]);
+}
+
 /** A value a param or input option may hold: no secrets and no line breaks, since headers take it raw. */
 export function unsafeValue(v: unknown): boolean {
   const text = typeof v === "string" ? v : JSON.stringify(v) ?? "";

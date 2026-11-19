@@ -3,7 +3,7 @@ import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, storeTarget } from "./store.ts";
 import {
-  InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, type InputDef, type InputValue,
+  InputRef, InputText, NAME, THIS, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, type InputDef, type InputValue,
 } from "./template.ts";
 import { namesIn } from "./template.ts";
 import {
@@ -80,6 +80,8 @@ export interface Panel {
   vars?: Record<string, unknown>;
   /** Internal: where `save` writes, settled from the keys (and the block `save` names) when checked. */
   target?: SaveTarget;
+  /** Internal: the secrets typed whole in its source, headers and body; its requests may fill no other. */
+  secrets?: string[];
 }
 
 /**
@@ -122,6 +124,8 @@ export interface AppSpec {
   selections: string[];
   /** The app's own data blocks, checked, as typed (`$names` unfilled). */
   blocks: Record<string, Record<string, unknown>>;
+  /** Each block that records, as the panel it is read as while the app is closed: `view: table` naming it. */
+  recorded: Record<string, PanelSpec>;
   /** Component notes read while expanding (path → frontmatter), and the names of every `use` link. */
   read: Record<string, unknown>;
   links: string[];
@@ -188,7 +192,7 @@ function absentThis(t: Record<string, unknown>, note: unknown): Record<string, u
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, vars, target, ...keys } = t;
+  const { upstream, schema, vars, target, secrets, ...keys } = t;
   const stageErrors: string[] = [];
   const stages: PipelineKeys[] = [];
   let stopped = false;
@@ -203,6 +207,7 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   if (schema) internal.schema = schema as Panel["schema"];
   if (vars) internal.vars = vars as Panel["vars"];
   if (target) internal.target = target as SaveTarget;
+  if (secrets) internal.secrets = secrets as string[];
   const r = checkPanel(keys, strict, internal);
   const errors = [...r.errors, ...stageErrors];
   return !r.panel || stopped ? { errors } : { panel: r.panel, errors };
@@ -335,9 +340,31 @@ export function readSpec(
   const late = (n: string) => n === THIS || typed(n);
   // What runs while the app is closed fills its inputs with their starting values; nobody types or picks there.
   const notLate = (key: string, n: string) => `${key} can't depend on $${typedName(n)}, which has no value until someone ${isSelection(n) ? "picks a row" : "types"}`;
+  /** A panel's keys checked with these values; a name only typed or picked at run time is tried with stand-ins. */
+  const checkAt = (template: Record<string, unknown>, uses: string[], values: Record<string, unknown>, strict: boolean) => (uses.some(late)
+    ? checkStandIns(template, values, late, strict)
+    : checkTemplate(resolveInputs(template, values) as Record<string, unknown>, strict));
+  // A block that records is fetched while its app is closed, read exactly as a panel naming it reads
+  // it, so what it may touch is asked for from the same keys that are sent.
+  const recorded: Record<string, PanelSpec> = {};
+  const recordErrors: string[] = [];
   for (const [name, block] of blocks) {
-    const n = block.record === undefined ? undefined : [...namesIn(block, names)].find(typed);
-    if (n !== undefined) errors.push(`data.${name}: ${notLate("record", n)}`);
+    if (block.record === undefined) continue;
+    const label = `data.${name}`;
+    const n = [...namesIn(block, names)].find(typed);
+    if (n !== undefined) {
+      errors.push(`${label}: ${notLate("record", n)}`);
+      continue;
+    }
+    const before = expander.errors.length;
+    const [p] = expander.expand({ view: "table", source: name }, scope, label);
+    recordErrors.push(...expander.errors.splice(before));
+    if (!p) continue;
+    noteSecrets(p.template);
+    const uses = refsIn(p.template);
+    const r = checkAt(p.template, uses, start, true);
+    recordErrors.push(...r.errors.map((e) => `${label}: ${e}`));
+    if (r.panel) recorded[name] = { template: p.template, panel: r.panel, label, inputs: uses, strict: true, writtenIn: p.writtenIn };
   }
   const shortcuts = new Set<string>();
 
@@ -370,9 +397,8 @@ export function readSpec(
       }
       selectedBy.set(selected, p.label);
     }
-    const checkWith = (values: Record<string, unknown>) => (uses.some(late)
-      ? checkStandIns(p.template, values, late, strict)
-      : checkTemplate(resolveInputs(p.template, values) as Record<string, unknown>, strict));
+    noteSecrets(p.template);
+    const checkWith = (values: Record<string, unknown>) => checkAt(p.template, uses, values, strict);
     const r = checkWith(start);
     errors.push(...r.errors.map(at));
     // Any choice can be picked, so each must make a valid panel too.
@@ -421,6 +447,8 @@ export function readSpec(
   } else {
     return { errors, empty: true };
   }
+  // A recorded block's problem is told once, under the panel that already shows it if there is one.
+  errors.push(...recordErrors.filter((e) => !errors.some((x) => x.endsWith(e.slice(e.indexOf(": "))))));
   for (const d of inputs) if (!used.has(d.name)) errors.push(`input "${d.name}" isn't used by any panel`);
   const selections = [...selects, ...expander.selections];
   for (const n of selections) {
@@ -442,7 +470,7 @@ export function readSpec(
   }
   const spec = {
     description, panels, refreshMs, store, inputs, selections,
-    blocks: Object.fromEntries(blocks), read: expander.read, links: [...expander.links],
+    blocks: Object.fromEntries(blocks), recorded, read: expander.read, links: [...expander.links],
   };
   return { spec, errors, empty: false };
 }
@@ -567,19 +595,20 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   return out;
 }
 
+/**
+ * Everything that runs for an app: its panels, and its recorded blocks, which are fetched even when
+ * no panel shows them. What it may do is asked from exactly these.
+ */
+function running(spec: AppSpec): PanelSpec[] {
+  return [...spec.panels, ...Object.values(spec.recorded)];
+}
+
 /** What an app is allowed to do, as stable strings. Writes to the note itself need no grant. */
 export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
   const out = new Set<string>();
-  for (const { panel } of spec.panels) for (const [perm] of panelPermissions(panel, selfPath)) out.add(perm);
+  for (const { panel } of running(spec)) for (const [perm] of panelPermissions(panel, selfPath)) out.add(perm);
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
-  for (const [perm] of recordPermissions(spec, selfPath)) out.add(perm);
   return [...out].sort();
-}
-
-/** A block that records is fetched while its app is closed, so it asks for what its source needs even when no panel shows it. */
-function recordPermissions(spec: AppSpec, selfPath: string): [string, keyof Panel][] {
-  return Object.values(spec.blocks).flatMap((b) => (b.record === undefined ? []
-    : sourceDef(String(b.source)).permissions({ view: "table", source: String(b.source), headers: b.headers as Panel["headers"] }, selfPath)));
 }
 
 /** For each permission, the notes whose keys ask for it: the app itself or the components it uses. */
@@ -592,9 +621,35 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
   for (const ps of spec.panels) {
     for (const [perm, key] of panelPermissions(ps.panel, selfPath)) add(perm, ps.writtenIn[key] ?? selfPath);
   }
+  // Blocks that record are the app's own.
+  for (const ps of Object.values(spec.recorded)) for (const [perm] of panelPermissions(ps.panel, selfPath)) add(perm, selfPath);
   if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
-  for (const [perm] of recordPermissions(spec, selfPath)) add(perm, selfPath);
   return out;
+}
+
+/** Notes on a template the secrets typed in it, when there are any. */
+function noteSecrets(template: Record<string, unknown>): void {
+  const secrets = typedSecrets(template);
+  if (secrets.length) template.secrets = secrets;
+}
+
+/**
+ * The secrets typed whole in a template's source, headers and body, before any `$name` is filled:
+ * the only ones its requests may fill. Text beside a `$name` is read piece by piece, so a value
+ * can't complete a placeholder the note only started.
+ */
+function typedSecrets(template: Record<string, unknown>): string[] {
+  const out = new Set<string>();
+  const walk = (v: unknown) => {
+    if (typeof v === "string") for (const id of secretIds(v)) out.add(id);
+    else if (v instanceof InputText) v.parts.forEach(walk);
+    else if (Array.isArray(v)) v.forEach(walk);
+    else if (isPlainObject(v) && !(v instanceof InputRef) && !(v instanceof Date)) Object.values(v).forEach(walk);
+  };
+  walk(template.source);
+  for (const v of Object.values(isPlainObject(template.headers) ? template.headers : {})) walk(v);
+  walk(template.body);
+  return [...out].sort();
 }
 
 export function notePath(path: string): string {

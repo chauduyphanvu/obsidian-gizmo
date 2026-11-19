@@ -44,7 +44,7 @@ test("the disk copy survives a restart and goes through the panel's pipeline", a
 test("keys hold secret placeholders; secret values never reach the disk", async () => {
   const f = fakeHost();
   const dl = new DataLayer(f.host);
-  await dl.fetch("https://api.example.com/q?k={secret:demo}", { Authorization: "Bearer {secret:demo}" }, 60_000);
+  await dl.fetch("https://api.example.com/q?k={secret:demo}", { Authorization: "Bearer {secret:demo}" }, 60_000, false, undefined, ["demo"]);
   await settle(1);
   assert.equal(f.requests.at(-1), "https://api.example.com/q?k=s3cret");
   const stored = [...f.disk.files.values()].map((file) => file.text).join("\n");

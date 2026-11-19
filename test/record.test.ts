@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { MAX_SAMPLES } from "../src/background.ts";
+import { askersOf, permissionsOf, readSpec } from "../src/spec.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
@@ -131,4 +132,39 @@ test("panels reading the recorded list update after a sample, and opening the ap
   new AppController(document.createElement("div"), "Apps/Kp.md", t.env).load();
   await settle();
   assert.equal(big(), "3");
+});
+
+test("a recorded block asks for everything it sends, as a panel naming it would: its body and the secrets in it", async () => {
+  const GQL = "https://api.example.com/graphql";
+  const block = { source: GQL, headers: { "X-Key": "{secret:hkey}" }, body: { token: "{secret:demo}", query: "{ kp }" }, record: "1h" };
+  const fm = { app: "Kp", data: { kp: block }, panels: [{ view: "table", source: "kp_log" }] };
+  const spec = readSpec(fm, { path: "Apps/Kp.md" })!.spec!;
+  const wanted = ["net:api.example.com", "post:api.example.com", "secret:demo", "secret:hkey"];
+  assert.deepEqual(permissionsOf(spec, "Apps/Kp.md"), wanted);
+  assert.deepEqual([...askersOf(spec, "Apps/Kp.md").keys()].sort(), wanted);
+  // The same app with a panel naming the block asks for the same.
+  const shown = readSpec({ ...fm, panels: [{ view: "table", source: "kp" }] }, { path: "Apps/Kp.md" })!.spec!;
+  assert.deepEqual(permissionsOf(shown, "Apps/Kp.md"), wanted);
+  // A text body asks too.
+  const text = readSpec({ ...fm, data: { kp: { source: GQL, body: "token={secret:demo}", record: "1h" } } }, { path: "Apps/Kp.md" })!.spec!;
+  assert.deepEqual(permissionsOf(text, "Apps/Kp.md"), ["net:api.example.com", "post:api.example.com", "secret:demo"]);
+
+  const t = fakeBackground({ "Apps/Kp.md": { fm }, "Apps/Kp data.md": { fm: {} } }, { [GQL]: { kp: 3 } });
+  t.f.secrets.hkey = "h3ader";
+  await t.bg.start();
+  assert.deepEqual(t.f.calls.map((c) => [c.method, c.headers["X-Key"], JSON.parse(c.body!).token]), [["POST", "h3ader", "s3cret"]]);
+  assert.deepEqual((t.f.files.get("Apps/Kp data.md")!.fm!.kp_log as unknown[]).length, 1);
+});
+
+test("a recorded block whose keys can't be read as a panel says why, and records nothing", async () => {
+  const fm = {
+    app: "Kp", inputs: { region: ["eu.example.com", "us.example.com"] },
+    data: { kp: { source: "https://$region/kp", record: "1h" } }, panels: [{ view: "number", source: "kp_log", agg: "count" }],
+  };
+  const r = readSpec(fm, { path: "Apps/Kp.md" })!;
+  assert.ok(r.errors.includes("data.kp: $region can't be part of a URL's host"), r.errors.join("; "));
+  assert.deepEqual(permissionsOf(r.spec!, "Apps/Kp.md"), []);
+  const t = fakeBackground({ "Apps/Kp.md": { fm } });
+  await t.bg.start();
+  assert.deepEqual(t.f.requests, []);
 });

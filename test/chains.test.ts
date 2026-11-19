@@ -182,7 +182,7 @@ test("a chained panel asks for its root's host and secrets, named by the note th
   assert.deepEqual(r.errors, ['panel 3: unknown key "upstream"']);
   const [inner, near, plain] = r.spec!.panels;
   assert.deepEqual(inner.panel, {
-    view: "number", where: { mag: "> 5" }, source: `${URL_Q}?k={secret:demo}`, upstream: [{ pick: "features" }],
+    view: "number", where: { mag: "> 5" }, source: `${URL_Q}?k={secret:demo}`, upstream: [{ pick: "features" }], secrets: ["demo"],
   });
   assert.equal(inner.writtenIn.source, "C.md");
   // A source beside use brings its own chain in place of the component's; its preset keys stay.

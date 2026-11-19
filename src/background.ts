@@ -4,7 +4,6 @@ import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, stampParts, toTime, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { basename, type NoteReader } from "./expand.ts";
-import { sourceDef } from "./sources/registry.ts";
 import { thisValues } from "./sources/this.ts";
 import {
   permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec,
@@ -380,9 +379,8 @@ export class Background {
       const now = this.env.now();
       const last = lastSample(resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {}));
       if (last !== undefined && now.getTime() - last < job.everyMs) return;
-      const ps = this.blockPanel(entry, job.block);
-      const r = ps && await this.evaluate(entry.path, ps, true);
-      if (!r || !("panel" in r)) return;
+      const r = await this.evaluate(entry.path, entry.spec.recorded[job.block], true);
+      if (!("panel" in r)) return;
       const row = oneRow(r.rows);
       if (!row) return this.problem(entry, `data.${job.block}: record needs one row; add limit: 1 or pick`, opened);
       const at = stampParts(now).at;
@@ -395,13 +393,6 @@ export class Background {
     } finally {
       this.sampling.delete(key);
     }
-  }
-
-  /** The block as a panel naming it gets it: its chain's stages and keys, its `$names` filled when evaluated. */
-  private blockPanel(entry: AppEntry, block: string): PanelSpec | undefined {
-    const fm = this.env.frontmatter(entry.path) ?? {};
-    const app = { app: "", inputs: fm.inputs, data: fm.data, panels: [{ view: "table", source: block }] };
-    return readSpec(app, { now: this.env.now(), notes: this.env.notes, path: entry.path })?.spec?.panels[0];
   }
 
   /** A problem only data can show: told once a session, and again whenever the app is opened. */
@@ -532,11 +523,12 @@ function oneRow(data: unknown): Row | undefined {
   return row !== null && typeof row === "object" && !Array.isArray(row) ? { ...(row as Row) } : undefined;
 }
 
-/** The blocks an app records: root blocks with `record` on a web source. */
+/** The blocks an app records: root blocks with `record` on a web source that check out as a panel. */
 function recordJobs(spec: AppSpec): RecordJob[] {
-  return Object.entries(spec.blocks).flatMap(([block, keys]) => {
+  return Object.keys(spec.recorded).flatMap((block) => {
+    const keys = spec.blocks[block];
     const every = parseDuration(keys.record);
-    if (!every || sourceDef(String(keys.source)).id !== "url") return [];
+    if (!every) return [];
     return [{ block, list: typeof keys.into === "string" ? keys.into : `${block}_log`, everyMs: Math.max(MIN_RECORD_MS, every) }];
   });
 }

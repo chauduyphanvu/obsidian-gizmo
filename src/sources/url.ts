@@ -1,8 +1,7 @@
+import { secretIds } from "../template.ts";
 import type { SourceDef } from "./types.ts";
 
-function secretsIn(text: string | undefined): string[] {
-  return [...(text ?? "").matchAll(/\{secret:([a-z0-9-]+)\}/g)].map((m) => m[1]);
-}
+const secretsIn = (text: string | undefined) => secretIds(text ?? "");
 
 /** A web address, fetched through the data layer's shared cache. */
 export const url: SourceDef = {
@@ -31,5 +30,6 @@ export const url: SourceDef = {
     return out;
   },
   deps: (p) => [`url:${p.source}`],
-  load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force, p.body),
+  // Only the secrets typed in the panel's own keys may be filled, whatever its values make of the text.
+  load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force, p.body, p.secrets ?? []),
 };

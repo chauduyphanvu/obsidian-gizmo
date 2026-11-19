@@ -4,6 +4,7 @@ import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
 import type { Panel } from "./spec.ts";
+import { secretIds } from "./template.ts";
 
 export interface FileInfo {
   path: string;
@@ -105,7 +106,9 @@ export class DataLayer {
     let at: number | undefined;
     // The source loads as usual, with each web request answered from disk.
     const offline = Object.create(this) as DataLayer;
-    offline.fetch = async (url, headers, _ttlMs, _force, body) => {
+    offline.fetch = async (url, headers, _ttlMs, _force, body, secrets = []) => {
+      const refused = this.refused(url, headers, body, secrets);
+      if (refused) throw refused;
       const copy = await this.cached(url, headers, body);
       if (!copy) throw new Error("no copy");
       at = Math.min(at ?? Infinity, copy.at);
@@ -121,8 +124,18 @@ export class DataLayer {
 
   // ---- Web ----------------------------------------------------------------------------------
 
-  /** With a `body`, the request is a POST; the same URL with another body is another request. */
-  fetch(source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false, body?: string | Record<string, unknown>): Promise<unknown> {
+  /**
+   * With a `body`, the request is a POST; the same URL with another body is another request.
+   * `secrets` are the ids its `{secret:id}` placeholders may name, settled from the keys of the
+   * panel that asks; a request naming any other is refused before anything is sent or read from
+   * the cache, so text a value assembled can't reach a secret.
+   */
+  fetch(
+    source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false,
+    body?: string | Record<string, unknown>, secrets: readonly string[] = [],
+  ): Promise<unknown> {
+    const refused = this.refused(source, headers, body, secrets);
+    if (refused) return Promise.reject(refused);
     const key = cacheKey(source, headers, body);
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
@@ -157,6 +170,13 @@ export class DataLayer {
     } catch {
       return undefined;
     }
+  }
+
+  /** Why a request may not be made: it names a secret it wasn't allowed. Only what withSecrets fills is looked at. */
+  private refused(source: string, headers: Record<string, string> | undefined, body: unknown, secrets: readonly string[]): Error | undefined {
+    const texts = [source, ...Object.values(headers ?? {}).map(String), ...stringsIn(body)];
+    const id = texts.flatMap(secretIds).find((s) => !secrets.includes(s));
+    return id === undefined ? undefined : new Error(`This app wasn't allowed the secret "${id}"`);
   }
 
   private withSecrets(text: string): string {
@@ -311,6 +331,14 @@ export class DataLayer {
 /** What a web response is cached under, in memory and on disk: its {secret:id} placeholders, never the secrets. */
 export function cacheKey(source: string, headers: Record<string, string> | undefined, body?: string | Record<string, unknown>): string {
   return `${source}|${JSON.stringify(headers ?? {})}${body === undefined ? "" : `|${JSON.stringify(body)}`}`;
+}
+
+/** Every text in a request body: the body itself, or each text value at any depth of a map. */
+function stringsIn(v: unknown): string[] {
+  if (typeof v === "string") return [v];
+  if (Array.isArray(v)) return v.flatMap(stringsIn);
+  if (v !== null && typeof v === "object") return Object.values(v).flatMap(stringsIn);
+  return [];
 }
 
 function withSource(p: Panel, source: string): Panel {

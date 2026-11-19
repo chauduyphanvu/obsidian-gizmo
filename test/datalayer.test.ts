@@ -45,9 +45,9 @@ test("failures aren't cached; secrets are filled at fetch time only", async () =
   await assert.rejects(dl.fetch("https://api.example.com/fail", undefined, 60_000), /api.example.com answered 503/);
   await assert.rejects(dl.fetch("https://api.example.com/fail", undefined, 60_000));
   assert.equal(f.requests.length, 2);
-  await dl.fetch("https://api.example.com/q?k={secret:demo}", undefined, 60_000);
+  await dl.fetch("https://api.example.com/q?k={secret:demo}", undefined, 60_000, false, undefined, ["demo"]);
   assert.equal(f.requests.at(-1), "https://api.example.com/q?k=s3cret");
-  await assert.rejects(dl.fetch("https://api.example.com/q?k={secret:nope}", undefined, 60_000), /Missing secret "nope"/);
+  await assert.rejects(dl.fetch("https://api.example.com/q?k={secret:nope}", undefined, 60_000, false, undefined, ["nope"]), /Missing secret "nope"/);
 });
 
 test("lists come from the data note first, then the app note, through the pipeline", async () => {
