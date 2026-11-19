@@ -12,6 +12,10 @@ data:
     pick: chart.result.0.indicators.quote.0
     compute:
       change: round((close - prev(close)) / prev(close) * 100, 2)
+  held:
+    source: https://query1.finance.yahoo.com/v8/finance/chart/$position.symbol?range=5d&interval=1d
+    pick: chart.result.0.indicators.quote.0
+    where: {close: "> 0"}
 panels:
   - view: number
     title: $symbol
@@ -62,21 +66,17 @@ panels:
     select: position
   - view: number
     title: $position.symbol is worth
-    source: https://query1.finance.yahoo.com/v8/finance/chart/$position.symbol?range=5d&interval=1d
-    pick: chart.result.0.indicators.quote.0
+    source: held
     compute:
       value: close * $position.shares
-    where: {close: "> 0"}
     field: value
     format: "$0,0.00"
     label: at the last close
   - view: number
     title: Gain or loss
-    source: https://query1.finance.yahoo.com/v8/finance/chart/$position.symbol?range=5d&interval=1d
-    pick: chart.result.0.indicators.quote.0
+    source: held
     compute:
       gain: close * $position.shares - $position.cost
-    where: {close: "> 0"}
     field: gain
     format: "$0,0.00"
     label: against what I paid
