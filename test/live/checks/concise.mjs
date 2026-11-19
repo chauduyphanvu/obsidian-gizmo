@@ -78,7 +78,7 @@ export default async function concise(t) {
       }
       const status = await na.until(() => na.status().find((s) => s === "Ready to score: 0"), 5000);
       return { shown, fm: na.fm(path), status, right: panel("Right so far")?.querySelector(".na-big")?.textContent, empty: panel("How did these turn out?")?.querySelector(".na-empty")?.textContent };`);
-    expect(r.shown.join("|") === "Decision|I expected|% sure|Due|It went|What I learned|Written", r);
+    expect(r.shown.join("|") === "Decision|I expected|% sure|Due|It went|What I learned", r);
     expect(r.fm?.outcome === "right" && r.fm.learned === "The basement has signal after all" && r.fm.confidence === 80 && r.status === "Ready to score: 0" && r.empty === "Nothing here yet.", r);
     return `outcome ${r.fm.outcome}, learned saved; status "${r.status}"; right so far ${r.right}`;
   });

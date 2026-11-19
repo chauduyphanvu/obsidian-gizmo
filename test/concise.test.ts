@@ -205,7 +205,7 @@ test("Decisions: the due decision is counted, scored in place from the dropdown,
   assert.equal(text(app.panel("Ready to score").querySelector(".na-big")), "1");
   assert.equal(text(app.panel("Right so far").querySelector(".na-big")), "57%");
   const score = app.panel("How did these turn out?");
-  assert.deepEqual([...score.querySelectorAll("th")].map(text), ["Decision", "I expected", "% sure", "Due", "It went", "What I learned", "Written"]);
+  assert.deepEqual([...score.querySelectorAll("th")].map(text), ["Decision", "I expected", "% sure", "Due", "It went", "What I learned"]);
   const row = score.querySelector("tbody tr")!;
   assert.equal(text(row.querySelector("td")), "Switch to the cheaper phone plan");
   assert.equal(text(row.querySelectorAll("td")[3]), "3 days ago");
@@ -359,10 +359,11 @@ test("the short Decisions draws what the long Decision journal draws, over the s
   await settle();
   assert.deepEqual([long, short].map((a) => [...a.root.querySelectorAll("button.na-tab")].map(text)), [["Score", "Waiting", "Track record"], ["Score", "Waiting", "Track record"]]);
   for (const title of ["Ready to score", "Right so far"]) assert.equal(shown(short.panel(title)), shown(long.panel(title)), title);
-  // Scoring shows each decision as the long one does, with the day it was written down as well.
+  // Scoring shows each decision exactly as the long one does, column for column.
   const [longScore, shortScore] = [long, short].map((a) => cells(a.panel("How did these turn out?")));
-  assert.deepEqual(shortScore.map((row) => row.slice(0, -1)), longScore);
-  assert.deepEqual(shortScore.map((row) => row.at(-1)), ["Written", "29 days ago"]);
+  assert.deepEqual(shortScore, longScore);
+  assert.deepEqual(shortScore[0], ["Decision", "I expected", "% sure", "Due", "It went", "What I learned"]);
+  assert.equal(shortScore.length, 2);
   for (const a of [long, short]) a.tab("Waiting");
   const [longLine, shortLine] = [long, short].map((a) => a.panel("Still waiting to find out"));
   assert.deepEqual([...shortLine.querySelectorAll(".na-tl-label")].map(text), [...longLine.querySelectorAll(".na-tl-label")].map(text));

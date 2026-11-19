@@ -11,11 +11,20 @@ data:
       review: {type: date, label: Due}
       outcome: {type: [open, right, wrong], label: It went, default: open}
       learned: {label: What I learned}
-      made: {type: date, label: Written, default: today}
-    compute: {hit: 'if(outcome == "right", 1, 0)', said: confidence / 100}
-  waiting: {source: decisions, where: {outcome: open}, sort: review}
-  due: {source: waiting, where: {review: past}}
-  scored: {source: decisions, where: {outcome: "!= open"}}
+      made: {type: date, default: today}
+    compute:
+      hit: 'if(outcome == "right", 1, 0)'
+      said: confidence / 100
+  waiting:
+    source: decisions
+    where: {outcome: open}
+    sort: review
+  due:
+    source: waiting
+    where: {review: past}
+  scored:
+    source: decisions
+    where: {outcome: "!= open"}
 panels:
   - view: form
     title: A decision I'm making
@@ -24,11 +33,26 @@ panels:
     label: Write it down
     notify: Written down. Come back on {review} to score it.
     shortcut: decide
-  - {view: number, title: Ready to score, source: due, label: decisions whose day has come, alert: "> 0", pin: status}
-  - {view: number, title: Right so far, source: scored, agg: share, of: {outcome: right}, label: "of the decisions I've scored"}
+  - view: number
+    title: Ready to score
+    source: due
+    label: decisions whose day has come
+    alert: "> 0"
+    pin: status
+  - view: number
+    title: Right so far
+    source: scored
+    agg: share
+    of: {outcome: right}
+    label: "of the decisions I've scored"
 tabs:
   Score:
-    - {view: table, title: How did these turn out?, source: due, edit: [outcome, learned], format: {review: relative, made: relative}}
+    - view: table
+      title: How did these turn out?
+      source: due
+      columns: [name, expect, confidence, review, outcome, learned]
+      edit: [outcome, learned]
+      format: {review: relative}
   Waiting:
     - view: timeline
       title: Still waiting to find out
@@ -37,8 +61,22 @@ tabs:
       end: review
       detail: "{name}. I expected: {expect} ({confidence}% sure). I'll know by {review}."
   Track record:
-    - {view: bar, span: 2, title: "How sure I said I was, and how often I was right", source: scored, group: confidence, y: [said, hit], agg: avg, format: "0%", labels: {said: I said, hit: I was right}}
-    - {view: table, span: 2, title: Scored, source: scored, sort: -review, columns: [name, confidence, outcome, learned], edit: true}
+    - view: bar
+      span: 2
+      title: How sure I said I was, and how often I was right
+      source: scored
+      group: confidence
+      y: [said, hit]
+      agg: avg
+      format: "0%"
+      labels: {said: I said, hit: I was right}
+    - view: table
+      span: 2
+      title: Scored
+      source: scored
+      sort: -review
+      columns: [name, confidence, outcome, learned]
+      edit: true
 ---
 Before a decision plays out, write what you expect and how sure you are, and pick the day you'll know.
 On that day it shows under Score (and in the status bar): mark it right or wrong and note what you
