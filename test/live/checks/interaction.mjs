@@ -2,6 +2,8 @@
 import { prompts } from "./apps.mjs";
 
 const OPENLIBRARY = ["https://openlibrary.org/search.json?q=dune&limit=10"];
+/** How long a search waits for Open Library, which can take well over ten seconds to answer. */
+const OPENLIBRARY_WAIT = 30000;
 const USGS = ["https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_day.geojson"];
 
 const ROOMS = `---
@@ -30,6 +32,8 @@ jobs:
 
 export default async function interaction(t) {
   const { check, run, expect, press, type } = t;
+  /** Whether the Library search got its results; the check that adds from them needs them. */
+  let searched = false;
 
   await check("Library: typing and Enter searches, keeping the caret in the box; picking a result fills About", async () => {
     await run(`await na.open("Apps/Library");`);
@@ -44,9 +48,12 @@ export default async function interaction(t) {
     const r = await run(`
       const el = na.view().contentEl;
       const box = el.querySelector('input[aria-label="q"]');
-      const results = await na.until(() => el.querySelectorAll(".na-view-list li").length >= 3 && !el.querySelector(".na-loading, .na-stale"), 10000);
+      const results = await na.until(() => el.querySelectorAll(".na-view-list li").length >= 3 && !el.querySelector(".na-loading, .na-stale"), ${OPENLIBRARY_WAIT});
       await na.sleep(300);
-      return { results: !!results, items: [...el.querySelectorAll(".na-view-list li")].slice(0, 3).map((li) => li.textContent), focused: document.activeElement === box, caret: box.selectionStart, value: box.value };`);
+      return { results: !!results, pending: !!el.querySelector(".na-loading, .na-stale"), items: [...el.querySelectorAll(".na-view-list li")].slice(0, 3).map((li) => li.textContent), focused: document.activeElement === box, caret: box.selectionStart, value: box.value };`);
+    // Still waiting for its answer says nothing about the plugin; an answer that is wrong does.
+    if (!r.results && r.pending) t.skip(`Open Library hasn't answered in ${OPENLIBRARY_WAIT / 1000} s`);
+    searched = r.results;
     // Tab from the box reaches the first result; Enter picks it.
     await press("Tab");
     const tabbed = await run(`return { cls: document.activeElement?.className, text: document.activeElement?.textContent?.slice(0, 40) };`);
@@ -63,6 +70,7 @@ export default async function interaction(t) {
   }, { net: OPENLIBRARY });
 
   await check("Library: Add on Dune says it exists; Add on a new title creates the note and the shelf shows it", async () => {
+    if (!searched) t.skip("the search before it got no results from Open Library to add");
     const r = await run(`
       const el = na.view().contentEl;
       const items = [...el.querySelectorAll(".na-view-list li")];

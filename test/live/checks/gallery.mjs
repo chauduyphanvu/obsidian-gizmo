@@ -234,9 +234,14 @@ export default async function gallery(t) {
     await run(`await na.open("Apps/Book finder"); na.view().contentEl.querySelector('input[aria-label="q"]').focus();`);
     await type("ursula le guin");
     await press("Enter");
+    const searched = await run(`
+      const el = na.view().contentEl;
+      const results = await na.until(() => el.querySelectorAll(".na-view-list li").length > 2 && !el.querySelector(".na-stale, .na-loading"), 30000);
+      return { results: !!results, pending: !!el.querySelector(".na-stale, .na-loading") };`);
+    // Still waiting for its answer says nothing about the plugin; an answer that is wrong does.
+    if (!searched.results && searched.pending) t.skip("Open Library hasn't answered in 30 s");
     const r = await run(`
       const el = na.view().contentEl;
-      await na.until(() => el.querySelectorAll(".na-view-list li").length > 2 && !el.querySelector(".na-stale, .na-loading"), 10000);
       const item = [...el.querySelectorAll(".na-view-list li")].find((li) => {
         const title = li.textContent.split(" · ")[0];
         return !/[\\\\/:*?"<>|#^\\[\\]]/.test(title) && !na.exists("Books/" + title + ".md");
