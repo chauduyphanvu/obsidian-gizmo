@@ -1,4 +1,5 @@
-import { AGGS, daysUntil, fillWith, valueOf, toNumber, type Row } from "../data.ts";
+import { compareWindows, splitByWindow } from "../compare.ts";
+import { AGGS, daysUntil, fillWith, formatValue, toNumber, valueOf, type Row } from "../data.ts";
 import { display, formatErrors, formatFor, mapped } from "../format.ts";
 import { streak } from "../group.ts";
 import type { Panel } from "../spec.ts";
@@ -17,19 +18,63 @@ function shown(p: Panel, data: unknown, now: Date): unknown {
   return p.agg === "streak" ? streak(rowsOf(data), p.group!, p.per!, now) : valueOf(p, data);
 }
 
+function checkCompare(p: Panel): string[] {
+  if (p.compare === undefined) return [];
+  if (p.compare !== "previous") return ["compare must be previous"];
+  if (p.agg === "streak") return ["compare doesn't work with streak"];
+  return compareWindows(p.where, new Date()) ? [] : ["compare needs a date window in where, e.g. where: {at: this week}"];
+}
+
+/**
+ * `▲ 12 (8%) vs previous`: how the value differs from the one over the window before. Neutral in
+ * colour on purpose, since up is not good or bad; a screen reader gets the same in words.
+ */
+function drawChange(el: HTMLElement, p: Panel, now: Date, value: unknown, previous: unknown[]): void {
+  const before = previous.length ? toNumber(valueOf(p, previous)) : undefined;
+  if (before === undefined) {
+    el.createDiv({ cls: "na-compare", text: "no previous data" });
+    return;
+  }
+  const after = toNumber(value);
+  if (after === undefined) return;
+  const diff = after - before;
+  if (diff === 0) {
+    el.createDiv({ cls: "na-compare", text: "no change vs previous", attr: { role: "img", "aria-label": "no change, versus previous" } });
+    return;
+  }
+  const size = formatFor(p, p.field) !== undefined
+    ? display(p, p.field, Math.abs(diff), now)
+    : `${formatValue(Math.abs(diff), p.decimals)}${p.unit ? ` ${p.unit}` : ""}`;
+  // A change from nothing has no percent.
+  const percent = before === 0 ? undefined : (Math.abs(diff) / Math.abs(before)) * 100;
+  const small = percent !== undefined && percent < 1;
+  const shown = percent === undefined ? "" : small ? " (<1%)" : ` (${Math.round(percent)}%)`;
+  const spoken = percent === undefined ? "" : `, ${small ? "less than 1" : Math.round(percent)} percent`;
+  el.createDiv({
+    cls: "na-compare",
+    text: `${diff > 0 ? "▲" : "▼"} ${size}${shown} vs previous`,
+    attr: { role: "img", "aria-label": `${diff > 0 ? "up" : "down"} ${size}${spoken}, versus previous` },
+  });
+}
+
 const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes';
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format", "values"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format", "values", "compare"],
   span: 1,
   needsSource: true,
-  validate: (p) => [...checkAgg(p), ...formatErrors(p)],
+  validate: (p) => [...checkAgg(p), ...formatErrors(p), ...checkCompare(p)],
   examples: [
     { panel: { view: "number", source: "weights", field: "weight", agg: "avg", unit: "kg" } },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", format: "$0,0.00" } },
     { panel: { view: "number", source: "renewals", where: { due: "upcoming" }, sort: "due", field: "due", agg: "first", format: "until" } },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", format: "$0.0.0" }, errors: [BAD_FORMAT] },
+    { panel: { view: "number", source: "spending", field: "amount", agg: "sum", where: { at: "this week" }, compare: "previous", format: "$0,0.00" } },
+    { panel: { view: "number", source: "spending", agg: "count", where: { at: "last 7 days" }, compare: "last" }, errors: ["compare must be previous"] },
+    { panel: { view: "number", source: "spending", field: "amount", agg: "sum", compare: "previous" }, errors: ["compare needs a date window in where, e.g. where: {at: this week}"] },
+    { panel: { view: "number", source: "spending", agg: "count", where: { category: "food" }, compare: "previous" }, errors: ["compare needs a date window in where, e.g. where: {at: this week}"] },
+    { panel: { view: "number", source: "stretches", group: "at", per: "day", agg: "streak", compare: "previous" }, errors: ["compare doesn't work with streak"] },
     { panel: { view: "number", source: "https://api.example.com/now", pick: "current", field: "weathercode", values: { weathercode: { 0: "Clear", 1: "Mostly clear" } } } },
     { panel: { view: "number", source: "https://api.example.com/now", pick: "current", field: "weathercode", values: { weathercode: "Clear" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
     { panel: { view: "number", source: "weights", agg: "median" }, errors: ["agg must be one of count, sum, avg, min, max, first, last, streak"] },
@@ -40,12 +85,15 @@ export const number: ViewDef = {
   ],
   mount: (el, p, ctx) => redraw(el, (data) => {
     heading(el, p);
-    const value = shown(p, data, ctx.now);
+    // With compare, the data holds the window before too; the value is the current window's.
+    const { current, previous } = splitByWindow(p, data, ctx.now);
+    const value = shown(p, current, ctx.now);
     const row = el.createDiv({ cls: "na-big" });
     row.createSpan({ text: display(p, p.field, value, ctx.now) });
     if (p.unit && formatFor(p, p.field) === undefined && mapped(p, p.field, value) === undefined) {
       row.createSpan({ cls: "na-unit", text: p.unit });
     }
+    if (previous) drawChange(el, p, ctx.now, value, previous);
     if (p.label) el.createDiv({ cls: "na-label", text: p.label });
   }),
 };

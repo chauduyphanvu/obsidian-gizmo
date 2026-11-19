@@ -250,3 +250,7 @@
 .note-app .na-rowcard-value { min-width: 0; text-align: right; overflow-wrap: anywhere; }
 .note-app .na-rowcard-value .na-edit { max-width: 100%; }
 .note-app .na-rowcard-actions { margin-top: auto; text-align: right; }
+.note-app .na-compare { margin-top: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
+.note-app .na-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
+.note-app .na-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); }
+.note-app .na-stacked:not(.na-selected) { stroke: var(--background-secondary); stroke-width: 1; }
