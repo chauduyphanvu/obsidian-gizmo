@@ -530,6 +530,7 @@ test("Trip planner: days to go, packing, the itinerary from a calendar file, exp
   assert.equal(text(packing.querySelector(".na-title")), "Packing · 1/6");
 
   // 3,000 yen at the rate in the note's properties, 150 to the dollar.
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map(text), ["item", "Yen"]);
   const [item, local] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
   item.value = "Ramen";
   local.value = "3000";
@@ -537,6 +538,7 @@ test("Trip planner: days to go, packing, the itinerary from a calendar file, exp
   await settle();
   assert.deepEqual((f.files.get("Apps/Trip planner data.md")!.fm!.spend as unknown[]), [{ item: "Ramen", local: 3000, at: "2026-11-18T12:00" }]);
   assert.equal(text(total.querySelector(".na-big")), "$20.00");
+  assert.deepEqual([...expenses.querySelectorAll("th")].map(text), ["item", "Yen", "Dollars"]);
   assert.deepEqual([...expenses.querySelectorAll("tbody tr")[0].querySelectorAll("td")].map(text).slice(2), ["$20.00"]);
 
   // Edit the rate in the note and the dollars follow.
