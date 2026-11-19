@@ -21,6 +21,7 @@ export class AppView extends FileView {
 
   async onOpen(): Promise<void> {
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
+    this.addAction("search-code", "Inspect data", () => void this.controller?.toggleInspector());
     this.addAction("refresh-cw", "Reload data", () => this.controller?.reload());
   }
 

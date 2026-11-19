@@ -2,7 +2,9 @@ import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
-import { fakeEnv } from "./support/fakes.ts";
+import { DataLayer } from "../src/datalayer.ts";
+import { checkPanel } from "../src/spec.ts";
+import { fakeEnv, fakeHost } from "./support/fakes.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
@@ -89,4 +91,184 @@ test("a component note's own errors stay text, since they name the component, no
   const { root } = open("Components/T.md", { "Components/T.md": { fm: { component: "T", panels: [{ view: "gauge" }] } } }, ["---", "component: T", "panels:", "  - view: gauge", "---"]);
   assert.equal(links(root).length >= 1, true);
   assert.equal(root.querySelector(".na-error-link"), null);
+});
+
+// ---- Data inspector ----------------------------------------------------------------------------------
+
+const QUAKES = "https://earthquake.usgs.gov/feed";
+const FEED = { features: [{ properties: { mag: 4.6, place: "A" } }, { properties: { mag: 3.1, place: "B" } }], metadata: { count: 2 } };
+const NOW = { current: { t: 7 }, hourly: { time: ["a", "b"], t: [1, 2] } };
+const RESPONSES = { [QUAKES]: FEED, "https://api.open-meteo.com/forecast": NOW };
+
+const PLANET = {
+  app: "Planet",
+  doses: [{ name: "vitamin D" }],
+  panels: [
+    { view: "number", title: "Strongest", source: QUAKES, pick: "features", field: "properties.mag", agg: "max" },
+    { view: "list", title: "Places", source: QUAKES, pick: "features", item: "{properties.place}" },
+    { view: "text", title: "Now", source: "https://api.open-meteo.com/forecast?lat=1", pick: "current", text: "{t}" },
+    { view: "list", title: "Doses", source: "doses", item: "{name}" },
+  ],
+};
+
+/** An app opened on a fake vault, once its panels have loaded. */
+async function openApp(fm: Record<string, unknown>, responses: Record<string, unknown> = RESPONSES) {
+  const t = open("Apps/Planet.md", { "Apps/Planet.md": { fm } }, [], responses);
+  await settle();
+  return t;
+}
+
+const shell = (root: Element) => root.querySelector(".note-app")!;
+
+test("inspect lists each distinct source once, under the first panel that uses it, with its raw data", async () => {
+  const { app } = await openApp(PLANET);
+  const found = await app.inspect();
+  assert.deepEqual(found.map((s) => [s.title, s.kind]), [
+    ["Strongest", "earthquake.usgs.gov"], ["Now", "api.open-meteo.com"], ["Doses", "list: doses"],
+  ]);
+  // Before the pick of the panels that read it.
+  assert.deepEqual(found[0].data, FEED);
+  assert.deepEqual(found[1].data, NOW);
+  assert.deepEqual(found[2].data, [{ name: "vitamin D" }]);
+  assert.equal(found[0].source, QUAKES);
+  assert.equal(found[2].source, undefined);
+});
+
+test("inspecting makes no request the panels didn't", async () => {
+  const t = await openApp(PLANET);
+  const before = t.f.requests.length;
+  assert.equal(before, 2);
+  await t.app.inspect();
+  await t.app.toggleInspector();
+  assert.equal(t.f.requests.length, before);
+});
+
+test("sources differ by their notes scope too, and a panel waiting for typing isn't a source", async () => {
+  const t = await openApp({
+    app: "Notes",
+    inputs: { q: "text" },
+    panels: [
+      { view: "list", title: "Books", source: "notes", from: "Books", item: "{name}" },
+      { view: "list", title: "Reading", source: "notes", from: "Reading", item: "{name}" },
+      { view: "list", title: "Again", source: "notes", from: "Books", item: "{name}" },
+      { view: "list", title: "Search", source: "https://example.com/s?q=$q", item: "{title}" },
+    ],
+  });
+  const found = await t.app.inspect();
+  assert.deepEqual(found.map((s) => [s.title, s.kind]), [["Books", "notes: Books"], ["Reading", "notes: Reading"]]);
+});
+
+test("the action opens the pane above the panels, and closes it again", async () => {
+  const { app, root } = await openApp(PLANET);
+  assert.equal(root.querySelector(".na-inspector"), null);
+  await app.toggleInspector();
+  const pane = root.querySelector(".na-inspector")!;
+  assert.ok(pane);
+  const order = [...shell(root).children];
+  assert.ok(order.indexOf(pane) < order.indexOf(root.querySelector(".na-grid")!));
+  assert.deepEqual([...pane.querySelectorAll(".na-inspect-head")].map(text), [
+    "Strongest · earthquake.usgs.gov", "Now · api.open-meteo.com", "Doses · list: doses",
+  ]);
+  assert.equal(pane.querySelectorAll(".na-inspect-source").length, 3);
+  await app.toggleInspector();
+  assert.equal(root.querySelector(".na-inspector"), null);
+  await app.toggleInspector();
+  assert.equal(root.querySelectorAll(".na-inspector").length, 1);
+});
+
+test("the pane sits above the input bar too, and a key in it copies its path", async () => {
+  const t = await openApp({ ...PLANET, inputs: { period: ["a", "b"] } });
+  await t.app.toggleInspector();
+  const order = [...shell(t.root).children].map((c) => c.className.split(" ")[0]);
+  assert.ok(order.indexOf("na-inspector") < order.indexOf("na-inputs"), order.join());
+  const pane = t.root.querySelector(".na-inspector")!;
+  const tree = pane.querySelector(".na-inspect-source .na-tree > details")!;
+  const features = [...tree.querySelectorAll(":scope > .na-children > .na-node")].find((n) => text(n.querySelector("button.na-key")) === "features")!;
+  features.setAttribute("open", "");
+  features.dispatchEvent(new window.Event("toggle"));
+  const zero = features.querySelector(".na-children > .na-node")!;
+  zero.setAttribute("open", "");
+  zero.dispatchEvent(new window.Event("toggle"));
+  const props = [...zero.querySelectorAll(":scope > .na-children > .na-node")].find((n) => text(n.querySelector("button.na-key")) === "properties")!;
+  props.setAttribute("open", "");
+  props.dispatchEvent(new window.Event("toggle"));
+  const mag = [...props.querySelectorAll(".na-leaf")].find((n) => text(n.querySelector("button.na-key")) === "mag")!;
+  (mag.querySelector("button.na-key") as HTMLButtonElement).click();
+  assert.deepEqual(t.copied, ["features.0.properties.mag"]);
+});
+
+test("a source that fails shows its problem in the pane", async () => {
+  const t = await openApp({ app: "Down", panels: [{ view: "text", title: "Down", source: "https://x.example.com/fail", text: "{a}" }] }, {});
+  await t.app.toggleInspector();
+  assert.equal(text(t.root.querySelector(".na-inspector .na-inspect-error")), "x.example.com answered 503");
+});
+
+test("secrets never appear: the address keeps its placeholder, headers aren't shown", async () => {
+  const t = await openApp({
+    app: "Keyed",
+    panels: [{
+      view: "text", title: "Keyed", source: "https://api.example.com/x?key={secret:demo}", headers: { authorization: "Bearer {secret:demo}" },
+      pick: "current", text: "{t}",
+    }],
+  }, { "https://api.example.com/x": { current: { t: 7 }, key: "echoed" } });
+  // The request really carried the secret, so the check below isn't vacuous.
+  assert.ok(t.f.requests.some((u) => u.includes("key=s3cret")));
+  await t.app.toggleInspector();
+  const pane = t.root.querySelector(".na-inspector")!;
+  assert.equal(text(pane.querySelector(".na-inspect-url")), "https://api.example.com/x?key={secret:demo}");
+  assert.equal(text(pane.querySelector(".na-inspect-head")), "Keyed · api.example.com");
+  assert.ok(!t.root.innerHTML.includes("s3cret"));
+  assert.ok(!text(pane).includes("Bearer"));
+  assert.ok(!text(pane).includes("authorization"));
+});
+
+test("the pane stays through unchanged redraws, and is filled anew when the app's keys change", async () => {
+  const t = await openApp(PLANET);
+  await t.app.toggleInspector();
+  const pane = t.root.querySelector(".na-inspector")!;
+  const tree = pane.querySelector(".na-tree > details")!;
+  t.changed("Apps/Planet.md");
+  await settle();
+  assert.equal(t.root.querySelector(".na-inspector"), pane);
+  assert.equal(pane.querySelector(".na-tree > details"), tree);
+
+  const fm = t.f.files.get("Apps/Planet.md")!.fm!;
+  (fm.panels as unknown[]).push({ view: "text", title: "More", source: "https://more.example.com/x", text: "{a}" });
+  t.changed("Apps/Planet.md");
+  await settle();
+  assert.equal(t.root.querySelector(".na-inspector"), pane);
+  assert.deepEqual([...pane.querySelectorAll(".na-inspect-head")].map(text).at(-1), "More · more.example.com");
+  assert.equal(pane.querySelectorAll(".na-inspect-source").length, 4);
+});
+
+test("an app with nothing to read says so, and the pane goes with the app", async () => {
+  const t = await openApp({ app: "Plain", panels: [{ view: "text", title: "Hi", text: "hello" }] });
+  await t.app.toggleInspector();
+  assert.match(text(t.root.querySelector(".na-inspector")), /No data to inspect/);
+  t.app.dispose();
+  assert.equal(t.root.querySelector(".na-inspector"), null);
+});
+
+test("rawData is what a source returns before the pipeline, and shares the cache panelData reads", async () => {
+  const f = fakeHost({ "Apps/A.md": { fm: { app: "A", doses: [{ n: 1 }, { n: 2 }] } } });
+  const layer = new DataLayer(f.host);
+  const files = { appPath: "Apps/A.md", dataPath: "Apps/A data.md" };
+  const opts = { ttlMs: 60_000, now: new Date(2026, 10, 18) };
+  const p = checkPanel({ view: "list", source: "https://api.example.com/x", pick: "current", item: "{t}" }, true).panel!;
+  const whole = { current: { t: 7 }, hourly: { time: ["a", "b"], t: [1, 2] } };
+  assert.deepEqual(await layer.rawData(p.source, p, files, opts), whole);
+  assert.deepEqual(await layer.panelData(p.source, p, files, opts), { t: 7 });
+  assert.equal(f.requests.length, 1);
+  assert.equal(await layer.rawData(undefined, p, files, opts), undefined);
+  const doses = checkPanel({ view: "list", source: "doses", sort: "-n", item: "{n}" }, true).panel!;
+  assert.deepEqual(await layer.rawData("doses", doses, files, opts), [{ n: 1 }, { n: 2 }]);
+  assert.deepEqual(await layer.panelData("doses", doses, files, opts), [{ n: 2 }, { n: 1 }]);
+});
+
+test("an app still asking for permissions has no panels loaded, so there is nothing to inspect yet", async () => {
+  const t = open("Apps/Planet.md", { "Apps/Planet.md": { fm: PLANET } }, [], RESPONSES);
+  t.env.isGranted = () => false;
+  t.app.load();
+  await t.app.toggleInspector();
+  assert.match(text(t.root.querySelector(".na-inspector")), /No data to inspect/);
 });

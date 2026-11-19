@@ -117,6 +117,7 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
     showSource: () => void plugin.showSource(leaf, file),
     showSourceAt: (line) => void plugin.showSourceAt(leaf, file, line),
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
+    copy: (text) => { void navigator.clipboard.writeText(text).catch(() => new Notice("Couldn't copy to the clipboard")); },
     now: () => new Date(),
   };
 }

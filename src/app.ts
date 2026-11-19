@@ -10,6 +10,7 @@ import {
 import type { InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { labelOf, lineOf } from "./yamlpos.ts";
+import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
 import { MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import { defaultDataPath, resolveList } from "./store.ts";
@@ -48,6 +49,8 @@ export interface AppEnv {
   showSourceAt(line: number): void;
   /** The note's text as it is now, line by line. */
   sourceLines(): Promise<string[]>;
+  /** Puts text on the clipboard. */
+  copy(text: string): void;
   now(): Date;
 }
 
@@ -142,6 +145,9 @@ export class AppController {
   private links: string[] = [];
   /** What every panel may ask; each gets its own copy that knows which panel it is (see ctxFor). */
   private ctx: Omit<PanelCtx, "editRow">;
+  /** The data inspector pane, while it is open, and which fill of it is the latest. */
+  private inspector: HTMLElement | undefined;
+  private inspecting = 0;
 
   constructor(root: HTMLElement, appPath: string, env: AppEnv) {
     this.root = root;
@@ -188,6 +194,7 @@ export class AppController {
   }
 
   dispose(): void {
+    this.inspector = undefined;
     this.unsubscribe?.();
     this.removeBar();
     this.destroyPanels();
@@ -200,6 +207,54 @@ export class AppController {
   /** Refetches this app's web sources; the panels that use them update when the data arrives. */
   reload(): void {
     this.env.data.forgetUrls([...this.mounted.values()].map((m) => m.source).filter(isUrl));
+  }
+
+  // ---- Data inspector -----------------------------------------------------------------------
+
+  /**
+   * The distinct sources of the panels on screen, each with the title of the first panel that uses
+   * it and what it returned before any pick, where or other step. Loads through the data layer's
+   * cache, so nothing is requested twice. Web addresses keep their `{secret:…}` placeholders.
+   */
+  async inspect(): Promise<InspectedSource[]> {
+    const ids = this.spec ? panelIds(this.spec.panels.map((ps) => ps.template)) : [];
+    const first = new Map<string, Mounted>();
+    for (const m of ids.map((id) => this.mounted.get(id))) {
+      if (!m || m.idle || !m.source) continue;
+      const key = JSON.stringify([m.source, m.p.from, m.p.headers, m.p.body]);
+      if (!first.has(key)) first.set(key, m);
+    }
+    return Promise.all([...first.values()].map(async (m): Promise<InspectedSource> => {
+      const found = { title: m.p.title ?? m.p.view, kind: sourceKind(m.source!, m.p.from), ...(isUrl(m.source) ? { source: m.source } : {}) };
+      try {
+        const data = await this.env.data.rawData(m.source, m.p, this.files(), { ttlMs: this.spec?.refreshMs ?? CACHE_MS, now: this.env.now() });
+        return { ...found, data };
+      } catch (e) {
+        return { ...found, data: { error: (e as Error).message } };
+      }
+    }));
+  }
+
+  /** Shows the inspector above the panels, or takes it away. */
+  async toggleInspector(): Promise<void> {
+    if (this.inspector) {
+      this.inspector.remove();
+      this.inspector = undefined;
+      return;
+    }
+    const pane = this.shell.createDiv({ cls: "na-card na-inspector" });
+    this.shell.insertBefore(pane, this.bar ?? this.grid ?? null);
+    this.inspector = pane;
+    pane.createDiv({ cls: "na-empty", text: "Loading…" });
+    await this.fillInspector();
+  }
+
+  private async fillInspector(): Promise<void> {
+    const pane = this.inspector;
+    const run = ++this.inspecting;
+    const sources = await this.inspect();
+    if (!pane || pane !== this.inspector || run !== this.inspecting) return;
+    renderInspector(pane, sources, (text) => this.env.copy(text));
   }
 
   resize(): void {
@@ -234,8 +289,15 @@ export class AppController {
 
   // ---- Definition ---------------------------------------------------------------------------
 
-  /** Brings the drawn app in line with the note's keys, keeping panels whose keys didn't change. */
+  /** Draws the app again if its keys changed, and fills an open inspector anew with it. */
   private reconcile(): void {
+    const before = this.definition;
+    this.draw();
+    if (this.inspector && this.definition !== before) void this.fillInspector();
+  }
+
+  /** Brings the drawn app in line with the note's keys, keeping panels whose keys didn't change. */
+  private draw(): void {
     const fm = this.env.frontmatter(this.appPath) ?? {};
     const opts = { now: this.env.now(), notes: this.env.notes, path: this.appPath };
     // A component note opened on its own shows how to use it, and a preview when it can.
@@ -249,7 +311,7 @@ export class AppController {
     this.spec = result?.spec;
     this.dataPath = this.spec?.store ? this.env.storePath(this.spec.store, this.appPath) : defaultDataPath(this.appPath);
 
-    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar) el.remove();
+    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
     const header = createDivIn(this.shell, "na-header");
     this.shell.prepend(header);
 

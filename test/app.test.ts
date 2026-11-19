@@ -45,6 +45,7 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
     showSource: () => {},
     showSourceAt: () => {},
     sourceLines: async () => [],
+    copy: () => {},
     now: () => new Date(2026, 10, 18, 12, 0),
   };
   const root = document.createElement("div");

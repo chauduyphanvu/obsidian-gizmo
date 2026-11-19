@@ -210,7 +210,7 @@ test("an input used in a block above the named one is filled, checked and reload
     isGranted: () => true, granted: () => [], grant: async () => {},
     storePath: (s: string) => s, writeFrontmatter: async () => {}, appendLine: async () => {},
     createNote: async () => false, readBody: async () => "",
-    notify: () => {}, openNote: () => {}, showSource: () => {}, showSourceAt: () => {}, sourceLines: async () => [], now: () => NOW,
+    notify: () => {}, openNote: () => {}, showSource: () => {}, showSourceAt: () => {}, sourceLines: async () => [], copy: () => {}, now: () => NOW,
   } satisfies AppEnv;
   const root = document.createElement("div");
   document.body.appendChild(root);
