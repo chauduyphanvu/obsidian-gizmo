@@ -1,5 +1,5 @@
 import { fillWith, getPath, type Row } from "../data.ts";
-import { display, formatErrors } from "../format.ts";
+import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import {
   ACTION_KEYS, DATA_KEYS, GROUP_KEYS, busy, editErrors, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowsOf,
@@ -119,7 +119,7 @@ function drawTable(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn
   const edited = new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)]));
   const table = el.createDiv({ cls: "na-table-wrap" }).createEl("table", { cls: "na-table" });
   const head = table.createEl("thead").createEl("tr");
-  for (const c of columns) head.createEl("th", { text: c });
+  for (const c of columns) head.createEl("th", { text: labelOf(p, c) });
   if (p.action) head.createEl("th");
   const body = table.createEl("tbody");
   // The rows as last shown: buttons and inputs read their row here, so it stays current.
@@ -155,13 +155,16 @@ function drawTable(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals", "format", "select", "action", ...ACTION_KEYS, "edit"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "label", "decimals", "format", "labels", "values", "select", "action", ...ACTION_KEYS, "edit"],
   span: 4,
   needsSource: true,
   validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p)],
   examples: [
     { panel: { view: "table", source: "spending", columns: ["at", "amount", "category"], format: { amount: "$0,0.00", at: "date" } } },
     { panel: { view: "table", source: "spending", format: "0.0.0" }, errors: ['format "0.0.0" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
+    { panel: { view: "table", source: "https://api.example.com/daily", pick: "daily", columns: ["time", "weathercode"], labels: { weathercode: "Sky" }, values: { weathercode: { 0: "Clear", 1: "Mostly clear" } } } },
+    { panel: { view: "table", source: "spending", labels: "Amount" }, errors: ['"labels" has the wrong type (expected a set of name: text)'] },
+    { panel: { view: "table", source: "spending", values: { category: "Food" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
     { panel: { view: "table", source: "notes", from: "Books", group: "genre", columns: ["genre", "count", "pages"], agg: "sum", sort: "-count" } },
     { panel: { view: "table", source: "sessions", group: "at", per: "month", columns: ["at", "minutes"] }, errors: ["group with columns needs agg (sum, avg, min, max, first or last)"] },
     { panel: { view: "table", source: "notes", from: "Health", sort: "-date", columns: ["name", "date", "who"] } },
@@ -199,15 +202,30 @@ export const table: ViewDef = {
   },
 };
 
+/** The grouped list's default item counts rows; a label for `count` names what is counted ("3 books"). */
+function countLabel(p: Panel): string {
+  return !p.item && p.group && p.labels?.count !== undefined ? ` ${labelOf(p, "count")}` : "";
+}
+
+/** The item of a list with no `item`: the row's name, title or value, shown as it is unless the panel says how. */
+function plainItem(p: Panel, r: Row, now: Date): string {
+  const field = ["name", "title", "value"].find((f) => r[f] !== undefined && r[f] !== null);
+  if (field === undefined) return JSON.stringify(r);
+  return mapped(p, field, r[field]) ?? (formatFor(p, field) !== undefined ? display(p, field, r[field], now, "text") : String(r[field]));
+}
+
 export const list: ViewDef = {
   id: "list",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "select", "action", ...ACTION_KEYS],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "action", ...ACTION_KEYS],
   span: 4,
   needsSource: true,
   validate: (p) => [...rowActionErrors("list", p), ...formatErrors(p)],
   examples: [
     { panel: { view: "list", source: "spending", item: "{note} · {amount}", format: { amount: "$0,0.00" } } },
     { panel: { view: "list", source: "spending", item: "{amount}", format: { amount: "dollars" } }, errors: ['format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
+    { panel: { view: "list", source: "notes", from: "#book", group: "tags", labels: { count: "books" }, values: { tags: { fiction: "Fiction" } } } },
+    { panel: { view: "list", source: "spending", labels: "Amount" }, errors: ['"labels" has the wrong type (expected a set of name: text)'] },
+    { panel: { view: "list", source: "spending", values: { category: "Food" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
     { panel: { view: "list", source: "notes", from: "#health/appointment", where: { date: "upcoming" }, sort: "date", item: "{date} · {name}" } },
     { panel: { view: "list", source: "http://example.com/feed.json" }, errors: ["source must use https"] },
     { panel: { view: "list", source: "notes", from: "#book", group: "tags", sort: "-count", limit: 5 } },
@@ -228,7 +246,7 @@ export const list: ViewDef = {
     const ul = el.createEl("ul", { cls: "na-list" });
     shownRows(el, rows, (r) => {
       const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
-      const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) : String(r.name ?? r.title ?? r.value ?? JSON.stringify(r));
+      const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) + countLabel(p) : plainItem(p, r, ctx.now);
       const li = ul.createEl("li");
       if (typeof r.path === "string") noteLink(li, text, r.path, ctx);
       else li.setText(text);

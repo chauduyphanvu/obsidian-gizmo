@@ -157,9 +157,14 @@ export function mapped(p: Pick<Panel, "values">, field: string | undefined, valu
   return Object.hasOwn(map, key) ? map[key] : undefined;
 }
 
-/** Whether a field's values are shown any other way than plain. */
-export function shapes(p: Pick<Panel, "format" | "values">, field: string | undefined): boolean {
-  return formatFor(p, field) !== undefined || (field !== undefined && !!p.values && Object.hasOwn(p.values, field));
+/** The display name the panel's `labels` gives a field, if any. */
+export function labelFor(p: Pick<Panel, "labels">, field: string): string | undefined {
+  return p.labels && Object.hasOwn(p.labels, field) ? p.labels[field] : undefined;
+}
+
+/** A field's display name: its label, else the field itself. */
+export function labelOf(p: Pick<Panel, "labels">, field: string): string {
+  return labelFor(p, field) ?? field;
 }
 
 /**

@@ -21,7 +21,7 @@ const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format", "values"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p)],
@@ -30,6 +30,8 @@ export const number: ViewDef = {
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", format: "$0,0.00" } },
     { panel: { view: "number", source: "renewals", where: { due: "upcoming" }, sort: "due", field: "due", agg: "first", format: "until" } },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", format: "$0.0.0" }, errors: [BAD_FORMAT] },
+    { panel: { view: "number", source: "https://api.example.com/now", pick: "current", field: "weathercode", values: { weathercode: { 0: "Clear", 1: "Mostly clear" } } } },
+    { panel: { view: "number", source: "https://api.example.com/now", pick: "current", field: "weathercode", values: { weathercode: "Clear" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
     { panel: { view: "number", source: "weights", agg: "median" }, errors: ["agg must be one of count, sum, avg, min, max, first, last, streak"] },
     { panel: { view: "number", source: "stretches", group: "at", per: "day", agg: "streak", unit: "days" } },
     { panel: { view: "number", source: "stretches", agg: "streak" }, errors: ["agg: streak needs group (a date field) and per"] },
@@ -50,12 +52,14 @@ export const number: ViewDef = {
 
 export const text: ViewDef = {
   id: "text",
-  keys: [...DATA_KEYS, "text", "label", "decimals", "format"],
+  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values"],
   span: 1,
   validate: (p) => [...(p.text ? [] : ["text needs a text template"]), ...formatErrors(p)],
   examples: [
     { panel: { view: "text", source: "https://api.example.com/now", pick: "current", text: "{temp}°C" } },
     { panel: { view: "text", source: "spending", text: "{count} entries, {amount} in all", format: { amount: "$0,0.00" } } },
+    { panel: { view: "text", source: "https://api.example.com/now", pick: "current", text: "{temp}°C, {weathercode}", values: { weathercode: { 0: "clear" } } } },
+    { panel: { view: "text", source: "https://api.example.com/now", text: "{weathercode}", values: { weathercode: "clear" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
     { panel: { view: "text", text: "Plain words work too" } },
     { panel: { view: "text", source: "weights" }, errors: ["text needs a text template"] },
     { panel: { view: "text", source: "spending", text: "{amount}", format: "money" }, errors: ['format "money" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes'] },
