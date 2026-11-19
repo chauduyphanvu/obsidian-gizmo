@@ -1,6 +1,7 @@
 import {
   MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
+import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
 import { obsidianHost } from "./host.ts";
 import { defaultDataPath } from "./store.ts";
@@ -15,6 +16,8 @@ export default class NoteAppsPlugin extends Plugin {
   store: StoredData = { grants: {} };
   /** Shared by every open app: web cache, notes index, change notifications. */
   dataLayer!: DataLayer;
+  /** Works for allowed apps while their notes are closed: records, shortcuts, status bar, alerts. */
+  background: ReturnType<typeof registerBackground> | undefined;
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
@@ -55,6 +58,7 @@ export default class NoteAppsPlugin extends Plugin {
         return true;
       },
     });
+    this.background = registerBackground(this);
   }
 
   onunload(): void {

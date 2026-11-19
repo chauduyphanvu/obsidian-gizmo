@@ -35,7 +35,7 @@ function arc(a0: number, a1: number): string {
 
 export const pie: ViewDef = {
   id: "pie",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "select"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "select", "alert"],
   span: 2,
   needsSource: true,
   validate(p: Panel) {

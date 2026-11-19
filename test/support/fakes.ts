@@ -1,4 +1,5 @@
 import type { AppEnv } from "../../src/app.ts";
+import { Background } from "../../src/background.ts";
 import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { storeTarget } from "../../src/store.ts";
@@ -129,4 +130,54 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     now: () => new Date(2026, 10, 18, 12, 0),
   };
   return { env, f, data, writes, notices, opened, changed };
+}
+
+/**
+ * The background service on a fake vault (see fakeEnv), with a clock that starts at 2026-11-18
+ * 12:00 and moves only with `advance` (the data layer's clock moves with it). Every app is
+ * allowed except those in `denied`. What it notifies goes to `notices`; the commands and status
+ * items it publishes, and the apps it opens, are kept.
+ */
+export function fakeBackground(notes: Notes = {}, responses: Record<string, unknown> = {}) {
+  const t = fakeEnv(notes, responses);
+  let clock = new Date(2026, 10, 18, 12, 0).getTime();
+  const now = () => new Date(clock);
+  t.env.now = now;
+  const denied = new Set<string>();
+  const out = {
+    commands: [] as { id: string; name: string }[],
+    status: [] as { appPath: string; text: string; title: string }[],
+    apps: [] as string[],
+  };
+  const bg = new Background({
+    data: t.data,
+    frontmatter: t.env.frontmatter,
+    notes: t.env.notes,
+    appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined).map(([path]) => path),
+    isGranted: (path) => !denied.has(path),
+    storePath: t.env.storePath,
+    actionDeps: (appPath, dataPath) => ({
+      now, dataPath, appPath,
+      writeFrontmatter: t.env.writeFrontmatter,
+      appendLine: t.env.appendLine,
+      createNote: t.env.createNote,
+      readBody: t.env.readBody,
+      notify: t.env.notify,
+      openNote: t.env.openNote,
+    }),
+    now,
+    sink: {
+      notify: t.env.notify,
+      setCommands: (list) => { out.commands = list; },
+      setStatus: (items) => { out.status = items; },
+      openApp: (path) => { out.apps.push(path); },
+    },
+  });
+  return {
+    ...t,
+    bg,
+    denied,
+    out,
+    advance: (ms: number) => { clock += ms; t.f.advance(ms); },
+  };
 }
