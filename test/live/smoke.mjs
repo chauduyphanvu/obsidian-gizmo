@@ -29,7 +29,10 @@ writeFileSync(join(userData, "obsidian.json"), JSON.stringify({
 const appNotes = readdirSync(join(vault, "Apps")).filter((f) => f.endsWith(".md") && !f.endsWith(" data.md"));
 const before = Object.fromEntries(appNotes.map((f) => [f, readFileSync(join(vault, "Apps", f), "utf8")]));
 
-spawn("open", ["-g", "-n", "-a", "Obsidian", "--args", `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`]);
+// The window sits in the background, where Chromium would otherwise slow timers to about one
+// wake-up a minute after five minutes and stretch every wait in this script.
+spawn("open", ["-g", "-n", "-a", "Obsidian", "--args", `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`,
+  "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 let page;
 for (let i = 0; i < 40 && !page; i++) {
@@ -57,6 +60,7 @@ try {
     const leaf = () => app.workspace.getMostRecentLeaf();
     const view = () => leaf().view;
     const settle = async () => {
+      if (view().getViewType() !== "note-app") return sleep(300);
       for (let i = 0; i < 50; i++) {
         await sleep(100);
         const el = view().contentEl;

@@ -1,23 +1,17 @@
-import {
-  FileView, Notice, TFile, getAllTags, normalizePath, requestUrl,
-  type WorkspaceLeaf,
-} from "obsidian";
-import {
-  filterRows, getPath, parseBody, sortRows, stampParts, fillTemplate, type Row,
-} from "./data.ts";
+import { FileView, Notice, TFile, normalizePath, type WorkspaceLeaf } from "obsidian";
+import { fillTemplate, stampParts, type Row } from "./data.ts";
 import { viewDef, type PanelCtx, type TimerState, type ViewDef } from "./views/registry.ts";
 import { formatClock } from "./views/timer.ts";
 import {
   describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel,
 } from "./spec.ts";
-import { defaultDataPath, resolveList, storeTarget } from "./store.ts";
+import { defaultDataPath, storeTarget } from "./store.ts";
 import type NoteAppsPlugin from "./main.ts";
 
 export const VIEW_TYPE = "note-app";
 const CACHE_MS = 5 * 60_000;
 
 export class AppView extends FileView {
-  private cache = new Map<string, { at: number; data: unknown }>();
   private timers = new Map<string, TimerState>();
   private renderToken = 0;
   private refreshHandle: number | undefined;
@@ -27,8 +21,11 @@ export class AppView extends FileView {
   /** Writes to the data note run one after another so concurrent saves don't overwrite each other. */
   private writes: Promise<void> = Promise.resolve();
 
-  constructor(leaf: WorkspaceLeaf, private plugin: NoteAppsPlugin) {
+  private plugin: NoteAppsPlugin;
+
+  constructor(leaf: WorkspaceLeaf, plugin: NoteAppsPlugin) {
     super(leaf);
+    this.plugin = plugin;
   }
 
   getViewType(): string { return VIEW_TYPE; }
@@ -37,14 +34,13 @@ export class AppView extends FileView {
 
   async onOpen(): Promise<void> {
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
-    this.addAction("refresh-cw", "Reload data", () => { this.cache.clear(); void this.render(); });
+    this.addAction("refresh-cw", "Reload data", () => this.reload());
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
       if (file === this.file || file.path === this.dataPath()) void this.render();
     }));
   }
 
   async onLoadFile(_file: TFile): Promise<void> {
-    this.cache.clear();
     this.timers.clear();
     await this.render();
   }
@@ -122,7 +118,7 @@ export class AppView extends FileView {
       const def = viewDef(p.view)!;
       const el = grid.createDiv({ cls: `na-panel na-view-${p.view}${def.wide ? " na-wide" : ""}` });
       try {
-        const data = await this.loadData(p, def, fm, now);
+        const data = await this.loadData(p, def, now);
         if (token !== this.renderToken) return;
         def.mount(el, p, ctx, String(i)).update(data);
       } catch (e) {
@@ -141,10 +137,17 @@ export class AppView extends FileView {
     this.contentEl.appendChild(root);
   }
 
+  /** Refetches this app's web sources, then redraws. */
+  private reload(): void {
+    const urls = (this.spec?.panels ?? []).map((p) => p.source).filter(isUrl);
+    this.plugin.dataLayer.forgetUrls(urls);
+    void this.render();
+  }
+
   private setRefresh(spec: AppSpec): void {
     this.stopRefresh();
     if (!spec.refreshMs) return;
-    this.refreshHandle = window.setInterval(() => { this.cache.clear(); void this.render(); }, spec.refreshMs);
+    this.refreshHandle = window.setInterval(() => this.reload(), spec.refreshMs);
   }
 
   private renderPermissionPrompt(root: HTMLElement, file: TFile, wanted: string[]): void {
@@ -168,20 +171,10 @@ export class AppView extends FileView {
       .addEventListener("click", () => this.plugin.showSource(this.leaf, file));
   }
 
-  private async loadData(p: Panel, def: ViewDef, fm: Record<string, unknown>, now: Date): Promise<unknown> {
-    const source = p.source ?? def.implicitSource?.(p);
-    if (!source) return undefined;
-    let data: unknown;
-    if (isUrl(source)) data = await this.fetchJson(p);
-    else if (source === "notes") data = this.queryNotes(p.from!);
-    else data = resolveList(source, this.dataFrontmatter(), fm);
-    data = getPath(data, p.pick);
-    if (Array.isArray(data)) {
-      data = filterRows(data, p.where, now);
-      data = sortRows(data as unknown[], p.sort);
-      if (p.limit) data = (data as unknown[]).slice(0, p.limit);
-    }
-    return data;
+  private loadData(p: Panel, def: ViewDef, now: Date): Promise<unknown> {
+    const files = { appPath: this.file!.path, dataPath: this.dataPath() };
+    const ttlMs = this.spec?.refreshMs ?? CACHE_MS;
+    return this.plugin.dataLayer.panelData(p.source ?? def.implicitSource?.(p), p, files, { ttlMs, now });
   }
 
   /** The note holding this app's recorded data (it may not exist yet). */
@@ -192,11 +185,6 @@ export class AppView extends FileView {
     if (!store) return defaultDataPath(file.path);
     const target = storeTarget(store);
     return this.app.metadataCache.getFirstLinkpathDest(target, file.path)?.path ?? notePath(normalizePath(target));
-  }
-
-  private dataFrontmatter(): Record<string, unknown> | undefined {
-    const data = this.app.vault.getFileByPath(this.dataPath());
-    return data ? this.app.metadataCache.getFileCache(data)?.frontmatter : undefined;
   }
 
   private writeData(fn: (fm: Record<string, unknown>) => void): Promise<void> {
@@ -216,49 +204,6 @@ export class AppView extends FileView {
   private async ensureFolder(path: string): Promise<void> {
     const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
     if (folder && !this.app.vault.getFolderByPath(folder)) await this.app.vault.createFolder(folder);
-  }
-
-  private withSecrets(text: string): string {
-    return text.replace(/\{secret:([a-z0-9-]+)\}/g, (_, id: string) => {
-      const value = this.app.secretStorage.getSecret(id);
-      if (!value) throw new Error(`Missing secret "${id}". Add it under Settings → Keychain.`);
-      return value;
-    });
-  }
-
-  private async fetchJson(p: Panel): Promise<unknown> {
-    const key = `${p.source}|${JSON.stringify(p.headers ?? {})}`;
-    const hit = this.cache.get(key);
-    if (hit && Date.now() - hit.at < CACHE_MS) return hit.data;
-    const headers = Object.fromEntries(Object.entries(p.headers ?? {}).map(([k, v]) => [k, this.withSecrets(String(v))]));
-    const res = await requestUrl({ url: this.withSecrets(p.source!), headers, throw: false });
-    const host = new URL(p.source!.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host;
-    if (res.status >= 400) throw new Error(`${host} answered ${res.status}`);
-    const data = parseBody(res.text, res.headers["content-type"] ?? "");
-    this.cache.set(key, { at: Date.now(), data });
-    return data;
-  }
-
-  private queryNotes(from: string): Row[] {
-    const scopes = from.split(",").map((s) => s.trim()).filter(Boolean);
-    const rows: Row[] = [];
-    for (const f of this.app.vault.getMarkdownFiles()) {
-      const cache = this.app.metadataCache.getFileCache(f);
-      const tags = (cache && getAllTags(cache)) ?? [];
-      const inScope = scopes.some((s) => s.startsWith("#")
-        ? tags.some((t) => t === s || t.startsWith(`${s}/`))
-        : f.path.startsWith(`${normalizePath(s)}/`));
-      if (!inScope) continue;
-      rows.push({
-        ...(cache?.frontmatter ?? {}),
-        name: f.basename,
-        path: f.path,
-        tags,
-        mtime: stampParts(new Date(f.stat.mtime)).at,
-        ctime: stampParts(new Date(f.stat.ctime)).at,
-      });
-    }
-    return rows;
   }
 
   /** A wide panel's inner width: the app column minus its padding and the panel's padding and border. */

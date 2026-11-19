@@ -1,6 +1,8 @@
 import {
   MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
+import { DataLayer } from "./datalayer.ts";
+import { obsidianHost } from "./host.ts";
 import { defaultDataPath } from "./store.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
@@ -11,22 +13,28 @@ interface StoredData {
 
 export default class NoteAppsPlugin extends Plugin {
   store: StoredData = { grants: {} };
+  /** Shared by every open app: web cache, notes index, change notifications. */
+  dataLayer!: DataLayer;
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
 
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
+    this.dataLayer = new DataLayer(obsidianHost(this.app));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
+    this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
 
     this.routeAppNotes();
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
     this.registerEvent(this.app.vault.on("delete", (file) => {
+      this.dataLayer.fileDeleted(file.path);
       if (!(file.path in this.store.grants)) return;
       delete this.store.grants[file.path];
       void this.saveData(this.store);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
+      this.dataLayer.fileRenamed(file.path, oldPath);
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
       if (!(oldPath in this.store.grants)) return;
       this.store.grants[file.path] = this.store.grants[oldPath];
