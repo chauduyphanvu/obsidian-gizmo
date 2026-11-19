@@ -216,8 +216,8 @@
 .note-app .na-step-3 { --na-shade: color-mix(in srgb, var(--na-s1) 60%, var(--background-secondary)); }
 .note-app .na-step-4 { --na-shade: color-mix(in srgb, var(--na-s1) 80%, var(--background-secondary)); }
 .note-app .na-step-5 { --na-shade: var(--na-s1); }
-.note-app .na-cal-head { display: flex; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
-.note-app .na-cal-title { font-size: var(--font-ui-small); font-weight: var(--font-semibold); min-width: 8em; text-align: center; }
+.note-app .na-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
+.note-app .na-cal-title { font-size: var(--font-ui-small); font-weight: var(--font-semibold); min-width: 6em; text-align: center; }
 .note-app .na-cal-today { margin-left: auto; }
 .note-app .na-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .note-app .na-cal-dow { color: var(--text-muted); font-size: var(--font-ui-smaller); text-align: center; }
