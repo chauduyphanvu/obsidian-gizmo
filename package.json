@@ -11,6 +11,7 @@
   "devDependencies": {
     "@types/node": "^26.6.6",
     "esbuild": "^0.28.2",
+    "linkedom": "^0.18.15",
     "obsidian": "^1.14.4",
     "typescript": "^7.0.2"
   },

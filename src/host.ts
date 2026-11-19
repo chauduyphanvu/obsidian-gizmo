@@ -1,5 +1,9 @@
-import { getAllTags, requestUrl, type App, type TFile } from "obsidian";
+import { Notice, getAllTags, normalizePath, requestUrl, type App, type TFile, type WorkspaceLeaf } from "obsidian";
+import type { AppEnv } from "./app.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
+import type NoteAppsPlugin from "./main.ts";
+import { notePath } from "./spec.ts";
+import { storeTarget } from "./store.ts";
 
 function info(f: TFile): FileInfo {
   return { path: f.path, basename: f.basename, mtime: f.stat.mtime, ctime: f.stat.ctime };
@@ -30,5 +34,58 @@ export function obsidianHost(app: App): Host {
     now: () => Date.now(),
     // A short timer rather than requestAnimationFrame, which stops while the window is hidden.
     schedule: (cb) => { window.setTimeout(cb, 30); },
+  };
+}
+
+/** Writes to one note run one after another, across every open app. */
+const writeQueues = new Map<string, Promise<void>>();
+
+function queued(path: string, write: () => Promise<void>): Promise<void> {
+  const next = (writeQueues.get(path) ?? Promise.resolve()).then(write, write);
+  writeQueues.set(path, next);
+  void next.finally(() => { if (writeQueues.get(path) === next) writeQueues.delete(path); });
+  return next;
+}
+
+async function ensureFolder(app: App, path: string): Promise<void> {
+  const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
+  if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
+}
+
+export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file: TFile): AppEnv {
+  const app = plugin.app;
+  return {
+    data: plugin.dataLayer,
+    frontmatter(path) {
+      const f = app.vault.getFileByPath(path);
+      return f ? app.metadataCache.getFileCache(f)?.frontmatter : undefined;
+    },
+    isGranted: (path, wanted) => plugin.isGranted(path, wanted),
+    grant: (path, wanted) => plugin.grant(path, wanted),
+    storePath(store, fromPath) {
+      const target = storeTarget(store);
+      return app.metadataCache.getFirstLinkpathDest(target, fromPath)?.path ?? notePath(normalizePath(target));
+    },
+    writeFrontmatter: (path, fn) => queued(path, async () => {
+      let target = app.vault.getFileByPath(path);
+      if (!target) {
+        await ensureFolder(app, path);
+        target = await app.vault.create(path, "");
+      }
+      await app.fileManager.processFrontMatter(target, fn);
+    }),
+    appendLine: (path, line) => queued(path, async () => {
+      const target = app.vault.getFileByPath(normalizePath(path));
+      if (target) {
+        await app.vault.process(target, (text) => `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${line}\n`);
+        return;
+      }
+      await ensureFolder(app, path);
+      await app.vault.create(normalizePath(path), `${line}\n`);
+    }),
+    notify: (message) => { new Notice(message); },
+    openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),
+    showSource: () => void plugin.showSource(leaf, file),
+    now: () => new Date(),
   };
 }

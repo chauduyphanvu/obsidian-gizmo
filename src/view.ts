@@ -1,27 +1,14 @@
-import { FileView, Notice, TFile, normalizePath, type WorkspaceLeaf } from "obsidian";
-import { fillTemplate, stampParts, type Row } from "./data.ts";
-import { viewDef, type PanelCtx, type TimerState, type ViewDef } from "./views/registry.ts";
-import { formatClock } from "./views/timer.ts";
-import {
-  describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel,
-} from "./spec.ts";
-import { defaultDataPath, storeTarget } from "./store.ts";
+import { FileView, type TFile, type WorkspaceLeaf } from "obsidian";
+import { AppController } from "./app.ts";
+import { obsidianAppEnv } from "./host.ts";
 import type NoteAppsPlugin from "./main.ts";
 
 export const VIEW_TYPE = "note-app";
-const CACHE_MS = 5 * 60_000;
 
+/** The tab an app note opens in. All the work happens in its AppController. */
 export class AppView extends FileView {
-  private timers = new Map<string, TimerState>();
-  private renderToken = 0;
-  private refreshHandle: number | undefined;
-  private tickHandle: number | undefined;
-  private renderedWidth = 0;
-  private spec: AppSpec | undefined;
-  /** Writes to the data note run one after another so concurrent saves don't overwrite each other. */
-  private writes: Promise<void> = Promise.resolve();
-
   private plugin: NoteAppsPlugin;
+  private controller: AppController | undefined;
 
   constructor(leaf: WorkspaceLeaf, plugin: NoteAppsPlugin) {
     super(leaf);
@@ -34,274 +21,41 @@ export class AppView extends FileView {
 
   async onOpen(): Promise<void> {
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
-    this.addAction("refresh-cw", "Reload data", () => this.reload());
-    this.registerEvent(this.app.metadataCache.on("changed", (file) => {
-      if (file === this.file || file.path === this.dataPath()) void this.render();
-    }));
+    this.addAction("refresh-cw", "Reload data", () => this.controller?.reload());
   }
 
-  async onLoadFile(_file: TFile): Promise<void> {
-    this.timers.clear();
-    await this.render();
+  async onLoadFile(file: TFile): Promise<void> {
+    this.start(file);
   }
 
   async onUnloadFile(): Promise<void> {
-    this.stopRefresh();
-    this.stopTicking();
-    this.contentEl.empty();
+    this.stop();
   }
 
-  /** The 1-second tick runs only while a timer is counting down. */
-  private startTicking(): void {
-    if (this.tickHandle === undefined) this.tickHandle = window.setInterval(() => this.tick(), 1000);
-  }
-
-  private stopTicking(): void {
-    if (this.tickHandle !== undefined) window.clearInterval(this.tickHandle);
-    this.tickHandle = undefined;
+  /** Obsidian calls this for every renamed file, not only this view's. */
+  async onRename(file: TFile): Promise<void> {
+    await super.onRename(file);
+    if (file !== this.file) return;
+    this.stop();
+    this.start(file);
   }
 
   async onClose(): Promise<void> {
-    this.stopTicking();
-    this.stopRefresh();
-  }
-
-  private stopRefresh(): void {
-    if (this.refreshHandle !== undefined) window.clearInterval(this.refreshHandle);
-    this.refreshHandle = undefined;
-  }
-
-  private frontmatter(): Record<string, unknown> | undefined {
-    return this.file ? this.app.metadataCache.getFileCache(this.file)?.frontmatter : undefined;
-  }
-
-  async render(): Promise<void> {
-    const file = this.file;
-    if (!file) return;
-    const token = ++this.renderToken;
-    const fm = this.frontmatter() ?? {};
-    const result = readSpec(fm);
-    const root = createDiv({ cls: "note-app" });
-
-    if (!result) {
-      root.createDiv({ cls: "na-card", text: "This note has no app key." });
-      return this.swap(root);
-    }
-    const description = result.spec?.description ?? String(fm.app ?? "");
-    if (description) root.createDiv({ cls: "na-description", text: description });
-
-    if (result.empty) {
-      this.renderEmpty(root, file);
-      return this.swap(root);
-    }
-    if (result.errors.length || !result.spec) {
-      const card = root.createDiv({ cls: "na-card na-error" });
-      card.createDiv({ cls: "na-title", text: "This app's keys have problems" });
-      const ul = card.createEl("ul");
-      for (const e of result.errors) ul.createEl("li", { text: e });
-      if (!result.spec?.panels.length) return this.swap(root);
-    }
-    const spec = result.spec!;
-    this.spec = spec;
-
-    const wanted = permissionsOf(spec, file.path);
-    if (!this.plugin.isGranted(file.path, wanted)) {
-      this.renderPermissionPrompt(root, file, wanted);
-      return this.swap(root);
-    }
-
-    this.setRefresh(spec);
-    const grid = root.createDiv({ cls: "na-grid" });
-    const now = new Date();
-    const ctx = this.renderCtx(now);
-    const loads = spec.panels.map(async (p, i) => {
-      const def = viewDef(p.view)!;
-      const el = grid.createDiv({ cls: `na-panel na-view-${p.view}${def.wide ? " na-wide" : ""}` });
-      try {
-        const data = await this.loadData(p, def, now);
-        if (token !== this.renderToken) return;
-        def.mount(el, p, ctx, String(i)).update(data);
-      } catch (e) {
-        el.addClass("na-error");
-        el.createDiv({ cls: "na-title", text: p.title ?? p.view });
-        el.createDiv({ text: (e as Error).message });
-      }
-    });
-    await Promise.all(loads);
-    if (token === this.renderToken) this.swap(root);
-  }
-
-  /** Replaces the content in one step so re-renders don't flash. */
-  private swap(root: HTMLElement): void {
-    this.contentEl.empty();
-    this.contentEl.appendChild(root);
-  }
-
-  /** Refetches this app's web sources, then redraws. */
-  private reload(): void {
-    const urls = (this.spec?.panels ?? []).map((p) => p.source).filter(isUrl);
-    this.plugin.dataLayer.forgetUrls(urls);
-    void this.render();
-  }
-
-  private setRefresh(spec: AppSpec): void {
-    this.stopRefresh();
-    if (!spec.refreshMs) return;
-    this.refreshHandle = window.setInterval(() => this.reload(), spec.refreshMs);
-  }
-
-  private renderPermissionPrompt(root: HTMLElement, file: TFile, wanted: string[]): void {
-    const card = root.createDiv({ cls: "na-card" });
-    card.createDiv({ cls: "na-title", text: "This app needs your OK to:" });
-    const ul = card.createEl("ul");
-    for (const p of wanted) ul.createEl("li", { text: describePermission(p) });
-    const row = card.createDiv({ cls: "na-actions" });
-    row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
-      await this.plugin.grant(file.path, wanted);
-      void this.render();
-    });
-    row.createEl("button", { text: "Edit source" }).addEventListener("click", () => this.plugin.showSource(this.leaf, file));
-  }
-
-  private renderEmpty(root: HTMLElement, file: TFile): void {
-    const card = root.createDiv({ cls: "na-card" });
-    card.createDiv({ text: "No app keys yet. Add a view under the app line, for example:" });
-    card.createEl("pre", { cls: "na-example", text: "view: countdown\nto: 2027-01-01\nlabel: New year" });
-    card.createDiv({ cls: "na-actions" }).createEl("button", { cls: "mod-cta", text: "Edit source" })
-      .addEventListener("click", () => this.plugin.showSource(this.leaf, file));
-  }
-
-  private loadData(p: Panel, def: ViewDef, now: Date): Promise<unknown> {
-    const files = { appPath: this.file!.path, dataPath: this.dataPath() };
-    const ttlMs = this.spec?.refreshMs ?? CACHE_MS;
-    return this.plugin.dataLayer.panelData(p.source ?? def.implicitSource?.(p), p, files, { ttlMs, now });
-  }
-
-  /** The note holding this app's recorded data (it may not exist yet). */
-  private dataPath(): string {
-    const file = this.file;
-    if (!file) return "";
-    const store = this.spec?.store;
-    if (!store) return defaultDataPath(file.path);
-    const target = storeTarget(store);
-    return this.app.metadataCache.getFirstLinkpathDest(target, file.path)?.path ?? notePath(normalizePath(target));
-  }
-
-  private writeData(fn: (fm: Record<string, unknown>) => void): Promise<void> {
-    const write = async () => {
-      const path = this.dataPath();
-      let data = this.app.vault.getFileByPath(path);
-      if (!data) {
-        await this.ensureFolder(path);
-        data = await this.app.vault.create(path, "");
-      }
-      await this.app.fileManager.processFrontMatter(data, fn);
-    };
-    this.writes = this.writes.then(write, write);
-    return this.writes;
-  }
-
-  private async ensureFolder(path: string): Promise<void> {
-    const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-    if (folder && !this.app.vault.getFolderByPath(folder)) await this.app.vault.createFolder(folder);
-  }
-
-  /** A wide panel's inner width: the app column minus its padding and the panel's padding and border. */
-  private chartWidth(): number {
-    return Math.min(this.contentEl.clientWidth, 960) - 32 - 34;
+    this.stop();
   }
 
   onResize(): void {
-    const width = this.chartWidth();
-    if (Math.abs(width - this.renderedWidth) > 24) void this.render();
+    this.controller?.resize();
   }
 
-  private renderCtx(now: Date): PanelCtx {
-    const file = this.file!;
-    this.renderedWidth = this.chartWidth();
-    return {
-      now,
-      chartWidth: this.renderedWidth,
-      runActions: (p, row) => this.runActions(p, row),
-      toggleChecked: (key, item) => this.writeData((f) => {
-        const list = Array.isArray(f[key]) ? (f[key] as unknown[]).map(String) : [];
-        f[key] = list.includes(item) ? list.filter((i) => i !== item) : [...list, item];
-      }),
-      clearChecked: (key) => this.writeData((f) => { f[key] = []; }),
-      openNote: (path) => void this.app.workspace.openLinkText(path, file.path),
-      timer: (i, p) => this.timerState(i, p),
-      startTimer: (i, p) => {
-        const s = this.timerState(i, p);
-        s.endsAt = Date.now() + s.remainingMs;
-        this.startTicking();
-        void this.render();
-      },
-      pauseTimer: (i) => {
-        const s = this.timers.get(i);
-        if (s?.endsAt) { s.remainingMs = s.endsAt - Date.now(); s.endsAt = undefined; }
-        void this.render();
-      },
-      resetTimer: (i, p) => {
-        this.timers.set(i, { remainingMs: p.minutes! * 60_000 });
-        void this.render();
-      },
-    };
+  private start(file: TFile): void {
+    this.controller = new AppController(this.contentEl, file.path, obsidianAppEnv(this.plugin, this.leaf, file));
+    this.controller.load();
   }
 
-  private timerState(i: string, p: Panel): TimerState {
-    let s = this.timers.get(i);
-    if (!s) this.timers.set(i, (s = { remainingMs: p.minutes! * 60_000 }));
-    return s;
-  }
-
-  private tick(): void {
-    if (![...this.timers.values()].some((t) => t.endsAt)) return this.stopTicking();
-    const spec = readSpec(this.frontmatter() ?? {})?.spec;
-    for (const [i, s] of this.timers) {
-      if (!s.endsAt) continue;
-      const left = s.endsAt - Date.now();
-      const el = this.contentEl.querySelector(`[data-na-timer="${i}"]`);
-      if (el) el.textContent = formatClock(left);
-      if (left <= 0) {
-        const p = spec?.panels[Number(i)];
-        this.timers.set(i, { remainingMs: (p?.minutes ?? 0) * 60_000 });
-        new Notice(`${p?.title ?? "Timer"} finished`);
-        void (p ? this.runActions(p, { minutes: p.minutes }) : Promise.resolve()).then(() => this.render());
-      }
-    }
-  }
-
-  async runActions(p: Panel, row: Row): Promise<void> {
-    const file = this.file;
-    if (!file) return;
-    const stamp = stampParts(new Date());
-    const saved: Row = { ...row, at: stamp.at };
-    const ctx = { ...stamp, ...row };
-    try {
-      if (p.append) {
-        const fields = Object.entries(row).map(([k, v]) => `${k}: ${v}`).join(", ");
-        const line = fillTemplate(p.line ?? `- {date} {time}${fields ? ` ${fields}` : ""}`, ctx);
-        await this.appendLine(notePath(p.append), line);
-      }
-      if (p.save) {
-        await this.writeData((fm) => {
-          const list = fm[p.save!];
-          fm[p.save!] = Array.isArray(list) ? [...list, saved] : [saved];
-        });
-      }
-      if (p.notify) new Notice(fillTemplate(p.notify, ctx));
-    } catch (e) {
-      new Notice(`Couldn't save: ${(e as Error).message}`);
-    }
-  }
-
-  private async appendLine(path: string, line: string): Promise<void> {
-    const target = this.app.vault.getFileByPath(normalizePath(path));
-    if (target) {
-      await this.app.vault.process(target, (text) => `${text}${text === "" || text.endsWith("\n") ? "" : "\n"}${line}\n`);
-      return;
-    }
-    await this.ensureFolder(path);
-    await this.app.vault.create(normalizePath(path), `${line}\n`);
+  private stop(): void {
+    this.controller?.dispose();
+    this.controller = undefined;
+    this.contentEl.empty();
   }
 }

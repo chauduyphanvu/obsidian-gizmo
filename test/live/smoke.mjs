@@ -192,8 +192,10 @@ try {
       await app.plugins.disablePlugin("note-apps"); await na.sleep(800);
       const off = na.state();
       await app.plugins.enablePlugin("note-apps"); await na.sleep(1500);
-      return [off, na.state()];`);
-    if (r[0] !== "markdown:Apps/Weather.md" || r[1] !== "note-app:Apps/Weather.md") throw new Error(JSON.stringify(r));
+      return [off, na.state(), na.text().slice(0, 60)];`);
+    if (r[0] !== "markdown:Apps/Weather.md" || r[1] !== "note-app:Apps/Weather.md" || !r[2].includes("London weather")) {
+      throw new Error(JSON.stringify(r));
+    }
     return "markdown while off, app again when on";
   });
 
@@ -211,18 +213,28 @@ try {
 
   await check("renaming an app moves its data note", async () => {
     const r = await run(`
+      await na.open("Apps/Meds");
       await app.fileManager.renameFile(app.vault.getFileByPath("Apps/Meds.md"), "Apps/Medication.md");
       await na.sleep(1200);
+      const shown = na.state() + " " + na.text().slice(0, 20);
       const moved = na.fm("Apps/Medication data.md")?.doses?.length;
       const left = !!app.vault.getFileByPath("Apps/Meds data.md");
       await app.fileManager.renameFile(app.vault.getFileByPath("Apps/Medication.md"), "Apps/Meds.md");
       await na.sleep(1200);
-      return { moved, left, back: na.fm("Apps/Meds data.md")?.doses?.length };`);
-    if (r.moved !== 2 || r.left || r.back !== 2) throw new Error(JSON.stringify(r));
+      return { shown, moved, left, back: na.fm("Apps/Meds data.md")?.doses?.length };`);
+    if (!r.shown.startsWith("note-app:Apps/Medication.md Log when") || r.moved !== 2 || r.left || r.back !== 2) {
+      throw new Error(JSON.stringify(r));
+    }
     return "followed both renames";
   });
 
-  await run(`await na.open("Apps/Weather");`);
+  await check("an app still draws after the steps above", async () => {
+    const r = await run(`await na.open("Apps/Weather"); return na.text().slice(0, 60);`);
+    if (!r.includes("London weather")) throw new Error(r);
+    return "Weather";
+  });
+  // Obsidian's first-open "trust the author" dialog can arrive late; plugins are already on, so accept it.
+  await run(`[...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Trust author and enable plugins")?.click(); await na.sleep(300);`);
   await page.shot(join(work, "weather-desktop.png"), 1100, 760);
   await run(`app.workspace.leftSplit.collapse(); await na.open("Apps/Weight");`);
   await page.shot(join(work, "weight-phone.png"), 420, 900);
