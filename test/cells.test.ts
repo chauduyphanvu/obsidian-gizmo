@@ -2,7 +2,7 @@ import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
-import { checkPanel, type Panel } from "../src/spec.ts";
+import { askersOf, checkPanel, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
 import { CELL_KINDS, drawCell } from "../src/views/cells.ts";
 import type { PanelCtx } from "../src/views/registry.ts";
 import { table } from "../src/views/rows.ts";
@@ -314,4 +314,19 @@ test("a card's edit writes back through the app, and the card updates in place",
   (emma.querySelector(".na-rowcard-actions button") as HTMLElement).click();
   await settle();
   assert.deepEqual(t.opened, ["Books/Emma.md"]);
+});
+
+test("an image cell asks to load images from any site, since the host comes from the row's data", () => {
+  const app = (cells: Record<string, string>) => readSpec({ app: "x", view: "table", source: "notes", from: "Books", cells })!;
+  const asks = (cells: Record<string, string>) => permissionsOf(app(cells).spec!, "Apps/X.md");
+  assert.deepEqual(asks({ cover: "image" }), ["images", "read:Books"]);
+  assert.deepEqual(asks({ done: "check", cover: "image", rating: "progress" }), ["images", "read:Books"]);
+  assert.deepEqual(asks({ done: "check", rating: "progress", site: "link" }), ["read:Books"]);
+  assert.equal(describePermission("images"), "Load images from any site (image cells)");
+  // The cells key is what asks, so a component that sets it is named.
+  const notes = { "Components/Covers.md": { component: "Covers", panels: [{ view: "table", source: "notes", from: "Books", cells: { cover: "image" } }] } };
+  const reader = { resolve: (link: string) => (link === "Covers" ? "Components/Covers.md" : undefined), frontmatter: (path: string) => (notes as Record<string, Record<string, unknown>>)[path] };
+  const used = readSpec({ app: "x", panels: [{ use: "[[Covers]]" }] }, { notes: reader, path: "Apps/X.md" })!;
+  assert.deepEqual(used.errors, []);
+  assert.deepEqual([...askersOf(used.spec!, "Apps/X.md").get("images")!], ["Components/Covers.md"]);
 });

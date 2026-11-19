@@ -559,6 +559,8 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
     out.push([`create:${p.target.folder}`, "save"]);
     if (p.template) out.push([`read:${notePath(storeTarget(p.template))}`, "template"]);
   }
+  // The browser fetches an image from whatever host the row's data names, so no host can be settled from the keys.
+  if (Object.values(p.cells ?? {}).includes("image")) out.push(["images", "cells"]);
   // A board moves cards by changing their group field, so it edits without an `edit` key.
   if (p.edit?.length) out.push(...editPermissions(p, "edit"));
   else if (p.view === "board") out.push(...editPermissions(p, "group"));
@@ -602,6 +604,7 @@ export function notePath(path: string): string {
 export function describePermission(perm: string): string {
   if (perm === "read:*") return "Read any note in the vault";
   if (perm === "edit:*") return "Change properties of notes anywhere in the vault";
+  if (perm === "images") return "Load images from any site (image cells)";
   const [kind, ...rest] = perm.split(":");
   const what = rest.join(":");
   switch (kind) {
