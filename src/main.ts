@@ -4,6 +4,7 @@ import {
 import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
+import { registerGalleryCommand } from "./gallery-command.ts";
 import { dropGrants, isAllowed, moveGrants } from "./hosted.ts";
 import { obsidianHost } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
@@ -58,6 +59,7 @@ export default class NoteAppsPlugin extends Plugin {
     registerEmbeds(this);
     registerLenses(this);
     registerInsertPanel(this);
+    registerGalleryCommand(this);
 
     this.addCommand({
       id: "open-as-app",
