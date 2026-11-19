@@ -35,10 +35,10 @@ test("panels are checked strictly", () => {
   assert.deepEqual(r?.spec?.panels, [{ view: "number", source: "weights" }]);
 });
 
-test("actions only belong on action views, and buttons need one", () => {
+test("actions only apply to action views, and buttons need one", () => {
   const r = readSpec({ app: "x", panels: [{ view: "number", source: "a", append: "Daily.md" }, { view: "button" }] });
   assert.deepEqual(r?.errors, [
-    "panel 1: save/append/notify only work on button, form, checklist, timer",
+    'panel 1: "append" doesn\'t apply to number',
     "panel 2: button needs at least one of save, append, notify",
   ]);
 });

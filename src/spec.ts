@@ -1,16 +1,10 @@
+import type { Agg } from "./data.ts";
 import { storeTarget } from "./store.ts";
-
-export const VIEWS = [
-  "number", "text", "line", "bar", "table", "list",
-  "button", "form", "checklist", "countdown", "progress", "timer",
-] as const;
-export type ViewKind = (typeof VIEWS)[number];
-
-export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last"] as const;
-export type Agg = (typeof AGGS)[number];
+import { COMMON_KEYS, KEY_TYPES, type KeyType } from "./views/common.ts";
+import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 
 export interface Panel {
-  view: ViewKind;
+  view: string;
   title?: string;
   source?: string;
   headers?: Record<string, string>;
@@ -48,20 +42,6 @@ export interface AppSpec {
   refreshMs?: number;
 }
 
-type KeyType = "string" | "number" | "strings" | "stringMap" | "fieldMap" | "where";
-
-const PANEL_KEYS: Record<keyof Panel, KeyType> = {
-  view: "string", title: "string", source: "string", headers: "stringMap", pick: "string",
-  from: "string", where: "where", sort: "string", limit: "number", x: "string", y: "string",
-  field: "string", agg: "string", label: "string", unit: "string", decimals: "number",
-  text: "string", item: "string", columns: "strings", max: "number", to: "string",
-  minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
-  line: "string", notify: "string",
-};
-
-const NEEDS_SOURCE: ViewKind[] = ["number", "line", "bar", "table", "list", "progress"];
-const ACTION_VIEWS: ViewKind[] = ["button", "form", "checklist", "timer"];
-const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "textarea"];
 /** Top-level keys that define the app; recorded data may never be written under these names. */
 const RESERVED = ["app", "panels", "refresh", "store"];
 
@@ -105,13 +85,22 @@ function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
-function readPanel(raw: Record<string, unknown>, where: string, strict: boolean, errors: string[]): Panel | undefined {
-  const at = where ? `${where}: ` : "";
+/**
+ * Checks one panel. `strict` (panels in a `panels` list) reports keys that are unknown or don't
+ * apply to the view; a single panel written at the top level shares the frontmatter with ordinary
+ * note properties, so those are ignored there. Key-level problems are reported but still let the
+ * panel show; missing or contradictory keys stop it. Messages carry no location prefix.
+ */
+export function checkPanel(raw: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
+  const def = typeof raw.view === "string" ? viewDef(raw.view) : undefined;
+  if (!def) return { errors: [`view must be one of ${VIEW_DEFS.map((d) => d.id).join(", ")}`] };
+  const allowed = new Set<string>([...COMMON_KEYS, ...def.keys]);
+  const errors: string[] = [];
   const panel: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
-    const type = PANEL_KEYS[key as keyof Panel];
-    if (!type) {
-      if (strict) errors.push(`${at}unknown key "${key}"`);
+    const type = KEY_TYPES[key as keyof Panel];
+    if (!type || !allowed.has(key)) {
+      if (strict) errors.push(type ? `"${key}" doesn't apply to ${def.id}` : `unknown key "${key}"`);
       continue;
     }
     if (value === null || value === undefined) continue;
@@ -120,43 +109,21 @@ function readPanel(raw: Record<string, unknown>, where: string, strict: boolean,
       continue;
     }
     if (!checkType(value, type)) {
-      errors.push(`${at}"${key}" has the wrong type (expected ${type})`);
+      errors.push(`"${key}" has the wrong type (expected ${type})`);
       continue;
     }
     panel[key] = type === "string" ? String(value) : value;
   }
   const p = panel as unknown as Panel;
-  const before = errors.length;
-
-  if (!VIEWS.includes(p.view)) {
-    errors.push(`${at}view must be one of ${VIEWS.join(", ")}`);
-    return undefined;
-  }
-  if (NEEDS_SOURCE.includes(p.view) && !p.source) errors.push(`${at}${p.view} needs a source`);
-  if ((p.view === "line" || p.view === "bar") && (!p.x || !p.y)) errors.push(`${at}${p.view} needs x and y`);
-  if (p.view === "text" && !p.text) errors.push(`${at}text needs a text template`);
-  if (p.view === "countdown" && !p.to) errors.push(`${at}countdown needs "to" (a date)`);
-  if (p.view === "countdown" && p.to && Number.isNaN(Date.parse(p.to))) errors.push(`${at}"to" is not a date`);
-  if (p.view === "checklist" && !p.items?.length) errors.push(`${at}checklist needs items`);
-  if (p.view === "timer" && !(p.minutes && p.minutes > 0)) errors.push(`${at}timer needs minutes`);
-  if (p.view === "form" && !p.fields) errors.push(`${at}form needs fields`);
-  if ((p.view === "button" || p.view === "form") && !p.save && !p.append && !p.notify) {
-    errors.push(`${at}${p.view} needs at least one of save, append, notify`);
-  }
-  if (!ACTION_VIEWS.includes(p.view) && (p.append || p.notify || (p.save && p.view !== "checklist"))) {
-    errors.push(`${at}save/append/notify only work on button, form, checklist, timer`);
-  }
-  if (p.line && !p.append) errors.push(`${at}"line" needs "append"`);
-  if (p.save && RESERVED.includes(p.save)) errors.push(`${at}save can't use "${p.save}", which names part of the app`);
-  if (p.source === "notes" && !p.from) errors.push(`${at}source "notes" needs "from" (a #tag or folder)`);
-  if (p.source && /^http:\/\//i.test(p.source)) errors.push(`${at}source must use https`);
-  if (p.agg && !AGGS.includes(p.agg)) errors.push(`${at}agg must be one of ${AGGS.join(", ")}`);
-  for (const [name, type] of Object.entries(p.fields ?? {})) {
-    if (typeof type === "string" && !FIELD_TYPES.includes(type)) {
-      errors.push(`${at}field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
-    }
-  }
-  return errors.length === before ? p : undefined;
+  const problems = [
+    ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
+    ...(def.validate?.(p) ?? []),
+    ...(p.source === "notes" && !p.from ? ['source "notes" needs "from" (a #tag or folder)'] : []),
+    ...(p.source && /^http:\/\//i.test(p.source) ? ["source must use https"] : []),
+    ...(p.line && !p.append ? ['"line" needs "append"'] : []),
+    ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
+  ];
+  return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
 }
 
 /** Reads an app from a note's frontmatter. Returns undefined when the note isn't an app. */
@@ -169,13 +136,15 @@ export function readSpec(fm: Record<string, unknown> | undefined): SpecResult | 
   if (Array.isArray(fm.panels)) {
     fm.panels.forEach((raw, i) => {
       if (!isPlainObject(raw)) return errors.push(`panel ${i + 1}: must be a set of keys`);
-      const p = readPanel(raw, `panel ${i + 1}`, true, errors);
-      if (p) panels.push(p);
+      const r = checkPanel(raw, true);
+      errors.push(...r.errors.map((e) => `panel ${i + 1}: ${e}`));
+      if (r.panel) panels.push(r.panel);
     });
     if (fm.panels.length === 0) return { errors, empty: true };
   } else if (fm.view !== undefined) {
-    const p = readPanel(fm, "", false, errors);
-    if (p) panels.push(p);
+    const r = checkPanel(fm, false);
+    errors.push(...r.errors);
+    if (r.panel) panels.push(r.panel);
   } else {
     return { errors, empty: true };
   }

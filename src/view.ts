@@ -5,7 +5,8 @@ import {
 import {
   filterRows, getPath, parseBody, sortRows, stampParts, fillTemplate, type Row,
 } from "./data.ts";
-import { formatClock, isWide, renderPanel, type RenderCtx, type TimerState } from "./render.ts";
+import { viewDef, type PanelCtx, type TimerState, type ViewDef } from "./views/registry.ts";
+import { formatClock } from "./views/timer.ts";
 import {
   describePermission, isUrl, notePath, permissionsOf, readSpec, type AppSpec, type Panel,
 } from "./spec.ts";
@@ -17,7 +18,7 @@ const CACHE_MS = 5 * 60_000;
 
 export class AppView extends FileView {
   private cache = new Map<string, { at: number; data: unknown }>();
-  private timers = new Map<number, TimerState>();
+  private timers = new Map<string, TimerState>();
   private renderToken = 0;
   private refreshHandle: number | undefined;
   private tickHandle: number | undefined;
@@ -116,13 +117,14 @@ export class AppView extends FileView {
     this.setRefresh(spec);
     const grid = root.createDiv({ cls: "na-grid" });
     const now = new Date();
-    const ctx = this.renderCtx(fm, now);
+    const ctx = this.renderCtx(now);
     const loads = spec.panels.map(async (p, i) => {
-      const el = grid.createDiv({ cls: `na-panel na-view-${p.view}${isWide(p) ? " na-wide" : ""}` });
+      const def = viewDef(p.view)!;
+      const el = grid.createDiv({ cls: `na-panel na-view-${p.view}${def.wide ? " na-wide" : ""}` });
       try {
-        const data = await this.loadData(p, fm, now);
+        const data = await this.loadData(p, def, fm, now);
         if (token !== this.renderToken) return;
-        renderPanel(el, p, data, i, ctx);
+        def.mount(el, p, ctx, String(i)).update(data);
       } catch (e) {
         el.addClass("na-error");
         el.createDiv({ cls: "na-title", text: p.title ?? p.view });
@@ -166,12 +168,13 @@ export class AppView extends FileView {
       .addEventListener("click", () => this.plugin.showSource(this.leaf, file));
   }
 
-  private async loadData(p: Panel, fm: Record<string, unknown>, now: Date): Promise<unknown> {
-    if (!p.source) return undefined;
+  private async loadData(p: Panel, def: ViewDef, fm: Record<string, unknown>, now: Date): Promise<unknown> {
+    const source = p.source ?? def.implicitSource?.(p);
+    if (!source) return undefined;
     let data: unknown;
-    if (isUrl(p.source)) data = await this.fetchJson(p);
-    else if (p.source === "notes") data = this.queryNotes(p.from!);
-    else data = resolveList(p.source, this.dataFrontmatter(), fm);
+    if (isUrl(source)) data = await this.fetchJson(p);
+    else if (source === "notes") data = this.queryNotes(p.from!);
+    else data = resolveList(source, this.dataFrontmatter(), fm);
     data = getPath(data, p.pick);
     if (Array.isArray(data)) {
       data = filterRows(data, p.where, now);
@@ -268,14 +271,12 @@ export class AppView extends FileView {
     if (Math.abs(width - this.renderedWidth) > 24) void this.render();
   }
 
-  private renderCtx(fm: Record<string, unknown>, now: Date): RenderCtx {
+  private renderCtx(now: Date): PanelCtx {
     const file = this.file!;
-    const dataFm = this.dataFrontmatter();
     this.renderedWidth = this.chartWidth();
     return {
       now,
       chartWidth: this.renderedWidth,
-      list: (name) => resolveList(name, dataFm, fm),
       runActions: (p, row) => this.runActions(p, row),
       toggleChecked: (key, item) => this.writeData((f) => {
         const list = Array.isArray(f[key]) ? (f[key] as unknown[]).map(String) : [];
@@ -302,7 +303,7 @@ export class AppView extends FileView {
     };
   }
 
-  private timerState(i: number, p: Panel): TimerState {
+  private timerState(i: string, p: Panel): TimerState {
     let s = this.timers.get(i);
     if (!s) this.timers.set(i, (s = { remainingMs: p.minutes! * 60_000 }));
     return s;
@@ -317,7 +318,7 @@ export class AppView extends FileView {
       const el = this.contentEl.querySelector(`[data-na-timer="${i}"]`);
       if (el) el.textContent = formatClock(left);
       if (left <= 0) {
-        const p = spec?.panels[i];
+        const p = spec?.panels[Number(i)];
         this.timers.set(i, { remainingMs: (p?.minutes ?? 0) * 60_000 });
         new Notice(`${p?.title ?? "Timer"} finished`);
         void (p ? this.runActions(p, { minutes: p.minutes }) : Promise.resolve()).then(() => this.render());

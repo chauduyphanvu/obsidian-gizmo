@@ -1,0 +1,60 @@
+import type { Row } from "../data.ts";
+import type { Panel } from "../spec.ts";
+import { bar, line } from "./chart.ts";
+import { button, checklist, form } from "./inputs.ts";
+import { list, table } from "./rows.ts";
+import { timer } from "./timer.ts";
+import { countdown, number, progress, text } from "./value.ts";
+
+export interface TimerState {
+  remainingMs: number;
+  endsAt?: number;
+}
+
+/** What a mounted panel may ask of the app around it. */
+export interface PanelCtx {
+  now: Date;
+  chartWidth: number;
+  runActions(p: Panel, row: Row): Promise<void>;
+  toggleChecked(key: string, item: string): Promise<void>;
+  clearChecked(key: string): Promise<void>;
+  openNote(path: string): void;
+  timer(key: string, p: Panel): TimerState;
+  startTimer(key: string, p: Panel): void;
+  pauseTimer(key: string): void;
+  resetTimer(key: string, p: Panel): void;
+}
+
+export interface PanelHandle {
+  update(data: unknown): void;
+  resize?(width: number): void;
+  destroy?(): void;
+}
+
+/**
+ * Everything about one view in one place: the keys it accepts (besides `view` and `title`),
+ * its own checks, worked examples (run as tests), and how it draws.
+ */
+export interface ViewDef {
+  id: string;
+  keys: readonly string[];
+  /** Full width in the grid; otherwise a small tile. */
+  wide: boolean;
+  needsSource?: boolean;
+  /** The list this view shows when it has no `source:` (a checklist's ticked items). */
+  implicitSource?(p: Panel): string;
+  /** Problems beyond key types and applicability, as plain sentences. */
+  validate?(p: Panel): string[];
+  examples: { panel: Record<string, unknown>; errors?: string[] }[];
+  mount(el: HTMLElement, p: Panel, ctx: PanelCtx, key: string): PanelHandle;
+}
+
+export const VIEW_DEFS: readonly ViewDef[] = [
+  number, text, line, bar, table, list, button, form, checklist, countdown, progress, timer,
+];
+
+const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));
+
+export function viewDef(id: string): ViewDef | undefined {
+  return BY_ID.get(id);
+}

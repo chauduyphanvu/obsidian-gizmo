@@ -1,4 +1,7 @@
-import type { Agg, Panel } from "./spec.ts";
+import type { Panel } from "./spec.ts";
+
+export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last"] as const;
+export type Agg = (typeof AGGS)[number];
 
 export type Row = Record<string, unknown>;
 

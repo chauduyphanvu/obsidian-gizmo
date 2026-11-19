@@ -1,4 +1,7 @@
-import { extent, formatValue, toTime, type Point } from "./data.ts";
+import { extent, formatValue, seriesOf, toTime, type Point } from "../data.ts";
+import type { Panel } from "../spec.ts";
+import { DATA_KEYS, heading } from "./common.ts";
+import type { PanelHandle, ViewDef } from "./registry.ts";
 
 const NS = "http://www.w3.org/2000/svg";
 const H = 220, L = 52, R = 14, T = 14, B = 26;
@@ -116,3 +119,34 @@ export function renderChart(parent: HTMLElement, points: Point[], opts: ChartOpt
     showPoint(pts.length - 1);
   });
 }
+
+function chartView(kind: "line" | "bar"): ViewDef {
+  return {
+    id: kind,
+    keys: [...DATA_KEYS, "x", "y", "label", "unit", "decimals"],
+    wide: true,
+    needsSource: true,
+    validate: (p: Panel) => (p.x && p.y ? [] : [`${kind} needs x and y`]),
+    examples: [
+      { panel: { view: kind, source: "weights", x: "at", y: "weight", unit: "kg" } },
+      { panel: { view: kind, source: "https://api.example.com/hourly", pick: "hourly", x: "time", y: "temperature_2m" } },
+      { panel: { view: kind, source: "weights", x: "at" }, errors: [`${kind} needs x and y`] },
+    ],
+    mount(el, p, ctx): PanelHandle {
+      let last: unknown;
+      let width = ctx.chartWidth;
+      const draw = () => {
+        el.empty();
+        heading(el, p, p.label);
+        renderChart(el, seriesOf(last, p.x!, p.y!), { kind, unit: p.unit, decimals: p.decimals, width });
+      };
+      return {
+        update(data) { last = data; draw(); },
+        resize(w) { width = w; draw(); },
+      };
+    },
+  };
+}
+
+export const line = chartView("line");
+export const bar = chartView("bar");
