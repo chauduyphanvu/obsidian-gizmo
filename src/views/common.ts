@@ -33,7 +33,7 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
   open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
-  end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string",
+  end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string", of: "where",
 };
 
 /** What a wrong value should have been, for the types whose names don't say it plainly. */
@@ -226,6 +226,8 @@ export function groupedTotals(p: Panel, fields: readonly string[], what: string)
   if (!p.group) return p.agg ? [`"agg" needs "group" here`] : [];
   if (p.agg === "streak") return ["agg: streak only works on number and progress"];
   const totalled = fields.filter((f) => f !== p.group && f !== "count");
+  const other = totalled.find((f) => f !== "share");
+  if (p.agg === "share") return other === undefined ? [] : [`agg: share gives each group its share; use share in ${what}, not "${other}"`];
   return totalled.length && !p.agg ? [`group with ${what} needs agg (sum, avg, min, max, first or last)`] : [];
 }
 

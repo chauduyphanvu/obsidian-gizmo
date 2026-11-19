@@ -146,7 +146,7 @@ type Nav = "prev" | "next" | "today";
 
 export const calendar: ViewDef = {
   id: "calendar",
-  keys: [...DATA_KEYS, "group", "per", "y", "agg", "label", "layout", "format", "values", "select", "detail"],
+  keys: [...DATA_KEYS, "group", "per", "y", "agg", "of", "label", "layout", "format", "values", "select", "detail"],
   span: 4,
   needsSource: true,
   // Days are the only period, so the pipeline groups per day whatever was typed.

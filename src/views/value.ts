@@ -25,7 +25,7 @@ export function panelValue(p: Panel, data: unknown, now: Date): { value: unknown
     const text = fillWith(p.text ?? "", scope, (path, v) => display(p, path, v, now, "text"));
     return { value: text, text };
   }
-  const found = p.agg === "streak" ? streak(rowsOf(data), p.group!, p.per!, now) : valueOf(p, data);
+  const found = p.agg === "streak" ? streak(rowsOf(data), p.group!, p.per!, now) : valueOf(p, data, now);
   const value = p.view === "progress" ? toNumber(found) ?? 0 : found;
   const unit = p.unit && formatFor(p, p.field) === undefined && mapped(p, p.field, value) === undefined ? p.unit : undefined;
   return { value, text: display(p, p.field, value, now), unit };
@@ -48,7 +48,7 @@ function checkCompare(p: Panel): string[] {
  * colour on purpose, since up is not good or bad; a screen reader gets the same in words.
  */
 function drawChange(el: HTMLElement, p: Panel, now: Date, value: unknown, previous: unknown[]): void {
-  const before = previous.length ? toNumber(valueOf(p, previous)) : undefined;
+  const before = previous.length ? toNumber(valueOf(p, previous, now)) : undefined;
   if (before === undefined) {
     el.createDiv({ cls: "na-compare", text: "no previous data" });
     return;
@@ -79,7 +79,7 @@ const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p), ...checkCompare(p)],
@@ -95,7 +95,10 @@ export const number: ViewDef = {
     { panel: { view: "number", source: "stretches", group: "at", per: "day", agg: "streak", compare: "previous" }, errors: ["compare doesn't work with streak"] },
     { panel: { view: "number", source: "https://api.example.com/now", pick: "current", field: "weathercode", values: { weathercode: { 0: "Clear", 1: "Mostly clear" } } } },
     { panel: { view: "number", source: "https://api.example.com/now", pick: "current", field: "weathercode", values: { weathercode: "Clear" } }, errors: ['"values" has the wrong type (expected a set of field: {value: text})'] },
-    { panel: { view: "number", source: "weights", agg: "median" }, errors: ["agg must be one of count, sum, avg, min, max, first, last, streak"] },
+    { panel: { view: "number", source: "weights", agg: "median" }, errors: ["agg must be one of count, sum, avg, min, max, first, last, streak, share"] },
+    { panel: { view: "number", title: "Right so far", source: "decisions", where: { outcome: "!= open" }, agg: "share", of: { outcome: "right" } } },
+    { panel: { view: "number", source: "decisions", agg: "share" }, errors: ["agg: share needs of, e.g. of: {outcome: right}"] },
+    { panel: { view: "number", source: "decisions", agg: "avg", field: "hit", of: { outcome: "right" } }, errors: ['"of" needs agg: share'] },
     { panel: { view: "number", source: "stretches", group: "at", per: "day", agg: "streak", unit: "days" } },
     { panel: { view: "number", source: "stretches", agg: "streak" }, errors: ["agg: streak needs group (a date field) and per"] },
     { panel: { view: "number", source: "sessions", group: "at", per: "week", agg: "sum", field: "minutes" }, errors: ["number can't group rows; for one period use where (e.g. where: {at: this week}) with agg"] },
@@ -142,7 +145,7 @@ export const text: ViewDef = {
 
 export const progress: ViewDef = {
   id: "progress",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "max", "label", "unit", "decimals", "format", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p)],

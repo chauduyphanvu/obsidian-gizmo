@@ -1,4 +1,4 @@
-import { aggregate, dateWindow, getPath, periodStart, shiftPeriod, sortRows, stampParts, toTime, type Agg, type Per, type Row } from "./data.ts";
+import { aggregate, compileWhere, dateWindow, getPath, periodStart, shiftPeriod, sortRows, stampParts, toTime, type Agg, type Per, type Row } from "./data.ts";
 import type { Panel } from "./spec.ts";
 
 /** The key for rows whose group field is empty. */
@@ -6,7 +6,7 @@ export const NONE = "(none)";
 /** Beyond this many periods, empty ones aren't filled in. */
 const FILL_LIMIT = 2000;
 
-type GroupKeys = Pick<Panel, "group" | "per" | "y" | "columns" | "agg" | "where">;
+type GroupKeys = Pick<Panel, "group" | "per" | "y" | "columns" | "agg" | "where" | "of">;
 
 /** The fields a grouped panel totals per group: its y series or table columns, less the key and count. */
 export function totalFields(p: Pick<Panel, "group" | "y" | "columns">): string[] {
@@ -45,6 +45,7 @@ export function groupRows(rows: unknown[], p: GroupKeys, now: Date): Row[] {
   const field = p.group!;
   const totals = totalFields(p);
   const agg = (p.agg ?? "count") as Agg;
+  const of = p.of && compileWhere(p.of, now);
   const groups = new Map<unknown, unknown[]>();
   const add = (key: unknown, row: unknown) => {
     const g = groups.get(key);
@@ -64,7 +65,7 @@ export function groupRows(rows: unknown[], p: GroupKeys, now: Date): Row[] {
   }
   const total = (g: unknown[]): Row => {
     const out: Row = { count: g.length };
-    for (const f of totals) out[f] = g.length ? aggregate(g, f, agg) ?? null : agg === "sum" ? 0 : null;
+    for (const f of totals) out[f] = g.length ? aggregate(g, f, agg, of) ?? null : agg === "sum" ? 0 : null;
     return out;
   };
   if (!p.per) {

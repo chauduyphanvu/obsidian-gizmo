@@ -41,7 +41,7 @@ export const KEY_HINTS: Record<string, string> = {
   x: "The field along the bottom of a chart, or the first field of a scatter",
   y: "The field (or list of fields) a chart draws",
   field: "The field a number or progress panel reads",
-  agg: "How rows become one value: count, sum, avg, min, max, first, last, streak",
+  agg: "How rows become one value: count, sum, avg, min, max, first, last, streak, share",
   label: "A small caption under the panel",
   unit: "Text after the value, e.g. °F or km/s",
   decimals: "How many decimal places to show",
@@ -76,6 +76,7 @@ export const KEY_HINTS: Record<string, string> = {
   open: "Open this note afterwards, e.g. \"{path}\"",
   edit: "Table columns to change in place: edit: [status, done], or true for every field of the block shown",
   detail: "A sentence about the row you pick, shown under the rows: \"{name}: due {due}\"",
+  of: "With agg: share, the rows to count, e.g. of: {outcome: right}",
   shortcut: "Gives this button or form a command and link; letters, digits and -",
   // Background
   pin: "status shows this panel's value in the status bar",
@@ -116,6 +117,7 @@ const AGG_HINTS: Record<(typeof AGGS)[number], string> = {
   first: "The first row's value",
   last: "The last row's value",
   streak: "Days in a row, up to the latest",
+  share: "The fraction of rows that match of, as a percent",
 };
 
 const PER_HINTS: Record<(typeof PERIODS)[number], string> = {

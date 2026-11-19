@@ -231,7 +231,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn 
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "detail", "action", ...ACTION_KEYS, "edit", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "of", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "detail", "action", ...ACTION_KEYS, "edit", "alert"],
   span: 4,
   needsSource: true,
   validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p), ...cellProblems(p)],

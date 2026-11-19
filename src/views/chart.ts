@@ -253,7 +253,7 @@ function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", ...(kind === "bar" ? ["select", "detail", "stack"] : [])],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "of", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", ...(kind === "bar" ? ["select", "detail", "stack"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {
@@ -288,6 +288,8 @@ function chartView(kind: "line" | "bar"): ViewDef {
         { panel: { view: kind, source: "spending", group: "at", per: "week", y: "food", agg: "sum", stack: true }, errors: ["stack needs two or more y series"] },
         { panel: { view: kind, source: "spending", group: "category", stack: true }, errors: ["stack needs two or more y series"] },
         { panel: { view: kind, source: "spending", group: "category", y: "amount", agg: "sum", detail: "{category}: {amount} over {count} entries" } },
+        { panel: { view: kind, source: "decisions", group: "confidence", agg: "share", of: { outcome: "right" } } },
+        { panel: { view: kind, source: "decisions", group: "confidence", y: "hit", agg: "share", of: { outcome: "right" } }, errors: ['agg: share gives each group its share; use share in y, not "hit"'] },
       ] : [
         { panel: { view: kind, source: "weights", x: "at", y: ["a", "b"], stack: true }, errors: ['"stack" doesn\'t apply to line'] },
         { panel: { view: kind, source: "weights", x: "at", y: "weight", detail: "{weight} on {at}" }, errors: ['"detail" doesn\'t apply to line'] },

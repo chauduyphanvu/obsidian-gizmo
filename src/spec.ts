@@ -77,6 +77,8 @@ export interface Panel {
   alert?: string | Record<string, string | number | boolean>;
   /** A sentence about the row picked in the panel, drawn under its rows. */
   detail?: string;
+  /** With `agg: share`: the rows counted, as a `where`-style map. */
+  of?: Record<string, string | number | boolean>;
   /** Internal: the pipelines of the blocks above the one the panel names, root first. */
   upstream?: PipelineKeys[];
   /** Internal: the fields of the nearest block with `fields` up the panel's chain. */
@@ -309,6 +311,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
   const problems = [
     ...fieldProblems,
     ...schemaDefaults(p, def.keys),
+    ...shareDefaults(p, def.keys),
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
     ...(def.validate?.(p) ?? []),
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
@@ -377,11 +380,28 @@ function schemaDefaults(p: Panel, keys: readonly string[]): string[] {
   return p.edit.length ? [] : ["edit: true finds no field of the block among the columns; list the columns to edit"];
 }
 
-/** Labels and formats the fields give fill in for those the panel doesn't. */
+/**
+ * `agg: share` and `of` go together; grouped, each group's share is the `share` column, which a
+ * panel naming no series or columns shows.
+ */
+function shareDefaults(p: Panel, keys: readonly string[]): string[] {
+  if (p.of !== undefined && p.agg !== "share") return ['"of" needs agg: share'];
+  if (p.agg !== "share") return [];
+  if (p.of === undefined) return ["agg: share needs of, e.g. of: {outcome: right}"];
+  if (p.group && keys.includes("y") && p.y === undefined) p.y = "share";
+  if (p.group && keys.includes("columns") && p.columns === undefined) p.columns = [p.group, "share"];
+  return [];
+}
+
+/**
+ * Labels and formats the fields give fill in for those the panel doesn't; a share reads as a
+ * percent unless the panel gives a format.
+ */
 function showFields(p: Panel): void {
   const info = Object.entries(p.fieldInfo ?? {});
   const labels = Object.fromEntries(info.flatMap(([f, i]) => (i.label === undefined ? [] : [[f, i.label]])));
   if (Object.keys(labels).length) p.labels = { ...labels, ...p.labels };
+  if (p.agg === "share" && p.format === undefined) p.format = p.group ? { share: "0%" } : "0%";
   const formats = Object.fromEntries(info.flatMap(([f, i]) => (i.format === undefined ? [] : [[f, i.format]])));
   if (typeof p.format !== "string" && Object.keys(formats).length) p.format = { ...formats, ...p.format };
 }

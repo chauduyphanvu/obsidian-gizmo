@@ -126,7 +126,7 @@ test("the values of view, agg, per, layout, compare and pin", () => {
   assert.deepEqual(li.slice(0, 2), ["line", "list"]);
   assert.ok(li.every((v) => v.includes("li")));
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: ‸")), [...AGGS]);
-  assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: s‸")), ["sum", "streak", "first", "last"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: s‸")), ["sum", "streak", "share", "first", "last"]);
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    group: at\n    per: ‸")), [...PERIODS]);
   assert.deepEqual(suggested(app("panels:\n  - view: table\n    layout: ‸")), ["cards", "year"]);
   assert.deepEqual(suggested(app("panels:\n  - view: number\n    compare: ‸")), ["previous"]);
@@ -190,7 +190,7 @@ test("each suggestion carries its hint and kind", () => {
   assert.deepEqual(suggestionsFor(ctx, false), [{ kind: "key", text: "agg", hint: KEY_HINTS.agg }]);
   const value: Context = { where: "panel", position: "value", key: "agg", prefix: "str", present: [], from: { line: 1, ch: 0 }, view: "number" };
   assert.deepEqual(suggestionsFor(value, false), [{ kind: "value", text: "streak", hint: VALUE_HINTS.agg.streak }]);
-  assert.equal(KEY_HINTS.agg, "How rows become one value: count, sum, avg, min, max, first, last, streak");
+  assert.equal(KEY_HINTS.agg, "How rows become one value: count, sum, avg, min, max, first, last, streak, share");
   assert.equal(KEY_HINTS.select, "Name the clicked row so other panels can read $name.field");
 });
 

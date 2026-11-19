@@ -6,7 +6,7 @@ import type { Panel } from "./spec.ts";
 import { viewDef } from "./views/registry.ts";
 
 /** The keys that turn a source's data into what a panel draws; a chained block is one such stage. */
-export type PipelineKeys = Pick<Panel, "pick" | "compute" | "vars" | "where" | "compare" | "sort" | "limit" | "group" | "per" | "agg" | "y" | "columns">;
+export type PipelineKeys = Pick<Panel, "pick" | "compute" | "vars" | "where" | "compare" | "sort" | "limit" | "group" | "per" | "agg" | "of" | "y" | "columns">;
 
 /**
  * A panel's data steps as one function, with its conditions parsed up front: the stages of the

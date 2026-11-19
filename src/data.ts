@@ -2,7 +2,7 @@ import { parseFeed } from "./sources/feed.ts";
 import { parseICS } from "./sources/ics.ts";
 import type { Panel } from "./spec.ts";
 
-export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last", "streak"] as const;
+export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last", "streak", "share"] as const;
 export type Agg = (typeof AGGS)[number];
 
 export type Row = Record<string, unknown>;
@@ -220,8 +220,10 @@ export function sortRows(rows: unknown[], sort: string | undefined): unknown[] {
   return keyed.map((k) => k.row);
 }
 
-export function aggregate(rows: unknown[], field: string | undefined, agg: Agg): unknown {
+/** One value from rows: `share` is the fraction of them that `of` keeps (none of nothing). */
+export function aggregate(rows: unknown[], field: string | undefined, agg: Agg, of?: (row: unknown) => boolean): unknown {
   if (agg === "count") return rows.length;
+  if (agg === "share") return rows.length ? rows.filter(of ?? (() => false)).length / rows.length : undefined;
   const values = rows.map((r) => getPath(r, field));
   if (agg === "first") return values[0];
   if (agg === "last") return values[values.length - 1];
@@ -244,8 +246,8 @@ export function extent(nums: number[]): [number, number] {
 }
 
 /** The single value a number or progress panel shows. */
-export function valueOf(p: Panel, data: unknown): unknown {
-  if (Array.isArray(data)) return aggregate(data, p.field, p.agg ?? (p.field ? "last" : "count"));
+export function valueOf(p: Panel, data: unknown, now = new Date()): unknown {
+  if (Array.isArray(data)) return aggregate(data, p.field, p.agg ?? (p.field ? "last" : "count"), p.of && compileWhere(p.of, now));
   if (data !== null && typeof data === "object") return p.field ? getPath(data, p.field) : undefined;
   return data;
 }
