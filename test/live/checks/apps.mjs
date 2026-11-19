@@ -8,7 +8,7 @@ const NOAA = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
 /** What each app fetches, so a failure while that API is down is a SKIP. */
 export const NET = {
   AAPL: [YAHOO], Portfolio: [YAHOO], Movers: [YAHOO],
-  Weather: [METEO], "USD-EUR": ["https://api.frankfurter.dev/v1/latest?base=USD&symbols=EUR"],
+  Weather: [METEO], Currency: ["https://api.frankfurter.dev/v2/rates?base=USD&quotes=EUR", "https://api.frankfurter.dev/v2/rates?base=USD&quotes=EUR&from=2025-01-01&group=week"],
   "Planet Earth": ["https://earthquake.usgs.gov/earthquakes/feed/v1.0/summary/2.5_week.geojson", NOAA,
     "https://services.swpc.noaa.gov/json/rtsw/rtsw_wind_1m.json", METEO,
     "https://archive-api.open-meteo.com/v1/archive?latitude=39.95&longitude=-75.17&start_date=2025-11-01&end_date=2025-11-02&daily=temperature_2m_max"],
@@ -191,6 +191,43 @@ export default async function apps(t) {
     expect(JSON.stringify(r.after) === '["Passport"]' && r.nextAfter === "100 days" && r.done.includes(`Car insurance, due ${r.days[0]}`) && r.errors === 0, r);
     return `told: ${r.notices.find((n) => n.startsWith("Renewals"))}; done moves it; next ${r.nextAfter}`;
   });
+
+  await check("Currency: asks only for Frankfurter; a typed amount is converted; I sent it logs the transfer with its rate; a note is added; another currency redraws", async () => {
+    expect(JSON.stringify(prompts.Currency) === JSON.stringify(["Fetch data from api.frankfurter.dev"]), prompts.Currency);
+    await run(`
+      await na.open("Apps/Currency");
+      await na.until(() => !na.view().contentEl.querySelector(".na-loading"), 8000);
+      na.view().contentEl.querySelector('.na-inputs input[aria-label="amount"]').focus();`);
+    await t.type("100");
+    await t.press("Enter");
+    const r = await run(`
+      const el = na.view().contentEl;
+      const panel = (start) => [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent.startsWith(start));
+      const item = await na.until(() => panel("Converted")?.querySelector("li"), 8000);
+      const shown = item?.textContent;
+      const rate = Number(panel("1 USD in EUR").querySelector(".na-big").textContent);
+      const mark = na.notices.length;
+      na.button("I sent it", item).click();
+      const saved = await na.until(() => na.fm("Apps/Currency data.md")?.transfers?.[0], 3000);
+      const notices = await na.noticesSince(mark, "Logged");
+      await na.sleep(600);
+      const row = panel("What I sent").querySelector("tbody tr");
+      const cells = [...row.querySelectorAll("td")].slice(0, 6).map((td) => td.textContent);
+      na.fill(row.querySelector("input"), "December rent");
+      const note = await na.until(() => na.fm("Apps/Currency data.md")?.transfers?.[0]?.note, 3000);
+      na.choose(el.querySelector('select[aria-label="want"]'), "GBP");
+      await na.sleep(300);
+      await na.until(() => !el.querySelector(".na-stale, .na-loading"), 8000);
+      await na.sleep(300);
+      return { shown, rate, saved, notices, cells, note, titles: [...el.querySelectorAll(".na-panel .na-title")].map((t) => t.textContent),
+        after: panel("Converted")?.querySelector("li")?.textContent, lines: el.querySelectorAll(".na-view-line path.na-line").length, errors: na.errors() };`);
+    const got = Math.round(100 * r.rate * 100) / 100;
+    expect(r.shown === `100.00 USD is ${got.toFixed(2)} EUR at ${r.rate.toFixed(4)}I sent it`, r);
+    expect(r.saved?.sent === 100 && r.saved.from === "USD" && r.saved.to === "EUR" && r.saved.got === got && /^\d{4}-\d\d-\d\d$/.test(r.saved.date) && r.notices.includes(`Logged 100 USD → ${got} EUR`), r);
+    expect(r.cells[1] === "100.00" && r.cells[3] === got.toFixed(2) && r.note === "December rent", r);
+    expect(r.titles.includes("1 USD in GBP") && r.titles.includes("USD in GBP, week by week since 2025") && /^100\.00 USD is [\d.,]+ GBP at /.test(r.after ?? "") && r.lines === 1 && r.errors === 0, r);
+    return `${r.shown.replace("I sent it", "")}; logged; USD → GBP: ${r.after?.replace("I sent it", "")}`;
+  }, { net: NET.Currency });
 
   await check("AAPL: a whole note from one component, its price pinned to the status bar", async () => {
     const r = await run(`

@@ -796,3 +796,65 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   assert.equal(text(next.querySelector(".na-big")), "13 days");
   assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)", "Renewals: Coming up (1 row)"]);
 });
+
+const FRANKFURTER = "https://api.frankfurter.dev/v2/rates";
+/** Frankfurter's rows for one pair: today's alone, or week by week. */
+const rates = (base: string, quote: string, values: [string, number][]) => values.map(([date, rate]) => ({ date, base, quote, rate }));
+
+test("Currency: today's rate told when it reaches mine, an amount converted, a transfer logged with its rate, the rate over time", async () => {
+  const path = "Apps/Currency.md";
+  const spec = readSpec(vaultNote(path).fm, { path })!;
+  assert.deepEqual(spec.errors, []);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:api.frankfurter.dev"]);
+
+  const responses = {
+    [`${FRANKFURTER}?base=USD&quotes=EUR&from=2025-01-01`]: rates("USD", "EUR", [["2026-10-28", 0.93], ["2026-11-04", 0.94], ["2026-11-11", 0.955]]),
+    [`${FRANKFURTER}?base=USD&quotes=EUR`]: rates("USD", "EUR", [["2026-11-18", 0.96]]),
+    [`${FRANKFURTER}?base=GBP&quotes=EUR&from=2025-01-01`]: rates("GBP", "EUR", [["2026-11-11", 1.13]]),
+    [`${FRANKFURTER}?base=GBP&quotes=EUR`]: rates("GBP", "EUR", [["2026-11-18", 1.14]]),
+  };
+  const t = fakeBackground({ [path]: { fm: vaultNote(path).fm } }, responses);
+  await t.bg.start();
+  started.push({ dispose: () => t.bg.stop() });
+  // Closed, the first pair is watched: a dollar buys 0.96 euro, past the 0.95 asked for.
+  assert.deepEqual(t.notices, ["Currency: 1 USD in EUR 0.9600"]);
+
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  mount(root, path, t.env);
+  await settle();
+  assert.equal(root.querySelector(".na-error"), null);
+  const [rate, converted, chart, sent] = panelsOf(root);
+  assert.equal(text(rate.querySelector(".na-title")), "1 USD in EUR");
+  assert.equal(text(rate.querySelector(".na-big")), "0.9600");
+  assert.equal(text(converted.querySelector(".na-waiting")), "Type in “amount”");
+  assert.equal(text(chart.querySelector(".na-title")), "USD in EUR, week by week since 2025");
+  assert.equal(chart.querySelectorAll("path.na-line").length, 1);
+  assert.equal(text(sent.querySelector(".na-empty")), "Nothing here yet.");
+
+  const amount = root.querySelector('.na-inputs input[type="search"]') as HTMLInputElement;
+  amount.value = "250";
+  key(amount, "Enter");
+  await settle();
+  const item = converted.querySelector("li")!;
+  assert.equal(text(item), "250.00 USD is 240.00 EUR at 0.9600I sent it");
+  (item.querySelector("button.na-row-action") as HTMLButtonElement).click();
+  await settle();
+  assert.deepEqual(t.f.files.get("Apps/Currency data.md")!.fm!.transfers,
+    [{ date: "2026-11-18", sent: 250, from: "USD", got: 240, to: "EUR", rate: 0.96, at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.notices.slice(1), ["Logged 250 USD → 240 EUR"]);
+  const row = sent.querySelector("tbody tr")!;
+  assert.deepEqual([...row.querySelectorAll("td")].slice(0, 6).map((td) => text(td)), ["2026-11-18", "250.00", "USD", "240.00", "EUR", "0.9600"]);
+  const note = row.querySelector("input") as HTMLInputElement;
+  note.value = "December rent";
+  note.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal((t.f.files.get("Apps/Currency data.md")!.fm!.transfers as { note: string }[])[0].note, "December rent");
+
+  // Pounds instead: both requests follow the pick, and the amount carries over.
+  choose(root.querySelector('.na-inputs select[aria-label="have"]')!, "GBP");
+  await settle();
+  assert.equal(text(panelsOf(root)[0].querySelector(".na-big")), "1.1400");
+  assert.equal(text(panelsOf(root)[1].querySelector("li")), "250.00 GBP is 285.00 EUR at 1.1400I sent it");
+  assert.ok(t.f.requests.includes(`${FRANKFURTER}?base=GBP&quotes=EUR&from=2025-01-01&group=week`));
+});
