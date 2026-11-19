@@ -5,7 +5,7 @@ import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { ROW_INDEX } from "../src/sources/list.ts";
 import { checkPanel, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
-import { editErrors, editPermissions } from "../src/views/common.ts";
+import { editErrors, editPermissions } from "../src/edit.ts";
 import { fakeEnv, fakeHost } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12);

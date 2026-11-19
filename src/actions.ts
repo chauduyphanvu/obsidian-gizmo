@@ -2,7 +2,7 @@ import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
 import { saveTarget, type Panel } from "./spec.ts";
 import { notePath, withoutDefinition } from "./store.ts";
-import { startOf } from "./views/common.ts";
+import { startOf } from "./keys.ts";
 
 /**
  * What running a panel's actions needs, and nothing more: an open app passes its env; something

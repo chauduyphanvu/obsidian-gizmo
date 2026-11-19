@@ -2,7 +2,8 @@ import { stampParts, type Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import { THIS } from "../template.ts";
 import { labelOf } from "../format.ts";
-import { ACTION_KEYS, busy, checkFields, heading, isPlainObject, needsAction, redraw, startOf } from "./common.ts";
+import { busy, heading, needsAction, redraw } from "./common.ts";
+import { ACTION_KEYS, checkFields, isPlainObject, startOf } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 export const button: ViewDef = {

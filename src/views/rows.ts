@@ -1,11 +1,12 @@
-import { fillWith, getPath, type Row } from "../data.ts";
+import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
 import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
-  ACTION_KEYS, DATA_KEYS, GROUP_KEYS, busy, editErrors, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote,
-  rowsOf, selectable, shownRows,
+  busy, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote, selectable, shownRows,
 } from "./common.ts";
+import { ACTION_KEYS, DATA_KEYS, GROUP_KEYS } from "../keys.ts";
+import { editErrors } from "../edit.ts";
 import type { PanelCtx, ViewDef } from "./registry.ts";
 
 const HIDDEN_COLUMNS = new Set(["path", "mtime", "ctime", "tags", "position"]);

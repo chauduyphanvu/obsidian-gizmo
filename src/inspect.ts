@@ -1,4 +1,4 @@
-import { isPlainObject } from "./views/common.ts";
+import { isPlainObject } from "./keys.ts";
 import { sourceDef } from "./sources/registry.ts";
 
 /** One source an app reads, with what it returned before any `pick`, `where` or other step. */

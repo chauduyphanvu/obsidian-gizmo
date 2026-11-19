@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkPanel, readSpec } from "../src/spec.ts";
 import { refusedPlaces } from "../src/template.ts";
-import { readValue } from "../src/views/common.ts";
+import { readValue } from "../src/keys.ts";
 
 /** Every key declared ahead of the feature that uses it, with a value of the right type. */
 const DECLARED: Record<string, unknown> = {

@@ -18,7 +18,8 @@ import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, span
 import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { basename, defaultDataPath, isComponent, resolveList } from "./store.ts";
-import { editErrors, editableSource, mountView } from "./views/common.ts";
+import { mountView } from "./views/common.ts";
+import { editErrors, editableSource } from "./edit.ts";
 import { viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";
 import { formatClock } from "./views/timer.ts";

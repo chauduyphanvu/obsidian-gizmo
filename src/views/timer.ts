@@ -1,4 +1,5 @@
-import { ACTION_KEYS, heading, redraw } from "./common.ts";
+import { heading, redraw } from "./common.ts";
+import { ACTION_KEYS } from "../keys.ts";
 import type { ViewDef } from "./registry.ts";
 
 export function formatClock(ms: number): string {

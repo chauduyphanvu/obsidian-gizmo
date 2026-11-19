@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkPanel } from "../src/spec.ts";
-import { KEY_TYPES } from "../src/views/common.ts";
+import { KEY_TYPES } from "../src/keys.ts";
 import { VIEW_DEFS } from "../src/views/registry.ts";
 
 for (const def of VIEW_DEFS) {

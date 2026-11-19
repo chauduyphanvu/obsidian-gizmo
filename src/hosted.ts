@@ -4,7 +4,7 @@ import type { DataLayer } from "./datalayer.ts";
 import { componentParams, linkOf, readFor } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
 import { basename, defaultDataPath, isComponent, isSet, runsAsApp } from "./store.ts";
-import { isPlainObject } from "./views/common.ts";
+import { isPlainObject } from "./keys.ts";
 
 /**
  * What a `gizmo` block holds: an app's keys, as an app note's frontmatter holds them (`embed`),

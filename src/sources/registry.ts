@@ -14,3 +14,9 @@ export const SOURCE_DEFS: readonly SourceDef[] = [url, notes, thisNote, file, ta
 export function sourceDef(source: string): SourceDef {
   return SOURCE_DEFS.find((d) => d.matches(source))!;
 }
+
+/** Whether a source's rows are notes in the vault (notes, tasks, a base), each named by its `path`. */
+export function rowsAreNotes(source: string | undefined): boolean {
+  const kind = source ? sourceDef(source).id : undefined;
+  return kind === "notes" || kind === "tasks" || kind === "base";
+}

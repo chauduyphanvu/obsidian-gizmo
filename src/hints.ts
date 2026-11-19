@@ -1,7 +1,7 @@
 import { AGGS, PERIODS } from "./data.ts";
 import { BLOCK_KEYS } from "./expand.ts";
 import { APP_KEYS, COMPONENT_KEYS } from "./store.ts";
-import { COMMON_KEYS, FIELD_TYPES } from "./views/common.ts";
+import { COMMON_KEYS, FIELD_TYPES } from "./keys.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { contextAt, noteKind, type Context, type Position } from "./yamlpos.ts";
 

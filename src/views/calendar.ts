@@ -1,8 +1,9 @@
-import { getPath, stampParts, toNumber, type Row } from "../data.ts";
+import { getPath, rowsOf, stampParts, toNumber, type Row } from "../data.ts";
 import { display, formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { svg } from "./chart.ts";
-import { DATA_KEYS, groupedTotals, heading, picks, rowsOf, selectable, seriesNames } from "./common.ts";
+import { groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /** Shades a day can have besides none; the classes are gz-step-1 to gz-step-5. */

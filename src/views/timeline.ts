@@ -1,9 +1,10 @@
-import { extent, getPath, periodStart, stampParts, toTime, type Row } from "../data.ts";
+import { extent, getPath, periodStart, rowsOf, stampParts, toTime, type Row } from "../data.ts";
 import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { itemText } from "./board.ts";
-import { DATA_KEYS, heading, noteLink, picks, rowNote, rowsOf, selectable, shownRows } from "./common.ts";
+import { heading, noteLink, picks, rowNote, selectable, shownRows } from "./common.ts";
+import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 /** Width of the label column, kept in step with styles.css. */

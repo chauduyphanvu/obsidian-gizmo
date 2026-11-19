@@ -1,5 +1,5 @@
 import { getPath } from "./data.ts";
-import { isPlainObject } from "./views/common.ts";
+import { isPlainObject } from "./keys.ts";
 
 /**
  * `$name` values. A name is replaced only where it is declared: an app's `inputs`, or a component's

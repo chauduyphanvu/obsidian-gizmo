@@ -1,10 +1,11 @@
-import { extent, fillWith, formatValue, getPath, toNumber, toTime, type Row } from "../data.ts";
+import { extent, fillWith, formatValue, getPath, rowsOf, toNumber, toTime, type Row } from "../data.ts";
 import { display, formatErrors, formatFor, formatWith, labelOf, mapped } from "../format.ts";
 import { rowsFromArrays } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { B, H, L, R, T, niceTicks, svg } from "./chart.ts";
-import { DATA_KEYS, heading, picks, rowsOf, selectable, seriesNames } from "./common.ts";
+import { heading, picks, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 const RADIUS = 4;

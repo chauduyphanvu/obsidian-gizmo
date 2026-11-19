@@ -5,7 +5,7 @@ import { BLOCK_KEYS, BLOCK_ONLY } from "../src/expand.ts";
 import { sourceDef } from "../src/sources/registry.ts";
 import { SOURCE_WORDS } from "../src/store.ts";
 import { KEY_HINTS, VALUE_HINTS, VIEW_HINTS, completion, suggestionsAt, suggestionsFor, type Suggestion } from "../src/hints.ts";
-import { COMMON_KEYS, FIELD_TYPES, KEY_TYPES } from "../src/views/common.ts";
+import { COMMON_KEYS, FIELD_TYPES, KEY_TYPES } from "../src/keys.ts";
 import { VIEW_DEFS } from "../src/views/registry.ts";
 import { contextAt, type Context } from "../src/yamlpos.ts";
 

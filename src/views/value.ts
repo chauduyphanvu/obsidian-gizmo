@@ -1,9 +1,10 @@
 import { compareWindows, splitByWindow } from "../compare.ts";
-import { AGGS, daysUntil, fillWith, formatValue, toNumber, valueOf, type Row } from "../data.ts";
+import { AGGS, daysUntil, fillWith, formatValue, rowsOf, toNumber, valueOf, type Row } from "../data.ts";
 import { display, formatErrors, formatFor, mapped } from "../format.ts";
 import { streak } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, GROUP_KEYS, heading, redraw, rowsOf } from "./common.ts";
+import { heading, redraw } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { ViewDef } from "./registry.ts";
 
 function checkAgg(p: Panel): string[] {

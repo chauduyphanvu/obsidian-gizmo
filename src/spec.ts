@@ -1,6 +1,6 @@
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
-import { sourceDef } from "./sources/registry.ts";
+import { rowsAreNotes, sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
 import {
   InputRef, InputText, NAME, THIS, firstRef, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
@@ -12,9 +12,8 @@ import {
   type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
-import {
-  COMMON_KEYS, KEY_TYPES, editErrors, editPermissions, editableSource, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
-} from "./views/common.ts";
+import { COMMON_KEYS, KEY_TYPES, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey } from "./keys.ts";
+import { editErrors, editPermissions, editableSource } from "./edit.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { backgroundKeyErrors } from "./views/alerts.ts";
 
@@ -373,8 +372,7 @@ function settleFields(p: Panel): string[] {
  */
 function schemaDefaults(p: Panel, keys: readonly string[]): string[] {
   if (keys.includes("columns") && p.columns === undefined && p.schema && !p.group) {
-    const kind = p.source ? sourceDef(p.source).id : undefined;
-    const named = kind === "notes" || kind === "tasks" || kind === "base";
+    const named = rowsAreNotes(p.source);
     p.columns = [...new Set([...(named ? ["name"] : []), ...Object.keys(p.schema)])];
   }
   if ((p.edit as unknown) !== true) return [];

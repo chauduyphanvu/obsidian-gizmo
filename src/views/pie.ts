@@ -1,9 +1,10 @@
-import { formatValue, getPath, toNumber } from "../data.ts";
+import { formatValue, getPath, rowsOf, toNumber } from "../data.ts";
 import { display, formatErrors, formatFor, labelFor, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { legendItem, svg } from "./chart.ts";
-import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, redraw, rowsOf, selectable, seriesNames } from "./common.ts";
+import { groupedTotals, heading, redraw, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { ViewDef } from "./registry.ts";
 
 /** Most slices drawn; past this the smallest fold into "Other". */

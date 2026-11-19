@@ -1,7 +1,8 @@
 import { extent, formatValue, getPath, seriesOf, toTime, type Per, type Point, type Row } from "../data.ts";
 import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
+import { groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
+import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 const NS = "http://www.w3.org/2000/svg";

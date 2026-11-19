@@ -1,8 +1,10 @@
-import { fillWith, getPath, type Row } from "../data.ts";
+import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
 import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { DATA_KEYS, editErrors, heading, noteLink, rowKey, rowNote, rowsOf, selectable } from "./common.ts";
+import { heading, noteLink, rowKey, rowNote, selectable } from "./common.ts";
+import { DATA_KEYS } from "../keys.ts";
+import { editErrors } from "../edit.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 /** A card's (or timeline row's) text: the `item` template, else the row's name, title, or first text value; each shown as the panel's `values` and `format` say. */

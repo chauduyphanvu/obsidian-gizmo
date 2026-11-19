@@ -1,220 +1,10 @@
-import { fillWith, stampParts, type Row } from "../data.ts";
-import { checkFormat, display } from "../format.ts";
+import { fillWith, type Row } from "../data.ts";
+import { display } from "../format.ts";
+import { ACTION_KEYS } from "../keys.ts";
 import { ROW_INDEX } from "../sources/list.ts";
-import { sourceDef } from "../sources/registry.ts";
+import { rowsAreNotes } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
-import { definitionReason } from "../store.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
-
-/**
- * `names` is one field name or a list of them (several chart series); `json` is text or any set of
- * keys; `format` is text or field → text; `valueMap` is field → (value → text); `alert` is a
- * condition or a `where`-style map; `compute` is name → formula; `textMap` is name → text.
- */
-export type KeyType =
-  | "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where"
-  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap" | "edit" | "then";
-
-/** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept", "fieldInfo"] as const;
-export type InternalKey = (typeof INTERNAL_KEYS)[number];
-/** A key that can be typed on a panel. */
-export type PanelKey = Exclude<keyof Panel, InternalKey>;
-
-/** Every panel key and the YAML shape it takes. Which views accept which keys is in each ViewDef. */
-export const KEY_TYPES: Record<PanelKey, KeyType> = {
-  view: "string", title: "string", source: "string", headers: "stringMap", pick: "string",
-  from: "string", where: "where", sort: "string", limit: "number", group: "string", per: "string",
-  x: "string", y: "names",
-  field: "string", agg: "string", label: "string", unit: "string", decimals: "number",
-  tab: "string", span: "number", text: "string", item: "string", columns: "strings", max: "number", to: "string",
-  minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
-  line: "string", notify: "string",
-  compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
-  open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
-  layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
-  end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string", of: "where",
-  then: "then",
-};
-
-/** What a wrong value should have been, for the types whose names don't say it plainly. */
-const EXPECTED: Partial<Record<KeyType, string>> = {
-  boolean: "true or false",
-  json: "text or a set of keys",
-  format: "text, or a set of field: format",
-  valueMap: "a set of field: {value: text}",
-  alert: "a condition, or a set of field: condition",
-  compute: "a set of name: formula",
-  textMap: "a set of name: text",
-  fieldMap: "a set of name: type, or a list of field names",
-  edit: "a list of fields, or true",
-  then: 'a set like {app: "[[Task inbox]]", do: add, fill: {task: "Renew {what}"}}',
-};
-
-export function isPlainObject(v: unknown): v is Record<string, unknown> {
-  return typeof v === "object" && v !== null && !Array.isArray(v);
-}
-
-const scalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v);
-const isText = (v: unknown) => typeof v === "string" || typeof v === "number";
-const isMap = (v: unknown): v is Record<string, unknown> => isPlainObject(v) && !(v instanceof Date);
-const scalarMap = (v: unknown): v is Record<string, unknown> => isMap(v) && Object.values(v).every(scalar);
-const textOf = (map: Record<string, unknown>) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, String(v)]));
-
-function checkType(value: unknown, type: KeyType): boolean {
-  switch (type) {
-    case "string": return isText(value);
-    case "number": return typeof value === "number";
-    case "boolean": return typeof value === "boolean";
-    case "strings": return Array.isArray(value) && value.every(scalar);
-    case "names":
-      return isText(value) || (Array.isArray(value) && value.length > 0 && value.every(isText));
-    case "stringMap":
-    case "where":
-      return isPlainObject(value) && Object.values(value).every(scalar);
-    case "fieldMap":
-      // A list of names picks fields of the block a form saves to.
-      if (Array.isArray(value)) return value.length > 0 && value.every(isText);
-      return isPlainObject(value) && Object.values(value).every(
-        (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)) || isMap(v),
-      );
-    case "json": return isText(value) || isMap(value);
-    case "format":
-    case "alert":
-      return isText(value) || scalarMap(value);
-    case "textMap": return scalarMap(value);
-    case "valueMap": return isMap(value) && Object.values(value).every(scalarMap);
-    case "compute": return isMap(value) && Object.values(value).every(isText);
-    case "edit": return value === true || (Array.isArray(value) && value.every(scalar));
-    case "then":
-      return isMap(value) && typeof value.app === "string" && isText(value.do)
-        && (value.fill === undefined || scalarMap(value.fill)) && Object.keys(value).every((k) => ["app", "do", "fill"].includes(k));
-  }
-}
-
-/** Checks one known key's value against its type; text keys take numbers and dates as text. */
-export function readValue(key: PanelKey, value: unknown): { value: unknown } | { error: string } {
-  const type = KEY_TYPES[key];
-  if (value instanceof Date && type === "string") return { value: value.toISOString().slice(0, 10) };
-  if (!checkType(value, type)) return { error: `"${key}" has the wrong type (expected ${EXPECTED[type] ?? type})` };
-  switch (type) {
-    case "names": return { value: Array.isArray(value) ? value.map(String) : String(value) };
-    case "string": return { value: String(value) };
-    case "json":
-    case "alert":
-      return { value: isText(value) ? String(value) : value };
-    case "format": return { value: isText(value) ? String(value) : textOf(value as Record<string, unknown>) };
-    case "textMap": return { value: textOf(value as Record<string, unknown>) };
-    case "then": {
-      const t = value as Record<string, unknown>;
-      return { value: { app: String(t.app), do: String(t.do), ...(t.fill ? { fill: textOf(t.fill as Record<string, unknown>) } : {}) } };
-    }
-    case "valueMap":
-      return { value: Object.fromEntries(Object.entries(value as Record<string, Record<string, unknown>>).map(([k, v]) => [k, textOf(v)])) };
-    default: return { value };
-  }
-}
-
-/** The input types a field can have, besides a list of choices. */
-export const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "textarea"];
-
-/** Problems with a `fields` map (a form's, or a data block's schema). */
-export function checkFields(fields: Record<string, string | string[]>): string[] {
-  return Object.entries(fields)
-    .filter(([, type]) => typeof type === "string" && !FIELD_TYPES.includes(type))
-    .map(([name]) => `field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
-}
-
-/** What a field written as a map carries besides its type: its display name, its format, and the value it starts with. */
-export interface FieldInfo {
-  label?: string;
-  format?: string;
-  default?: unknown;
-}
-
-const FIELD_KEYS = ["type", "label", "format", "default"];
-
-/** Why a field's `default` can't be used, or undefined; `today` and `now` are words for a date and a time. */
-function defaultProblem(name: string, type: string | string[], value: unknown): string | undefined {
-  const at = `field "${name}" default`;
-  if (Array.isArray(type)) return type.some((c) => String(c) === String(value)) ? undefined : `${at} must be one of its choices: ${type.join(", ")}`;
-  if (type === "date") return value === "today" || value instanceof Date || /^\d{4}-\d{2}-\d{2}$/.test(String(value)) ? undefined : `${at} must be today or a date, e.g. 2026-01-31`;
-  if (type === "time") return value === "now" || /^\d{1,2}:\d{2}$/.test(String(value)) ? undefined : `${at} must be now or a time, e.g. 09:30`;
-  if (type === "number") return typeof value === "number" ? undefined : `${at} must be a number`;
-  if (type === "checkbox") return typeof value === "boolean" ? undefined : `${at} must be true or false`;
-  return ["string", "number", "boolean"].includes(typeof value) ? undefined : `${at} must be text`;
-}
-
-/**
- * Reads a `fields` map: each field a type word, a list of choices, or a map `{type, label, format,
- * default}` (`type` text when left out). Gives each field's type, what the maps say besides, and
- * the problems with the maps (a map with a problem leaves its field out); type words are checked
- * by checkFields.
- */
-export function readFields(fields: Record<string, unknown>): { types: Record<string, string | string[]>; info: Record<string, FieldInfo>; errors: string[] } {
-  const types: Record<string, string | string[]> = {};
-  const info: Record<string, FieldInfo> = {};
-  const errors: string[] = [];
-  for (const [name, written] of Object.entries(fields)) {
-    if (!isMap(written)) {
-      types[name] = written as string | string[];
-      continue;
-    }
-    const unknown = Object.keys(written).filter((k) => !FIELD_KEYS.includes(k));
-    if (unknown.length) {
-      errors.push(`field "${name}" has no key "${unknown[0]}" (it takes ${FIELD_KEYS.join(", ")})`);
-      continue;
-    }
-    const type = written.type ?? "text";
-    if (!(typeof type === "string" || (Array.isArray(type) && type.length > 0 && type.every(scalar)))) {
-      errors.push(`field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
-      continue;
-    }
-    const one: FieldInfo = {};
-    const problems: string[] = [];
-    for (const key of ["label", "format"] as const) {
-      const v = written[key];
-      if (v === undefined || v === null) continue;
-      if (!isText(v)) problems.push(`field "${name}" ${key} must be text`);
-      else one[key] = String(v);
-    }
-    const formatProblem = one.format === undefined ? undefined : checkFormat(one.format);
-    if (formatProblem) problems.push(`field "${name}": ${formatProblem}`);
-    if (written.default !== undefined && written.default !== null) {
-      const problem = defaultProblem(name, type, written.default);
-      if (problem) problems.push(problem);
-      // A choice keeps the type it was typed with in the list: `default: 70` is the number 70 there.
-      else one.default = Array.isArray(type) ? type.find((c) => String(c) === String(written.default)) : written.default instanceof Date ? written.default.toISOString().slice(0, 10) : written.default;
-    }
-    if (problems.length) {
-      errors.push(...problems);
-      continue;
-    }
-    types[name] = type;
-    if (Object.keys(one).length) info[name] = one;
-  }
-  return { types, info, errors };
-}
-
-/** The value a field starts with: its `default`, with `today` and `now` read as the date and time it is. */
-export function startOf(info: FieldInfo | undefined, now: Date): unknown {
-  const d = info?.default;
-  if (d === "today") return stampParts(now).date;
-  if (d === "now") return stampParts(now).time;
-  return d;
-}
-
-/** Keys every view accepts. */
-export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
-/** Keys that say where a panel's data comes from and how rows are narrowed. */
-export const DATA_KEYS = ["source", "headers", "body", "pick", "from", "where", "sort", "limit", "compute"] as const;
-/** Keys that turn rows into one row per group or period. */
-export const GROUP_KEYS = ["group", "per"] as const;
-/**
- * Keys that make a panel write, notify or open a note when used; `row` shapes what is saved,
- * `name` and `template` the note a save to a folder creates.
- */
-export const ACTION_KEYS = ["save", "append", "line", "notify", "open", "row", "name", "template"] as const;
 
 /** A panel that acts needs something to do; opening a note, or running another app's shortcut, alone is enough. */
 export function needsAction(view: string, p: Panel): string[] {
@@ -250,19 +40,12 @@ export function heading(el: HTMLElement, p: Panel, fallback?: string): void {
   if (text) el.createDiv({ cls: "gz-title", text });
 }
 
-export function rowsOf(data: unknown): Row[] {
-  if (Array.isArray(data)) return data.map((r) => (r !== null && typeof r === "object" ? (r as Row) : { value: r }));
-  if (data !== null && typeof data === "object") return [data as Row];
-  return data === undefined ? [] : [{ value: data }];
-}
-
 /**
  * The note a row is, by its `path`, when the panel reads notes from the vault (notes, tasks, a
  * base); undefined for rows from anywhere else, where `path` is only data and links nowhere.
  */
 export function rowNote(p: Panel, row: Row): string | undefined {
-  const kind = p.source ? sourceDef(p.source).id : undefined;
-  return (kind === "notes" || kind === "tasks" || kind === "base") && typeof row.path === "string" ? row.path : undefined;
+  return rowsAreNotes(p.source) && typeof row.path === "string" ? row.path : undefined;
 }
 
 export function noteLink(el: HTMLElement, text: string, path: string, ctx: PanelCtx): void {
@@ -454,47 +237,6 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
     const current = ctx.selected(name);
     if (current && current !== next && sameRow(p, current, next) && JSON.stringify(current) !== JSON.stringify(next)) ctx.select(name, next);
   };
-}
-
-// ---- Edit in place -------------------------------------------------------------------------------
-
-/** Fields of a notes row that come from the file, not from its properties. */
-const FILE_FIELDS = ["name", "path", "tags", "mtime", "ctime"];
-
-/**
- * What a panel's rows can be written back to: their notes (from `notes` or a base), their saved
- * list, or the task lines they came from; else undefined.
- */
-export function editableSource(p: Panel): "notes" | "list" | "tasks" | undefined {
-  const id = p.source ? sourceDef(p.source).id : undefined;
-  return id === "notes" || id === "list" || id === "tasks" ? id : id === "base" ? "notes" : undefined;
-}
-
-/**
- * Problems with changing these fields of a panel's rows where they came from (a table's `edit`;
- * a board's group field). The source is decided by the root of its chain; computed columns, a
- * note's file fields and the properties that would make a note an app or a component can't be
- * written.
- */
-export function editErrors(p: Panel, fields: readonly string[]): string[] {
-  const kind = editableSource(p);
-  if (!kind) return ["edit works on notes and saved lists"];
-  if (kind === "tasks" && fields.some((f) => f !== "done")) return ['edit: only "done" can be changed on tasks'];
-  const computed = new Set([p, ...(p.upstream ?? [])].flatMap((s) => Object.keys(s.compute ?? {})));
-  return fields.flatMap((f) => (computed.has(f) ? [`edit: "${f}" is computed`]
-    : kind === "notes" && FILE_FIELDS.includes(f) ? [`edit: "${f}" comes from the note's file, not its properties`]
-    : kind === "notes" && definitionReason(f) ? [`edit can't change "${f}", ${definitionReason(f)}`]
-    : []));
-}
-
-/**
- * The permission changing a panel's rows needs, asked by `key`: notes in its `from` (any note,
- * for a base), or ticking tasks in its `from`; a saved list is the app's own.
- */
-export function editPermissions(p: Panel, key: keyof Panel): [string, keyof Panel][] {
-  if (editableSource(p) === "tasks") return p.from ? [[`tasks:${p.from}`, key]] : [];
-  if (editableSource(p) === "notes" && sourceDef(p.source!).id === "base") return [["edit:*", key]];
-  return editableSource(p) === "notes" && p.from ? [[`edit:${p.from}`, key]] : [];
 }
 
 /** A handle whose update simply redraws the panel's contents. */

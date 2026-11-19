@@ -7,7 +7,7 @@ import {
 } from "./template.ts";
 import {
   COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
-} from "./views/common.ts";
+} from "./keys.ts";
 import { viewDef } from "./views/registry.ts";
 import type { SaveTarget } from "./spec.ts";
 

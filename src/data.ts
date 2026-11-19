@@ -354,3 +354,9 @@ export function parseBody(text: string, contentType: string, now: Date = new Dat
   if (contentType.includes("csv") || /^[^\n]*,[^\n]*\n/.test(trimmed)) return parseCSV(text);
   return text;
 }
+
+export function rowsOf(data: unknown): Row[] {
+  if (Array.isArray(data)) return data.map((r) => (r !== null && typeof r === "object" ? (r as Row) : { value: r }));
+  if (data !== null && typeof data === "object") return [data as Row];
+  return data === undefined ? [] : [{ value: data }];
+}
