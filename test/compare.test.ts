@@ -5,7 +5,7 @@ import { AppController } from "../src/app.ts";
 import { compareWindows, splitByWindow, widenForCompare } from "../src/compare.ts";
 import { stampParts } from "../src/data.ts";
 import { compilePipeline } from "../src/pipeline.ts";
-import { checkPanel, type Panel } from "../src/spec.ts";
+import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { bar, line, renderChart } from "../src/views/chart.ts";
 import type { PanelCtx, ViewDef } from "../src/views/registry.ts";
 import { number } from "../src/views/value.ts";
@@ -60,6 +60,25 @@ test("widening opens the window's condition up to the start of the previous one,
   assert.deepEqual(widenForCompare({ at: "this month" }, "previous", NOW), { at: ">= 2026-10-01" });
   assert.equal(widenForCompare(where, undefined, NOW), where);
   assert.equal(widenForCompare({ n: "> 5" }, "previous", NOW).n, "> 5");
+});
+
+test("a window in a block above the panel's own where can't be compared, and says so", () => {
+  const data = {
+    spend: { source: "buys" },
+    week: { source: "spend", where: { at: "this week" } },
+    food: { source: "week", where: { category: "food" } },
+  };
+  const errors = (panel: Record<string, unknown>) =>
+    readSpec({ app: "x", data, panels: [{ view: "number", field: "amount", agg: "sum", compare: "previous", ...panel }] })!.errors;
+  const upstream = ["panel 1: compare needs the date window in this panel's own where"];
+  // The window is a stage above the panel, which compare can't open up to the window before.
+  assert.deepEqual(errors({ source: "food" }), upstream);
+  assert.deepEqual(errors({ source: "food", where: { category: "food" } }), upstream);
+  // A window of the panel's own works, whatever is above it; so does the block it names, which is a preset.
+  assert.deepEqual(errors({ source: "food", where: { at: "this month" } }), []);
+  assert.deepEqual(errors({ source: "week" }), []);
+  // No window anywhere is the same error as before.
+  assert.deepEqual(errors({ source: "spend" }), ["panel 1: compare needs a date window in where, e.g. where: {at: this week}"]);
 });
 
 const SPEND = [
