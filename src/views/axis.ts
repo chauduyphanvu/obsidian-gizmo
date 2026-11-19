@@ -1,16 +1,5 @@
 import { periodStart, shiftPeriod } from "../data.ts";
 
-/** Round tick values from `min` to `max`, about `count` of them (as the line and bar charts pick theirs). */
-export function niceTicks(min: number, max: number, count = 4): number[] {
-  if (min === max) return [min];
-  const raw = (max - min) / count;
-  const mag = 10 ** Math.floor(Math.log10(raw));
-  const step = [1, 2, 2.5, 5, 10].map((m) => m * mag).find((s) => s >= raw) ?? raw;
-  const ticks: number[] = [];
-  for (let v = Math.ceil(min / step) * step; v <= max + step * 1e-9; v += step) ticks.push(Number(v.toPrecision(12)));
-  return ticks;
-}
-
 export interface TimeTick { at: number; label: string }
 
 type Unit = "hour" | "day" | "month";

@@ -5,7 +5,8 @@ import { DATA_KEYS, GROUP_KEYS, groupedTotals, heading, selectable, seriesNames 
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
 const NS = "http://www.w3.org/2000/svg";
-const H = 220, L = 52, R = 14, T = 14, B = 26;
+/** The frame of a chart: height, and room left, right, top and bottom for the axes. Scatter shares it. */
+export const H = 220, L = 52, R = 14, T = 14, B = 26;
 /** Most series one chart draws: past this, colours stop being told apart. */
 export const MAX_SERIES = 6;
 /** Bars are at most this wide, with a gap between neighbours and rounded data ends. */
@@ -18,7 +19,8 @@ export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<
   return el;
 }
 
-function niceTicks(min: number, max: number, count = 4): number[] {
+/** Round tick values from `min` to `max`, about `count` of them. */
+export function niceTicks(min: number, max: number, count = 4): number[] {
   if (min === max) return [min];
   const raw = (max - min) / count;
   const mag = 10 ** Math.floor(Math.log10(raw));

@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { Row } from "../src/data.ts";
 import { checkPanel, type Panel } from "../src/spec.ts";
-import { niceTicks, timeTicks } from "../src/views/axis.ts";
+import { timeTicks } from "../src/views/axis.ts";
+import { niceTicks } from "../src/views/chart.ts";
 import type { PanelCtx } from "../src/views/registry.ts";
 import { MAX_DOTS, scatter } from "../src/views/scatter.ts";
 

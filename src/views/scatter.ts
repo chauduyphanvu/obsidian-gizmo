@@ -2,13 +2,11 @@ import { extent, fillWith, formatValue, getPath, toNumber, toTime, type Row } fr
 import { display, formatErrors, formatFor, formatWith, labelOf, mapped } from "../format.ts";
 import { rowsFromArrays } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { niceTicks, timeTicks } from "./axis.ts";
-import { svg } from "./chart.ts";
+import { timeTicks } from "./axis.ts";
+import { B, H, L, R, T, niceTicks, svg } from "./chart.ts";
 import { DATA_KEYS, heading, rowsOf, selectable, seriesNames } from "./common.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
-/** Same frame as the line and bar charts: height, and room left, right, top and bottom for the axes. */
-const H = 220, L = 52, R = 14, T = 14, B = 26;
 const RADIUS = 4;
 /** Most dots drawn; a few thousand are as much as a person can read, and as many as a panel can hold. */
 export const MAX_DOTS = 2000;
