@@ -140,18 +140,17 @@ export default class NoteAppsPlugin extends Plugin {
     });
   }
 
-  /** `raw` shows the YAML as text; otherwise Live Preview may show the frontmatter as a properties table. */
-  async showSource(leaf: WorkspaceLeaf, file: TFile, raw = false): Promise<void> {
+  /** Shows the YAML as text: in Live Preview the frontmatter is a properties table, which can't edit nested `panels`. */
+  async showSource(leaf: WorkspaceLeaf, file: TFile): Promise<void> {
     this.sourceLeaves.set(leaf, file.path);
-    await leaf.setViewState({ type: "markdown", state: { file: file.path, mode: "source", ...(raw ? { source: true } : {}) }, active: true });
+    await leaf.setViewState({ type: "markdown", state: { file: file.path, mode: "source", source: true }, active: true });
   }
 
   /**
    * Shows the note's source with the cursor at the start of a line, which is scrolled into view.
-   * The frontmatter must be plain text for the cursor to stand on one of its lines.
    */
   async showSourceAt(leaf: WorkspaceLeaf, file: TFile, line: number): Promise<void> {
-    await this.showSource(leaf, file, true);
+    await this.showSource(leaf, file);
     const view = leaf.view;
     if (!(view instanceof MarkdownView)) return;
     // The editor may still be loading the note's text.
