@@ -12,7 +12,7 @@ export type KeyType =
   | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema"] as const;
+export const INTERNAL_KEYS = ["upstream", "schema", "vars"] as const;
 export type InternalKey = (typeof INTERNAL_KEYS)[number];
 /** A key that can be typed on a panel. */
 export type PanelKey = Exclude<keyof Panel, InternalKey>;
@@ -110,7 +110,7 @@ export function checkFields(fields: Record<string, string | string[]>): string[]
 /** Keys every view accepts. */
 export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */
-export const DATA_KEYS = ["source", "headers", "pick", "from", "where", "sort", "limit"] as const;
+export const DATA_KEYS = ["source", "headers", "pick", "from", "where", "sort", "limit", "compute"] as const;
 /** Keys that turn rows into one row per group or period. */
 export const GROUP_KEYS = ["group", "per"] as const;
 /** Keys that make a panel write or notify when used. */

@@ -23,6 +23,20 @@ export function rowsFromArrays(data: unknown, fields: string[]): Row[] | undefin
 }
 
 /**
+ * Rows from an object whose every key holds an array, all of one length (Open-Meteo's `hourly`,
+ * a quote's `close`/`volume`). An object with other keys is one row as it is, so a stray list in
+ * it (`tags`, `validRanges`) doesn't turn it into rows of that list.
+ */
+export function rowsFromEqualArrays(data: unknown): Row[] | undefined {
+  if (data === null || typeof data !== "object" || Array.isArray(data)) return undefined;
+  const columns = Object.entries(data);
+  if (columns.length === 0 || !columns.every(([, c]) => Array.isArray(c))) return undefined;
+  const length = (columns[0][1] as unknown[]).length;
+  if (columns.some(([, c]) => (c as unknown[]).length !== length)) return undefined;
+  return Array.from({ length }, (_, i) => Object.fromEntries(columns.map(([k, c]) => [k, (c as unknown[])[i]])));
+}
+
+/**
  * One row per group: { <group>: key, count, <each total field>: agg of its values }. With `per`, the
  * key is the period's first day (YYYY-MM-DD) and empty periods are filled in between the first and
  * last period with rows, or across the whole window when `where` bounds the date field.

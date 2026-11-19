@@ -19,7 +19,7 @@ test("keys declared for later features apply to no view yet", () => {
 });
 
 test("internal keys can't be typed", () => {
-  for (const key of ["upstream", "schema"]) {
+  for (const key of ["upstream", "schema", "vars"]) {
     assert.deepEqual(checkPanel({ view: "number", source: "s", [key]: [{ where: { a: 1 } }] }, true).errors, [`unknown key "${key}"`]);
     const r = readSpec({ app: "x", panels: [{ view: "number", source: "s", [key]: { a: "text" } }] })!;
     assert.deepEqual(r.errors, [`panel 1: unknown key "${key}"`]);

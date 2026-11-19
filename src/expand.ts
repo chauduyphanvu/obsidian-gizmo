@@ -1,4 +1,5 @@
 import { parseDuration } from "./data.ts";
+import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, storeTarget } from "./store.ts";
 import {
@@ -57,7 +58,7 @@ export function schemaOf(name: string, blocks: BlockSet): Record<string, string 
   return holder === undefined ? undefined : blockIn(blocks, holder)!.fields as Record<string, string | string[]>;
 }
 
-function readBlockKey(key: string, value: unknown): { value?: unknown; errors: string[] } {
+function readBlockKey(key: string, value: unknown, names: ReadonlySet<string>): { value?: unknown; errors: string[] } {
   if (key === "record") {
     return parseDuration(value) ? { value, errors: [] } : { errors: ["record must look like 10m, 1h, 1d"] };
   }
@@ -69,11 +70,14 @@ function readBlockKey(key: string, value: unknown): { value?: unknown; errors: s
   }
   const read = readValue(key as PanelKey, value);
   if ("error" in read) return { errors: [read.error] };
-  const errors = key === "fields" ? checkFields(read.value as Record<string, string | string[]>) : [];
+  const errors = key === "fields" ? checkFields(read.value as Record<string, string | string[]>)
+    : key === "compute" ? computeErrors(read.value as Record<string, string | number>, names)
+    : [];
   return errors.length ? { errors } : { value: read.value, errors };
 }
 
-export function readBlocks(value: unknown, errors: string[]): Blocks {
+/** `names` are the `$names` the blocks' formulas may read: the app's inputs, or a component's params. */
+export function readBlocks(value: unknown, errors: string[], names: ReadonlySet<string>): Blocks {
   const blocks: Blocks = new Map();
   if (value === undefined || value === null) return blocks;
   if (!isPlainObject(value)) {
@@ -97,7 +101,7 @@ export function readBlocks(value: unknown, errors: string[]): Blocks {
         continue;
       }
       if (v === null || v === undefined) continue;
-      const read = readBlockKey(key, v);
+      const read = readBlockKey(key, v, names);
       errors.push(...read.errors.map((e) => `${at}: ${e}`));
       if (read.errors.length === 0) block[key] = read.value;
     }
@@ -294,6 +298,29 @@ function withoutInternal(raw: Record<string, unknown>, at: (e: string) => void):
   return typed.length ? Object.fromEntries(Object.entries(raw).filter(([k]) => !isInternal(k))) : raw;
 }
 
+/**
+ * Binds the `$names` a part's formulas read as its `vars`: an input reference, filled when the
+ * panel is, or a param's value, fixed now. A formula naming anything else drops the part's compute.
+ */
+function withVars(part: Record<string, unknown>, scope: Scope, at: (e: string) => void): Record<string, unknown> {
+  if (!isPlainObject(part.compute)) return part;
+  const vars: Record<string, unknown> = {};
+  let unknown = false;
+  for (const [column, text] of Object.entries(part.compute)) {
+    const f = compileFormula(String(text));
+    if ("error" in f) continue;
+    for (const name of f.vars) {
+      if (scope.names.has(name)) vars[name] = scope.kind === "input" ? new InputRef(name) : scope.params.get(name);
+      else {
+        at(`compute.${column}: $${name} isn't an input or param`);
+        unknown = true;
+      }
+    }
+  }
+  if (unknown) return Object.fromEntries(Object.entries(part).filter(([k]) => k !== "compute"));
+  return Object.keys(vars).length ? { ...part, vars } : part;
+}
+
 function fill(value: unknown, scope: Scope, errors: string[], key = ""): unknown {
   return scope.kind === "input" ? parseInputs(value, scope.names, key) : fillParams(value, scope.params, errors, key);
 }
@@ -411,7 +438,8 @@ export class Expander {
     if (params.size < component.params.size) return [];
 
     const blockErrors: string[] = [];
-    const inner: Scope = { path, blocks: readBlocks(component.data, blockErrors), names: new Set(component.params.keys()), kind: "param", params };
+    const names = new Set(component.params.keys());
+    const inner: Scope = { path, blocks: readBlocks(component.data, blockErrors, names), names, kind: "param", params };
     blockErrors.forEach((e) => at(`${name} ${e}`));
     const produced = component.panels.flatMap((entry, j) => {
       const step = [...trail, `${name} panel ${j + 1}`];
@@ -441,7 +469,7 @@ export class Expander {
     refused.forEach(at);
     if (refused.length) return undefined;
     const fillErrors: string[] = [];
-    const [template, ...stages] = parts.map((part) => fill(part, scope, fillErrors) as Record<string, unknown>);
+    const [template, ...stages] = parts.map((part) => withVars(fill(part, scope, fillErrors) as Record<string, unknown>, scope, at));
     fillErrors.forEach(at);
     if (stages.length) template.upstream = stages.map((keys, i) => ({ block: merged.stages[i].block, keys }));
     if (merged.schema) template.schema = merged.schema;
@@ -473,8 +501,9 @@ export class Expander {
       }
       for (const t of targets) {
         set(t, key);
-        // A chain's stages and schema come with the source that named it.
-        if (key === "source") for (const k of INTERNAL_KEYS) set(t, k);
+        // A chain's stages and schema come with the source that named it; formula values with the formulas.
+        if (key === "source") for (const k of ["upstream", "schema"]) set(t, k);
+        if (key === "compute") set(t, "vars");
       }
     }
   }

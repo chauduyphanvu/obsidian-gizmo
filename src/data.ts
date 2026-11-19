@@ -5,6 +5,16 @@ export type Agg = (typeof AGGS)[number];
 
 export type Row = Record<string, unknown>;
 
+/**
+ * A shallow copy of a row, symbol-keyed properties included (enumerable or not), since a row's
+ * identity may ride on one through the pipeline.
+ */
+export function copyRow(row: Row): Row {
+  const out: Row = { ...row };
+  for (const s of Object.getOwnPropertySymbols(row)) (out as Record<symbol, unknown>)[s] = (row as Record<symbol, unknown>)[s];
+  return out;
+}
+
 export function getPath(data: unknown, path: string | undefined): unknown {
   if (!path) return data;
   // A key that itself contains dots ("Adj. Close", or a total stored under its field's path) wins.

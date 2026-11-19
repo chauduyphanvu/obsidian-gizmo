@@ -57,6 +57,14 @@ function split(text: string, names: ReadonlySet<string>): (string | InputRef)[] 
   return parts;
 }
 
+/**
+ * Formulas keep their text: a `$name` in one is a value the formula reads (bound by expansion as
+ * the panel's `vars`), never text spliced into it.
+ */
+function formulas(key: string, k: string): boolean {
+  return key === "" && k === "compute";
+}
+
 /** Replaces declared input names with references; `key` is the panel key the value belongs to. */
 export function parseInputs(value: unknown, names: ReadonlySet<string>, key = ""): unknown {
   if (typeof value === "string") {
@@ -66,7 +74,7 @@ export function parseInputs(value: unknown, names: ReadonlySet<string>, key = ""
   }
   if (Array.isArray(value)) return value.map((v) => parseInputs(v, names, key));
   if (isPlainObject(value) && !(value instanceof Date)) {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, parseInputs(v, names, key || k)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, formulas(key, k) ? v : parseInputs(v, names, key || k)]));
   }
   return value;
 }
@@ -143,7 +151,7 @@ export function nearMisses(raw: unknown, names: ReadonlySet<string>, kind: "inpu
   const walk = (v: unknown) => {
     if (typeof v === "string") for (const m of v.matchAll(TOKEN)) words.add(m[1]);
     else if (Array.isArray(v)) v.forEach(walk);
-    else if (isPlainObject(v) && !(v instanceof Date)) Object.values(v).forEach(walk);
+    else if (isPlainObject(v) && !(v instanceof Date)) for (const [k, x] of Object.entries(v)) if (k !== "compute") walk(x);
   };
   walk(raw);
   const out: string[] = [];
@@ -236,7 +244,7 @@ export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>,
   if (value instanceof InputRef || value instanceof InputText || value instanceof Date) return value;
   if (Array.isArray(value)) return value.map((v) => fillParams(v, params, errors, key));
   if (isPlainObject(value)) {
-    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, fillParams(v, params, errors, key || k)]));
+    return Object.fromEntries(Object.entries(value).map(([k, v]) => [k, formulas(key, k) ? v : fillParams(v, params, errors, key || k)]));
   }
   return value;
 }

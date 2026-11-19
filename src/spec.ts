@@ -1,4 +1,5 @@
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
+import { computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, storeTarget } from "./store.ts";
 import {
@@ -72,6 +73,8 @@ export interface Panel {
   upstream?: PipelineKeys[];
   /** Internal: the fields of the nearest block with `fields` up the panel's chain. */
   schema?: Record<string, string | string[]>;
+  /** Internal: the values of the `$names` its own `compute` formulas read. */
+  vars?: Record<string, unknown>;
 }
 
 /** One panel of an app, as written and as drawn. */
@@ -121,7 +124,7 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, Inpu
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, ...keys } = t;
+  const { upstream, schema, vars, ...keys } = t;
   const r = checkPanel(keys, strict);
   const errors = [...r.errors];
   const stages: PipelineKeys[] = [];
@@ -136,6 +139,7 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   const panel: Panel = { ...r.panel };
   if (stages.length) panel.upstream = stages;
   if (schema) panel.schema = schema as Panel["schema"];
+  if (vars) panel.vars = vars as Panel["vars"];
   return { panel, errors };
 }
 
@@ -144,7 +148,7 @@ function readStage(raw: Record<string, unknown>): { stage: PipelineKeys; errors:
   const stage: PipelineKeys = {};
   const errors: string[] = [];
   for (const [key, value] of Object.entries(raw)) {
-    const read = readValue(key as PanelKey, value);
+    const read = key === "vars" ? { value } : readValue(key as PanelKey, value);
     if ("error" in read) errors.push(read.error);
     else (stage as Record<string, unknown>)[key] = read.value;
   }
@@ -194,6 +198,11 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     if ("error" in read) errors.push(read.error);
     else panel[key] = read.value;
   }
+  const formulaErrors = panel.compute ? computeErrors(panel.compute as Record<string, string | number>) : [];
+  if (formulaErrors.length) {
+    errors.push(...formulaErrors);
+    delete panel.compute;
+  }
   const p = panel as unknown as Panel;
   const problems = [
     ...(def.needsSource && !p.source ? [`${def.id} needs a source`] : []),
@@ -223,9 +232,11 @@ export function readSpec(
   // Keys written for a newer version may mean something else, so nothing is drawn.
   if (versionError) return { errors: [versionError], empty: false };
   const errors: string[] = [];
-  const blocks = readBlocks(fm.data, errors);
-  const inputs = readInputs(fm.inputs, errors);
+  const inputErrors: string[] = [];
+  const inputs = readInputs(fm.inputs, inputErrors);
   const names = new Set(inputs.map((d) => d.name));
+  const blocks = readBlocks(fm.data, errors, names);
+  errors.push(...inputErrors);
   const start = startingValues(inputs, opts.now ?? new Date());
   const expander = new Expander(opts.notes, opts.path ?? "");
   const scope = expander.appScope(blocks, names);
