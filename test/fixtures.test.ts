@@ -755,6 +755,7 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
   const [form, next, coming, done] = panelsOf(root);
+  assert.deepEqual([...form.querySelectorAll(".na-field > span")].map((s) => text(s)), ["What", "Due"]);
   assert.equal(text(next.querySelector(".na-big")), "—");
   assert.equal(text(coming.querySelector(".na-empty")), "Nothing here yet.");
   assert.equal(text(done.querySelector(".na-empty")), "Nothing here yet.");

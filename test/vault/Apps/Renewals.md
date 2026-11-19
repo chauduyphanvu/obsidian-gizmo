@@ -6,15 +6,13 @@ data:
     compute:
       days: days(today(), due)
     fields:
-      what: text
-      due: date
-      done: checkbox
+      what: {label: What}
+      due: {type: date, label: Due}
+      done: {type: checkbox, label: Done}
 panels:
   - view: form
     title: Add a deadline
-    fields:
-      what: text
-      due: date
+    fields: [what, due]
     save: deadlines
     label: Add
   - view: number
@@ -32,7 +30,7 @@ panels:
     where: {done: "!= true"}
     sort: due
     columns: [what, due, days, done]
-    labels: {what: What, due: Due, days: Days left, done: Done}
+    labels: {days: Days left}
     edit: [due, done]
     alert: {days: "<= 14"}
   - view: list
