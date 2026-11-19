@@ -89,7 +89,10 @@ export function resolveInputs(value: unknown, values: Readonly<Record<string, In
 }
 
 /** Keys a `$name` can never fill: they decide how an app is laid out and what it reads and writes. */
-const FIXED = ["view", "tab", "span", "from", "append", "store"];
+const FIXED = [
+  "view", "tab", "span", "from", "append", "store",
+  "select", "shortcut", "pin", "template", "edit", "cells", "layout", "stack", "compare",
+];
 
 /**
  * Where a declared name may not go, so that what an app may touch (hosts, secrets, notes read and

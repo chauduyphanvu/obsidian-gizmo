@@ -7,7 +7,8 @@ import {
 import {
   Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, type NoteReader, type Produced,
 } from "./expand.ts";
-import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
+import type { PipelineKeys } from "./pipeline.ts";
+import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 
 export interface Panel {
@@ -43,6 +44,32 @@ export interface Panel {
   append?: string;
   line?: string;
   notify?: string;
+  compute?: Record<string, string | number>;
+  select?: string;
+  action?: string;
+  row?: Record<string, string>;
+  name?: string;
+  template?: string;
+  open?: string;
+  edit?: string[];
+  format?: string | Record<string, string>;
+  labels?: Record<string, string>;
+  values?: Record<string, Record<string, string>>;
+  cells?: Record<string, string>;
+  layout?: string;
+  compare?: string;
+  goal?: number;
+  stack?: boolean;
+  body?: string | Record<string, unknown>;
+  start?: string;
+  end?: string;
+  shortcut?: string;
+  pin?: string;
+  alert?: string | Record<string, string | number | boolean>;
+  /** Internal: the pipelines of the blocks above the one the panel names, root first. */
+  upstream?: PipelineKeys[];
+  /** Internal: the fields of the nearest block with `fields` up the panel's chain. */
+  schema?: Record<string, string | string[]>;
 }
 
 /** One panel of an app, as written and as drawn. */
@@ -118,13 +145,13 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
   const errors: string[] = [];
   const panel: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
-    const type = KEY_TYPES[key as keyof Panel];
+    const type = KEY_TYPES[key as PanelKey];
     if (!type || !allowed.has(key)) {
       if (strict) errors.push(type ? `"${key}" doesn't apply to ${def.id}` : `unknown key "${key}"`);
       continue;
     }
     if (value === null || value === undefined) continue;
-    const read = readValue(key as keyof Panel, value);
+    const read = readValue(key as PanelKey, value);
     if ("error" in read) errors.push(read.error);
     else panel[key] = read.value;
   }

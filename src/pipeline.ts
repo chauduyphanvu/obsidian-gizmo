@@ -2,7 +2,8 @@ import { compileWhere, getPath, sortRows } from "./data.ts";
 import { groupRows, rowsFromArrays, totalFields } from "./group.ts";
 import type { Panel } from "./spec.ts";
 
-type PipelineKeys = Pick<Panel, "pick" | "where" | "sort" | "limit" | "group" | "per" | "agg" | "y" | "columns">;
+/** The keys that turn a source's data into what a panel draws; a chained block is one such stage. */
+export type PipelineKeys = Pick<Panel, "pick" | "where" | "sort" | "limit" | "group" | "per" | "agg" | "y" | "columns">;
 
 /**
  * A panel's data steps as one function, with its conditions parsed up front:

@@ -2,11 +2,23 @@ import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import type { PanelCtx } from "./registry.ts";
 
-/** `names` is one field name or a list of them (several chart series). */
-export type KeyType = "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where";
+/**
+ * `names` is one field name or a list of them (several chart series); `json` is text or any set of
+ * keys; `format` is text or field → text; `valueMap` is field → (value → text); `alert` is a
+ * condition or a `where`-style map; `compute` is name → formula; `textMap` is name → text.
+ */
+export type KeyType =
+  | "string" | "number" | "strings" | "names" | "stringMap" | "fieldMap" | "where"
+  | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap";
+
+/** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
+export const INTERNAL_KEYS = ["upstream", "schema"] as const;
+export type InternalKey = (typeof INTERNAL_KEYS)[number];
+/** A key that can be typed on a panel. */
+export type PanelKey = Exclude<keyof Panel, InternalKey>;
 
 /** Every panel key and the YAML shape it takes. Which views accept which keys is in each ViewDef. */
-export const KEY_TYPES: Record<keyof Panel, KeyType> = {
+export const KEY_TYPES: Record<PanelKey, KeyType> = {
   view: "string", title: "string", source: "string", headers: "stringMap", pick: "string",
   from: "string", where: "where", sort: "string", limit: "number", group: "string", per: "string",
   x: "string", y: "names",
@@ -14,21 +26,41 @@ export const KEY_TYPES: Record<keyof Panel, KeyType> = {
   tab: "string", span: "number", text: "string", item: "string", columns: "strings", max: "number", to: "string",
   minutes: "number", fields: "fieldMap", items: "strings", save: "string", append: "string",
   line: "string", notify: "string",
+  compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
+  open: "string", edit: "strings", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
+  layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
+  end: "string", shortcut: "string", pin: "string", alert: "alert",
+};
+
+/** What a wrong value should have been, for the types whose names don't say it plainly. */
+const EXPECTED: Partial<Record<KeyType, string>> = {
+  boolean: "true or false",
+  json: "text or a set of keys",
+  format: "text, or a set of field: format",
+  valueMap: "a set of field: {value: text}",
+  alert: "a condition, or a set of field: condition",
+  compute: "a set of name: formula",
+  textMap: "a set of name: text",
 };
 
 export function isPlainObject(v: unknown): v is Record<string, unknown> {
   return typeof v === "object" && v !== null && !Array.isArray(v);
 }
 
+const scalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v);
+const isText = (v: unknown) => typeof v === "string" || typeof v === "number";
+const isMap = (v: unknown): v is Record<string, unknown> => isPlainObject(v) && !(v instanceof Date);
+const scalarMap = (v: unknown): v is Record<string, unknown> => isMap(v) && Object.values(v).every(scalar);
+const textOf = (map: Record<string, unknown>) => Object.fromEntries(Object.entries(map).map(([k, v]) => [k, String(v)]));
+
 function checkType(value: unknown, type: KeyType): boolean {
-  const scalar = (v: unknown) => ["string", "number", "boolean"].includes(typeof v);
   switch (type) {
-    case "string": return typeof value === "string" || typeof value === "number";
+    case "string": return isText(value);
     case "number": return typeof value === "number";
+    case "boolean": return typeof value === "boolean";
     case "strings": return Array.isArray(value) && value.every(scalar);
     case "names":
-      return typeof value === "string" || typeof value === "number"
-        || (Array.isArray(value) && value.length > 0 && value.every((v) => typeof v === "string" || typeof v === "number"));
+      return isText(value) || (Array.isArray(value) && value.length > 0 && value.every(isText));
     case "stringMap":
     case "where":
       return isPlainObject(value) && Object.values(value).every(scalar);
@@ -36,16 +68,33 @@ function checkType(value: unknown, type: KeyType): boolean {
       return isPlainObject(value) && Object.values(value).every(
         (v) => typeof v === "string" || (Array.isArray(v) && v.every(scalar)),
       );
+    case "json": return isText(value) || isMap(value);
+    case "format":
+    case "alert":
+      return isText(value) || scalarMap(value);
+    case "textMap": return scalarMap(value);
+    case "valueMap": return isMap(value) && Object.values(value).every(scalarMap);
+    case "compute": return isMap(value) && Object.values(value).every(isText);
   }
 }
 
 /** Checks one known key's value against its type; text keys take numbers and dates as text. */
-export function readValue(key: keyof Panel, value: unknown): { value: unknown } | { error: string } {
+export function readValue(key: PanelKey, value: unknown): { value: unknown } | { error: string } {
   const type = KEY_TYPES[key];
   if (value instanceof Date && type === "string") return { value: value.toISOString().slice(0, 10) };
-  if (!checkType(value, type)) return { error: `"${key}" has the wrong type (expected ${type})` };
-  if (type === "names") return { value: Array.isArray(value) ? value.map(String) : String(value) };
-  return { value: type === "string" ? String(value) : value };
+  if (!checkType(value, type)) return { error: `"${key}" has the wrong type (expected ${EXPECTED[type] ?? type})` };
+  switch (type) {
+    case "names": return { value: Array.isArray(value) ? value.map(String) : String(value) };
+    case "string": return { value: String(value) };
+    case "json":
+    case "alert":
+      return { value: isText(value) ? String(value) : value };
+    case "format": return { value: isText(value) ? String(value) : textOf(value as Record<string, unknown>) };
+    case "textMap": return { value: textOf(value as Record<string, unknown>) };
+    case "valueMap":
+      return { value: Object.fromEntries(Object.entries(value as Record<string, Record<string, unknown>>).map(([k, v]) => [k, textOf(v)])) };
+    default: return { value };
+  }
 }
 
 /** Keys every view accepts. */

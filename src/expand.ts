@@ -1,10 +1,9 @@
 import { sourceDef } from "./sources/registry.ts";
-import type { Panel } from "./spec.ts";
 import { storeTarget } from "./store.ts";
 import {
   InputRef, NAME, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
 } from "./template.ts";
-import { COMMON_KEYS, DATA_KEYS, GROUP_KEYS, KEY_TYPES, isPlainObject, readValue } from "./views/common.ts";
+import { COMMON_KEYS, DATA_KEYS, GROUP_KEYS, KEY_TYPES, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 
 /** The language version this plugin reads. */
@@ -48,7 +47,7 @@ export function readBlocks(value: unknown, errors: string[]): Blocks {
         continue;
       }
       if (v === null || v === undefined) continue;
-      const read = readValue(key as keyof Panel, v);
+      const read = readValue(key as PanelKey, v);
       if ("error" in read) errors.push(`${at}: ${read.error}`);
       else block[key] = read.value;
     }
