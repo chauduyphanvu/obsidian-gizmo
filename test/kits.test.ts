@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import type { NoteReader } from "../src/expand.ts";
-import { askersOf, permissionsOf, readSpec, resolvePanel } from "../src/spec.ts";
+import { readSpec, resolvePanel } from "../src/spec.ts";
+import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeEnv } from "./support/fakes.ts";
 
 // Kits: a component param typed literally (its default, or a `with` value holding no `$name`) may

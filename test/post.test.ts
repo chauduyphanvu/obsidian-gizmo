@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { DataLayer } from "../src/datalayer.ts";
-import { askersOf, checkPanel, describePermission, permissionsOf, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
+import { checkPanel, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
+import { askersOf, describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeHost } from "./support/fakes.ts";
 
 const FILES = { appPath: "Apps/G.md", dataPath: "Apps/G data.md" };

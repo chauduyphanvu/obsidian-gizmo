@@ -30,13 +30,3 @@ export function editErrors(p: Panel, fields: readonly string[]): string[] {
     : kind === "notes" && definitionReason(f) ? [`edit can't change "${f}", ${definitionReason(f)}`]
     : []));
 }
-
-/**
- * The permission changing a panel's rows needs, asked by `key`: notes in its `from` (any note,
- * for a base), or ticking tasks in its `from`; a saved list is the app's own.
- */
-export function editPermissions(p: Panel, key: keyof Panel): [string, keyof Panel][] {
-  if (editableSource(p) === "tasks") return p.from ? [[`tasks:${p.from}`, key]] : [];
-  if (editableSource(p) === "notes" && sourceDef(p.source!).id === "base") return [["edit:*", key]];
-  return editableSource(p) === "notes" && p.from ? [[`edit:${p.from}`, key]] : [];
-}

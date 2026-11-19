@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { runActions, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
-import { checkPanel, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
+import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
+import { permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
 
 // Fields that carry their own label, format and default, a form that lists fields by name, and the

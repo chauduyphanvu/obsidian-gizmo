@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { readFor, type NoteReader } from "../src/expand.ts";
 import { LensIndex, LensStack, lensDefinition } from "../src/hosted.ts";
-import { describePermission, permissionsOf, readComponentPreview, readSpec } from "../src/spec.ts";
+import { readComponentPreview, readSpec } from "../src/spec.ts";
+import { describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeEnv } from "./support/fakes.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };

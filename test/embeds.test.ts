@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { HostedApp, Memories, blockKey, dropGrants, moveGrants, parseHosted } from "../src/hosted.ts";
-import { SAVE_THIS_HOSTED, permissionsOf, readSpec, resolvePanel } from "../src/spec.ts";
+import { SAVE_THIS_HOSTED, readSpec, resolvePanel } from "../src/spec.ts";
+import { permissionsOf } from "../src/permissions.ts";
 import { fakeEnv } from "./support/fakes.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };

@@ -1,7 +1,8 @@
 import type { NoteReader } from "./expand.ts";
 import { planCopy, type Plan } from "./gallery.ts";
 import { isApp, isComponent, storeTarget } from "./store.ts";
-import { describePermission, permissionsOf, readComponentPreview, readSpec } from "./spec.ts";
+import { readComponentPreview, readSpec } from "./spec.ts";
+import { describePermission, permissionsOf } from "./permissions.ts";
 
 /**
  * A shared app: the app (or component) note first, then the notes it needs, each with the name it

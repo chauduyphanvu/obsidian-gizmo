@@ -8,8 +8,9 @@ import { stableJson } from "./hash.ts";
 import type { NoteReader } from "./expand.ts";
 import { thisValues } from "./sources/this.ts";
 import {
-  panelIds, permissionsOf, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
+  panelIds, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
+import { permissionsOf } from "./permissions.ts";
 import { basename, defaultDataPath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";

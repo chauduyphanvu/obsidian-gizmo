@@ -7,10 +7,10 @@ import { fileDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import { typedName, type NoteReader } from "./expand.ts";
 import {
-  askersOf, describePermission, isUrl, panelIds, permissionsOf, pickPanels, readComponentPreview, readSpec,
-  resolvePanel, startingValues, type ComponentPreview,
+  isUrl, panelIds, pickPanels, readComponentPreview, readSpec, resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
+import { askersOf, describePermission, permissionsOf } from "./permissions.ts";
 import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";

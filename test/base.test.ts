@@ -5,8 +5,9 @@ import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { baseTarget, compileBase, type BaseNote } from "../src/sources/base.ts";
 import { sourceDef } from "../src/sources/registry.ts";
-import { checkPanel, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
-import { editErrors, editPermissions } from "../src/edit.ts";
+import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
+import { describePermission, editPermissions, permissionsOf } from "../src/permissions.ts";
+import { editErrors } from "../src/edit.ts";
 import { fakeEnv, fakeHost } from "./support/fakes.ts";
 import { parseYaml } from "./support/yaml.ts";
 

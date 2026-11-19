@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { permissionsOf, readSpec } from "../src/spec.ts";
+import { readSpec } from "../src/spec.ts";
+import { permissionsOf } from "../src/permissions.ts";
 import { defaultDataPath, resolveList, storeTarget } from "../src/store.ts";
 
 test("the default data note sits next to the app", () => {

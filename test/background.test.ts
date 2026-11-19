@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { askersOf, permissionsOf, readSpec } from "../src/spec.ts";
+import { readSpec } from "../src/spec.ts";
+import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const settle = async (n = 4) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };

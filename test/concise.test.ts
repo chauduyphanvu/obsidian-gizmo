@@ -5,7 +5,8 @@ import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import type { NoteReader } from "../src/expand.ts";
 import { LensIndex, LensStack } from "../src/hosted.ts";
-import { askersOf, permissionsOf, readComponentPreview, readSpec } from "../src/spec.ts";
+import { readComponentPreview, readSpec } from "../src/spec.ts";
+import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { parseDuration, permissionsOf, readSpec } from "../src/spec.ts";
+import { parseDuration, readSpec } from "../src/spec.ts";
+import { permissionsOf } from "../src/permissions.ts";
 
 test("a note without app is not an app", () => {
   assert.equal(readSpec({ tags: ["x"] }), undefined);

@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { permissionsOf, readSpec } from "../src/spec.ts";
+import { readSpec } from "../src/spec.ts";
+import { permissionsOf } from "../src/permissions.ts";
 
 const URL_A = "https://api.example.com/forecast?lat=1";
 

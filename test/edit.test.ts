@@ -4,8 +4,9 @@ import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { ROW_INDEX } from "../src/sources/list.ts";
-import { checkPanel, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
-import { editErrors, editPermissions } from "../src/edit.ts";
+import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
+import { describePermission, editPermissions, permissionsOf } from "../src/permissions.ts";
+import { editErrors } from "../src/edit.ts";
 import { fakeEnv, fakeHost } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12);

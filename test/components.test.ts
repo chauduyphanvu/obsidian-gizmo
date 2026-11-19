@@ -1,7 +1,8 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import type { NoteReader } from "../src/expand.ts";
-import { askersOf, permissionsOf, readSpec, resolvePanel } from "../src/spec.ts";
+import { readSpec, resolvePanel } from "../src/spec.ts";
+import { askersOf, permissionsOf } from "../src/permissions.ts";
 
 const APP = "Apps/W.md";
 

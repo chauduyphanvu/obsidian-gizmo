@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { describeActor } from "../src/activity.ts";
 import { AppController } from "../src/app.ts";
 import { MAX_RUNS_PER_HOUR } from "../src/background.ts";
-import { describePermission, permissionsOf, readSpec } from "../src/spec.ts";
+import { readSpec } from "../src/spec.ts";
+import { describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground } from "./support/fakes.ts";
 import { vaultNote } from "./support/yaml.ts";
 

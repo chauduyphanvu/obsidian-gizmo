@@ -4,7 +4,8 @@ import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { sourceDef } from "../src/sources/registry.ts";
-import { askersOf, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
+import { readSpec, type Panel } from "../src/spec.ts";
+import { askersOf, describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeEnv, fakeHost } from "./support/fakes.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };

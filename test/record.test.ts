@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { MAX_SAMPLES } from "../src/background.ts";
-import { askersOf, permissionsOf, readSpec } from "../src/spec.ts";
+import { readSpec } from "../src/spec.ts";
+import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";

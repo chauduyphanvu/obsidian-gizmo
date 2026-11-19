@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { bodyOf, fileName, fillBody, fillRow, runActions, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
-import { askersOf, checkPanel, describePermission, permissionsOf, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
+import { checkPanel, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
+import { askersOf, describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeEnv } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12, 0);

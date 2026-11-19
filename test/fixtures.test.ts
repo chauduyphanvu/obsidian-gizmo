@@ -3,7 +3,8 @@ import assert from "node:assert/strict";
 import { readFileSync, readdirSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
-import { permissionsOf, readSpec } from "../src/spec.ts";
+import { readSpec } from "../src/spec.ts";
+import { permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv, raw } from "./support/fakes.ts";
 import { vaultNote } from "./support/yaml.ts";
 

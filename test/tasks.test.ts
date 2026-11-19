@@ -4,9 +4,10 @@ import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { parseTasks, tickLine } from "../src/sources/tasks.ts";
-import { checkPanel, describePermission, permissionsOf, readSpec, type Panel } from "../src/spec.ts";
+import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
+import { describePermission, editPermissions, permissionsOf } from "../src/permissions.ts";
 import { rowKey } from "../src/views/common.ts";
-import { editErrors, editPermissions } from "../src/edit.ts";
+import { editErrors } from "../src/edit.ts";
 import { fakeEnv, fakeHost } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12);
