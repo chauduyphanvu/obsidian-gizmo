@@ -103,6 +103,27 @@ export default async function interaction(t) {
     return "status: reading written; same table, focus kept";
   });
 
+  await check("Library: setting the day a book was finished writes the note and moves the reading goal", async () => {
+    const r = await run(`
+      await na.write("Books/Project Hail Mary.md", "---\\nstatus: reading\\n---\\n");
+      await na.open("Apps/Library");
+      const el = na.view().contentEl;
+      const goal = () => el.querySelector(".na-view-progress .na-big")?.textContent;
+      const row = await na.until(() => [...el.querySelectorAll(".na-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Project Hail Mary")), 3000);
+      const before = goal();
+      const d = new Date();
+      const today = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
+      na.fill(row.querySelector('input[type="date"]'), today);
+      const written = await na.until(() => na.fm("Books/Project Hail Mary.md")?.finished === today, 3000);
+      await na.until(() => goal() !== before, 3000);
+      const after = goal();
+      await na.remove("Books/Project Hail Mary.md");
+      return { before, after, written: !!written, title: el.querySelector(".na-view-progress .na-title")?.textContent };`);
+    const count = (s) => Number(s?.split("/")[0]);
+    expect(r.written && r.title === "Reading goal" && /\/ 24 books$/.test(r.after ?? "") && count(r.after) === count(r.before) + 1, r);
+    return `${r.before} → ${r.after}`;
+  });
+
   await check("Chores: the form has task, room, done; Add lists it in To do; ticking it moves it to Done", async () => {
     const r = await run(`
       await na.open("Apps/Chores");

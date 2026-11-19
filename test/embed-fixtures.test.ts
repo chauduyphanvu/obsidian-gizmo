@@ -23,14 +23,14 @@ function books() {
 
 test("Reading progress: a lens above every book tracks the page I'm on, saved in the book itself", async () => {
   const component = vaultNote("Components/Reading progress.md").fm;
-  const t = fakeEnv({ "Components/Reading progress.md": { fm: component }, "Apps/Reading.md": { fm: vaultNote("Apps/Reading.md").fm }, ...books() });
+  const t = fakeEnv({ "Components/Reading progress.md": { fm: component }, "Apps/Library.md": { fm: vaultNote("Apps/Library.md").fm }, ...books() });
   const preview = readComponentPreview(component, { path: "Components/Reading progress.md", notes: t.env.notes });
   assert.deepEqual(preview.result.errors, []);
   assert.equal(preview.lens, "Books");
 
   const index = new LensIndex(t.data);
   assert.deepEqual(index.lensesFor("Books/Dune.md"), ["Components/Reading progress.md"]);
-  assert.deepEqual(index.lensesFor("Apps/Reading.md"), []);
+  assert.deepEqual(index.lensesFor("Apps/Library.md"), []);
 
   const grants: Record<string, string[]> = {};
   t.env.isGranted = (key, wanted) => wanted.length === 0 || (grants[key] ?? []).join("\n") === wanted.join("\n");

@@ -96,7 +96,7 @@ test("Library: data blocks with a schema, a form's row map, a note's body of key
   assert.equal(at(LIBRARY, "      title: \"{title}\"", "title", 1)?.where, "other");
   assert.deepEqual(rest(at(LIBRARY, "    save: Books/")), value("panel", "save", "Books/", ["view", "title", "source", "pick", "item", "select", "action", "name", "row", "notify"], "list"));
   assert.equal(at(LIBRARY, "    columns: [name, author, status, finished]")?.where, "other");
-  assert.deepEqual(rest(at(LIBRARY, "  - view: table", "table")), value("panel", "view", "table", ["title", "source", "sort", "columns", "edit"]));
+  assert.deepEqual(rest(at(LIBRARY, "  - view: table", "table")), value("panel", "view", "table", ["title", "source", "sort", "columns", "labels", "edit"]));
 });
 
 test("Movers: computed columns and chained blocks", () => {

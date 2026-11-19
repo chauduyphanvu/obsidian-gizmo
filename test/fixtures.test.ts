@@ -61,7 +61,7 @@ function openApp(path: string, notes: Parameters<typeof fakeEnv>[0], responses: 
   return { ...t, root };
 }
 
-test("Library: search Open Library, read about a pick, add it to Books, set its status", async () => {
+test("Library: search Open Library, read about a pick, add it to Books, set its status, finish it toward the year's goal", async () => {
   const spec = readSpec(vaultNote("Apps/Library.md").fm, { path: "Apps/Library.md" })!;
   assert.deepEqual(spec.errors, []);
   assert.deepEqual(permissionsOf(spec.spec!, "Apps/Library.md"), ["create:Books", "edit:Books", "net:openlibrary.org", "read:Books"]);
@@ -69,8 +69,11 @@ test("Library: search Open Library, read about a pick, add it to Books, set its 
   const { root, f, notices } = openApp("Apps/Library.md", books(), { [SEARCH]: DOCS });
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
-  const [results, about, shelf] = [...root.querySelectorAll(".na-panel")];
+  const [results, about, goal, shelf] = [...root.querySelectorAll(".na-panel")];
   assert.equal(text(results.querySelector(".na-waiting")), "Type in “q”");
+  // Dune, Piranesi and The Overstory were finished this year; Middlemarch last December.
+  assert.equal(text(goal.querySelector(".na-big")), "3/ 24 books");
+  assert.deepEqual([...shelf.querySelectorAll("th")].map((th) => text(th)), ["Book", "Author", "Status", "Finished"]);
   assert.equal(text(about.querySelector(".na-waiting")), "Pick a row in “Search results”");
   assert.deepEqual([...shelf.querySelectorAll("tbody tr td:first-child")].map((td) => text(td)), ["Dune", "Middlemarch", "Piranesi", "The Overstory"]);
 
@@ -101,6 +104,14 @@ test("Library: search Open Library, read about a pick, add it to Books, set its 
   choose(rows[1].querySelector("select")!, "reading");
   await settle();
   assert.equal(f.files.get("Books/Dune Messiah.md")!.fm!.status, "reading");
+
+  // Finished it: the date goes on the book's note and the goal moves.
+  const finished = shelf.querySelectorAll("tbody tr")[1].querySelector('input[type="date"]') as HTMLInputElement;
+  finished.value = "2026-11-17";
+  finished.dispatchEvent(new window.Event("change", { bubbles: true }));
+  await settle();
+  assert.equal(f.files.get("Books/Dune Messiah.md")!.fm!.finished, "2026-11-17");
+  assert.equal(text(goal.querySelector(".na-big")), "4/ 24 books");
 });
 
 test("Chores: a form shaped by the block saves chores; ticking one off moves it to done", async () => {
