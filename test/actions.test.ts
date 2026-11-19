@@ -56,6 +56,16 @@ test("append, save to a list, notify: in that order, as before", async () => {
   assert.deepEqual(failing.log.at(-1), "notify Couldn't save: disk full");
 });
 
+test("a line, a note's name and a notice write numbers as they are, not rounded for display", async () => {
+  const { d, log } = deps();
+  const p = panel({
+    view: "list", source: "s", action: "Log", append: "Daily", line: "- Sent {sent}, got {got} at {rate} ({legs})",
+    save: "Trips/", name: "Trip {total}", notify: "Logged {got} at {rate}",
+  });
+  await runActions(p, { sent: 1234.5, got: 91.06, rate: 0.91056, legs: [2.25, 3], total: 0.1 + 0.2 }, d);
+  assert.deepEqual(log, ["append Daily.md: - Sent 1234.5, got 91.06 at 0.91056 (2.25, 3)", "create Trips/Trip 0.3.md", "notify Logged 91.06 at 0.91056"]);
+});
+
 test("row: shapes what is saved; one whole placeholder keeps the value's type", async () => {
   const doc = { title: "Dune", author_name: ["Frank Herbert", "x"], first_publish_year: 1965, subject: ["sf"] };
   assert.deepEqual(fillRow({ title: "{title}", author: "{author_name.0}", year: "{first_publish_year}", tags: "{subject}", label: "{title} by {author_name.0}", gone: "{nope}" }, doc), {

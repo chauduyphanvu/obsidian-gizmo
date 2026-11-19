@@ -40,9 +40,19 @@ export function fileName(text: string): string {
 /** Line breaks in filled text, which would split a line, a file name or a notice in two. */
 const oneLine = (text: string) => text.replace(/\r\n|\r|\n/g, " ");
 
+/**
+ * A value as written into a note, a file name or a notice: a number as it is, never rounded for
+ * display (91.06 stays 91.06), with only the binary noise of arithmetic taken off (0.1 + 0.2 is 0.3).
+ */
+function written(v: unknown): string {
+  if (typeof v === "number") return String(Number(v.toPrecision(15)));
+  if (Array.isArray(v)) return v.map(written).join(", ");
+  return formatValue(v, undefined, false);
+}
+
 /** A template filled from a row where one line is wanted: each value's line breaks become spaces. */
 function fillLine(template: string, ctx: Row): string {
-  return fillWith(template, ctx, (_, v) => oneLine(formatValue(v, undefined, false)));
+  return fillWith(template, ctx, (_, v) => oneLine(written(v)));
 }
 
 /**
