@@ -1,6 +1,6 @@
 import { MarkdownView, TFile } from "obsidian";
 import type { AppEnv } from "./app.ts";
-import { LensIndex, LensStack, type LensFolds } from "./hosted.ts";
+import { LensIndex, LensStack, type LensFolds } from "./lenses.ts";
 import { obsidianAppEnv } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 

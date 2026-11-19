@@ -4,7 +4,7 @@ import type { AppEnv } from "../../src/app.ts";
 import { Background } from "../../src/background.ts";
 import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
-import { isAllowed } from "../../src/hosted.ts";
+import { isAllowed } from "../../src/grants.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
 import { parseYaml } from "./yaml.ts";

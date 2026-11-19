@@ -4,7 +4,7 @@ import { readdirSync } from "node:fs";
 import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import type { NoteReader } from "../src/expand.ts";
-import { LensIndex, LensStack } from "../src/hosted.ts";
+import { LensIndex, LensStack } from "../src/lenses.ts";
 import { readComponentPreview, readSpec } from "../src/spec.ts";
 import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";

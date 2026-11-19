@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { readFor, type NoteReader } from "../src/expand.ts";
-import { LensIndex, LensStack, lensDefinition } from "../src/hosted.ts";
+import { LensIndex, LensStack, lensDefinition } from "../src/lenses.ts";
 import { readComponentPreview, readSpec } from "../src/spec.ts";
 import { describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeEnv } from "./support/fakes.ts";

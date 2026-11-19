@@ -7,7 +7,7 @@ import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
-import { dropGrants, isAllowed, moveGrants } from "./hosted.ts";
+import { dropGrants, grantedOf, isAllowed, moveGrants, setGrant } from "./grants.ts";
 import { obsidianHost, obsidianUndoIO, pluginFile } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
@@ -187,12 +187,11 @@ export default class GizmoPlugin extends Plugin {
   }
 
   granted(path: string): string[] | undefined {
-    const entry = this.store.grants[path];
-    return entry === undefined ? undefined : entry ? entry.split("\n") : [];
+    return grantedOf(this.store.grants, path);
   }
 
   async grant(path: string, wanted: string[]): Promise<void> {
-    this.store.grants[path] = wanted.join("\n");
+    setGrant(this.store.grants, path, wanted);
     await this.saveData(this.store);
   }
 }
