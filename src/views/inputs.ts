@@ -1,8 +1,6 @@
 import { stampParts, type Row } from "../data.ts";
-import { ACTION_KEYS, busy, heading, needsAction, redraw } from "./common.ts";
+import { ACTION_KEYS, busy, checkFields, heading, needsAction, redraw } from "./common.ts";
 import type { ViewDef } from "./registry.ts";
-
-const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "textarea"];
 
 export const button: ViewDef = {
   id: "button",
@@ -26,12 +24,7 @@ export const form: ViewDef = {
   keys: [...ACTION_KEYS, "fields", "label"],
   span: 4,
   validate(p) {
-    const errors = p.fields ? [] : ["form needs fields"];
-    for (const [name, type] of Object.entries(p.fields ?? {})) {
-      if (typeof type === "string" && !FIELD_TYPES.includes(type)) {
-        errors.push(`field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
-      }
-    }
+    const errors = p.fields ? checkFields(p.fields) : ["form needs fields"];
     return [...errors, ...needsAction("form", p)];
   },
   examples: [

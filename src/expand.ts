@@ -1,9 +1,12 @@
+import { parseDuration } from "./data.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { storeTarget } from "./store.ts";
+import { RESERVED, storeTarget } from "./store.ts";
 import {
   InputRef, NAME, fillParams, nearMisses, parseInputs, refusedPlaces, unsafeValue,
 } from "./template.ts";
-import { COMMON_KEYS, DATA_KEYS, GROUP_KEYS, KEY_TYPES, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
+import {
+  COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readValue, type PanelKey,
+} from "./views/common.ts";
 import { viewDef } from "./views/registry.ts";
 
 /** The language version this plugin reads. */
@@ -17,11 +20,58 @@ export function checkVersion(value: unknown): string | undefined {
   return `spec must be ${SPEC_VERSION}`;
 }
 
+/** Keys only a block holds, for others to read: never merged into a panel that doesn't take them. */
+const BLOCK_ONLY: readonly string[] = ["fields", "record", "into"];
 /** Keys a named source in `data:` may hold. */
-const BLOCK_KEYS: readonly string[] = [...DATA_KEYS, ...GROUP_KEYS];
+const BLOCK_KEYS: readonly string[] = [...DATA_KEYS, ...GROUP_KEYS, ...BLOCK_ONLY];
+/** Keys that say where a chain's data comes from, so only its root block holds them. */
+const ROOT_KEYS: readonly string[] = ["headers", "from", "body", "record", "into"];
+/** The most blocks one chain may hold, its root included. */
+export const MAX_CHAIN = 4;
 
 /** Named sources from `data:`, checked once; panels take their keys by naming them in `source`. */
 export type Blocks = Map<string, Record<string, unknown>>;
+/** Checked blocks, as a map or as `AppSpec.blocks`. */
+export type BlockSet = ReadonlyMap<string, Record<string, unknown>> | Readonly<Record<string, Record<string, unknown>>>;
+
+function blockIn(blocks: BlockSet, name: string): Record<string, unknown> | undefined {
+  return blocks instanceof Map ? blocks.get(name) : Object.hasOwn(blocks, name) ? (blocks as Record<string, Record<string, unknown>>)[name] : undefined;
+}
+
+/** The block a block reads, when its source names another block rather than a list of its own name. */
+function parentOf(name: string, blocks: BlockSet): string | undefined {
+  const source = blockIn(blocks, name)?.source;
+  return typeof source === "string" && source !== name && sourceDef(source).id === "list" && blockIn(blocks, source) ? source : undefined;
+}
+
+/** The blocks a checked block reads through, root first, ending with the block itself. */
+export function blockChain(name: string, blocks: BlockSet): string[] {
+  const chain = [name];
+  for (let up = parentOf(name, blocks); up !== undefined && !chain.includes(up); up = parentOf(up, blocks)) chain.unshift(up);
+  return chain;
+}
+
+/** The fields describing a block's rows: its own, or those of the nearest block up its chain that has them. */
+export function schemaOf(name: string, blocks: BlockSet): Record<string, string | string[]> | undefined {
+  const holder = blockChain(name, blocks).reverse().find((n) => blockIn(blocks, n)?.fields !== undefined);
+  return holder === undefined ? undefined : blockIn(blocks, holder)!.fields as Record<string, string | string[]>;
+}
+
+function readBlockKey(key: string, value: unknown): { value?: unknown; errors: string[] } {
+  if (key === "record") {
+    return parseDuration(value) ? { value, errors: [] } : { errors: ["record must look like 10m, 1h, 1d"] };
+  }
+  if (key === "into") {
+    const name = typeof value === "string" || typeof value === "number" ? String(value) : "";
+    if (!name || sourceDef(name).id !== "list") return { errors: ["into must name a list, e.g. into: kp_log"] };
+    if (RESERVED.includes(name)) return { errors: [`into can't use "${name}", which names part of the app`] };
+    return { value: name, errors: [] };
+  }
+  const read = readValue(key as PanelKey, value);
+  if ("error" in read) return { errors: [read.error] };
+  const errors = key === "fields" ? checkFields(read.value as Record<string, string | string[]>) : [];
+  return errors.length ? { errors } : { value: read.value, errors };
+}
 
 export function readBlocks(value: unknown, errors: string[]): Blocks {
   const blocks: Blocks = new Map();
@@ -47,32 +97,87 @@ export function readBlocks(value: unknown, errors: string[]): Blocks {
         continue;
       }
       if (v === null || v === undefined) continue;
-      const read = readValue(key as PanelKey, v);
-      if ("error" in read) errors.push(`${at}: ${read.error}`);
-      else block[key] = read.value;
+      const read = readBlockKey(key, v);
+      errors.push(...read.errors.map((e) => `${at}: ${e}`));
+      if (read.errors.length === 0) block[key] = read.value;
+    }
+    if (block.into !== undefined && block.record === undefined) {
+      errors.push(`${at}: "into" needs "record"`);
+      delete block.into;
     }
     if (typeof block.source !== "string" || !block.source) errors.push(`${at} needs a source`);
     else blocks.set(name, block);
   }
-  // A block reads a URL, notes or a list, never another block, so there are no chains to follow.
-  for (const [name, block] of [...blocks]) {
-    const source = String(block.source);
-    if (source !== name && blocks.has(source)) {
-      errors.push(`data.${name}: source "${source}" is another data block; blocks can't use each other`);
-      blocks.delete(name);
-    }
-  }
+  checkChains(blocks, errors);
   return blocks;
 }
 
 /**
- * A panel whose `source` names a block gets the block's keys; the panel's own keys then replace
- * them one by one, and an empty panel key removes the key it would have inherited.
+ * A block may read another block, which then runs first. Chains that loop or run more than
+ * MAX_CHAIN deep are dropped; source keys typed below a chain's root are dropped with a pointer to it.
  */
-export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): { template: Record<string, unknown>; errors: string[] } {
+function checkChains(blocks: Blocks, errors: string[]): void {
+  const label = (names: string[]) => names.map((n) => `data.${n}`).join(" → ");
+  const broken = new Set<string>();
+  const loops = new Set<string>();
+  for (const name of blocks.keys()) {
+    // Followed the way blocks read each other: name → its source block → that block's source …
+    const path = [name];
+    for (let up = parentOf(name, blocks); up !== undefined; up = parentOf(up, blocks)) {
+      if (path.includes(up)) {
+        const loop = [...path.slice(path.indexOf(up)), up];
+        const key = [...new Set(loop)].sort().join("\n");
+        if (!loops.has(key)) errors.push(`${label(loop)} use each other`);
+        loops.add(key);
+        broken.add(name);
+        break;
+      }
+      path.push(up);
+    }
+    if (broken.has(name) || path.length <= MAX_CHAIN) continue;
+    broken.add(name);
+    if (path.length === MAX_CHAIN + 1) errors.push(`${label(path)} is more than ${MAX_CHAIN} blocks deep`);
+  }
+  for (const name of broken) blocks.delete(name);
+  for (const [name, block] of blocks) {
+    if (parentOf(name, blocks) === undefined) continue;
+    const root = blockChain(name, blocks)[0];
+    for (const key of ROOT_KEYS) {
+      if (!(key in block)) continue;
+      errors.push(`data.${name}: "${key}" belongs on data.${root}, where the source is`);
+      delete block[key];
+    }
+  }
+}
+
+/** A block's pipeline, run as a stage when a panel names a block further down its chain. */
+function stageKeys(block: Record<string, unknown>): Record<string, unknown> {
+  return Object.fromEntries(Object.entries(block).filter(([k]) => k !== "source" && k !== "fields" && !ROOT_KEYS.includes(k)));
+}
+
+/** One block above the one a panel names: its name, for messages, and its pipeline keys. */
+export interface Stage {
+  block: string;
+  keys: Record<string, unknown>;
+}
+
+/**
+ * A panel whose `source` names a block gets the block's keys; the panel's own keys then replace
+ * them one by one, and an empty panel key removes the key it would have inherited. When the block
+ * reads another block, the source keys come from the chain's root and the blocks above the named
+ * one become fixed stages, root first. `schema` is the nearest `fields` up the chain.
+ */
+export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): {
+  template: Record<string, unknown>;
+  stages: Stage[];
+  schema?: Record<string, string | string[]>;
+  errors: string[];
+} {
   const name = raw.source;
   const block = typeof name === "string" && sourceDef(name).id === "list" ? blocks.get(name) : undefined;
-  if (!block) return { template: raw, errors: [] };
+  if (!block) return { template: raw, stages: [], errors: [] };
+  const chain = blockChain(name as string, blocks);
+  const root = blocks.get(chain[0])!;
   const def = typeof raw.view === "string" ? viewDef(raw.view) : undefined;
   const allowed = new Set<string>(def ? [...COMMON_KEYS, ...def.keys] : []);
   const errors: string[] = [];
@@ -80,13 +185,20 @@ export function expandPanel(raw: Record<string, unknown>, blocks: Blocks): { tem
   for (const [key, value] of Object.entries(raw)) {
     if (key !== "source" && value !== null && value !== undefined) template[key] = value;
   }
-  for (const [key, value] of Object.entries(block)) {
-    if (key === "source" || key in raw) continue;
-    if (def && !allowed.has(key)) errors.push(`"${key}" doesn't apply to ${def.id} (from data.${name as string})`);
-    else template[key] = value;
-  }
-  template.source = block.source;
-  return { template, errors };
+  const inherit = (from: string, keys: Record<string, unknown>) => {
+    for (const [key, value] of Object.entries(keys)) {
+      if (key in raw || (BLOCK_ONLY.includes(key) && !allowed.has(key))) continue;
+      if (def && !allowed.has(key)) errors.push(`"${key}" doesn't apply to ${def.id} (from data.${from})`);
+      else template[key] = value;
+    }
+  };
+  inherit(name as string, Object.fromEntries(Object.entries(block).filter(([k]) => k !== "source")));
+  if (chain.length > 1) inherit(chain[0], Object.fromEntries(Object.entries(root).filter(([k]) => ROOT_KEYS.includes(k))));
+  template.source = root.source;
+  const stages = chain.slice(0, -1)
+    .map((n) => ({ block: n, keys: stageKeys(blocks.get(n)!) }))
+    .filter((s) => Object.keys(s.keys).length > 0);
+  return { template, stages, schema: schemaOf(name as string, blocks), errors };
 }
 
 // ---- Components ----------------------------------------------------------------------------------
@@ -173,6 +285,15 @@ export function componentParams(value: unknown): Map<string, unknown> | undefine
   return params;
 }
 
+const isInternal = (key: string) => (INTERNAL_KEYS as readonly string[]).includes(key);
+
+/** Keys only expansion may add are reported when typed, and dropped. */
+function withoutInternal(raw: Record<string, unknown>, at: (e: string) => void): Record<string, unknown> {
+  const typed = Object.keys(raw).filter(isInternal);
+  for (const key of typed) at(`unknown key "${key}"`);
+  return typed.length ? Object.fromEntries(Object.entries(raw).filter(([k]) => !isInternal(k))) : raw;
+}
+
 function fill(value: unknown, scope: Scope, errors: string[], key = ""): unknown {
   return scope.kind === "input" ? parseInputs(value, scope.names, key) : fillParams(value, scope.params, errors, key);
 }
@@ -215,22 +336,16 @@ export class Expander {
         at('"with" needs "use"');
         raw = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "with"));
       }
-      const merged = expandPanel(raw, scope.blocks);
-      merged.errors.forEach(at);
-      nearMisses(merged.template, scope.names, scope.kind).forEach(at);
-      const refused = refusedPlaces(merged.template, scope.names, scope.kind);
-      refused.forEach(at);
-      if (refused.length) return [];
-      const fillErrors: string[] = [];
-      const template = fill(merged.template, scope, fillErrors) as Record<string, unknown>;
-      fillErrors.forEach(at);
+      const prepared = this.prepare(withoutInternal(raw, at), scope, at, true);
+      if (!prepared) return [];
+      const { typed, template } = prepared;
       // A param may name a list for `source` or `save`, never a URL, notes or an app's input.
       for (const key of ["source", "save"] as const) {
-        const typed = merged.template[key];
+        const written = typed[key];
         const got = template[key];
-        if (scope.kind !== "param" || typeof typed !== "string" || !/^\$[A-Za-z_]\w*$/.test(typed) || !scope.names.has(typed.slice(1))) continue;
+        if (scope.kind !== "param" || typeof written !== "string" || !/^\$[A-Za-z_]\w*$/.test(written) || !scope.names.has(written.slice(1))) continue;
         if (got instanceof InputRef || typeof got !== "string" || (key === "source" && sourceDef(got).id !== "list")) {
-          at(`${typed} can only name a list here; write a URL in the component with ${typed} in its path or query`);
+          at(`${written} can only name a list here; write a URL in the component with ${written} in its path or query`);
           return [];
         }
       }
@@ -310,20 +425,44 @@ export class Expander {
     return produced;
   }
 
+  /**
+   * One entry's keys with the block it names merged in and its `$names` filled. When the block reads
+   * other blocks, `upstream` holds their stages (root first); `schema` is the chain's nearest
+   * `fields`. `typed` is the merged keys before filling. Undefined when a name is used where it
+   * can't go.
+   */
+  private prepare(raw: Record<string, unknown>, scope: Scope, at: (e: string) => void, typos: boolean):
+    { typed: Record<string, unknown>; template: Record<string, unknown> } | undefined {
+    const merged = expandPanel(raw, scope.blocks);
+    merged.errors.forEach(at);
+    const parts = [merged.template, ...merged.stages.map((s) => s.keys)];
+    if (typos) nearMisses(parts, scope.names, scope.kind).forEach(at);
+    const refused = parts.flatMap((part) => refusedPlaces(part, scope.names, scope.kind));
+    refused.forEach(at);
+    if (refused.length) return undefined;
+    const fillErrors: string[] = [];
+    const [template, ...stages] = parts.map((part) => fill(part, scope, fillErrors) as Record<string, unknown>);
+    fillErrors.forEach(at);
+    if (stages.length) template.upstream = stages.map((keys, i) => ({ block: merged.stages[i].block, keys }));
+    if (merged.schema) template.schema = merged.schema;
+    return { typed: merged.template, template };
+  }
+
   /** Keys beside `use` replace those keys in every panel the component makes that takes them. */
   private applyOverrides(raw: Record<string, unknown>, scope: Scope, produced: Produced[], name: string, at: (e: string) => void): void {
-    const keys = Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "use" && k !== "with"));
+    const keys = withoutInternal(Object.fromEntries(Object.entries(raw).filter(([k]) => k !== "use" && k !== "with")), at);
     if (Object.keys(keys).length === 0) return;
-    const merged = expandPanel(keys, scope.blocks);
-    const refused = refusedPlaces(merged.template, scope.names, scope.kind);
-    refused.forEach(at);
-    if (refused.length) return;
-    const fillErrors: string[] = [];
-    const filled = fill(merged.template, scope, fillErrors) as Record<string, unknown>;
-    fillErrors.forEach(at);
+    const filled = this.prepare(keys, scope, at, false)?.template;
+    if (!filled) return;
+    const set = (t: Produced, key: string) => {
+      const value = filled[key];
+      if (value === null || value === undefined) delete t.template[key];
+      else t.template[key] = value;
+      t.writtenIn[key] = scope.path;
+    };
     // Keys typed empty aren't in `filled`; they remove the key from the component's panels.
     for (const key of new Set([...Object.keys(keys), ...Object.keys(filled)])) {
-      const value = filled[key];
+      if (isInternal(key)) continue;
       const targets = produced.filter((pr) => {
         const def = typeof pr.template.view === "string" ? viewDef(pr.template.view) : undefined;
         return def && ([...COMMON_KEYS, ...def.keys] as string[]).includes(key);
@@ -333,9 +472,9 @@ export class Expander {
         continue;
       }
       for (const t of targets) {
-        if (value === null || value === undefined) delete t.template[key];
-        else t.template[key] = value;
-        t.writtenIn[key] = scope.path;
+        set(t, key);
+        // A chain's stages and schema come with the source that named it.
+        if (key === "source") for (const k of INTERNAL_KEYS) set(t, k);
       }
     }
   }

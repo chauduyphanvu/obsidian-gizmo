@@ -6,11 +6,19 @@ import type { Panel } from "./spec.ts";
 export type PipelineKeys = Pick<Panel, "pick" | "where" | "sort" | "limit" | "group" | "per" | "agg" | "y" | "columns">;
 
 /**
- * A panel's data steps as one function, with its conditions parsed up front:
- * pick → (parallel arrays to rows, when grouping) → where → group → sort → limit.
+ * A panel's data steps as one function, with its conditions parsed up front: the stages of the
+ * blocks above the one it names, root first, then its own keys.
+ */
+export function compilePipeline(p: PipelineKeys & Pick<Panel, "upstream">, now: Date): (input: unknown) => unknown {
+  const stages = [...(p.upstream ?? []), p].map((s) => compileStage(s, now));
+  return (input) => stages.reduce((data, run) => run(data), input);
+}
+
+/**
+ * One stage: pick → (parallel arrays to rows, when grouping) → where → group → sort → limit.
  * A streak counts raw rows, so it skips grouping.
  */
-export function compilePipeline(p: PipelineKeys, now: Date): (input: unknown) => unknown {
+function compileStage(p: PipelineKeys, now: Date): (input: unknown) => unknown {
   const keep = p.where ? compileWhere(p.where, now) : undefined;
   const grouping = !!p.group && p.agg !== "streak";
   return (input) => {

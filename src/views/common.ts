@@ -97,6 +97,16 @@ export function readValue(key: PanelKey, value: unknown): { value: unknown } | {
   }
 }
 
+/** The input types a field can have, besides a list of choices. */
+export const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "textarea"];
+
+/** Problems with a `fields` map (a form's, or a data block's schema). */
+export function checkFields(fields: Record<string, string | string[]>): string[] {
+  return Object.entries(fields)
+    .filter(([, type]) => typeof type === "string" && !FIELD_TYPES.includes(type))
+    .map(([name]) => `field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+}
+
 /** Keys every view accepts. */
 export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */

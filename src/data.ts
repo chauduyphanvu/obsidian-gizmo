@@ -51,6 +51,16 @@ export function toTime(v: unknown): number | undefined {
   return undefined;
 }
 
+/** Milliseconds in `30s`, `5m`, `1h`, `1d`; a bare number is minutes. */
+export function parseDuration(value: unknown): number | undefined {
+  if (typeof value === "number") return value * 60_000;
+  if (typeof value !== "string") return undefined;
+  const m = value.trim().match(/^(\d+(?:\.\d+)?)\s*(s|m|h|d)$/i);
+  if (!m) return undefined;
+  const unit = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2].toLowerCase() as "s"];
+  return Number(m[1]) * unit;
+}
+
 export interface Point { x: unknown; y: number }
 
 /** Builds chart points from either parallel arrays (x and y paths) or rows (x and y fields). */

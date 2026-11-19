@@ -1,15 +1,17 @@
-import { PERIODS, stampParts, type Agg, type Per } from "./data.ts";
+import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, storeTarget } from "./store.ts";
 import {
   readInputs, refsIn, resolveInputs, type InputDef, type InputValue,
 } from "./template.ts";
 import {
-  Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, type NoteReader, type Produced,
+  Expander, MAX_PANELS, basename, checkVersion, componentParams, readBlocks, type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readValue, type PanelKey } from "./views/common.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
+
+export { parseDuration };
 
 export interface Panel {
   view: string;
@@ -95,6 +97,8 @@ export interface AppSpec {
   panels: PanelSpec[];
   refreshMs?: number;
   inputs: InputDef[];
+  /** The app's own data blocks, checked, as typed (`$names` unfilled). */
+  blocks: Record<string, Record<string, unknown>>;
   /** Component notes read while expanding (path → frontmatter), and the names of every `use` link. */
   read: Record<string, unknown>;
   links: string[];
@@ -108,7 +112,51 @@ export function startingValues(defs: InputDef[], now: Date): Record<string, Inpu
 /** The panel with these input values filled in, checked. */
 export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, InputValue>>): { panel?: Panel; errors: string[] } {
   if (ps.inputs.length === 0) return { panel: ps.panel, errors: [] };
-  return checkPanel(resolveInputs(ps.template, values) as Record<string, unknown>, ps.strict);
+  return checkTemplate(resolveInputs(ps.template, values) as Record<string, unknown>, ps.strict);
+}
+
+/**
+ * Checks a filled template: its typed keys through checkPanel, then the stages expansion added
+ * for the blocks above the one it names. A stage's key-level problems drop the key; its other
+ * problems stop the panel, as a panel's own do.
+ */
+function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
+  const { upstream, schema, ...keys } = t;
+  const r = checkPanel(keys, strict);
+  const errors = [...r.errors];
+  const stages: PipelineKeys[] = [];
+  let stopped = false;
+  for (const { block, keys: raw } of (upstream ?? []) as Stage[]) {
+    const s = readStage(raw);
+    errors.push(...[...s.errors, ...s.problems].map((e) => `data.${block}: ${e}`));
+    stopped ||= s.problems.length > 0;
+    stages.push(s.stage);
+  }
+  if (!r.panel || stopped) return { errors };
+  const panel: Panel = { ...r.panel };
+  if (stages.length) panel.upstream = stages;
+  if (schema) panel.schema = schema as Panel["schema"];
+  return { panel, errors };
+}
+
+/** One block's pipeline keys, checked again once its `$names` are filled. */
+function readStage(raw: Record<string, unknown>): { stage: PipelineKeys; errors: string[]; problems: string[] } {
+  const stage: PipelineKeys = {};
+  const errors: string[] = [];
+  for (const [key, value] of Object.entries(raw)) {
+    const read = readValue(key as PanelKey, value);
+    if ("error" in read) errors.push(read.error);
+    else (stage as Record<string, unknown>)[key] = read.value;
+  }
+  return { stage, errors, problems: groupProblems(stage) };
+}
+
+function groupProblems(p: PipelineKeys): string[] {
+  return [
+    ...(p.per && !p.group ? ['"per" needs "group"'] : []),
+    ...(p.per && !PERIODS.includes(p.per) ? [`per must be one of ${PERIODS.join(", ")}`] : []),
+    ...(p.group === "count" ? ['group can\'t be "count"; every group gets a count'] : []),
+  ];
 }
 
 
@@ -121,15 +169,6 @@ export interface SpecResult {
 
 export function isUrl(source: string | undefined): source is string {
   return !!source && sourceDef(source).id === "url";
-}
-
-export function parseDuration(value: unknown): number | undefined {
-  if (typeof value === "number") return value * 60_000;
-  if (typeof value !== "string") return undefined;
-  const m = value.trim().match(/^(\d+(?:\.\d+)?)\s*(s|m|h|d)$/i);
-  if (!m) return undefined;
-  const unit = { s: 1_000, m: 60_000, h: 3_600_000, d: 86_400_000 }[m[2].toLowerCase() as "s"];
-  return Number(m[1]) * unit;
 }
 
 /**
@@ -161,10 +200,8 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean): { pan
     ...(def.validate?.(p) ?? []),
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
-    ...(p.per && !p.group ? ['"per" needs "group"'] : []),
+    ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
-    ...(p.per && !PERIODS.includes(p.per) ? [`per must be one of ${PERIODS.join(", ")}`] : []),
-    ...(p.group === "count" ? ['group can\'t be "count"; every group gets a count'] : []),
     ...(p.save && RESERVED.includes(p.save) ? [`save can't use "${p.save}", which names part of the app`] : []),
   ];
   return { panel: problems.length ? undefined : p, errors: [...errors, ...problems] };
@@ -200,13 +237,13 @@ export function readSpec(
     const at = (e: string) => (p.label ? `${p.label}: ${e}` : e);
     const uses = refsIn(p.template);
     for (const n of uses) used.add(n);
-    const r = checkPanel(resolveInputs(p.template, start) as Record<string, unknown>, strict);
+    const r = checkTemplate(resolveInputs(p.template, start) as Record<string, unknown>, strict);
     errors.push(...r.errors.map(at));
     // Any choice can be picked, so each must make a valid panel too.
     for (const def of inputs) {
       if (def.kind !== "choice" || !uses.includes(def.name)) continue;
       for (const option of def.options.slice(1)) {
-        const other = checkPanel(resolveInputs(p.template, { ...start, [def.name]: option }) as Record<string, unknown>, strict)
+        const other = checkTemplate(resolveInputs(p.template, { ...start, [def.name]: option }) as Record<string, unknown>, strict)
           .errors.filter((e) => !r.errors.includes(e));
         if (other.length === 0) continue;
         errors.push(...other.map((e) => at(`${e} (when $${def.name} is ${option})`)));
@@ -255,7 +292,9 @@ export function readSpec(
     if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
     else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
   }
-  const spec = { description, panels, refreshMs, store, inputs, read: expander.read, links: [...expander.links] };
+  const spec = {
+    description, panels, refreshMs, store, inputs, blocks: Object.fromEntries(blocks), read: expander.read, links: [...expander.links],
+  };
   return { spec, errors, empty: false };
 }
 

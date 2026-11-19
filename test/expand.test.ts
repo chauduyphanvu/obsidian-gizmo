@@ -20,7 +20,7 @@ test("a panel naming a block takes its keys, then replaces them key by key", () 
   ]);
 });
 
-test("a block named after a list reads that list; blocks can't use each other", () => {
+test("a block named after a list reads that list; a block can read another block", () => {
   const r = readSpec({
     app: "x",
     data: {
@@ -29,10 +29,10 @@ test("a block named after a list reads that list; blocks can't use each other", 
     },
     panels: [{ view: "number", source: "weights", field: "weight" }, { view: "list", source: "recent" }],
   })!;
-  assert.deepEqual(r.errors, ['data.recent: source "weights" is another data block; blocks can\'t use each other']);
+  assert.deepEqual(r.errors, []);
   assert.deepEqual(r.spec!.panels[0].panel, { view: "number", field: "weight", where: { at: "last 30 days" }, source: "weights" });
-  // "recent" is gone, so the list panel reads a list called "recent".
-  assert.equal(r.spec!.panels[1].panel.source, "recent");
+  // "recent" runs on what "weights" gives: the list, narrowed to the last 30 days.
+  assert.deepEqual(r.spec!.panels[1].panel, { view: "list", limit: 3, source: "weights", upstream: [{ where: { at: "last 30 days" } }] });
 });
 
 test("block problems name the block", () => {
