@@ -2,6 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AGGS, PERIODS } from "../src/data.ts";
 import { BLOCK_KEYS, BLOCK_ONLY } from "../src/expand.ts";
+import { sourceDef } from "../src/sources/registry.ts";
+import { SOURCE_WORDS } from "../src/store.ts";
 import { KEY_HINTS, VALUE_HINTS, VIEW_HINTS, completion, suggestionsAt, suggestionsFor, type Suggestion } from "../src/hints.ts";
 import { COMMON_KEYS, FIELD_TYPES, KEY_TYPES } from "../src/views/common.ts";
 import { VIEW_DEFS } from "../src/views/registry.ts";
@@ -54,7 +56,14 @@ test("the values a key takes come from the registries", () => {
   assert.deepEqual(Object.keys(VALUE_HINTS.layout), ["cards", "year"]);
   assert.deepEqual(Object.keys(VALUE_HINTS.compare), ["previous"]);
   assert.deepEqual(Object.keys(VALUE_HINTS.pin), ["status"]);
+  assert.deepEqual(Object.keys(VALUE_HINTS.source), ["notes", "tasks", "this"]);
   for (const [key, values] of Object.entries(VALUE_HINTS)) for (const [v, hint] of Object.entries(values)) assert.ok(hint, `${key}: ${v}`);
+});
+
+test("the source words are the kinds of source that are one word, and each has its hint", () => {
+  for (const word of Object.keys(VALUE_HINTS.source)) assert.equal(sourceDef(word).id, word, `${word} isn't a kind of source`);
+  for (const word of SOURCE_WORDS) assert.ok(VALUE_HINTS.source[word], `no hint for source: ${word}`);
+  assert.ok(KEY_HINTS.source.includes("tasks") && KEY_HINTS.source.includes("this"));
 });
 
 // ---- Suggestions -----------------------------------------------------------------------------------
@@ -126,6 +135,21 @@ test("the values of view, agg, per, layout, compare and pin", () => {
   assert.deepEqual(suggested("---\napp: A\nview: bar\nagg: ‸\n---"), [...AGGS]);
 });
 
+test("source offers the kinds that are words, in a panel, a data block and at the top", () => {
+  const words = ["notes", "tasks", "this"];
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: ‸")), words);
+  assert.deepEqual(suggested(app("data:\n  q:\n    source: ‸")), words);
+  assert.deepEqual(suggested("---\napp: A\nview: list\nsource: ‸\n---"), words);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: ta‸")), ["tasks"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: t‸")), ["tasks", "this", "notes"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: n‸")), ["notes"]);
+  // What isn't one of them (an address, a file, a list or a block) is typed freely, and nothing is offered once it can't be one.
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: https://api.example.com/q?a=1‸")), []);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: weights‸")), []);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: notes‸")), []);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    sou‸")), ["source"]);
+});
+
 test("a view value is for panels, not for data blocks", () => {
   assert.deepEqual(suggested(app("data:\n  q:\n    view: ‸")), []);
   assert.deepEqual(suggested(app("data:\n  q:\n    layout: ‸")), []);
@@ -142,7 +166,6 @@ test("the types of a form's fields, and of a data block's", () => {
 
 test("nothing is suggested where the text is free", () => {
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    title: ‸")), []);
-  assert.deepEqual(suggested(app("panels:\n  - view: bar\n    source: ‸")), []);
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    where:\n      ‸")), []);
   assert.deepEqual(suggested(app("panels:\n  - view: table\n    columns:\n      - ‸")), []);
   assert.deepEqual(suggested(app("panels:\n  - view: bar\n    agg: [‸")), []);

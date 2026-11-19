@@ -25,10 +25,10 @@ export const KEY_HINTS: Record<string, string> = {
   tab: "Put this panel in a tab with this name",
   span: "How many of the 4 columns wide this panel is: 1 to 4",
   // Where the rows come from
-  source: "Where the data comes from: a web address, notes, a saved list or a data block's name",
+  source: "Where the data comes from: a web address, a vault file, notes, tasks, this, a saved list or a data block",
   headers: "Request headers for a web source, e.g. {authorization: \"Bearer {secret:key}\"}",
   pick: "Dig into the response with a path, e.g. features or hourly.time",
-  from: "Which notes to read: a folder (Books) or a #tag, commas for several",
+  from: "Which notes to read, for notes or tasks: a folder (Books) or a #tag, commas for several",
   where: "Keep only matching rows, e.g. {status: done, rating: \"> 3\"}",
   sort: "Order rows by a field; a leading - sorts high to low",
   limit: "Keep only the first N rows",
@@ -134,7 +134,8 @@ const FIELD_HINTS: Record<string, string> = {
 
 /**
  * The words a value can be, each with what it does, by the key it follows. `fields` holds the
- * types a field can have, for the values directly under a `fields:` map.
+ * types a field can have, for the values directly under a `fields:` map; `source` the kinds of
+ * source that are one word (the others are an address, a file, or a name).
  */
 export const VALUE_HINTS: Record<string, Record<string, string>> = {
   view: Object.fromEntries(VIEW_DEFS.map((d) => [d.id, VIEW_HINTS[d.id] ?? ""])),
@@ -143,6 +144,11 @@ export const VALUE_HINTS: Record<string, Record<string, string>> = {
   layout: { cards: "Each table row as a card", year: "A calendar drawn as a whole year" },
   compare: { previous: "The change against the window just before" },
   pin: { status: "Show the value in the status bar" },
+  source: {
+    notes: "One row per note in from: a folder or #tag",
+    tasks: "One row per checkbox task in the notes in from",
+    this: "One row: the properties of the note this app sits in",
+  },
   fields: Object.fromEntries(FIELD_TYPES.map((t) => [t, FIELD_HINTS[t] ?? ""])),
 };
 
