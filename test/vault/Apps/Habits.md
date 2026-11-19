@@ -30,4 +30,10 @@ panels:
     source: stretches
     group: mood
     sort: -count
+  - view: calendar
+    tab: Year
+    title: My year of stretching
+    source: stretches
+    group: at
+    layout: year
 ---

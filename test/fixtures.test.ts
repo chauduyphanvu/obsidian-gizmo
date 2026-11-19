@@ -287,28 +287,31 @@ test("Projects: drag projects along a board, see the schedule, pick one, see wha
   assert.equal(text(due.querySelector(".na-cal-title")), "December 2026");
 });
 
-test("Stretch year: log a stretch, and the streak and today's square follow", async () => {
-  const spec = readSpec(vaultNote("Apps/Stretch year.md").fm, { path: "Apps/Stretch year.md" })!;
+test("Habits: log a stretch, and the streak and today's square in the Year tab follow", async () => {
+  const spec = readSpec(vaultNote("Apps/Habits.md").fm, { path: "Apps/Habits.md" })!;
   assert.deepEqual(spec.errors, []);
-  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Stretch year.md"), []);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Habits.md"), []);
 
-  const { root, f } = openApp("Apps/Stretch year.md", { "Apps/Stretch year data.md": { fm: vaultNote("Apps/Stretch year data.md").fm } });
+  const { root, f } = openApp("Apps/Habits.md", { "Apps/Habits data.md": { fm: vaultNote("Apps/Habits data.md").fm } });
   await settle();
   assert.equal(root.querySelector(".na-error"), null);
+  assert.deepEqual([...root.querySelectorAll("button.na-tab")].map(text), ["Weeks", "Moods", "Year"]);
   const streak = () => text(root.querySelector(".na-view-number .na-big"));
   const square = (date: string) => root.querySelector(`rect[data-date="${date}"]`)!;
   assert.equal(root.querySelectorAll("rect").length, 365);
-  assert.equal(streak(), "3days");
-  // Two stretches on the 14th of March; none yet today.
-  assert.equal(square("2026-03-14").getAttribute("aria-label"), "2026-03-14: 2");
+  assert.equal(streak(), "0days");
+  // A day with a stretch, the day after without; none yet today.
+  assert.equal(square("2026-11-05").getAttribute("aria-label"), "2026-11-05: 1");
+  assert.ok(/na-step/.test(square("2026-11-05").getAttribute("class")!));
+  assert.equal(square("2026-11-06").getAttribute("aria-label"), "2026-11-06: 0");
   assert.equal(square("2026-11-18").getAttribute("aria-label"), "2026-11-18: 0");
   assert.ok(square("2026-11-18").classList.contains("na-today"));
   assert.ok(!/na-step/.test(square("2026-11-18").getAttribute("class")!));
 
   (root.querySelector("button.na-button") as HTMLButtonElement).click();
   await settle();
-  assert.deepEqual((f.files.get("Apps/Stretch year data.md")!.fm!.stretches as { at: string }[]).at(-1), { at: "2026-11-18T12:00" });
-  assert.equal(streak(), "4days");
+  assert.deepEqual((f.files.get("Apps/Habits data.md")!.fm!.stretches as { at: string }[]).at(-1), { at: "2026-11-18T12:00" });
+  assert.equal(streak(), "1days");
   assert.equal(square("2026-11-18").getAttribute("aria-label"), "2026-11-18: 1");
   assert.ok(/na-step/.test(square("2026-11-18").getAttribute("class")!));
 });
