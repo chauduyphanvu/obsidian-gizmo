@@ -211,6 +211,15 @@ test("year cells fit the panel width, never below 8px, and scroll when they can'
   assert.ok(el.querySelector(".na-cal-scroll"));
 });
 
+test("a year too wide for its panel opens scrolled to today; a whole year that fits doesn't scroll", () => {
+  const narrow = mount({ layout: "year" }, [], fakeCtx(300).ctx).el;
+  const scroller = narrow.querySelector(".na-cal-scroll") as HTMLElement;
+  // 18 November 2026 is in column 46 of 10 px columns: up to its end and four weeks more, less the 300 px shown.
+  assert.equal(scroller.scrollLeft, (47 + 4) * 10 - 300);
+  const wide = mount({ layout: "year" }, [], fakeCtx(600).ctx).el;
+  assert.equal((wide.querySelector(".na-cal-scroll") as HTMLElement).scrollLeft, 0);
+});
+
 test("year layout moves by year and arrows go a day up or down and a week across", () => {
   const { el } = mount({ layout: "year", select: "day" }, []);
   const press = (from: string, k: string) => {

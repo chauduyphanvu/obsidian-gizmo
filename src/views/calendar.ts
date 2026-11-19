@@ -124,9 +124,10 @@ function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: nu
   const weeks = cells[cells.length - 1].col + 1;
   const size = Math.max(MIN_CELL, Math.floor((width - (weeks - 1) * GAP) / weeks));
   const at = (i: number) => i * (size + GAP);
+  const scroller = el.createDiv({ cls: "na-cal-scroll" });
   const root = svg("svg", {
     width: at(weeks) - GAP, height: TOP + at(7) - GAP, class: "na-cal-year", role: "group", "aria-label": String(year),
-  }, el.createDiv({ cls: "na-cal-scroll" }));
+  }, scroller);
   const today = stampParts(ctx.now).date;
   for (const c of cells) {
     if (c.month) svg("text", { x: at(c.col), y: TOP - 5, class: "na-axis" }, root).textContent = c.month;
@@ -136,6 +137,9 @@ function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: nu
   }
   // Up and down are days here, left and right whole weeks.
   arrowKeys(root, 7, 1);
+  // Too narrow for the whole year (a phone), it opens scrolled to show today rather than January.
+  const now = cells.find((c) => c.date === today);
+  if (now) scroller.scrollLeft = Math.max(0, at(now.col + 1) + 4 * (size + GAP) - width);
 }
 
 type Nav = "prev" | "next" | "today";
