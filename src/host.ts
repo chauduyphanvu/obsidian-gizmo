@@ -71,6 +71,14 @@ function queued(path: string, write: () => Promise<void>): Promise<void> {
   return next;
 }
 
+/**
+ * Whether a write failed because its note is gone from the disk although Obsidian still lists it:
+ * deleted or moved by another program (a file manager, a sync) a moment before.
+ */
+async function vanished(app: App, path: string): Promise<boolean> {
+  return !(await app.vault.adapter.exists(path));
+}
+
 async function ensureFolder(app: App, path: string): Promise<void> {
   const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
   if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
@@ -112,7 +120,12 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | und
       await queued(path, async () => {
         const target = app.vault.getFileByPath(path);
         if (!target) return;
-        await app.fileManager.processFrontMatter(target, fn);
+        try {
+          await app.fileManager.processFrontMatter(target, fn);
+        } catch (e) {
+          if (await vanished(app, path)) return;
+          throw e;
+        }
         written = true;
       });
       return written;
@@ -151,11 +164,16 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | und
         const target = app.vault.getFileByPath(path);
         if (!target) return;
         // process reads and writes in one step, so an edit made meanwhile isn't lost or misread.
-        await app.vault.process(target, (data) => {
-          const next = tickLine(data, line, text, done);
-          ticked = next !== undefined;
-          return next ?? data;
-        });
+        try {
+          await app.vault.process(target, (data) => {
+            const next = tickLine(data, line, text, done);
+            ticked = next !== undefined;
+            return next ?? data;
+          });
+        } catch (e) {
+          if (await vanished(app, path)) return;
+          throw e;
+        }
       });
       return ticked;
     },
