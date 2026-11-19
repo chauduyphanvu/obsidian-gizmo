@@ -1,5 +1,7 @@
-import { actionDepsOf, runActions as runPanelActions } from "./actions.ts";
-import type { Change, NewEntry } from "./activity.ts";
+import type { NewEntry } from "./activity.ts";
+import { renderEmpty, renderErrors, renderOpenOnce, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
+import { Timers } from "./app-timers.ts";
+import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
@@ -10,25 +12,18 @@ import {
   isUrl, panelIds, pickPanels, readComponentPreview, readSpec, resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
-import { askersOf, describePermission, permissionsOf } from "./permissions.ts";
+import { askersOf, permissionsOf } from "./permissions.ts";
 import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
-import { labelOf, lineOf } from "./yamlpos.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
-import { ROW_INDEX } from "./sources/list.ts";
-import { sourceDef } from "./sources/registry.ts";
-import { basename, dataPathOf, isComponent, resolveList } from "./store.ts";
+import { basename, dataPathOf, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
-import { editErrors, editableSource } from "./edit.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";
-import { formatClock } from "./views/timer.ts";
 
 const CACHE_MS = 5 * 60_000;
-/** What a write to a note that was renamed or deleted since it was shown says. */
-const GONE = "That note is gone";
 /** How long a panel waits for the network before painting the disk copy. */
 const DISK_FIRST_MS = 50;
 
@@ -151,12 +146,6 @@ function plainTitle(ps: PanelSpec): string | undefined {
   return typeof ps.template.title === "string" ? ps.template.title : undefined;
 }
 
-/** Whether a stored list row still holds what was shown for it, apart from the field being changed. */
-function holds(stored: unknown, shown: Row, field: string): stored is Row {
-  if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return false;
-  return Object.entries(stored).every(([k, v]) => k === field || JSON.stringify(v) === JSON.stringify(shown[k]));
-}
-
 /**
  * Runs one app note: reads its keys, asks for permissions, mounts each panel once, paints each as
  * its data arrives, and from then on updates only the panels whose inputs changed.
@@ -179,8 +168,9 @@ export class AppController {
   private host: Row = {};
   private hostJson = "";
   private memory: AppMemory;
-  private get timers() { return this.memory.timers; }
-  private tickHandle: ReturnType<typeof setInterval> | undefined;
+  private timers: Timers;
+  private writes: AppWrites;
+  private cards: CardApp;
   private refreshHandle: ReturnType<typeof setInterval> | undefined;
   private resizeHandle: ReturnType<typeof setTimeout> | undefined;
   private width = 0;
@@ -214,45 +204,37 @@ export class AppController {
     this.grantKey = hosting?.grantKey ?? appPath;
     this.hostPath = hosting?.hostPath ?? appPath;
     this.memory = hosting?.memory ?? newMemory();
+    this.writes = new AppWrites(env, {
+      appPath, hostPath: this.hostPath, dataPath: () => this.dataPath, checklistName: (key) => this.checklistName(key),
+    });
+    this.timers = new Timers(this.memory.timers, {
+      panel: (key) => this.mounted.get(key),
+      notify: (message) => this.env.notify(message),
+      runActions: (p, row) => this.writes.runActions(p, row),
+      redraw: (key) => this.redraw(key),
+    });
+    this.cards = { env, appPath, hostPath: this.hostPath, grantKey: this.grantKey, hosted: !!hosting, load: () => this.load() };
     this.readHost();
     this.shell = root.createDiv({ cls: "gizmo" });
     const self = this;
     this.ctx = {
       get now() { return self.env.now(); },
       width: (key) => this.widthOf(key),
-      runActions: (p, row) => this.runActions(p, row),
-      toggleChecked: async (key, item) => {
-        let checked = false;
-        await this.writeData((fm) => {
-          const list = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
-          checked = !list.includes(item);
-          fm[key] = checked ? [...list, item] : list.filter((i) => i !== item);
-        });
-        this.log(this.checklistName(key), [{ kind: "checklist", path: this.dataPath, list: key, item, checked }]);
-      },
-      clearChecked: async (key) => {
-        let items: string[] = [];
-        await this.writeData((fm) => {
-          items = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
-          fm[key] = [];
-        });
-        if (items.length) this.log(this.checklistName(key), [{ kind: "cleared", path: this.dataPath, list: key, items }]);
-      },
+      runActions: (p, row) => this.writes.runActions(p, row),
+      toggleChecked: (key, item) => this.writes.toggleChecked(key, item),
+      clearChecked: (key) => this.writes.clearChecked(key),
       openNote: (path) => this.env.openNote(path, this.appPath),
-      timer: (key, p) => this.timerState(key, p),
+      timer: (key, p) => this.timers.state(key, p),
       startTimer: (key, p) => {
-        const s = this.timerState(key, p);
-        s.endsAt = Date.now() + s.remainingMs;
-        this.startTicking();
+        this.timers.start(key, p);
         this.redraw(key);
       },
       pauseTimer: (key) => {
-        const s = this.timers.get(key);
-        if (s?.endsAt) { s.remainingMs = s.endsAt - Date.now(); s.endsAt = undefined; }
+        this.timers.pause(key);
         this.redraw(key);
       },
       resetTimer: (key, p) => {
-        this.timers.set(key, { remainingMs: p.minutes! * 60_000 });
+        this.timers.reset(key, p);
         this.redraw(key);
       },
       select: (name, row) => this.setSelection(name, row),
@@ -266,8 +248,7 @@ export class AppController {
     this.destroyPanels();
     this.definition = "";
     this.reconcile();
-    // Timers kept in memory from an earlier drawing of this app go on counting.
-    if ([...this.timers.values()].some((s) => s.endsAt)) this.startTicking();
+    this.timers.resume();
     this.env.opened?.(this.appPath);
   }
 
@@ -281,7 +262,7 @@ export class AppController {
     this.unsubscribe?.();
     this.removeBar();
     this.destroyPanels();
-    this.stopTicking();
+    this.timers.stop();
     if (this.refreshHandle) clearInterval(this.refreshHandle);
     if (this.resizeHandle) clearTimeout(this.resizeHandle);
     this.shell.remove();
@@ -422,23 +403,18 @@ export class AppController {
     }
     const description = this.spec?.description ?? String(fm.app ?? "");
     if (description) header.createDiv({ cls: "gz-description", text: description });
-    if (component) this.renderUsage(header, component);
+    if (component) renderUsage(header, component, this.cards);
     if (result.empty) {
-      this.renderEmpty(header);
+      renderEmpty(header, this.cards);
       return this.showOnly(header);
     }
-    if (result.errors.length) {
-      const card = header.createDiv({ cls: "gz-card gz-error" });
-      card.createDiv({ cls: "gz-title", text: "This app's keys have problems" });
-      const ul = card.createEl("ul");
-      for (const e of result.errors) this.renderError(ul, e);
-    }
+    if (result.errors.length) renderErrors(header, result.errors, this.cards);
     const spec = this.spec;
     if (!spec?.panels.length || component?.missing.length || component?.lens) return this.showOnly(header);
 
     if (!granted) {
-      if (h?.kind === "app") this.renderOpenOnce(header);
-      else this.renderPermissionPrompt(header, wanted, askersOf(read!.spec!, this.appPath));
+      if (h?.kind === "app") renderOpenOnce(header, this.cards);
+      else renderPermissionPrompt(header, wanted, askersOf(read!.spec!, this.appPath), this.cards);
       return this.showOnly(header);
     }
 
@@ -456,7 +432,7 @@ export class AppController {
         m.handle.destroy?.();
         m.el.remove();
         this.mounted.delete(id);
-        this.timers.delete(id);
+        this.timers.forget(id);
       }
     }
     const files = this.files();
@@ -777,106 +753,10 @@ export class AppController {
     if (m && !m.source && !m.idle) m.handle.update(undefined);
   }
 
-  // ---- Cards --------------------------------------------------------------------------------
-
-  private renderPermissionPrompt(header: HTMLElement, wanted: string[], askers: Map<string, Set<string>>): void {
-    const card = header.createDiv({ cls: "gz-card" });
-    card.createDiv({ cls: "gz-title", text: "This app needs your OK to:" });
-    const ul = card.createEl("ul");
-    const before = new Set(this.env.granted(this.grantKey));
-    for (const p of wanted) {
-      const li = ul.createEl("li");
-      if (before.size && !before.has(p)) li.createSpan({ cls: "gz-new", text: "New" });
-      const who = [...(askers.get(p) ?? [])];
-      const others = who.filter((path) => path !== this.appPath).map((path) => `[[${basename(path)}]]`);
-      const names = [...(others.length && who.includes(this.appPath) ? ["this note"] : []), ...others];
-      li.createSpan({ text: describePermission(p) + (others.length ? ` — for ${names.join(", ")}` : "") });
-    }
-    const row = card.createDiv({ cls: "gz-actions" });
-    row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
-      await this.env.grant(this.grantKey, wanted);
-      this.load();
-    });
-    // An embed's keys are in the note it is drawn in, and a lens's in its component.
-    if (!this.hosting) row.createEl("button", { text: "Edit source" }).addEventListener("click", () => this.env.showSource());
-  }
-
-  /** In an embed of an app that isn't allowed yet: the app asks for itself when it is opened. */
-  private renderOpenOnce(header: HTMLElement): void {
-    const line = header.createDiv({ cls: "gz-waiting" });
-    line.createSpan({ text: "Open " });
-    const link = line.createEl("a", { cls: "internal-link", text: `[[${basename(this.appPath)}]]`, href: "#" });
-    link.addEventListener("click", (e) => {
-      e.preventDefault();
-      this.env.openNote(this.appPath, this.hostPath);
-    });
-    line.createSpan({ text: " once to allow it" });
-  }
-
-  /** An error that names a panel, a data block or an input is a link to that place in the note's source. */
-  private renderError(ul: HTMLElement, error: string): void {
-    const li = ul.createEl("li");
-    if (!labelOf(error)) return li.setText(error);
-    const link = li.createEl("button", { cls: "gz-error-link", text: error, title: "Show it in the note" });
-    link.addEventListener("click", () => void this.showErrorSource(error));
-  }
-
-  /** Reads the note when the link is used, since it may have changed since the card was drawn. */
-  private async showErrorSource(error: string): Promise<void> {
-    const line = lineOf(await this.env.sourceLines(), error);
-    if (line === undefined) this.env.showSource();
-    else this.env.showSourceAt(line);
-  }
-
-  private renderUsage(header: HTMLElement, c: ComponentPreview): void {
-    const card = header.createDiv({ cls: "gz-card" });
-    card.createDiv({ text: "A component. Use it in an app's panels:" });
-    card.createEl("pre", { cls: "gz-example", text: c.usage });
-    const copy = card.createDiv({ cls: "gz-actions" }).createEl("button", { text: "Copy" });
-    copy.addEventListener("click", () => {
-      this.env.copy(c.usage);
-      copy.setText("Copied");
-      setTimeout(() => copy.setText("Copy"), 1000);
-    });
-    if (c.lens) card.createDiv({ cls: "gz-label", text: `It is also a lens: it shows above every note in ${c.lens}.` });
-    else if (c.missing.length) card.createDiv({ cls: "gz-label", text: "Give every param a default to preview it here." });
-  }
-
-  private renderEmpty(header: HTMLElement): void {
-    const card = header.createDiv({ cls: "gz-card" });
-    card.createDiv({ text: "No app keys yet. Add a view under the app line, for example:" });
-    card.createEl("pre", { cls: "gz-example", text: "view: countdown\nto: 2027-01-01\nlabel: New year" });
-    if (this.hosting) return;
-    card.createDiv({ cls: "gz-actions" }).createEl("button", { cls: "mod-cta", text: "Edit source" })
-      .addEventListener("click", () => this.env.showSource());
-  }
-
-  // ---- Actions ------------------------------------------------------------------------------
-
-  private writeData(fn: (fm: Record<string, unknown>) => void): Promise<void> {
-    return this.env.writeFrontmatter(this.dataPath, fn);
-  }
-
   /** What the activity log calls a checklist: its panel's title, else the list it ticks into. */
   private checklistName(key: string): string {
     const m = [...this.mounted.values()].find((x) => x.p.view === "checklist" && (x.p.save ?? "checked") === key);
     return m?.p.title ?? m?.p.label ?? key;
-  }
-
-  /** Keeps what the person just changed through the app, so the app's activity can show and undo it. */
-  private log(what: string, changes: Change[]): void {
-    if (changes.length) this.env.log?.({ app: this.appPath, actor: "you", what, changes });
-  }
-
-  /** Sets one property of an existing note and keeps what it was; false when the note is gone. */
-  private async setField(path: string, field: string, value: unknown, what: string): Promise<boolean> {
-    let change: Change | undefined;
-    const written = await this.env.updateFrontmatter(path, (fm) => {
-      change = { kind: "property", path, field, from: fm[field], to: value, had: Object.hasOwn(fm, field) };
-      fm[field] = value;
-    });
-    if (written && change) this.log(what, [change]);
-    return written;
   }
 
   /** A panel's own view of the app: what every panel may ask, and edits that know whose rows they are. */
@@ -887,122 +767,17 @@ export class AppController {
     });
   }
 
-  /**
-   * Writes one field of a `save: this` form to the note the app sits in: only a field the form has,
-   * and for a lens only while that note is in the scope it was allowed to change.
-   */
-  private async setProperty(id: string, field: string, value: unknown): Promise<void> {
+  /** A panel's edits go through only while it is drawn and loaded; a changed row reloads it. */
+  private editRow(id: string, row: Row, field: string, value: unknown): Promise<void> {
     const m = this.mounted.get(id);
-    const target = m?.p.target;
-    if (!m || m.idle || target?.kind !== "this" || !Object.hasOwn(m.p.fields ?? {}, field)) return;
-    if (target.scope && !this.env.data.notes(target.scope).some((r) => r.path === this.hostPath)) return;
-    try {
-      if (!(await this.setField(this.hostPath, field, value, m.p.title ?? m.p.label ?? field))) this.env.notify(GONE);
-    } catch (e) {
-      this.env.notify(`Couldn't save: ${(e as Error).message}`);
-    }
+    if (!m || m.idle) return Promise.resolve();
+    return this.writes.editRow(m, row, field, value, () => void this.loadPanel(m));
   }
 
-  /**
-   * Writes one field of a row a panel shows back where it came from, as far as the panel's checked
-   * keys allow: a note in its `from` (granted as edit:<from>; any note for a base, edit:*), a task
-   * line in a note in its `from` (tasks:<from>), or the row's place in the list it reads, which
-   * must still hold the row that was shown.
-   */
-  private async editRow(id: string, row: Row, field: string, value: unknown): Promise<void> {
+  private setProperty(id: string, field: string, value: unknown): Promise<void> {
     const m = this.mounted.get(id);
-    if (!m || m.idle || editErrors(m.p, [field]).length) return;
-    try {
-      if (editableSource(m.p) === "tasks") return await this.tickTask(m, row, value);
-      if (editableSource(m.p) === "notes") {
-        const path = row.path;
-        const scope = sourceDef(m.p.source!).id === "base" ? this.env.data.allNotes() : this.env.data.notes(m.p.from ?? "");
-        if (typeof path !== "string" || !scope.some((r) => r.path === path)) return;
-        if (!(await this.setField(path, field, value, m.p.title ?? field))) this.env.notify(GONE);
-        return;
-      }
-      const index = (row as Record<symbol, unknown>)[ROW_INDEX];
-      if (typeof index !== "number") return;
-      const name = m.p.source!;
-      let changed = false;
-      let edit: Change | undefined;
-      await this.writeData((fm) => {
-        const list = resolveList(name, fm, this.env.frontmatter(this.appPath) ?? {});
-        const stored = Array.isArray(list) ? list[index] : undefined;
-        if (!Array.isArray(list) || !holds(stored, row, field)) {
-          changed = true;
-          return;
-        }
-        const next = [...list];
-        next[index] = { ...stored, [field]: value };
-        fm[name] = next;
-        edit = { kind: "row-edited", path: this.dataPath, list: name, row: next[index] as Row, field, from: stored[field], to: value };
-      });
-      if (edit) this.log(m.p.title ?? field, [edit]);
-      if (changed) {
-        this.env.notify("That row has changed; reload");
-        // Shows the list as it is now, putting back what the input claimed.
-        void this.loadPanel(m);
-      }
-    } catch (e) {
-      this.env.notify(`Couldn't save: ${(e as Error).message}`);
-    }
-  }
-
-  /** Ticks the task a row shows, in a note of the panel's `from`; when it has moved or changed, shows the notes as they are. */
-  private async tickTask(m: Mounted, row: Row, done: unknown): Promise<void> {
-    const { path, line, text } = row;
-    if (typeof path !== "string" || typeof line !== "number" || typeof text !== "string" || typeof done !== "boolean") return;
-    if (!this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
-    if (await this.env.setTaskDone(path, line, text, done)) {
-      this.log(m.p.title ?? "tasks", [{ kind: "task", path, line, text, done }]);
-      return;
-    }
-    this.env.notify("That task has changed; reload");
-    void this.loadPanel(m);
-  }
-
-  async runActions(p: Panel, row: Row): Promise<void> {
-    const env = this.env;
-    await runPanelActions(p, row, {
-      ...actionDepsOf(env, this.appPath, this.dataPath),
-      log: (what, changes) => this.log(what, changes),
-      then: async (panel, ctx) => { if (panel.then) await env.trigger?.(this.appPath, panel.then, ctx); },
-    });
-  }
-
-  // ---- Timers -------------------------------------------------------------------------------
-
-  private timerState(key: string, p: Panel): TimerState {
-    let s = this.timers.get(key);
-    if (!s) this.timers.set(key, (s = { remainingMs: p.minutes! * 60_000 }));
-    return s;
-  }
-
-  /** One tick for all of this app's timers, running only while one counts down. */
-  private startTicking(): void {
-    this.tickHandle ??= setInterval(() => this.tick(), 1000);
-  }
-
-  private stopTicking(): void {
-    if (this.tickHandle) clearInterval(this.tickHandle);
-    this.tickHandle = undefined;
-  }
-
-  private tick(): void {
-    let running = false;
-    for (const [key, s] of this.timers) {
-      if (!s.endsAt) continue;
-      const left = s.endsAt - Date.now();
-      const m = this.mounted.get(key);
-      const clock = m?.el.querySelector(`[data-gz-timer="${key}"]`);
-      if (clock) clock.textContent = formatClock(left);
-      if (left > 0) { running = true; continue; }
-      this.timers.set(key, { remainingMs: (m?.p.minutes ?? 0) * 60_000 });
-      this.env.notify(`${m?.p.title ?? "Timer"} finished`);
-      if (m) void this.runActions(m.p, { minutes: m.p.minutes }).then(() => this.redraw(key));
-    }
-    if (!running) this.stopTicking();
+    if (!m || m.idle) return Promise.resolve();
+    return this.writes.setProperty(m, field, value);
   }
 }
 
