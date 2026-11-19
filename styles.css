@@ -423,3 +423,6 @@ button.na-lens-toggle {
 .note-app .na-alerts li { display: flex; flex-wrap: wrap; align-items: baseline; gap: var(--size-4-2); }
 .note-app .na-alert-title { color: var(--text-normal); }
 .note-app .na-alert-value { margin-left: auto; color: var(--text-accent); font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
+
+/* Background: status bar items stay on one line in a narrow window, cut short rather than stacked. */
+.status-bar .na-status { white-space: nowrap; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
