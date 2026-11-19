@@ -2,14 +2,18 @@ import {
   MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
 import { DataLayer } from "./datalayer.ts";
+import { registerEmbeds } from "./embed.ts";
 import { dropGrants, moveGrants } from "./hosted.ts";
 import { obsidianHost } from "./host.ts";
+import { registerLenses } from "./lens.ts";
 import { defaultDataPath } from "./store.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
 interface StoredData {
   /** Note path → the permissions the user allowed, joined. */
   grants: Record<string, string>;
+  /** Lens component paths the user folded away. */
+  folded?: Record<string, true>;
 }
 
 export default class NoteAppsPlugin extends Plugin {
@@ -37,6 +41,8 @@ export default class NoteAppsPlugin extends Plugin {
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
       if (moveGrants(this.store.grants, oldPath, file.path)) void this.saveData(this.store);
     }));
+    registerEmbeds(this);
+    registerLenses(this);
 
     this.addCommand({
       id: "open-as-app",

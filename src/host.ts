@@ -53,7 +53,8 @@ async function ensureFolder(app: App, path: string): Promise<void> {
   if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
 }
 
-export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file: TFile): AppEnv {
+/** Without a leaf (an embed, a lens) there is no app tab to show the source in. */
+export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
   const app = plugin.app;
   return {
     data: plugin.dataLayer,
@@ -114,7 +115,7 @@ export function obsidianAppEnv(plugin: NoteAppsPlugin, leaf: WorkspaceLeaf, file
     },
     notify: (message) => { new Notice(message); },
     openNote: (path, fromPath) => void app.workspace.openLinkText(path, fromPath),
-    showSource: () => void plugin.showSource(leaf, file),
+    showSource: () => { if (leaf) void plugin.showSource(leaf, file); },
     now: () => new Date(),
   };
 }

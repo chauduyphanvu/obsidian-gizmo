@@ -107,17 +107,21 @@ test("the lens index: which notes a lens shows on, in name order, kept current a
   // A note gaining the property, or leaving the folder.
   f.files.set("Books/Emma.md", { fm: { pages: 474 } });
   data.fileChanged("Books/Emma.md");
-  assert.equal(index.changed("Books/Emma.md"), false, "not a lens itself");
+  index.changed("Books/Emma.md");
   assert.deepEqual(index.lensesFor("Books/Emma.md"), ["Components/Progress.md"]);
 
-  // A component gaining or losing for.
+  // A component gaining or losing for, moving, or going.
   f.files.set("Components/Plain.md", { fm: { component: "p", for: "Notes", panels: [{ view: "countdown", to: "2027-01-01" }] } });
-  assert.equal(index.changed("Components/Plain.md"), true);
+  index.changed("Components/Plain.md");
   assert.deepEqual(index.lensesFor("Notes/Wishlist.md"), ["Components/Book tags.md", "Components/Plain.md"]);
   f.files.set("Components/Book tags.md", { fm: { component: "t", panels: [] } });
-  assert.equal(index.changed("Components/Book tags.md"), true);
+  index.changed("Components/Book tags.md");
   assert.deepEqual(index.lensesFor("Books/Dune.md"), ["Components/Progress.md"]);
-  assert.equal(index.deleted("Components/Progress.md"), true);
+  f.files.set("Lenses/Progress.md", f.files.get("Components/Progress.md")!);
+  f.files.delete("Components/Progress.md");
+  index.renamed("Lenses/Progress.md", "Components/Progress.md");
+  assert.deepEqual(index.lensesFor("Books/Dune.md"), ["Lenses/Progress.md"]);
+  index.deleted("Lenses/Progress.md");
   assert.deepEqual(index.lensesFor("Books/Dune.md"), []);
 });
 

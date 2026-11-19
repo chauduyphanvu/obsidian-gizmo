@@ -128,11 +128,6 @@ export class HostedApp {
     this.memory = memory ?? newMemory();
   }
 
-  /** The block's identity: what its grants and kept state go under. */
-  get identity(): string {
-    return this.key;
-  }
-
   load(): void {
     const block = this.block;
     if ("error" in block) return this.showError(block.error);
@@ -237,21 +232,18 @@ export class LensIndex {
     else this.scopes!.delete(path);
   }
 
-  /** Reads a changed note again; true when it is or was a lens, so where lenses show may have changed. */
-  changed(path: string): boolean {
-    if (!this.scopes) return false;
-    const was = this.scopes.has(path);
-    this.read(path);
-    return was || this.scopes.has(path);
+  /** Reads a changed note again, in case it became, changed or stopped being a lens. */
+  changed(path: string): void {
+    if (this.scopes) this.read(path);
   }
 
-  deleted(path: string): boolean {
-    return this.scopes?.delete(path) ?? false;
+  deleted(path: string): void {
+    this.scopes?.delete(path);
   }
 
-  renamed(path: string, oldPath: string): boolean {
-    const gone = this.deleted(oldPath);
-    return this.changed(path) || gone;
+  renamed(path: string, oldPath: string): void {
+    this.deleted(oldPath);
+    this.changed(path);
   }
 
   scopeOf(componentPath: string): string | undefined {
