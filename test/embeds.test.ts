@@ -379,3 +379,30 @@ test("an embed's panels are drawn 32 px wider than the same panel in an app's ow
   await widen(t.root, () => t.app.resize());
   assert.equal(viewBox(t.root), "0 0 666 220");
 });
+
+test("record, pin, alert and shortcut work in an app note; in an embed or a lens they say so", () => {
+  const fm = {
+    app: "", data: { kp: { source: "https://api.example.com/kp", record: "1h" } },
+    panels: [
+      { view: "number", source: "kp_log", agg: "count", pin: "status", alert: "> 1" },
+      { view: "button", save: "x", shortcut: "go" },
+    ],
+  };
+  const hosted = readSpec(fm, { path: "Notes/Day.md", host: {} })!;
+  assert.deepEqual(hosted.errors, [
+    "data.kp: record works in an app note, not in an embed or a lens",
+    "panel 1: pin works in an app note, not in an embed or a lens",
+    "panel 1: alert works in an app note, not in an embed or a lens",
+    "panel 2: shortcut works in an app note, not in an embed or a lens",
+  ]);
+  // The panels still draw; nothing is fetched for the block while it can't record.
+  assert.equal(hosted.spec!.panels.length, 2);
+  assert.deepEqual(permissionsOf(hosted.spec!, "Notes/Day.md"), []);
+  // A lens is checked as it runs, in a note of its scope.
+  const lens = readSpec(fm, { path: "Components/L.md", host: { scope: "Books" } })!;
+  assert.equal(lens.errors.length, 4);
+  // The same keys in an app note, which an app-reference embed shows as that app, are fine.
+  const app = readSpec({ ...fm, app: "Kp" }, { path: "Apps/Kp.md" })!;
+  assert.deepEqual(app.errors, []);
+  assert.deepEqual(permissionsOf(app.spec!, "Apps/Kp.md"), ["net:api.example.com"]);
+});

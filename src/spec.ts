@@ -372,6 +372,8 @@ export function readSpec(
   const late = (n: string) => n === THIS || typed(n);
   // What runs while the app is closed fills its inputs with their starting values; nobody types or picks there.
   const notLate = (key: string, n: string) => `${key} can't depend on $${typedName(n)}, which has no value until someone ${isSelection(n) ? "picks a row" : "types"}`;
+  // The background works only for app notes; in an embed or a lens these keys would never run.
+  const notHere = (key: string) => `${key} works in an app note, not in an embed or a lens`;
   /** A panel's keys checked with these values; a name only typed or picked at run time is tried with stand-ins. */
   const checkAt = (template: Record<string, unknown>, uses: string[], values: Record<string, unknown>, strict: boolean) => (uses.some(late)
     ? checkStandIns(template, values, late, strict)
@@ -383,6 +385,10 @@ export function readSpec(
   for (const [name, block] of blocks) {
     if (block.record === undefined) continue;
     const label = `data.${name}`;
+    if (opts.host) {
+      errors.push(`${label}: ${notHere("record")}`);
+      continue;
+    }
     const n = [...namesIn(block, names)].find(typed);
     if (n !== undefined) {
       errors.push(`${label}: ${notLate("record", n)}`);
@@ -450,8 +456,10 @@ export function readSpec(
       }
     }
     for (const key of ["shortcut", "pin", "alert"] as const) {
-      const n = r.panel?.[key] !== undefined ? uses.find(late) : undefined;
-      if (n !== undefined) errors.push(at(notLate(key, n)));
+      if (r.panel?.[key] === undefined) continue;
+      const n = uses.find(late);
+      if (opts.host) errors.push(at(notHere(key)));
+      else if (n !== undefined) errors.push(at(notLate(key, n)));
     }
     const shortcut = r.panel?.shortcut;
     if (shortcut !== undefined && shortcuts.has(shortcut)) errors.push(at(`two panels use the shortcut "${shortcut}"`));
