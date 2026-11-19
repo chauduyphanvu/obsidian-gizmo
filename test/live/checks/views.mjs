@@ -74,7 +74,8 @@ export default async function views(t) {
     const r = await run(`
       await na.open("Apps/Projects");
       const el = na.view().contentEl;
-      const picked = () => na.text([...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "Picked"));
+      const schedule = [...el.querySelectorAll(".na-panel")].find((p) => p.querySelector(".na-title")?.textContent === "Schedule");
+      const picked = () => schedule.querySelector(".na-detail") ? na.text(schedule.querySelector(".na-detail")) : "";
       const before = picked();
       const bar = () => [...el.querySelectorAll(".na-tl-bar")].find((b) => (b.getAttribute("aria-label") ?? b.closest(".na-tl-row").textContent).includes("Kitchen remodel"));
       bar().click();
@@ -83,7 +84,8 @@ export default async function views(t) {
       bar().click();
       await na.sleep(500);
       return { before, after, cleared: picked() };`);
-    expect(r.before.includes("Pick a row in “Schedule”") && r.after.includes("Kitchen remodel is due 2026-12-15") && r.cleared.includes("Pick a row in “Schedule”"), r);
+    // The project's due date shows under the schedule, with a link to its note.
+    expect(r.before === "" && r.after.includes("Kitchen remodel is due 2026-12-15") && r.after.includes("Open") && r.cleared === "", r);
     return r.after;
   });
 
