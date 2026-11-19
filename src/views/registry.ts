@@ -1,5 +1,6 @@
 import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
+import { board } from "./board.ts";
 import { calendar } from "./calendar.ts";
 import { bar, line } from "./chart.ts";
 import { button, checklist, form } from "./inputs.ts";
@@ -68,7 +69,7 @@ export interface ViewDef {
 
 export const VIEW_DEFS: readonly ViewDef[] = [
   number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
-  calendar,
+  calendar, board,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));
