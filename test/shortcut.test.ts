@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { linkNotice } from "../src/background.ts";
+import { linkNotice } from "../src/links.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const MEDS = {

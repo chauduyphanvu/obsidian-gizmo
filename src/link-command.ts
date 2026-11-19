@@ -1,5 +1,5 @@
 import { FuzzySuggestModal, Notice, type App } from "obsidian";
-import { linkNotice, type ShortcutLink } from "./background.ts";
+import { linkNotice, type ShortcutLink } from "./links.ts";
 import { copyText } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 
