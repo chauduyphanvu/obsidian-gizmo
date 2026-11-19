@@ -224,14 +224,22 @@ function compileFilter(f: unknown, source: string): Test {
  * after `!`, read as true or false. A property is a note property, bare (`status`) or as
  * `note.status`, or one of `file.name`, `file.basename`, `file.path`, `file.folder`, `file.ext`; a
  * literal is quoted text, a number, true, false or `date("2026-01-31")`. Anything else in them is
- * an error naming it. The base's formulas, properties and summaries, and each view's own filters,
- * order, grouping and limit, are not read: the panel's own where, sort, limit and columns do that.
+ * an error naming it. A view with filters of its own is an error too: what it shows is narrower
+ * than the base, and reading it as every note would let an edit reach notes it never showed. The
+ * base's formulas, properties and summaries, and each view's order, grouping and limit, are not
+ * read: the panel's own where, sort, limit and columns do that.
  */
 export function compileBase(config: unknown, source: string): Test {
   if (config === null || config === undefined) return () => true;
   if (!isMap(config)) throw new Error(`${source} isn't a base: it should hold keys such as filters and views`);
   const filters = config.filters;
-  return filters === null || filters === undefined ? () => true : compileFilter(filters, source);
+  const test = filters === null || filters === undefined ? () => true : compileFilter(filters, source);
+  (Array.isArray(config.views) ? config.views : []).forEach((view, i) => {
+    if (!isMap(view) || view.filters === undefined || view.filters === null) return;
+    const name = typeof view.name === "string" && view.name.trim() ? view.name : `view ${i + 1}`;
+    throw new Error(`${source} filters its view "${name}"; Note Apps reads only the base's own filters`);
+  });
+  return test;
 }
 
 /**

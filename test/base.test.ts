@@ -101,17 +101,25 @@ const SHELF = [
   note("Inbox/Plain.md"),
 ];
 
-test("the docs' example base: its file.hasLink is named; without it, its and/or/not filters are read", () => {
+test("the docs' example base: its file.hasLink is named, then its view's filters; without both, its and/or/not filters are read", () => {
   assert.throws(() => compileBase(parseYaml(DOCS_EXAMPLE), SRC), { message: "[[Books.base]] uses file.hasLink, which Note Apps can't read" });
-  // Formulas, properties, summaries and the view's own filters (which use a formula) aren't read.
   const without = DOCS_EXAMPLE.replace('        - file.hasLink("Textbook")\n', "");
+  // A view's own filters narrow what the base shows there; read as every note, they would let an edit reach any note.
+  assert.throws(() => compileBase(parseYaml(without), SRC), { message: '[[Books.base]] filters its view "My table"; Note Apps reads only the base\'s own filters' });
+  // Formulas, properties, summaries and a view's order, grouping and limit aren't read.
+  const unfiltered = without.replace(/    filters:\n      and:\n        - 'status != "done"'\n        - or:\n            - "formula.ppu > 5"\n            - "price > 2.1"\n/, "");
+  assert.notEqual(unfiltered, without);
   // or: tagged #tag (or under it); and: tagged #book; not: neither #book nor in Required Reading.
-  assert.deepEqual(matching(without, SHELF), ["Textbooks/Calculus.md", "Inbox/Idea.md", "Inbox/Plain.md"]);
+  assert.deepEqual(matching(unfiltered, SHELF), ["Textbooks/Calculus.md", "Inbox/Idea.md", "Inbox/Plain.md"]);
 });
 
 test("a base's filters may be one filter string; with none, every note matches", () => {
   assert.deepEqual(matching(`filters: 'file.hasTag("book")'`, SHELF), ["Textbooks/Calculus.md"]);
-  assert.deepEqual(matching("views:\n  - type: table\n    name: All\n    filters: 'file.hasTag(\"book\")'", SHELF).length, 4);
+  assert.throws(() => matching("views:\n  - type: table\n    name: All\n    filters: 'file.hasTag(\"book\")'", SHELF),
+    { message: '[[Books.base]] filters its view "All"; Note Apps reads only the base\'s own filters' });
+  assert.throws(() => matching("views:\n  - type: table\n  - type: cards\n    filters: 'file.hasTag(\"book\")'", SHELF),
+    { message: '[[Books.base]] filters its view "view 2"; Note Apps reads only the base\'s own filters' });
+  assert.deepEqual(matching("views:\n  - type: table\n    name: All\n    limit: 2\n    order: [file.name]", SHELF).length, 4);
   assert.deepEqual(SHELF.filter(compileBase(null, SRC)).length, 4);
   assert.throws(() => compileBase(["a"], SRC), { message: "[[Books.base]] isn't a base: it should hold keys such as filters and views" });
 });
@@ -341,4 +349,16 @@ test("a base that can't be read shows why in its panel", async () => {
   f.flush();
   await settle();
   assert.match(root.querySelector(".na-error")!.textContent!, /\[\[Books\.base\]\] uses file\.hasLink, which Note Apps can't read$/);
+});
+
+test("a base whose view has its own filters is the panel's error, so nothing it would show unfiltered can be edited", async () => {
+  const { root, f, data, writes } = openShelf();
+  await settle();
+  f.others.set("Bases/Books.base", "views:\n  - type: table\n    name: Reading\n    filters: 'status == \"reading\"'");
+  data.fileChanged("Bases/Books.base");
+  f.flush();
+  await settle();
+  assert.match(root.querySelector(".na-error")!.textContent!, /\[\[Books\.base\]\] filters its view "Reading"; Note Apps reads only the base's own filters$/);
+  assert.equal(root.querySelector("tbody select"), null);
+  assert.deepEqual(writes, []);
 });
