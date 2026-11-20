@@ -78,29 +78,33 @@ export default async function sources(t) {
     return `${r.path}: ${Object.keys(r.fm).join(", ")}; read: true; ${r.notices.at(-1)}`;
   }, { net: FEEDS });
 
-  await check("Week: the agenda shows Bins out and Swim practice; Done logs it; an edit to family.ics shows", async () => {
+  await check("Week: the agenda shows Swim practice, and Bins out unless its only Thursday this week is skipped; Done logs it; an edit to family.ics shows", async () => {
     const r = await run(`
       await na.open("Apps/Week");
       const el = na.view().contentEl;
       const [agenda, , done] = el.querySelectorAll(".gz-panel");
       const items = () => [...agenda.querySelectorAll("li")].map((li) => li.textContent);
       const first = items();
-      const bins = [...agenda.querySelectorAll("li")].find((li) => li.textContent.includes("Bins out"));
+      // Bins out is every Thursday except 26 November (EXDATE), so some weeks it has none to show.
+      const today = new Date(); today.setHours(0, 0, 0, 0);
+      const days = [...Array(7).keys()].map((i) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
+      const binsDue = days.some((d) => d.getDay() === 4 && !(d.getFullYear() === 2026 && d.getMonth() === 10 && d.getDate() === 26));
+      const swim = [...agenda.querySelectorAll("li")].find((li) => li.textContent.includes("Swim practice"));
       const mark = na.notices.length;
-      na.button("Done", bins).click();
+      na.button("Done", swim).click();
       const notices = await na.noticesSince(mark, "Logged");
-      const logged = await na.until(() => na.text(done).includes("Bins out") && na.text(done), 3000);
+      const logged = await na.until(() => na.text(done).includes("Swim practice") && na.text(done), 3000);
       const ics = app.vault.getFileByPath("Calendar/family.ics");
       const d = new Date(Date.now() + 2 * 86400000);
       const day = d.getFullYear() + String(d.getMonth() + 1).padStart(2, "0") + String(d.getDate()).padStart(2, "0");
       const event = ["BEGIN:VEVENT", "UID:check@family.home", "DTSTART:" + day + "T090000", "DTEND:" + day + "T100000", "SUMMARY:Pick up the new glasses", "END:VEVENT", ""].join("\\r\\n");
       await app.vault.process(ics, (text) => text.replace("END:VCALENDAR", event + "END:VCALENDAR"));
       const edited = await na.until(() => items().some((i) => i.includes("Pick up the new glasses")), 3000);
-      return { first, notices, logged, edited: !!edited };`);
-    expect(r.first.some((i) => i.includes("Bins out")) && r.first.some((i) => i.includes("Swim practice")), r.first);
-    expect(r.notices.includes("Logged Bins out") && r.logged, r);
+      return { first, binsDue, notices, logged, edited: !!edited };`);
+    expect(r.first.some((i) => i.includes("Swim practice")) && r.first.some((i) => i.includes("Bins out")) === r.binsDue, r);
+    expect(r.notices.includes("Logged Swim practice") && r.logged, r);
     expect(r.edited, r);
-    return `${r.first.length} items; logged; the new event shows`;
+    return `${r.first.length} items (Bins out ${r.binsDue ? "due" : "skipped this week"}); logged; the new event shows`;
   });
 
   await check("POST: the prompt asks to send a body to httpbin.org; the echo shows the body as JSON", async () => {
