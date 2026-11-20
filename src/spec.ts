@@ -15,6 +15,7 @@ import {
 import type { PipelineKeys } from "./pipeline.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey } from "./keys.ts";
 import { editErrors, editableSource } from "./edit.ts";
+import { CONTROL_PROBLEM, controlKey, hasControl } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { backgroundKeyErrors } from "./views/alerts.ts";
 
@@ -517,7 +518,9 @@ export function readSpec(
     const uses = refsIn(p.template);
     const r = checkAt(p.template, uses, start, true);
     recordErrors.push(...r.errors.map((e) => `${label}: ${e}`));
-    if (r.panel) recorded[name] = { template: p.template, panel: r.panel, label, inputs: uses, strict: true, writtenIn: p.writtenIn };
+    const control = r.panel && controlKey(r.panel, opts.path ?? "");
+    if (control) recordErrors.push(`${label}: "${control}" ${CONTROL_PROBLEM}`);
+    else if (r.panel) recorded[name] = { template: p.template, panel: r.panel, label, inputs: uses, strict: true, writtenIn: p.writtenIn };
   }
   const shortcuts = new Set<string>();
 
@@ -582,6 +585,12 @@ export function readSpec(
     const shortcut = r.panel?.shortcut;
     if (shortcut !== undefined && shortcuts.has(shortcut)) errors.push(at(`two panels use the shortcut "${shortcut}"`));
     if (shortcut !== undefined) shortcuts.add(shortcut);
+    // A permission is one line of the prompt; a line break in the key that asks for it would make it read as several.
+    const control = r.panel && controlKey(r.panel, opts.path ?? "");
+    if (control) {
+      errors.push(at(`"${control}" ${CONTROL_PROBLEM}`));
+      return;
+    }
     if (r.panel) panels.push({ template: p.template, panel: r.panel, label: p.label, inputs: uses, strict, writtenIn: p.writtenIn });
   };
   // Each entry expands to one or more panels, checked in turn so each panel's problems stay together.
@@ -631,7 +640,8 @@ export function readSpec(
   }
   let store: string | undefined;
   if (fm.store !== undefined && fm.store !== null) {
-    if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
+    if (typeof fm.store === "string" && hasControl(fm.store)) errors.push(`store ${CONTROL_PROBLEM}`);
+    else if (typeof fm.store === "string" && fm.store.trim()) store = fm.store;
     else errors.push(`store must be a note, e.g. store: "[[Weight log]]"`);
   }
   // Data is written into the store's properties; an app's or component's own keys are no place for it.

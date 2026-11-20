@@ -132,7 +132,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
   /** The app note's text, which `sourceLines` gives back, and the lines `showSourceAt` was asked for. */
   const source = { lines: [] as string[], shownAt: [] as number[] };
   const copied: string[] = [];
-  const grants: Record<string, string> = {};
+  const grants: Record<string, string[]> = {};
   const changed = (path: string) => {
     data.fileChanged(path);
     f.flush();
@@ -143,8 +143,8 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     frontmatter: (path) => f.files.get(path)?.fm,
     notes: { resolve, frontmatter: (path) => f.files.get(path)?.fm },
     isGranted: () => true,
-    granted: (path) => (Object.hasOwn(grants, path) ? (grants[path] ? grants[path].split("\n") : []) : undefined),
-    grant: async (path, wanted) => { grants[path] = wanted.join("\n"); },
+    granted: (path) => (Object.hasOwn(grants, path) ? [...grants[path]] : undefined),
+    grant: async (path, wanted) => { grants[path] = [...wanted]; },
     storePath: (store) => `${storeTarget(store)}.md`,
     writeFrontmatter: async (path, fn) => {
       writes.push(path);

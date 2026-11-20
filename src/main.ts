@@ -18,8 +18,8 @@ import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
 interface StoredData {
-  /** Note path → the permissions the user allowed, joined; empty for an app opened that asks for none. */
-  grants: Record<string, string>;
+  /** Note path → the permissions the user allowed; empty for an app opened that asks for none. */
+  grants: Record<string, string[]>;
   /** Lens component paths the user folded away. */
   folded?: Record<string, true>;
 }

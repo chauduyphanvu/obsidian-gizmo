@@ -420,7 +420,8 @@ export function readFor(value: unknown): { scope: string } | { error: string } {
   const name = text.match(/\$([A-Za-z_]\w*)/);
   if (name) return { error: `$${name[1]} can't be used in "for"` };
   const parts = text.split(",").map((s) => s.trim());
-  const ok = parts.every((s) => (s.startsWith("#") ? /^#[^\s#,]+$/.test(s) : /^[^#[\]|^:*?"<>\\/][^#[\]|^:*?"<>\\]*$/.test(s) && s.replace(/\/+$/, "") !== ""));
+  // A scope is named in a lens's prompt, so a line break or other control character can't hide in it.
+  const ok = parts.every((s) => (s.startsWith("#") ? /^#[^\s#,]+$/.test(s) : /^[^#[\]|^:*?"<>\\/\u0000-\u001f\u007f][^#[\]|^:*?"<>\\\u0000-\u001f\u007f]*$/.test(s) && s.replace(/\/+$/, "") !== ""));
   if (!text.trim() || !ok) return { error: "for must be a folder or #tag, e.g. for: Books/" };
   return { scope: parts.map((s) => (s.startsWith("#") ? s : s.replace(/\/+$/, ""))).join(", ") };
 }

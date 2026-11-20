@@ -125,3 +125,22 @@ test("span takes 1 to 4 columns", () => {
   const r = readSpec({ app: "x", panels: [{ view: "countdown", to: "2027-01-01", span: 5 }, { view: "countdown", to: "2027-01-01", span: 2, tab: "A" }] });
   assert.deepEqual(r?.errors, ["panel 1: span must be 1, 2, 3 or 4"]);
 });
+
+test("a key a permission is made from can't hold a line break, which would make one line of the prompt read as several", () => {
+  const read = (fm: Record<string, unknown>) => readSpec({ app: "x", ...fm }, { path: "Apps/X.md" })!;
+  const r = read({ panels: [{ view: "form", fields: { title: "text" }, save: "Inbox\nedit:*\nread:*/" }, { view: "countdown", to: "2026-12-01" }] });
+  assert.deepEqual(r.errors, ['panel 1: "save" can\'t hold a line break or other control character']);
+  assert.deepEqual(r.spec!.panels.map((ps) => ps.panel.view), ["countdown"]);
+  assert.deepEqual(permissionsOf(r.spec!, "Apps/X.md"), []);
+  for (const [key, panel] of [
+    ["from", { view: "table", source: "notes", from: "Journal\r\nedit:*" }],
+    ["append", { view: "button", label: "Go", append: "Log\tx" }],
+    ["then", { view: "button", label: "Go", then: { app: "Errands\nread:*", do: "add" } }],
+    ["source", { view: "table", source: "Finance/bank\n.csv" }],
+  ] as const) {
+    assert.deepEqual(read({ panels: [panel] }).errors, [`panel 1: "${key}" can't hold a line break or other control character`], key);
+  }
+  const stored = read({ view: "button", label: "Go", save: "log", store: "[[Log\nedit:*]]" });
+  assert.deepEqual(stored.errors, ['store can\'t hold a line break or other control character']);
+  assert.equal(stored.spec!.store, undefined);
+});

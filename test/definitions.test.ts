@@ -4,7 +4,7 @@ import { test } from "node:test";
 import { noteText, runActions, withLine, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
 import { HostedApp } from "../src/hosted.ts";
-import { dropGrants, isAllowed, moveGrants } from "../src/grants.ts";
+import { dropGrants, isAllowed, moveGrants, setGrant } from "../src/grants.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { isComponent } from "../src/store.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
@@ -130,12 +130,21 @@ test("store can't be an app or a component note", () => {
   assert.equal(read("[[Weight]]").spec!.store, "[[Weight]]");
 });
 
+test("grants are kept as lists, so one permission holding line breaks never stands for several", () => {
+  const grants: Record<string, string[]> = {};
+  setGrant(grants, "A.md", ["create:Inbox\nedit:*\nread:*"]);
+  assert.equal(isAllowed(grants, "A.md", ["create:Inbox", "edit:*", "read:*"]), false);
+  assert.equal(isAllowed(grants, "A.md", ["create:Inbox\nedit:*\nread:*"]), true);
+  // A grant an earlier version kept as joined text is asked for again.
+  assert.equal(isAllowed({ "B.md": "net:x" } as unknown as Record<string, string[]>, "B.md", ["net:x"]), false);
+});
+
 test("an app counts as seen once it is opened in its own tab, even when it asks for nothing; embeds and lenses don't make it so", async () => {
   assert.equal(isAllowed({}, "A.md", []), true);
   assert.equal(isAllowed({}, "A.md", [], true), false);
-  assert.equal(isAllowed({ "A.md": "" }, "A.md", [], true), true);
-  assert.equal(isAllowed({ "A.md": "net:x" }, "A.md", [], true), false);
-  assert.equal(isAllowed({ "A.md": "net:x" }, "A.md", ["net:x"], true), true);
+  assert.equal(isAllowed({ "A.md": [] }, "A.md", [], true), true);
+  assert.equal(isAllowed({ "A.md": ["net:x"] }, "A.md", [], true), false);
+  assert.equal(isAllowed({ "A.md": ["net:x"] }, "A.md", ["net:x"], true), true);
 
   const meds = { app: "Meds", view: "button", label: "Took", save: "doses" };
   const t = fakeEnv({ "Apps/Meds.md": { fm: meds }, "Daily.md": { fm: {} } });
@@ -145,15 +154,15 @@ test("an app counts as seen once it is opened in its own tab, even when it asks 
   assert.deepEqual(t.grants, {}, "an embed shows it, but doesn't open it");
   draw(t.env, "Apps/Meds.md");
   await settle(2);
-  assert.deepEqual(t.grants, { "Apps/Meds.md": "" });
+  assert.deepEqual(t.grants, { "Apps/Meds.md": [] as string[] });
   // An app that asked for something before and asks for nothing now is noted afresh.
-  t.grants["Apps/Meds.md"] = "net:old.example.com";
+  t.grants["Apps/Meds.md"] = ["net:old.example.com"];
   draw(t.env, "Apps/Meds.md");
   await settle(2);
-  assert.deepEqual(t.grants, { "Apps/Meds.md": "" });
+  assert.deepEqual(t.grants, { "Apps/Meds.md": [] });
   // The entry follows the note.
   assert.equal(moveGrants(t.grants, "Apps/Meds.md", "Apps/Pills.md"), true);
-  assert.deepEqual(t.grants, { "Apps/Pills.md": "" });
+  assert.deepEqual(t.grants, { "Apps/Pills.md": [] });
   assert.equal(dropGrants(t.grants, "Apps/Pills.md"), true);
   assert.deepEqual(t.grants, {});
 });

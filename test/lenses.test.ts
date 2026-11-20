@@ -52,7 +52,7 @@ function lenses(notes: Notes, grants: Record<string, string[]> = {}) {
 test("for is a folder or #tag, like from; a $name can't choose it", () => {
   assert.deepEqual(readFor("Books/"), { scope: "Books" });
   assert.deepEqual(readFor("Books/Fiction, #book/sf"), { scope: "Books/Fiction, #book/sf" });
-  for (const bad of [5, "", "[[Books]]", "#", "Books, ", "/"]) {
+  for (const bad of [5, "", "[[Books]]", "#", "Books, ", "/", "Journal\nPrivate", "Journal\u0007"]) {
     assert.deepEqual(readFor(bad), { error: "for must be a folder or #tag, e.g. for: Books/" }, JSON.stringify(bad));
   }
   assert.deepEqual(readFor("Books/$genre"), { error: '$genre can\'t be used in "for"' });
