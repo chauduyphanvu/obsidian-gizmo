@@ -263,3 +263,23 @@ test("then's fill is checked where it's written: a secret, or on a form or butto
   // An alert's rows can hold anything, so a name there that a row lacks fills as empty, as notify does.
   assert.deepEqual(errors({ view: "number", source: "calls", agg: "count", alert: { back: "past" }, then: then({ errand: "Overdue: {who} {anything}" }) }), []);
 });
+
+test("what alerts ran for, kept in an older form, is started over rather than read, so no then runs again for every row", async () => {
+  const passport = { what: "passport", due: "2026-11-25", at: "2026-10-01T09:00" };
+  const first = fakeBackground(renewals([passport]));
+  await first.bg.start();
+  await settle();
+  const kept = JSON.parse(first.triggers.text!) as { v: number; fired: Record<string, { rows: string[] }> };
+  assert.equal(kept.v, 2);
+  const forgot = Object.fromEntries(Object.keys(kept.fired).map((k) => [k, { rows: [] }]));
+  // In the kept form, a row it never ran for runs once the app starts again…
+  const current = fakeBackground(renewals([passport]), {}, { triggers: { text: JSON.stringify({ v: 2, fired: forgot }) } });
+  await current.bg.start();
+  await settle();
+  assert.deepEqual(tasks(current)?.map((r) => r.task), ["Renew passport"]);
+  // …but kept as before versions, it's noted, not run.
+  const old = fakeBackground(renewals([passport]), {}, { triggers: { text: JSON.stringify(forgot) } });
+  await old.bg.start();
+  await settle();
+  assert.equal(tasks(old), undefined);
+});

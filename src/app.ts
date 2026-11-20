@@ -96,8 +96,6 @@ export interface AppEnv {
   preview?: boolean;
   /** Opens the app on copies of its own notes before it's allowed; absent where that can't be offered. */
   tryFirst?(): void;
-  /** This device, for an app with `devices: split`; without one, rows go to the data note as in any other app. */
-  device?: { id: string; name: string };
 }
 
 /** What an app keeps while it is open: input values, selections, the open tab and its timers. */

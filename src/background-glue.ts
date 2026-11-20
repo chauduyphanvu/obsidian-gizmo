@@ -58,8 +58,9 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       void plugin.saveData(plugin.store);
     },
     logSent: (entry) => void plugin.activity.add(entry),
-    runsBackground: () => plugin.device.background,
-    device: () => plugin.device,
+    runsBackground: () => plugin.beat?.isRunner() ?? false,
+    // gizmod on this computer tells of alerts itself; Obsidian beside it would tell twice.
+    quietAlerts: () => plugin.beat?.gizmodHere() ?? false,
     sink: {
       notify: (message) => { new Notice(message); },
       // Commands come and go with the apps that declare them; a hotkey stays bound to the id.

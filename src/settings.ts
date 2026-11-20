@@ -1,54 +1,75 @@
-import { Notice, PluginSettingTab, Setting, normalizePath, type App } from "obsidian";
+import { Platform, PluginSettingTab, Setting, normalizePath, type App } from "obsidian";
 import { when } from "./activity-view.ts";
-import { SEEN_EVERY_MS, otherRunners, saveDevice, type Seen } from "./device.ts";
+import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, saveDevice, type Beat } from "./device.ts";
 import { pluginFile, pluginFolder } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { openMap } from "./map-view.ts";
 
 /** What every device last said about itself, from the plugin's `devices` folder. */
-export async function devicesSeen(plugin: GizmoPlugin): Promise<Seen[]> {
+export async function devicesSeen(plugin: GizmoPlugin): Promise<Beat[]> {
   return (await pluginFolder(plugin, "devices")).flatMap(({ text }) => {
-    try {
-      const s = JSON.parse(text) as Seen;
-      return typeof s.id === "string" && typeof s.name === "string" ? [s] : [];
-    } catch {
-      return [];
-    }
+    const b = readBeat(text);
+    return b ? [b] : [];
   });
 }
 
+/** The computer Obsidian runs on, by name; empty where there's none to ask (a phone). */
+function hostName(): string {
+  try {
+    const os = (window as unknown as { require?: (m: string) => { hostname(): string } }).require?.("os");
+    return os?.hostname() ?? "";
+  } catch {
+    return "";
+  }
+}
+
 /**
- * Each device says, in a file of its own, its name, whether it runs background work and when it
- * was last open, at most every half hour unless that changed. A device that runs background work
- * warns once a session when another one says it does too.
+ * Each device says, in a file of its own, that it is still there, every five minutes, and works out
+ * from every device's word which one runs background work (see runnerOf). Becoming the one, it
+ * starts over: alerts note what is true now rather than running for what changed while another ran.
  */
 export class DeviceBeat {
   private plugin: GizmoPlugin;
-  private said = "";
   private saidAt = 0;
-  private warned = false;
+  private said = "";
+  private host = hostName();
+  /** Every device's last word, as last read. */
+  beats: Beat[] = [];
+  runner: Beat | undefined;
 
   constructor(plugin: GizmoPlugin) {
     this.plugin = plugin;
   }
 
-  async beat(force = false): Promise<void> {
+  private mine(now: number): Beat {
     const d = this.plugin.device;
+    return { id: d.id, name: d.name, host: this.host, priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now };
+  }
+
+  async beat(force = false): Promise<void> {
     const now = Date.now();
-    const state = JSON.stringify([d.name, d.background]);
-    if (force || state !== this.said || now - this.saidAt >= SEEN_EVERY_MS) {
-      const seen: Seen = { id: d.id, name: d.name, background: d.background, seen: now };
-      await pluginFile(this.plugin, `devices/${d.id}.json`).write(JSON.stringify(seen)).catch(() => {});
-      this.said = state;
+    const me = this.mine(now);
+    if (force || me.name !== this.said || now - this.saidAt >= BEAT_EVERY_MS) {
+      await pluginFile(this.plugin, `devices/${me.id}.json`).write(JSON.stringify(me)).catch(() => {});
+      this.said = me.name;
       this.saidAt = now;
     }
-    if (!d.background || this.warned) return;
-    const others = otherRunners(await devicesSeen(this.plugin), d.id, now);
-    if (!others.length) return;
-    this.warned = true;
-    // Two Macs are both "Mac" until renamed; the start of the id tells them apart.
-    const names = others.map((o) => (o.name === d.name ? `${o.name} (${o.id.slice(0, 4)})` : o.name));
-    new Notice(`Background work also runs on ${names.join(", ")}: an alert's then or a record may run on each. Turn it off on one of them in Settings → Gizmo.`, 15_000);
+    const others = (await devicesSeen(this.plugin)).filter((b) => b.id !== me.id);
+    this.beats = [me, ...others];
+    const was = this.runner?.id;
+    this.runner = runnerOf(this.beats, now);
+    if (this.runner?.id === me.id && was !== me.id) this.plugin.background?.startOver();
+  }
+
+  /** Whether this device runs background work: until the first beat, only when it is the only one it knows of. */
+  isRunner(): boolean {
+    return (this.runner?.id ?? this.plugin.device.id) === this.plugin.device.id;
+  }
+
+  /** gizmod runs on this computer and was heard from lately: it tells of alerts, so Obsidian here doesn't as well. */
+  gizmodHere(): boolean {
+    const now = Date.now();
+    return !!this.host && this.beats.some((b) => b.priority === PRIORITY.gizmod && b.host === this.host && now - b.seen < UNSEEN_MS);
   }
 }
 
@@ -95,26 +116,22 @@ export class GizmoSettings extends PluginSettingTab {
         saveDevice(plugin.deviceStore, device);
         void plugin.beat?.beat(true);
       }));
+    // One device runs records and alerts' thens: the one most suited to it that is open, chosen by every device alike.
+    const beat = plugin.beat;
+    const runner = beat?.runner;
+    const runs = !runner || runner.id === device.id;
     new Setting(el)
-      .setName("Run background work on this device")
-      .setDesc("Records, and the thens alerts run, while Obsidian is open here. Keep it on for one device that's open often; shortcuts, links, pins and alert notices work on every device either way.")
-      .addToggle((t) => t.setValue(device.background).onChange((on) => {
-        device.background = on;
-        saveDevice(plugin.deviceStore, device);
-        if (on) plugin.background?.startOver();
-        void plugin.beat?.beat(true);
-        new Notice(on ? "Background work runs on this device from now" : "Background work no longer runs on this device");
-      }));
+      .setName("Background work")
+      .setDesc(runs
+        ? "Runs on this device: records, and the thens alerts run. Shortcuts, links, pins and alert notices work on every device."
+        : `Runs on ${runner.name}${runner.priority === PRIORITY.gizmod ? " (gizmod)" : ""}, last heard from ${when(runner.seen, new Date())}. This device takes it over if that one isn't heard from for 20 minutes.`);
     const others = el.createDiv();
-    void devicesSeen(plugin).then((seen) => {
-      const list = seen.filter((s) => s.id !== device.id).sort((a, b) => b.seen - a.seen);
-      if (!list.length) return;
+    const list = (beat?.beats ?? []).filter((s) => s.id !== device.id).sort((a, b) => b.seen - a.seen);
+    if (list.length) {
       new Setting(others).setName("Other devices").setHeading();
       const now = new Date();
-      for (const s of list) {
-        new Setting(others).setName(s.name).setDesc(`${s.background ? "Runs background work" : "Doesn't run background work"} · last open ${when(s.seen, now)}`);
-      }
-    });
+      for (const s of list) new Setting(others).setName(s.name).setDesc(`${s.id === runner?.id ? "Runs background work" : "Doesn't run background work"} · last open ${when(s.seen, now)}`);
+    }
     new Setting(el).setName("Apps").setHeading();
     new Setting(el)
       .setName("Automation map")

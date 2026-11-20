@@ -294,7 +294,6 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
     tryFirst: () => void tryVaultApp(plugin, file.path),
-    device: plugin.device,
   };
 }
 

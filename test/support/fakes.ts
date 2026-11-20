@@ -216,7 +216,6 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     openNote: (path) => { opened.push(path); },
     showSource: () => {},
     showSourceAt: (line) => { source.shownAt.push(line); },
-    device: { id: "d1mac000", name: "Mac" },
     sourceLines: async () => source.lines,
     copy: (text) => { copied.push(text); },
     log: (entry) => void activity.add(entry),
@@ -356,7 +355,6 @@ export function fakeBackground(
     },
     logSent: (entry) => void t.activity.add(entry),
     runsBackground: () => device.background,
-    device: () => ({ id: "d1mac000", name: "Mac" }),
     sink: {
       notify: t.env.notify,
       setCommands: (list) => { out.commands = list; },

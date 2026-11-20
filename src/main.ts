@@ -71,13 +71,13 @@ export default class GizmoPlugin extends Plugin {
     if (dropSplitGrants(this.store.grants)) await this.saveData(this.store);
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir, () => this.device.id));
     this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
-    this.device = thisDevice(this.deviceStore, Platform, (await devicesSeen(this).catch(() => [])).some((s) => s.background));
+    this.device = thisDevice(this.deviceStore, Platform);
     // Each device writes only its own log, which a sync never has to merge; it reads the others'.
     await adoptOldLog(this).catch(() => {});
     this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
     // The device that runs background work keeps each data note's snapshot current, a few seconds after a change.
     this.dataLayer.setSnapshots({
-      isRunner: () => this.device.background,
+      isRunner: () => this.beat?.isRunner() ?? false,
       delayMs: 5000,
       writeNote: (path, fn) => obsidianAppEnvWrites(this).writeFrontmatter(path, fn),
     });

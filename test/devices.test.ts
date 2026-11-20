@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActivityLog, type Entry } from "../src/activity.ts";
-import { RUNNING_WITHIN_MS, defaultName, otherRunners, thisDevice, type PlatformInfo } from "../src/device.ts";
+import { PRIORITY, UNSEEN_MS, defaultName, readBeat, runnerOf, thisDevice, type Beat, type PlatformInfo } from "../src/device.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -13,30 +13,39 @@ function memoryStore() {
   return { kept, load: (k: string) => kept.get(k) ?? null, save: (k: string, v: unknown) => void kept.set(k, structuredClone(v)) };
 }
 
-test("a device is made once and kept on it: named for what it is, running background work unless it's a phone and another device does", () => {
+test("a device is made once and kept on it, named for what it is", () => {
   const store = memoryStore();
-  const mac = thisDevice(store, DESKTOP, true, () => "abc12345");
-  assert.deepEqual(mac, { id: "abc12345", name: "Mac", background: true });
-  assert.deepEqual(thisDevice(store, DESKTOP, false, () => "other"), mac, "read back, not made again");
-  assert.deepEqual(thisDevice(memoryStore(), PHONE, true, () => "p"), { id: "p", name: "iPhone", background: false });
-  // A phone that is the only device (or the first to update) keeps what it ran before.
-  assert.deepEqual(thisDevice(memoryStore(), PHONE, false, () => "p"), { id: "p", name: "iPhone", background: true });
+  const mac = thisDevice(store, DESKTOP, () => "abc12345");
+  assert.deepEqual(mac, { id: "abc12345", name: "Mac" });
+  assert.deepEqual(thisDevice(store, DESKTOP, () => "other"), mac, "read back, not made again");
+  assert.deepEqual(thisDevice(memoryStore(), PHONE, () => "p"), { id: "p", name: "iPhone" });
+  // One kept before devices agreed on a runner keeps its id and name.
+  store.save("gizmo-device", { id: "old00000", name: "Work Mac", background: false });
+  assert.deepEqual(thisDevice(store, DESKTOP), { id: "old00000", name: "Work Mac" });
   assert.equal(defaultName({ ...PHONE, isTablet: true }), "iPad");
   assert.equal(defaultName({ ...DESKTOP, isMacOS: false, isWin: true }), "Windows PC");
 });
 
-test("other devices running background work: only recent ones, not this one, not ones that turned it off", () => {
-  const now = 10 * RUNNING_WITHIN_MS;
-  const seen = [
-    { id: "me", name: "Mac", background: true, seen: now },
-    { id: "a", name: "iMac", background: true, seen: now - 1000 },
-    { id: "b", name: "Old laptop", background: true, seen: now - RUNNING_WITHIN_MS - 1 },
-    { id: "c", name: "iPhone", background: false, seen: now },
-  ];
-  assert.deepEqual(otherRunners(seen, "me", now).map((s) => s.name), ["iMac"]);
+test("one device runs background work: gizmod over a desktop over a phone, then the lowest id, of those heard from lately", () => {
+  const now = 10 * UNSEEN_MS;
+  const beat = (id: string, priority: number, ago: number): Beat => ({ id, name: id, host: "", priority, seen: now - ago });
+  const phone = beat("p", PRIORITY.phone, 0);
+  const mac = beat("m2", PRIORITY.desktop, 60_000);
+  const imac = beat("m1", PRIORITY.desktop, 120_000);
+  const daemon = beat("g", PRIORITY.gizmod, 30_000);
+  assert.equal(runnerOf([phone], now)?.id, "p", "a phone alone runs it");
+  assert.equal(runnerOf([phone, mac, imac], now)?.id, "m1", "two desktops: the lower id");
+  assert.equal(runnerOf([phone, mac, imac, daemon], now)?.id, "g");
+  // gizmod unseen for 20 minutes: the desktops take over; until then they wait.
+  assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - UNSEEN_MS + 1000 }], now)?.id, "g");
+  assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - UNSEEN_MS }], now)?.id, "m2");
+  assert.equal(runnerOf([], now), undefined);
+  // A beat written before priorities were kept counts as a desktop's.
+  assert.deepEqual(readBeat(JSON.stringify({ id: "x", name: "Mac", background: true, seen: 5 })), { id: "x", name: "Mac", host: "", priority: PRIORITY.desktop, seen: 5 });
+  assert.equal(readBeat("{nope"), undefined);
 });
 
-test("with background work off, records and alerts' thens don't run here; turned on, alerts start from what is true now", async () => {
+test("on a device that doesn't run background work, records and alerts' thens don't run; becoming the runner, alerts start from what is true now", async () => {
   const notes = {
     "Apps/R.md": {
       fm: {

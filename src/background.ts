@@ -34,6 +34,8 @@ export const DEFAULT_REFRESH_MS = 10 * 60_000;
 export const MIN_RECORD_MS = 60_000;
 /** A recorded list keeps this many rows, the newest. */
 export const MAX_SAMPLES = 10_000;
+/** The version of what alerts ran for, as kept on disk. */
+const FIRED_VERSION = 2;
 /** How many shortcuts one action may run through `then`, one app after another. */
 export const MAX_CHAIN = 4;
 /** How many times one `then` may run in an hour; more is a loop going through data. */
@@ -92,8 +94,8 @@ export interface BackgroundEnv {
   logSent(entry: NewEntry): void;
   /** Whether this device runs background work: records, and what alerts run. Other devices may run it instead. */
   runsBackground(): boolean;
-  /** This device, for apps with `devices: split`. */
-  device(): { id: string; name: string };
+  /** Whether alert notices are left to another program on this computer (gizmod), so none is told twice. */
+  quietAlerts?(): boolean;
 }
 
 /** How running a shortcut went: whether it ran, why not (as the notice told it), and the activity log's entry for what it changed. */
@@ -793,7 +795,7 @@ export class Background {
       const text = matching === undefined ? shown : `${matching} ${matching === 1 ? "row" : "rows"}`;
       this.active.set(key, { appPath: entry.path, app: entry.name, title, text });
       // Told when it turns true, not again until it has been false.
-      if (was !== true) this.say(`${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`);
+      if (was !== true && !this.env.quietAlerts?.()) this.say(`${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`);
     }
     this.publish();
   }
@@ -831,13 +833,19 @@ export class Background {
     this.saveFired();
   }
 
+  /**
+   * What alerts ran for, as kept. Kept in a version it knows, or not at all: rows were once told
+   * apart by when they were saved and now by their id, and reading the old keys would run every
+   * matching row's then again; an unknown version starts over, as a new runner does.
+   */
   private firedState(): Promise<Record<string, Fired>> {
     this.fired ??= (async () => {
       try {
         const text = await this.env.triggers?.read();
-        const parsed = text ? JSON.parse(text) as unknown : {};
-        this.firedSaved = text ?? "{}";
-        return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? parsed as Record<string, Fired> : {};
+        const parsed = text ? JSON.parse(text) as { v?: unknown; fired?: unknown } : undefined;
+        this.firedSaved = text ?? "";
+        const fired = parsed?.v === FIRED_VERSION ? parsed.fired : undefined;
+        return fired && typeof fired === "object" && !Array.isArray(fired) ? fired as Record<string, Fired> : {};
       } catch {
         return {};
       }
@@ -848,7 +856,7 @@ export class Background {
   /** Writes what alerts ran for when it changed, one write after another. */
   private saveFired(): void {
     void this.fired?.then((fired) => {
-      const text = JSON.stringify(fired);
+      const text = JSON.stringify({ v: FIRED_VERSION, fired });
       if (text === this.firedSaved) return;
       this.firedSaved = text;
       this.firedSaving = this.firedSaving.then(() => this.env.triggers?.write(text)).catch(() => {});
