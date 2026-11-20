@@ -86,6 +86,24 @@ export interface BackgroundEnv {
   device(): { id: string; name: string };
 }
 
+/**
+ * How running a shortcut went: whether it ran, why not (as the notice told it), the activity log's
+ * entry for what it changed, and for a shortcut that answers, the value and the value as shown.
+ */
+export interface ShortcutResult {
+  ok: boolean;
+  error?: string;
+  entryId?: string;
+  value?: unknown;
+  shown?: string;
+}
+
+/** A shortcut that answers: its value, or why there is none. */
+function answered(r: Evaluation): ShortcutResult {
+  if ("shown" in r) return { ok: true, value: r.value, shown: r.shown };
+  return { ok: false, error: "waiting" in r ? `it waits for ${r.waiting}` : r.error };
+}
+
 /** What a link brings besides a form's values: the key it carries and where it wants word back. */
 export interface LinkCall {
   key?: string;
@@ -334,7 +352,7 @@ export class Background {
   // ---- Shortcuts ----------------------------------------------------------------------------
 
   /** Runs the command `<app path>:<shortcut>`. */
-  runCommand(id: string): Promise<void> {
+  runCommand(id: string): Promise<ShortcutResult> {
     const cut = id.lastIndexOf(":");
     return this.runShortcut(id.slice(0, cut), id.slice(cut + 1), "shortcut");
   }
@@ -352,7 +370,7 @@ export class Background {
     const found = appsNamed(this.apps, name);
     if (found.length === 0) return this.say(`No app called “${name}”`);
     if (found.length > 1) return this.say(`Several apps are called “${name}”; use its path`);
-    return this.runShortcut(found[0].path, shortcut, "link", fields, undefined, { key, callbacks });
+    await this.runShortcut(found[0].path, shortcut, "link", fields, undefined, { key, callbacks });
   }
 
   /** Every app's shortcuts with the link that runs each, whether or not the app is allowed yet. */
@@ -375,38 +393,51 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun): Promise<void> {
+  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun): Promise<ShortcutResult> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     // In a dry run, what it would tell is kept with what it would change, and nothing is shown or opened.
     const step: DryStep = { app: entry?.name ?? basename(appPath), what: shortcut, changes: [], notices: [], remarks: [] };
     dry?.steps.push(step);
     const say = (message: string) => (dry ? void step.notices.push(message) : this.say(message));
+    const fail = (message: string): ShortcutResult => {
+      say(message);
+      return { ok: false, error: message };
+    };
     const openApp = (path: string) => (dry ? void step.remarks.push(`Open ${basename(path)} for you to fill in`) : this.env.sink.openApp(path));
-    if (!entry || !ps) return say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
-    if (!this.granted(entry)) return say(`Open ${entry.name} once to allow it`);
+    if (!entry || !ps) return fail(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
+    if (!this.granted(entry)) return fail(`Open ${entry.name} once to allow it`);
     const now = this.env.now();
     const r = resolvePanel(ps, this.valuesOf(entry.path, entry.spec, now));
     // Another app's trigger never opens an app: what it can't run is told instead.
     const triggered = chain !== undefined;
-    if (!r.panel) return triggered ? say(`${entry.name}: “${shortcut}” waits for a choice in the app, so it can't run from ${by(actor)}`) : openApp(entry.path);
+    if (!r.panel) {
+      if (triggered) return fail(`${entry.name}: “${shortcut}” waits for a choice in the app, so it can't run from ${by(actor)}`);
+      openApp(entry.path);
+      return { ok: false, error: `“${shortcut}” waits for a choice in ${entry.name}` };
+    }
     const p = r.panel;
     const label = labelOf(p, shortcut);
     step.what = label;
-    if (answers(p)) return dry ? void step.remarks.push(`Answer with the value of “${label}”, changing nothing`) : this.answer(entry, ps, p, shortcut, actor, link);
+    if (answers(p)) {
+      if (!dry) return this.answer(entry, ps, p, shortcut, actor, link);
+      step.remarks.push(`Answer with the value of “${label}”, changing nothing`);
+      return { ok: true };
+    }
     let input: Row = {};
     if (triggered && p.view === "button" && params && Object.keys(params).length) {
-      return say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
+      return fail(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
     }
     if (p.view === "form" || p.view === "checklist") {
       const form = p.view === "form";
-      if (!params && triggered) return say(`${entry.name}: “${shortcut}” is a ${p.view}; give ${by(actor)}'s then a fill with ${form ? "its values" : "item"}`);
+      if (!params && triggered) return fail(`${entry.name}: “${shortcut}” is a ${p.view}; give ${by(actor)}'s then a fill with ${form ? "its values" : "item"}`);
       if (!params) {
         openApp(entry.path);
-        return say(`${entry.name}: ${form ? "fill in the form" : "tick an item"}`);
+        say(`${entry.name}: ${form ? "fill in the form" : "tick an item"}`);
+        return { ok: false, error: form ? "the form needs its values" : "say which item to tick" };
       }
       const read = readParams(p, params, now);
-      if ("error" in read) return say(`${entry.name}: ${read.error}`);
+      if ("error" in read) return fail(`${entry.name}: ${read.error}`);
       input = read.row;
     }
     const cb = link?.callbacks ?? {};
@@ -417,7 +448,7 @@ export class Background {
       if (cb.to) lines.push(`Then it tells ${cb.to} it ran`);
       const effects = async () => dryLines(await this.dryRun(entry.path, shortcut, params));
       allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`, effects);
-      if (!allowed) return;
+      if (!allowed) return { ok: false, error: "the link wasn't allowed to run" };
     }
     const trail = chain ?? [`${entry.path}#${shortcut}`];
     // Said before what its `then` runs says, in the order they happen.
@@ -449,10 +480,12 @@ export class Background {
       result = await runActions(p, input, deps);
       if (result.ok) done();
     }
-    if (dry) return;
+    if (dry) return { ok: result.ok };
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
     if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: `“${label}” didn't run` }));
+    const entryId = await result.logged;
+    return result.ok ? { ok: true, entryId } : { ok: false, error: `“${label}” didn't run`, entryId };
   }
 
   /**
@@ -497,24 +530,28 @@ export class Background {
    * the value back to the app that opened it (x-success). It is worked out only once the link may
    * run, so a link without its key fetches nothing until the person says so.
    */
-  private async answer(entry: AppEntry, ps: PanelSpec, p: Panel, shortcut: string, actor: Actor, link: LinkCall | undefined): Promise<void> {
+  private async answer(entry: AppEntry, ps: PanelSpec, p: Panel, shortcut: string, actor: Actor, link: LinkCall | undefined): Promise<ShortcutResult> {
     const label = labelOf(p, shortcut);
-    if (actor.startsWith("trigger:")) return this.say(`${entry.name}: “${shortcut}” answers links with a value; a then can't run it`);
-    const tell = (r: Evaluation) => this.say(`${entry.name}: ${label}: ${"shown" in r ? r.shown : "waiting" in r ? `waits for ${r.waiting}` : r.error}`);
+    if (actor.startsWith("trigger:")) return this.failed(`${entry.name}: “${shortcut}” answers links with a value; a then can't run it`);
+    const tell = (r: Evaluation): ShortcutResult => {
+      this.say(`${entry.name}: ${label}: ${"shown" in r ? r.shown : "waiting" in r ? `waits for ${r.waiting}` : r.error}`);
+      return answered(r);
+    };
     if (actor !== "link") return tell(await this.evaluate(entry.path, ps));
     const cb = link?.callbacks ?? {};
     const lines = cb.to ? [`Its value goes to ${cb.to}`] : [];
     const allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks for “${label}” from ${entry.name}`);
-    if (!allowed) return;
+    if (!allowed) return { ok: false, error: "the link wasn't allowed to run" };
     const r = await this.evaluate(entry.path, ps);
     if (!("shown" in r)) {
       const why = "waiting" in r ? `it waits for ${r.waiting}` : r.error;
       if (allowed === "keyed" && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: why }));
-      return this.say(`${entry.name}: couldn't answer “${label}”: ${why}`);
+      return this.failed(`${entry.name}: couldn't answer “${label}”: ${why}`);
     }
     if (!cb.success) return tell(r);
     this.env.sink.openUrl(withParams(cb.success, answerParams(r.shown, r.value)));
     this.env.logSent({ app: entry.path, actor, what: label, changes: [], sent: { to: cb.to!, shown: r.shown } });
+    return answered(r);
   }
 
   /**
@@ -612,6 +649,12 @@ export class Background {
 
   private say(message: string): void {
     this.env.sink.notify(message);
+  }
+
+  /** Tells why something didn't run, and gives that as a run's result. */
+  private failed(message: string): ShortcutResult {
+    this.say(message);
+    return { ok: false, error: message };
   }
 
   /** Every app's shortcuts as commands, published when that list changes. */

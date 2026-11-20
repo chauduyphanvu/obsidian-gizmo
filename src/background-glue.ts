@@ -39,7 +39,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       if (!env) throw new Error(`can't find ${appPath}`);
       return {
         ...actionDepsOf(env, appPath, dataPath),
-        log: actor ? (what, changes) => void plugin.activity.add({ app: appPath, actor, what, changes }) : undefined,
+        log: actor ? (what, changes) => plugin.activity.add({ app: appPath, actor, what, changes }).then((e) => e?.id) : undefined,
       };
     },
     now: () => new Date(),

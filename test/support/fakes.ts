@@ -287,7 +287,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
       readBody: t.env.readBody,
       notify: t.env.notify,
       openNote: t.env.openNote,
-      log: actor ? (what, changes) => void t.activity.add({ app: appPath, actor, what, changes }) : undefined,
+      log: actor ? (what, changes) => t.activity.add({ app: appPath, actor, what, changes }).then((e) => e?.id) : undefined,
     }),
     now,
     triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },

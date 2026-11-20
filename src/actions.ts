@@ -25,8 +25,8 @@ export interface ActionDeps {
   readBody(path: string): Promise<string>;
   notify(message: string): void;
   openNote(path: string, fromPath: string): void;
-  /** Keeps what a run changed in the activity log, named as the panel is. */
-  log?(what: string, changes: Change[]): void;
+  /** Keeps what a run changed in the activity log, named as the panel is; may give the entry's id once kept. */
+  log?(what: string, changes: Change[]): Promise<string | undefined> | void;
   /** Runs the panel's `then` once its own actions are done, with the row they ran with; never rejects. */
   then?(p: Panel, ctx: Row): Promise<void>;
 }
@@ -52,6 +52,8 @@ export interface ActionResult {
   ok: boolean;
   /** The note a save to a folder created. */
   path?: string;
+  /** The activity log's entry for what it changed, once kept; undefined when it changed nothing. */
+  logged?: Promise<string | undefined>;
 }
 
 /** Characters Obsidian won't take in a file name. */
@@ -173,8 +175,8 @@ export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promis
     deps.notify(`Couldn't save: ${(e as Error).message}`);
     return { ok: false };
   }
-  if (ticked) deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]);
-  return { ok: true };
+  const logged = ticked ? deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]) : undefined;
+  return { ok: true, logged: logged ?? undefined };
 }
 
 /**
@@ -195,12 +197,13 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
   const target = p.target ?? (p.save ? saveTarget(p.save) : undefined);
   let path: string | undefined;
   const changes: Change[] = [];
-  let logged = false;
+  let logged: Promise<string | undefined> | undefined;
+  let kept = false;
   const log = () => {
-    if (logged || !changes.length) return;
-    logged = true;
+    if (kept || !changes.length) return;
+    kept = true;
     // A form's title says what it's for better than its button's label; a button has only its label.
-    deps.log?.(p.title ?? p.label ?? p.view, changes);
+    logged = deps.log?.(p.title ?? p.label ?? p.view, changes) ?? undefined;
   };
   try {
     if (p.append) {
@@ -228,10 +231,11 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     // Kept before what `then` runs is, in the order they happened.
     log();
     if (p.then) await deps.then?.(p, ctx);
-    return { ok: true, path };
+    return { ok: true, path, logged };
   } catch (e) {
     deps.notify(`Couldn't save: ${(e as Error).message}`);
-    return { ok: false };
+    log();
+    return { ok: false, logged };
   } finally {
     // What was written before a failure is kept too, so it can be undone.
     log();
