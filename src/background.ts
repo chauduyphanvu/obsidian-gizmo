@@ -1,11 +1,9 @@
-import { panelKey, violationText } from "./flows.ts";
-import { rowIdOf } from "./ledger-store.ts";
 import type { ActionDeps } from "./actions.ts";
 import type { Actor, LogStore, NewEntry } from "./activity.ts";
 import type { CaptureIndex, Parsed } from "./capture.ts";
 import type { DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
-import { compileWhere, matches, rowsOf, type Row } from "./data.ts";
+import type { Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { fileDep, nameDep } from "./deps.ts";
 import { FiredStore, pausedKey } from "./background-fired.ts";
@@ -13,8 +11,9 @@ import { MAX_SAMPLES, Recorder, recordJobs, type RecordJob } from "./background-
 import { RenameMatcher } from "./background-renames.ts";
 import { Shortcuts, labelOf, shortcutFields, type DryRun, type ShortcutResult } from "./background-shortcuts.ts";
 import { Rhythms } from "./background-rhythms.ts";
-import { stableJson } from "./hash.ts";
-import { PENDING_MS, fingerprint } from "./identity.ts";
+import { Pauses } from "./background-pauses.ts";
+import { Watch } from "./background-watch.ts";
+import { fingerprint } from "./identity.ts";
 import type { NoteReader } from "./expand.ts";
 import type { ShortcutLink } from "./links.ts";
 import { thisValues } from "./sources/this.ts";
@@ -22,12 +21,12 @@ import {
   panelIds, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
 import type { AppSummary } from "./map.ts";
-import { askersOf, describePermission, permissionsOf } from "./permissions.ts";
+import { askersOf, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
 import type { AppliedPolicy, Label, Policy } from "./policy.ts";
 import { basename, dataPathOf, devicesFolder, notePath, storeTarget } from "./store.ts";
 import { THIS } from "./template.ts";
-import type { AlertFeed, AlertItem } from "./views/alerts.ts";
+import type { AlertFeed } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
 import { panelValue } from "./views/value.ts";
 
@@ -35,11 +34,6 @@ import { panelValue } from "./views/value.ts";
 export const TICK_MS = 60_000;
 export const DEFAULT_REFRESH_MS = 10 * 60_000;
 
-/**
- * How long an app is paused before it is told: two beats, so a component edit that syncs here before
- * the data.json allowing it doesn't tell of a pause that ends a minute later.
- */
-export const PAUSE_TELL_MS = 10 * 60_000;
 
 /** One status bar item: `<panel title>: <value>`, and the name of the app a click opens. */
 export interface StatusItem {
@@ -193,30 +187,15 @@ export class Background {
   private rhythms: Rhythms;
   private renames = new RenameMatcher();
   private shortcuts: Shortcuts;
-  /** Status bar items and alerts true now, by watched panel key; the status list last published. */
-  private pins = new Map<string, StatusItem>();
-  private active = new Map<string, AlertItem>();
-  private status = "";
-  /** Whether each alert was true when last evaluated this session (unknown at first, so one already true is told). */
-  private alertOn = new Map<string, boolean>();
-  private listeners = new Set<() => void>();
+  private watch: Watch;
+  private pauses: Pauses;
   /** Told when the apps it knows, or what one of them is, change. */
   private indexListeners = new Set<() => void>();
-  private alertsShown = "[]";
   /** By watched panel key, what each alert with `then` already ran for; read once from `env.triggers`. */
   private fired: FiredStore;
-  /** Apps paused here, by path; the list last published. */
-  private pausedNow = new Map<string, PausedApp>();
-  private pausedShown = "[]";
 
   /** Alerts true now across the vault, for `view: alerts`. */
-  readonly alerts: AlertFeed = {
-    list: () => this.inOrder(this.active),
-    subscribe: (cb) => {
-      this.listeners.add(cb);
-      return () => this.listeners.delete(cb);
-    },
-  };
+  readonly alerts: AlertFeed;
 
   constructor(env: BackgroundEnv) {
     this.env = env;
@@ -233,6 +212,24 @@ export class Background {
       verdictNow: (entry) => this.verdictNow(entry),
       say: (message) => this.say(message),
     });
+    this.watch = new Watch(env, {
+      apps: this.apps,
+      fired: this.fired,
+      granted: (entry) => this.granted(entry),
+      verdictNow: (entry) => this.verdictNow(entry),
+      evaluate: (appPath, ps, force) => this.evaluate(appPath, ps, force),
+      runThen: (fromPath, then, ctx, chain, dry, seed) => this.runThen(fromPath, then, ctx, chain, dry, seed),
+      pauseOrForget: (entry) => this.pauses.pauseOrForget(entry),
+      say: (message) => this.say(message),
+    });
+    this.alerts = this.watch.alerts;
+    this.pauses = new Pauses(env, {
+      fired: this.fired,
+      verdictNow: (entry) => this.verdictNow(entry),
+      hide: (path) => this.watch.hide(path),
+      forget: (path) => this.forget(path),
+      say: (message) => this.say(message),
+    });
   }
 
   /** Reads every app note once (after the layout is ready) and does what is due. */
@@ -247,9 +244,7 @@ export class Background {
     this.running = false;
     for (const entry of this.apps.values()) entry.stop();
     this.apps.clear();
-    this.pins.clear();
-    this.active.clear();
-    this.listeners.clear();
+    this.watch.clear();
     this.indexListeners.clear();
   }
 
@@ -319,14 +314,14 @@ export class Background {
     const entry = this.running ? this.apps.get(appPath) ?? this.index(appPath) : undefined;
     if (!entry || !this.granted(entry)) return;
     for (const job of entry.records) void this.recorder.sample(entry, job, true).catch(() => {});
-    if (entry.checkedAt === undefined) void this.check(entry);
+    if (entry.checkedAt === undefined) void this.watch.check(entry);
   }
 
   private async work(entry: AppEntry): Promise<void> {
-    if (!this.granted(entry)) return this.pauseOrForget(entry);
-    await this.resume(entry);
+    if (!this.granted(entry)) return this.pauses.pauseOrForget(entry);
+    await this.pauses.resume(entry);
     for (const job of entry.records) await this.recorder.sample(entry, job, false).catch(() => {});
-    if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.check(entry);
+    if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.watch.check(entry);
     await this.rhythms.run(entry).catch(() => {});
   }
 
@@ -444,108 +439,17 @@ export class Background {
     this.env.sink.notify(message);
   }
 
-  // ---- Status bar and alerts ----------------------------------------------------------------
-
-  /** Evaluates an app's pinned and alerting panels; asked again meanwhile, it runs once more after. */
-  private check(entry: AppEntry): Promise<void> {
-    if (entry.checking) {
-      entry.again = true;
-      return entry.checking;
-    }
-    entry.checking = (async () => {
-      try {
-        do {
-          entry.again = false;
-          await this.checkOnce(entry);
-        } while (entry.again && this.apps.get(entry.path) === entry);
-      } finally {
-        entry.checking = undefined;
-      }
-    })();
-    return entry.checking;
-  }
-
-  /** A panel that can't be evaluated now (a failed fetch) keeps what it showed last. */
-  private async checkOnce(entry: AppEntry): Promise<void> {
-    if (entry.watched.length === 0) return;
-    if (!this.granted(entry)) return this.pauseOrForget(entry);
-    const now = this.env.now();
-    entry.checkedAt = now.getTime();
-    for (const { key, ps } of entry.watched) {
-      const r = await this.evaluate(entry.path, ps);
-      if (this.apps.get(entry.path) !== entry) return;
-      if (!("panel" in r)) continue;
-      const p = r.panel;
-      const title = p.title ?? p.label ?? entry.name;
-      const { shown } = r;
-      if (p.pin === "status") this.pins.set(key, { appPath: entry.path, text: `${title}: ${shown}`, title: entry.name });
-      if (p.alert === undefined) continue;
-      const rows = typeof p.alert === "string" ? undefined : rowsOf(r.rows).filter(compileWhere(p.alert, now));
-      const matching = rows?.length;
-      const on = matching === undefined ? matches(r.value, p.alert as string, now) : matching > 0;
-      // Whether it was told is kept with what alerts ran for, so a restart doesn't tell it again.
-      const fired = await this.fired.state();
-      const toldKey = `${key}\ntold`;
-      const kept = fired[toldKey];
-      const was = this.alertOn.get(key) ?? (kept && "on" in kept ? kept.on : undefined);
-      this.alertOn.set(key, on);
-      if (on !== was) {
-        if (on) fired[toldKey] = { on: true };
-        else delete fired[toldKey];
-        this.fired.save();
-      }
-      if (p.then) await this.alertThen(entry, key, p.then, r.value, on, rows);
-      if (this.apps.get(entry.path) !== entry) return;
-      if (!on) {
-        this.active.delete(key);
-        continue;
-      }
-      const text = matching === undefined ? shown : `${matching} ${matching === 1 ? "row" : "rows"}`;
-      this.active.set(key, { appPath: entry.path, app: entry.name, title, text });
-      // Told when it turns true, not again until it has been false, a restart between included.
-      if (was !== true) {
-        const told = `${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`;
-        if (!this.env.quietAlerts?.()) this.say(told);
-        if (this.env.runsBackground()) this.env.sink.alert?.({ app: entry.name, panel: title, text: told, label: this.verdictNow(entry)?.alertLabels[panelKey(ps)] });
-      }
-    }
-    this.publish();
-  }
-
-  /**
-   * Runs an alert's `then` for what is new since it last ran: once when a condition on its value
-   * turns true, and once for each row that newly matches a condition on rows. With nothing kept for
-   * the alert yet (the app was just allowed, the panel is new or was edited), it only notes what is
-   * true now, so already-true alerts don't all run at once.
-   */
-  private async alertThen(entry: AppEntry, key: string, then: Then, value: unknown, on: boolean, rows: Row[] | undefined): Promise<void> {
-    if (!this.env.runsBackground()) return;
-    const fired = await this.fired.state();
-    const before = fired[key];
-    if (rows === undefined) {
-      fired[key] = { on };
-      this.fired.save();
-      if (before && "on" in before && !before.on && on) await this.runThen(entry.path, then, { value });
-      return;
-    }
-    const ids = rows.map(rowId);
-    fired[key] = { rows: [...new Set(ids)] };
-    this.fired.save();
-    if (!before || !("rows" in before)) return;
-    const seen = new Set(before.rows);
-    // A row's then saves under an id from the alert and the row as it is now, the same on any runner;
-    // a value turning true has no such row, and its then saves as a save does.
-    for (const [i, row] of rows.entries()) {
-      if (!seen.has(ids[i])) await this.runThen(entry.path, then, { ...row, value }, [], undefined, `${key}\n${ids[i]}\n${stableJson(row)}`);
-    }
-  }
-
   /**
    * Background work was just turned on here: alerts note what is true now and run their `then`
    * only for what turns true after, never for everything that changed while another device ran them.
    */
   startOver(): void {
     this.fired.startOver();
+  }
+
+  /** Apps paused here, by name. */
+  paused(): PausedApp[] {
+    return this.pauses.paused();
   }
 
   // ---- Renames ------------------------------------------------------------------------------
@@ -559,7 +463,7 @@ export class Background {
     if (old) {
       old.stop();
       this.apps.delete(from);
-      this.hide(from);
+      this.watch.hide(from);
     }
     this.renames.renamed(from, to);
     this.carry(from, to);
@@ -576,8 +480,8 @@ export class Background {
   private disappeared(old: AppEntry): undefined {
     old.stop();
     this.apps.delete(old.path);
-    this.hide(old.path);
-    if (this.pausedNow.delete(old.path)) this.publishPaused();
+    this.watch.hide(old.path);
+    this.pauses.drop(old.path);
     const twin = this.renames.went(old.path, old.fingerprint, this.env.now().getTime());
     if (twin) this.carried(old.path, twin);
     for (const cb of [...this.indexListeners]) cb();
@@ -603,12 +507,7 @@ export class Background {
 
   /** Moves what alerts, rhythms and a pause kept under one path to another; what was kept there is replaced. */
   private carry(from: string, to: string): void {
-    const prefix = `${from}\n`;
-    for (const [key, on] of [...this.alertOn]) {
-      if (!key.startsWith(prefix)) continue;
-      this.alertOn.delete(key);
-      this.alertOn.set(to + key.slice(from.length), on);
-    }
+    this.watch.move(from, to);
     this.fired.move(from, to);
   }
 
@@ -620,126 +519,13 @@ export class Background {
     });
   }
 
-  // ---- Pause --------------------------------------------------------------------------------
-
-  /**
-   * An app that isn't allowed now. Paused when it was allowed and now asks for more, or the policy
-   * refuses it: it keeps where its rhythms and alerts got to, and the device running background work
-   * tells of it once it has lasted PAUSE_TELL_MS. Otherwise (revoked, never allowed) it is forgotten,
-   * and starts over when allowed.
-   */
-  private async pauseOrForget(entry: AppEntry): Promise<void> {
-    const why = this.pauseReason(entry);
-    if (!why) {
-      // Renamed elsewhere, its grant still on its way here by sync: what it carried waits for it.
-      if (entry.carried !== undefined && this.env.now().getTime() - entry.carried < PENDING_MS && this.env.granted(entry.path) === undefined) return this.hide(entry.path);
-      return this.forget(entry.path);
-    }
-    this.hide(entry.path);
-    const fired = await this.fired.state();
-    const key = pausedKey(entry.path);
-    const was = fired[key];
-    const now = this.env.now().getTime();
-    const since = was && "paused" in was ? was.paused : now;
-    this.pausedNow.set(entry.path, { path: entry.path, name: entry.name, reason: why.reason, since });
-    this.publishPaused();
-    if (!was || !("paused" in was) || was.reason !== why.reason) {
-      fired[key] = { paused: since, reason: why.reason };
-      this.fired.save();
-      if (now - since < PAUSE_TELL_MS) return;
-    } else if (was.told || now - since < PAUSE_TELL_MS) return;
-    if (!this.env.runsBackground()) return;
-    fired[key] = { paused: since, reason: why.reason, told: true };
-    this.fired.save();
-    const text = `${entry.name} is paused in the background: it ${why.reason}. ${why.next}`;
-    if (!this.env.quietAlerts?.()) this.say(text);
-    this.env.sink.alert?.({ app: entry.name, panel: "paused in the background", text });
-  }
-
-  /** Why an app that was allowed doesn't run now, and what to do; undefined when it was never allowed or was revoked. */
-  private pauseReason(entry: AppEntry): { reason: string; next: string } | undefined {
-    const before = this.env.granted(entry.path);
-    if (before === undefined) return undefined;
-    const verdict = this.verdictNow(entry);
-    if (verdict?.violations.length) return { reason: `breaks your data policy (${violationText(verdict.violations[0])})`, next: "Open it to see why." };
-    const missing = (verdict?.asked ?? entry.wanted).filter((p) => !before.includes(p));
-    if (!missing.length) return undefined;
-    const asks = missing.map((p) => describePermission(p)).map((d) => d.charAt(0).toLowerCase() + d.slice(1));
-    return { reason: `now asks to ${asks.join("; ")}`, next: "Open it to allow it." };
-  }
-
-  /** An app allowed again after a pause: its rhythms decide what they missed meanwhile, on this tick. */
-  private async resume(entry: AppEntry): Promise<void> {
-    if (this.pausedNow.delete(entry.path)) this.publishPaused();
-    const fired = await this.fired.state();
-    const was = fired[pausedKey(entry.path)];
-    if (!was || !("paused" in was)) return;
-    delete fired[pausedKey(entry.path)];
-    this.fired.save();
-    entry.pausedSince = was.paused;
-  }
-
-  /** Apps paused here, by name. */
-  paused(): PausedApp[] {
-    return [...this.pausedNow.values()].sort((a, b) => a.name.localeCompare(b.name));
-  }
-
-  private publishPaused(): void {
-    const list = this.paused();
-    const json = JSON.stringify(list.map((p) => [p.path, p.reason]));
-    if (json === this.pausedShown) return;
-    this.pausedShown = json;
-    this.env.sink.setPaused?.(list);
-  }
-
-  /** Takes an app's status items and alerts off the screen; what it was doing is kept. */
-  private hide(path: string): void {
-    let dropped = false;
-    for (const map of [this.pins, this.active]) {
-      for (const key of map.keys()) {
-        if (!key.startsWith(`${path}\n`)) continue;
-        map.delete(key);
-        dropped = true;
-      }
-    }
-    if (dropped) this.publish();
-  }
-
   /** Drops an app's status items and alerts (it's gone, or no longer allowed); `keep` are panels it still watches. */
   private forget(path: string, keep: ReadonlySet<string> = new Set()): void {
-    let dropped = false;
-    for (const map of [this.pins, this.active, this.alertOn]) {
-      for (const key of map.keys()) {
-        if (!key.startsWith(`${path}\n`) || keep.has(key)) continue;
-        map.delete(key);
-        dropped = true;
-      }
-    }
-    if (this.pausedNow.delete(path)) this.publishPaused();
+    const dropped = this.watch.drop(path, keep);
+    this.pauses.drop(path);
     // An alert's `then` that is dropped starts over, noting what is true when it's back.
     this.fired.drop(path, keep);
-    if (dropped) this.publish();
-  }
-
-  /** Tells the status bar and the alert views what changed. */
-  private publish(): void {
-    const status = this.inOrder(this.pins);
-    const json = JSON.stringify(status);
-    if (json !== this.status) {
-      this.status = json;
-      this.env.sink.setStatus(status);
-    }
-    const alerts = JSON.stringify(this.alerts.list());
-    if (alerts === this.alertsShown) return;
-    this.alertsShown = alerts;
-    for (const cb of [...this.listeners]) cb();
-  }
-
-  /** Items by app path, then in the order the app's panels are written. */
-  private inOrder<T>(items: Map<string, T>): T[] {
-    return [...this.apps.values()]
-      .sort((a, b) => a.path.localeCompare(b.path))
-      .flatMap((e) => e.watched.flatMap((w) => (items.has(w.key) ? [items.get(w.key)!] : [])));
+    if (dropped) this.watch.publish();
   }
 
   // ---- Index --------------------------------------------------------------------------------
@@ -766,7 +552,7 @@ export class Background {
     for (const cb of [...this.indexListeners]) cb();
     if (!this.running) return entry;
     this.shortcuts.publishCommands();
-    if (entry) void this.check(entry);
+    if (entry) void this.watch.check(entry);
     return entry;
   }
 
@@ -812,22 +598,9 @@ export class Background {
       if (this.apps.get(path) !== entry) return;
       // A new definition makes a new entry, which evaluates itself.
       if (definitionDeps.some((d) => changed.has(d)) && this.index(path) !== entry) return;
-      if (this.running && dataDeps.some((d) => changed.has(d))) void this.check(entry);
+      if (this.running && dataDeps.some((d) => changed.has(d))) void this.watch.check(entry);
     });
     this.apps.set(path, entry);
     return entry;
   }
 }
-
-/**
- * A row as an alert's `then` remembers it: its note (and task text), else its id in the app's
- * ledger, else when it was saved, else all of it.
- */
-function rowId(row: Row): string {
-  if (typeof row.path === "string") return typeof row.text === "string" ? `${row.path}\n${row.text}` : row.path;
-  const id = rowIdOf(row);
-  if (id) return `id:${id}`;
-  if (typeof row.at === "string") return `at:${row.at}`;
-  return stableJson(row);
-}
-

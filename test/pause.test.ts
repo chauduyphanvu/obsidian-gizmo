@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { PAUSE_TELL_MS } from "../src/background.ts";
+import { PAUSE_TELL_MS } from "../src/background-pauses.ts";
 import { EXPECT_MISSED } from "../src/background-rhythms.ts";
 import { carryOver } from "../src/background-fired.ts";
 import { permissionsOf } from "../src/permissions.ts";
