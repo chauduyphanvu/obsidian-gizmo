@@ -41,16 +41,14 @@ test("the disk copy survives a restart and goes through the panel's pipeline", a
   assert.equal(await dl.cachedPanelData("doses", { view: "number", source: "doses" }, { appPath: "A.md", dataPath: "A data.md" }, new Date(NOW)), undefined);
 });
 
-test("keys hold secret placeholders; secret values never reach the disk", async () => {
+test("a request with a secret is sent with it filled in, and neither the secret nor the answer reaches the disk", async () => {
   const f = fakeHost();
   const dl = new DataLayer(f.host);
   await dl.fetch("https://api.example.com/q?k={secret:demo}", { Authorization: "Bearer {secret:demo}" }, 60_000, false, undefined, ["demo"]);
   await settle(1);
   assert.equal(f.requests.at(-1), "https://api.example.com/q?k=s3cret");
-  const stored = [...f.disk.files.values()].map((file) => file.text).join("\n");
-  assert.match(stored, /\{secret:demo\}/);
-  assert.doesNotMatch(stored, /s3cret/);
-  assert.ok(await dl.cached("https://api.example.com/q?k={secret:demo}", { Authorization: "Bearer {secret:demo}" }));
+  assert.equal(f.disk.files.size, 0);
+  assert.equal(await dl.cached("https://api.example.com/q?k={secret:demo}", { Authorization: "Bearer {secret:demo}" }), undefined);
 });
 
 test("entries over 1 MB aren't stored", async () => {

@@ -153,7 +153,7 @@ export class DataLayer {
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
       if (res.text.length > MAX_RESPONSE_CHARS) throw new Error(`${hostOf(source)} sent more than 10 MB`);
       const data = parseBody(res.text, res.contentType, new Date(this.host.now()));
-      void this.host.cacheWrite?.(key, { at: this.host.now(), text: res.text, contentType: res.contentType });
+      if (keptOnDisk(source, headers, body)) void this.host.cacheWrite?.(key, { at: this.host.now(), text: res.text, contentType: res.contentType });
       return data;
     })();
     this.http.set(key, { at: this.host.now(), promise });
@@ -171,6 +171,7 @@ export class DataLayer {
 
   /** The disk copy of one web request, parsed as a fresh response is; undefined when there is none. */
   async cached(source: string, headers: Record<string, string> | undefined, body?: string | Record<string, unknown>): Promise<{ data: unknown; at: number } | undefined> {
+    if (!keptOnDisk(source, headers, body)) return undefined;
     const entry = await this.host.cacheRead?.(cacheKey(source, headers, body));
     if (!entry) return undefined;
     try {
@@ -348,6 +349,16 @@ export class DataLayer {
       }
     });
   }
+}
+
+/**
+ * Whether a response may be kept on disk: not when the request carries a secret or a body, whose
+ * answer may be an account, a balance or a token. The disk copy lives in the plugin's folder in
+ * the vault, which syncs and may be committed; the secret itself lives only in the keychain.
+ */
+function keptOnDisk(source: string, headers: Record<string, string> | undefined, body: unknown): boolean {
+  if (body !== undefined) return false;
+  return ![source, ...Object.values(headers ?? {}).map(String)].some((text) => secretIds(text).length > 0);
 }
 
 /** What a web response is cached under, in memory and on disk: its {secret:id} placeholders, never the secrets. */

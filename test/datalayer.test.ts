@@ -135,3 +135,20 @@ test("a web response over 10 MB isn't read", async () => {
   const dl = new DataLayer(f.host);
   await assert.rejects(dl.fetch(WEATHER, undefined, 60_000), /api\.example\.com sent more than 10 MB/);
 });
+
+test("a response fetched with a secret or a body is never kept on disk, so a token or an account isn't left in the vault", async () => {
+  const f = fakeHost();
+  const dl = new DataLayer(f.host);
+  const flushDisk = () => new Promise((r) => setTimeout(r, 20));
+  const authorized = { Authorization: "Bearer {secret:demo}" };
+  await dl.fetch("https://bank.example/balance", authorized, 60_000, false, undefined, ["demo"]);
+  await dl.fetch("https://api.example.com/key?k={secret:demo}", undefined, 60_000, false, undefined, ["demo"]);
+  await dl.fetch("https://api.example.com/search", undefined, 60_000, false, { q: "x" });
+  await dl.fetch(WEATHER, undefined, 60_000);
+  await flushDisk();
+  const kept = [...f.disk.files.values()].map((file) => file.text);
+  assert.equal(kept.length, 1);
+  assert.ok(kept[0].includes("api.example.com/forecast"));
+  assert.equal(await dl.cached("https://bank.example/balance", authorized), undefined);
+  assert.ok(await dl.cached(WEATHER, undefined));
+});

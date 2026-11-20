@@ -34,7 +34,9 @@ test("a response fetched with a secret isn't handed to a request that wasn't all
   await settle(1);
   const p: Panel = { view: "text", source: url, text: "{current.t}" };
   assert.equal(await dl.cachedPanelData(url, p, FILES, NOW), undefined);
-  assert.ok(await dl.cachedPanelData(url, { ...p, secrets: ["demo"] }, FILES, NOW));
+  // Nor to one that was: a response fetched with a secret is never kept on disk.
+  assert.equal(await dl.cachedPanelData(url, { ...p, secrets: ["demo"] }, FILES, NOW), undefined);
+  assert.equal(f.disk.files.size, 0);
   assert.equal(f.requests.length, 1);
 });
 
