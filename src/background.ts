@@ -1,4 +1,5 @@
 import { metIn, refusal, windowsDue, type Rhythm, type Window } from "./expect.ts";
+import { panelKey } from "./flows.ts";
 import { rowId as ledgerRowId } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { fillLine, runActions, storeOf, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
@@ -711,7 +712,7 @@ export class Background {
     const lines = cb.to ? [`Its value goes to ${cb.to}`] : [];
     const allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks for “${label}” from ${entry.name}`);
     if (!allowed) return { ok: false, error: "the link wasn't allowed to run" };
-    if (link?.sink && !this.mayAnswerTo(entry, p.title ?? p.label ?? entry.name, link.sink)) {
+    if (link?.sink && !this.mayAnswerTo(entry, ps, p.title ?? p.label ?? entry.name, link.sink)) {
       return this.failed(`${entry.name}: your data policy keeps “${label}” from ${link.sink}'s answers`);
     }
     const r = await this.evaluate(entry.path, ps);
@@ -727,13 +728,14 @@ export class Background {
   }
 
   /** Whether the applied data policy lets an answer's value go to `sink`: released there, or labelled no higher than it clears. */
-  private mayAnswerTo(entry: AppEntry, title: string, sink: "gizmod"): boolean {
+  private mayAnswerTo(entry: AppEntry, ps: PanelSpec, title: string, sink: "gizmod"): boolean {
     const policy = this.env.policy?.()?.rules;
     if (!policy) return true;
     if (released(policy, entry.path, title, sink)) return true;
-    const label = this.verdictNow(entry)?.answerLabels[title] ?? "public";
+    // A value whose label can't be found isn't taken for public.
+    const label = this.verdictNow(entry)?.answerLabels[panelKey(ps)];
     const cleared = clearance(policy, sink);
-    return cleared !== undefined && rank(label) <= rank(cleared);
+    return label !== undefined && cleared !== undefined && rank(label) <= rank(cleared);
   }
 
   /**
@@ -889,8 +891,17 @@ export class Background {
       const rows = typeof p.alert === "string" ? undefined : rowsOf(r.rows).filter(compileWhere(p.alert, now));
       const matching = rows?.length;
       const on = matching === undefined ? matches(r.value, p.alert as string, now) : matching > 0;
-      const was = this.alertOn.get(key);
+      // Whether it was told is kept with what alerts ran for, so a restart doesn't tell it again.
+      const fired = await this.firedState();
+      const toldKey = `${key}\ntold`;
+      const kept = fired[toldKey];
+      const was = this.alertOn.get(key) ?? (kept && "on" in kept ? kept.on : undefined);
       this.alertOn.set(key, on);
+      if (on !== was) {
+        if (on) fired[toldKey] = { on: true };
+        else delete fired[toldKey];
+        this.saveFired();
+      }
       if (p.then) await this.alertThen(entry, key, p.then, r.value, on, rows);
       if (this.apps.get(entry.path) !== entry) return;
       if (!on) {
@@ -899,11 +910,11 @@ export class Background {
       }
       const text = matching === undefined ? shown : `${matching} ${matching === 1 ? "row" : "rows"}`;
       this.active.set(key, { appPath: entry.path, app: entry.name, title, text });
-      // Told when it turns true, not again until it has been false.
+      // Told when it turns true, not again until it has been false, a restart between included.
       if (was !== true) {
         const told = `${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`;
         if (!this.env.quietAlerts?.()) this.say(told);
-        this.env.sink.alert?.({ app: entry.name, panel: title, text: told, label: this.verdictNow(entry)?.alertLabels[title] });
+        if (this.env.runsBackground()) this.env.sink.alert?.({ app: entry.name, panel: title, text: told, label: this.verdictNow(entry)?.alertLabels[panelKey(ps)] });
       }
     }
     this.publish();
@@ -990,7 +1001,7 @@ export class Background {
     void this.fired?.then((fired) => {
       let gone = false;
       for (const key of Object.keys(fired)) {
-        if (!key.startsWith(`${path}\n`) || keep.has(key)) continue;
+        if (!key.startsWith(`${path}\n`) || keep.has(key.replace(/\ntold$/, ""))) continue;
         delete fired[key];
         gone = true;
       }

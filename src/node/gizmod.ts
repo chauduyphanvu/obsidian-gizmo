@@ -147,7 +147,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
   await env.beat.beat();
   await bg.start();
   const timer = setInterval(() => {
-    void env.beat.beat().then(() => bg.tick());
+    void env.beat.beat().catch(() => {}).then(() => bg.tick());
   }, TICK_MS);
   log(`gizmod ${id} reads ${vaultPath}; ${env.beat.isRunner() ? "it runs background work" : `${env.beat.runner?.name ?? "another device"} runs background work`}`);
 

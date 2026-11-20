@@ -175,13 +175,13 @@ export class DataLayer {
     await ledger.snapshot(dataPath, (app && this.host.frontmatter(app.appPath)) || {}, (fn) => s.writeNote(dataPath, fn), force, app?.devices ? this.deviceNotes(app.devices) : []);
   }
 
-  /** Writes now the snapshots waiting to be written. */
   /** Stops waiting snapshots: the plugin is going, and the runner writes them next time. */
   dispose(): void {
     for (const t of this.snapshotTimers.values()) clearTimeout(t);
     this.snapshotTimers.clear();
   }
 
+  /** Writes now the snapshots waiting to be written. */
   async flushSnapshots(): Promise<void> {
     const s = this.snapshots;
     const ledger = this.ledger;

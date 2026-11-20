@@ -66,6 +66,24 @@ test("links resolve as Obsidian resolves them: a path, then a name from the link
   assert.equal(v.resolve("Nope", "Notes/x.md"), undefined);
 });
 
+test("a folder renamed while gizmod watches is read under its new name, and its old notes go", async () => {
+  const root = vaultDir({ "Apps/Mood.md": "---\napp: Mood\n---\n", "Apps/Deep/Inbox.md": "x" });
+  const v = new NodeVault(root);
+  await v.scan();
+  const told: string[] = [];
+  v.onChange((path, gone) => told.push(`${gone ? "-" : "+"}${path}`));
+  v.watch();
+  try {
+    const { renameSync } = await import("node:fs");
+    renameSync(join(root, "Apps"), join(root, "Tools"));
+    for (let i = 0; i < 40 && !v.file("Tools/Deep/Inbox.md"); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(v.notes().map((n) => n.path).sort(), ["Tools/Deep/Inbox.md", "Tools/Mood.md"]);
+    assert.ok(told.includes("-Apps/Mood.md") && told.includes("+Tools/Mood.md"), told.join(" "));
+  } finally {
+    v.close();
+  }
+});
+
 test("a frontmatter write keeps the body and is read back at once", async () => {
   const root = vaultDir({ "Apps/X data.md": "---\nn: 1\n---\nKeep me\n" });
   const v = new NodeVault(root);
@@ -195,8 +213,12 @@ test("gizmod reads data.json again when Obsidian changes it", async () => {
     const path = join(t.root, ".obsidian/plugins/gizmo/data.json");
     const data = JSON.parse(readFileSync(path, "utf8")) as Record<string, unknown>;
     data.grants = { "Apps/Inbox.md": permissionsOf(readSpec(INBOX, { path: "Apps/Inbox.md" })!.spec!, "Apps/Inbox.md") };
-    writeFileSync(path, JSON.stringify(data));
     const later = new Date(Date.now() + 5000);
+    // Caught half-written first: what it read last holds, and it's read again though the time is the same.
+    writeFileSync(path, JSON.stringify(data).slice(0, 20));
+    utimesSync(path, later, later);
+    assert.equal((await t.ask("POST", "/run/Inbox/add", { auth: LINK_KEY, body: { task: "a" } })).status, 403);
+    writeFileSync(path, JSON.stringify(data));
     utimesSync(path, later, later);
     assert.equal((await t.ask("POST", "/run/Inbox/add", { auth: LINK_KEY, body: { task: "a" } })).status, 200);
   } finally {

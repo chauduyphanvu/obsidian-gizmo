@@ -195,7 +195,7 @@ export interface Folded {
 
 /** Where folding starts: lists as a note held them (a snapshot, or a hand-kept note), with their ids. */
 export interface FoldBase {
-  lists: Record<string, { rows: Row[]; ids: string[]; conflicts?: Conflict[] }>;
+  lists: Record<string, { rows: Row[]; ids: string[]; conflicts?: Conflict[]; gone?: string[] }>;
   ticked: Record<string, string[]>;
 }
 
@@ -220,9 +220,10 @@ export class Folder {
 
   constructor(base: FoldBase, caps: Record<string, number>) {
     this.caps = caps;
-    for (const [name, { rows, ids, conflicts }] of Object.entries(base.lists)) {
+    for (const [name, { rows, ids, conflicts, gone }] of Object.entries(base.lists)) {
       const l = this.listOf(name);
       l.conflicts.push(...(conflicts ?? []));
+      for (const id of gone ?? []) this.gone.add(`${name}\n${id}`);
       // A base row is copied only when an event changes it.
       rows.forEach((r, i) => {
         if (l.rows.has(ids[i])) return;
@@ -318,6 +319,12 @@ export class Folder {
         break;
       }
     }
+  }
+
+  /** Each list's rows that stay out whatever add comes later, for a snapshot to keep. */
+  goneIn(list: string): string[] {
+    const prefix = `${list}\n`;
+    return [...this.gone].filter((k) => k.startsWith(prefix)).map((k) => k.slice(prefix.length));
   }
 
   /** The rows applications changed since last asked. */

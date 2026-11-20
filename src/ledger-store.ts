@@ -25,8 +25,10 @@ export const IDS_KEY = "gizmo-ids";
 const HASH_KEY = "gizmo-hash";
 /** Cells two devices set at once, kept with the snapshot so a fold that starts there still offers both. */
 const CONFLICTS_KEY = "gizmo-conflicts";
+/** Rows deleted (or added by an undone add), kept with the snapshot so a late copy of their add stays out after it. */
+const GONE_KEY = "gizmo-gone";
 /** The snapshot's own keys, and Obsidian's lists of properties, which are no app's data. */
-const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY, CONFLICTS_KEY, "tags", "aliases", "cssclasses"];
+const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY, CONFLICTS_KEY, GONE_KEY, "tags", "aliases", "cssclasses"];
 
 /** What a snapshot says it was folded from: how many lines of each log file, and the newest event's time. */
 export interface SnapshotMark {
@@ -344,11 +346,18 @@ export class Ledger {
     if (events.some((e) => (e.op === "undo" || e.op === "redo") && e.ev.some((id) => !ids.has(id)))) return undefined;
     const kept = isRecord(fm[IDS_KEY]) ? fm[IDS_KEY] : {};
     const conflicts = isRecord(fm[CONFLICTS_KEY]) ? fm[CONFLICTS_KEY] : {};
+    const gone = isRecord(fm[GONE_KEY]) ? fm[GONE_KEY] : {};
     const base = listsOf(fm, kept);
     for (const [name, l] of Object.entries(base.lists)) {
       const ids = kept[name];
       if (!Array.isArray(ids) || ids.length !== l.rows.length) return undefined;
       if (Array.isArray(conflicts[name])) l.conflicts = conflicts[name] as Conflict[];
+    }
+    // A list emptied by deletes isn't among the note's lists, but what it deleted still stays out.
+    for (const [name, ids] of Object.entries(gone)) {
+      if (!Array.isArray(ids)) continue;
+      base.lists[name] ??= { rows: [], ids: [] };
+      base.lists[name].gone = ids.map(String);
     }
     return { base, events };
   }
@@ -422,10 +431,15 @@ export class Ledger {
       // Discarding a hand edit takes out the lists it added, so the note says what the log does.
       if (force) {
         for (const [k, v] of Object.entries(note)) {
-          if (!META_KEYS.includes(k) && Array.isArray(v) && v.length && !state.lists.has(k) && !state.ticked.has(k)) delete note[k];
+          // Only lists of rows: a list of text (a property like people: [[Ann]]) may be the person's own.
+          const rows = Array.isArray(v) && v.length && v.every((x) => isRecord(x));
+          if (!META_KEYS.includes(k) && rows && !state.lists.has(k) && !state.ticked.has(k)) delete note[k];
         }
       }
       note[IDS_KEY] = Object.fromEntries([...state.lists].filter(([name]) => kept.has(name)).map(([name, l]) => [name, l.rows.map((r) => rowIdOf(r)!)]));
+      const gone = Object.fromEntries([...state.lists.keys()].filter((name) => kept.has(name)).map((name) => [name, n.folder!.goneIn(name)]).filter(([, ids]) => ids.length));
+      if (Object.keys(gone).length) note[GONE_KEY] = gone;
+      else delete note[GONE_KEY];
       const open = [...state.lists].filter(([name, l]) => kept.has(name) && l.conflicts.length);
       if (open.length) note[CONFLICTS_KEY] = Object.fromEntries(open.map(([name, l]) => [name, l.conflicts]));
       else delete note[CONFLICTS_KEY];
@@ -458,6 +472,11 @@ export class Ledger {
       left.forEach((k, i) => { if (k !== "\u0000") ops.push({ op: "del", l: name, row: had.ids[i] }); });
     }
     for (const [name, l] of folded.lists) if (!note.lists[name] && Object.hasOwn(fm ?? {}, name)) for (const id of l.ids) ops.push({ op: "del", l: name, row: id });
+    // A checklist emptied by hand is an empty list, which is neither kind: everything ticked is unticked.
+    for (const [name, had] of folded.ticked) {
+      const v = fm?.[name];
+      if (!note.ticked[name] && Array.isArray(v) && v.length === 0) for (const i of had) ops.push({ op: "untick", l: name, item: i });
+    }
     for (const [name, items] of Object.entries(note.ticked)) {
       const had = folded.ticked.get(name) ?? [];
       for (const i of items) if (!had.includes(i)) ops.push({ op: "tick", l: name, item: i });

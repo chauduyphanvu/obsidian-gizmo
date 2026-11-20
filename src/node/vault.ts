@@ -207,7 +207,22 @@ export class NodeVault {
     return () => { this.listeners = this.listeners.filter((l) => l !== cb); };
   }
 
+  /**
+   * A path that changed: a file is read again; a folder (renamed, moved or deleted, which macOS
+   * reports for the folder alone) has what's under it read again, and what's gone from it dropped.
+   */
   private async changed(path: string): Promise<void> {
+    const stat = await fs.stat(this.abs(path)).catch(() => undefined);
+    if (stat?.isDirectory()) {
+      for (const p of [...this.files.keys()]) if (p.startsWith(`${path}/`) && !existsSync(this.abs(p))) await this.changed(p);
+      for (const e of await fs.readdir(this.abs(path), { withFileTypes: true }).catch(() => [])) {
+        if (!e.name.startsWith(".")) await this.changed(`${path}/${e.name}`);
+      }
+      return;
+    }
+    if (!stat) {
+      for (const p of [...this.files.keys()]) if (p.startsWith(`${path}/`)) await this.changed(p);
+    }
     const there = await this.load(path);
     for (const l of this.listeners) l(path, !there);
   }

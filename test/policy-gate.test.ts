@@ -213,3 +213,18 @@ test("the install preview reads a then target shipped in the same share as it wi
   assert.ok(!("error" in p));
   assert.ok(p.policy?.violations.includes("Due: notes in Health: med (private) → Med log (through then) (personal)"), JSON.stringify(p.policy));
 });
+
+test("gizmod answers a value only when the policy clears its label, an untitled panel's too; a label it can't find isn't taken for public", async () => {
+  const COUNT = { app: "c", panels: [{ view: "button", label: "Took", save: "doses", shortcut: "took" }, { view: "number", source: "doses", agg: "count", shortcut: "count" }] };
+  // Health may be answered to a link (personal), but gizmod's answers are cleared for public data only.
+  const policy = readPolicy({ labels: { "Health/**": "personal", "Apps/**": "public" }, sinks: { gizmod: "public" } }).policy!;
+  const t = fakeBackground({ "Health/Count.md": { fm: COUNT }, "Apps/Open.md": { fm: { ...COUNT, app: "o" } } }, {}, { policy });
+  await t.bg.start();
+  // Copying the links makes their keys.
+  t.bg.shortcutLinks();
+  const health = await t.bg.runFrom("Health/Count.md", "count", { key: t.linkKeys.get("Health/Count.md#count") });
+  assert.equal(health.ok, false);
+  assert.match(health.error ?? "", /your data policy keeps/);
+  const open = await t.bg.runFrom("Apps/Open.md", "count", { trusted: false, key: t.linkKeys.get("Apps/Open.md#count") });
+  assert.deepEqual([open.ok, open.value], [true, 0]);
+});

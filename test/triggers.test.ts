@@ -306,3 +306,25 @@ test("what alerts ran for, kept in an older form, is started over rather than re
   await settle();
   assert.equal(tasks(old), undefined);
 });
+
+test("an alert already told isn't told again after a restart, and is once it has been false", async () => {
+  const notes: Notes = {
+    "Apps/Due.md": { fm: { app: "Due", view: "number", title: "Late", source: "items", agg: "count", alert: "> 0" } },
+    "Apps/Due data.md": { fm: { items: [{ n: 1 }] } },
+  };
+  const t = fakeBackground(notes);
+  await t.bg.start();
+  await settle();
+  assert.deepEqual(t.notices, ["Due: Late 1"]);
+  const again = fakeBackground(notes, {}, { triggers: t.triggers });
+  await again.bg.start();
+  await settle();
+  assert.deepEqual(again.notices, [], "told before the restart");
+  again.f.files.get("Apps/Due data.md")!.fm!.items = [];
+  again.changed("Apps/Due data.md");
+  await settle();
+  again.f.files.get("Apps/Due data.md")!.fm!.items = [{ n: 2 }];
+  again.changed("Apps/Due data.md");
+  await settle();
+  assert.deepEqual(again.notices, ["Due: Late 1"]);
+});

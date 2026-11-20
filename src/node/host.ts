@@ -96,9 +96,10 @@ export function gizmodEnv(opts: GizmodOptions) {
     try {
       const m = statSync(path).mtimeMs;
       if (m !== settingsMtime) {
-        settingsMtime = m;
         const read = JSON.parse(readFileSync(path, "utf8")) as Partial<Settings>;
         settings = { ...read, grants: read.grants ?? {} };
+        // Only once it parsed: a file caught half-written is read again next time.
+        settingsMtime = m;
       }
     } catch {
       // No settings yet: nothing is allowed.
@@ -213,11 +214,11 @@ export function gizmodEnv(opts: GizmodOptions) {
     async beat(force = false): Promise<void> {
       const t = now();
       const me: Beat = { id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t };
-      const all = await beats();
+      // A folder a sync is rewriting is read next time; this beat counts what it could read.
+      const all = await beats().catch(() => [] as Beat[]);
       const last = this.heard ? undefined : all.find((b) => b.id === id)?.seen;
       if (!this.heard || force || t - this.saidAt >= BEAT_EVERY_MS) {
-        await fileStore(join(pluginDir, "devices", `${id}.json`)).write(JSON.stringify(me));
-        this.saidAt = t;
+        await fileStore(join(pluginDir, "devices", `${id}.json`)).write(JSON.stringify(me)).then(() => { this.saidAt = t; }, (e: Error) => log(`couldn't write gizmod's beat: ${e.message}`));
       }
       const others = all.filter((b) => b.id !== id);
       this.seen = [me, ...others];

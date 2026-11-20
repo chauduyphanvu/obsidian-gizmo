@@ -51,7 +51,8 @@ export class DeviceBeat {
   async beat(force = false): Promise<void> {
     const now = Date.now();
     const me = this.mine(now);
-    const all = await devicesSeen(this.plugin);
+    // A folder a sync is rewriting is read next time.
+    const all = await devicesSeen(this.plugin).catch(() => [] as Beat[]);
     // This device's word from its last session, read before this one is written over it.
     const last = this.heard ? undefined : all.find((b) => b.id === me.id)?.seen;
     if (!this.heard || force || me.name !== this.said || now - this.saidAt >= BEAT_EVERY_MS) {

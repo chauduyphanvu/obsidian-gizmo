@@ -264,3 +264,27 @@ test("discarding a hand edit takes out a list the edit added", async () => {
   assert.equal(v.fms.get(DATA)!.extra, undefined);
   assert.equal((await a.ledger.state(DATA)).handEdited, false);
 });
+
+test("a deleted row stays deleted after a snapshot when a late copy of its add arrives; a checklist emptied by hand unticks on Import; Discard keeps a list of text", async () => {
+  const v = vault();
+  const a = device(v, "a");
+  const b = device(v, "b");
+  await a.ledger.write(DATA, [{ op: "add", l: "s", row: "x", v: { n: 1 } }, { op: "add", l: "s", row: "y", v: { n: 2 } }, { op: "tick", l: "c", item: "milk" }]);
+  await a.ledger.write(DATA, [{ op: "del", l: "s", row: "x" }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  // Another runner's add of the same row, later.
+  b.clock.now += 60_000;
+  await b.ledger.write(DATA, [{ op: "add", l: "s", row: "x", v: { n: 1 } }]);
+  const fresh = device(v, "r").ledger;
+  assert.deepEqual((await fresh.state(DATA)).lists.get("s")!.rows.map(rowIdOf), ["y"]);
+  for (const p of v.files.keys()) a.ledger.fileChanged(p);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  a.ledger.fileChanged(DATA);
+  v.fms.get(DATA)!.c = [];
+  a.ledger.fileChanged(DATA);
+  assert.deepEqual(await a.ledger.importOps(DATA), [{ op: "untick", l: "c", item: "milk" }]);
+  v.fms.get(DATA)!.people = ["[[Ann]]"];
+  a.ledger.fileChanged(DATA);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA), true);
+  assert.deepEqual(v.fms.get(DATA)!.people, ["[[Ann]]"], "a list of text may be the person's own");
+});
