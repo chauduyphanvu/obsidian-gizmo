@@ -11,6 +11,7 @@ import { compileWhere, matches, parseDuration, rowsOf, type Row } from "./data.t
 import { stampOf, toTime } from "./time.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { fileDep, nameDep } from "./deps.ts";
+import { FiredStore, pausedKey } from "./background-fired.ts";
 import { stableJson } from "./hash.ts";
 import { PENDING_MS, RENAME_MS, fingerprint } from "./identity.ts";
 import type { NoteReader } from "./expand.ts";
@@ -49,8 +50,6 @@ export const PAUSE_TELL_MS = 10 * 60_000;
 /** A recorded list keeps this many rows, the newest. */
 /** A week of samples at the shortest interval, so a late copy of a sample can't fall past the cap. */
 export const MAX_SAMPLES = 10_080;
-/** The version of what alerts ran for, as kept on disk. */
-const FIRED_VERSION = 2;
 /** How many shortcuts one action may run through `then`, one app after another. */
 export const MAX_CHAIN = 4;
 /** How many times one `then` may run in an hour; more is a loop going through data. */
@@ -200,12 +199,6 @@ function answers(p: Panel): boolean {
   return p.view === "number" || p.view === "progress";
 }
 
-/** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
-type Fired = { on: boolean } | { rows: string[] } | { decided: number } | { paused: number; reason: string; told?: true };
-
-/** Where an app's pause is kept in `fired`: beside its rhythms' `expect:<rule>`, never a panel's key. */
-const pausedKey = (path: string) => `${path}\npaused:`;
-
 /** A rhythm missed while nothing ran (Obsidian closed, no gizmod): told for at most this many of its latest windows. */
 const MAX_CATCH_UP = 3;
 
@@ -287,9 +280,7 @@ export class Background {
   private indexListeners = new Set<() => void>();
   private alertsShown = "[]";
   /** By watched panel key, what each alert with `then` already ran for; read once from `env.triggers`. */
-  private fired: Promise<Record<string, Fired>> | undefined;
-  private firedSaved = "{}";
-  private firedSaving: Promise<void> = Promise.resolve();
+  private fired: FiredStore;
   /** When each `then` ran in the last hour, by source app and target shortcut; and each shortcut's link runs. */
   private runs = new Map<string, number[]>();
   /** A link without its key is waiting for the person's answer. */
@@ -312,6 +303,7 @@ export class Background {
 
   constructor(env: BackgroundEnv) {
     this.env = env;
+    this.fired = new FiredStore(env);
   }
 
   /** Reads every app note once (after the layout is ready) and does what is due. */
@@ -434,7 +426,7 @@ export class Background {
   }
 
   private async decide(entry: AppEntry, rules: Rhythm[]): Promise<void> {
-    const fired = await this.firedState();
+    const fired = await this.fired.state();
     const now = this.env.now();
     const zone = this.env.zone?.();
     for (const rule of rules) {
@@ -442,7 +434,7 @@ export class Background {
       const before = fired[key];
       if (!before || !("decided" in before)) {
         fired[key] = { decided: now.getTime() };
-        this.saveFired();
+        this.fired.save();
         continue;
       }
       const due = windowsDue(rule, before.decided, now.getTime(), zone);
@@ -458,7 +450,7 @@ export class Background {
         await this.missed(entry, rule, w, zone, i >= misses.length - MAX_CATCH_UP, whilePaused);
       }
       fired[key] = { decided: due.at(-1)!.deadline };
-      this.saveFired();
+      this.fired.save();
     }
     entry.pausedSince = undefined;
   }
@@ -973,7 +965,7 @@ export class Background {
       const matching = rows?.length;
       const on = matching === undefined ? matches(r.value, p.alert as string, now) : matching > 0;
       // Whether it was told is kept with what alerts ran for, so a restart doesn't tell it again.
-      const fired = await this.firedState();
+      const fired = await this.fired.state();
       const toldKey = `${key}\ntold`;
       const kept = fired[toldKey];
       const was = this.alertOn.get(key) ?? (kept && "on" in kept ? kept.on : undefined);
@@ -981,7 +973,7 @@ export class Background {
       if (on !== was) {
         if (on) fired[toldKey] = { on: true };
         else delete fired[toldKey];
-        this.saveFired();
+        this.fired.save();
       }
       if (p.then) await this.alertThen(entry, key, p.then, r.value, on, rows);
       if (this.apps.get(entry.path) !== entry) return;
@@ -1009,17 +1001,17 @@ export class Background {
    */
   private async alertThen(entry: AppEntry, key: string, then: Then, value: unknown, on: boolean, rows: Row[] | undefined): Promise<void> {
     if (!this.env.runsBackground()) return;
-    const fired = await this.firedState();
+    const fired = await this.fired.state();
     const before = fired[key];
     if (rows === undefined) {
       fired[key] = { on };
-      this.saveFired();
+      this.fired.save();
       if (before && "on" in before && !before.on && on) await this.runThen(entry.path, then, { value });
       return;
     }
     const ids = rows.map(rowId);
     fired[key] = { rows: [...new Set(ids)] };
-    this.saveFired();
+    this.fired.save();
     if (!before || !("rows" in before)) return;
     const seen = new Set(before.rows);
     // A row's then saves under an id from the alert and the row as it is now, the same on any runner;
@@ -1034,22 +1026,7 @@ export class Background {
    * only for what turns true after, never for everything that changed while another device ran them.
    */
   startOver(): void {
-    const before = this.firedState();
-    this.fired = (async () => carryOver(await before, await this.otherFired()))();
-    this.saveFired();
-  }
-
-  /** What the other devices kept of their alerts and rhythms, in a version this one knows. */
-  private async otherFired(): Promise<Record<string, Fired>[]> {
-    const texts = await this.env.otherTriggers?.().catch(() => []) ?? [];
-    return texts.flatMap((text) => {
-      try {
-        const parsed = JSON.parse(text) as { v?: unknown; fired?: unknown };
-        return parsed.v === FIRED_VERSION && parsed.fired && typeof parsed.fired === "object" && !Array.isArray(parsed.fired) ? [parsed.fired as Record<string, Fired>] : [];
-      } catch {
-        return [];
-      }
-    });
+    this.fired.startOver();
   }
 
   // ---- Renames ------------------------------------------------------------------------------
@@ -1128,16 +1105,7 @@ export class Background {
       this.alertOn.delete(key);
       this.alertOn.set(to + key.slice(from.length), on);
     }
-    void this.firedState().then((fired) => {
-      let moved = false;
-      for (const key of Object.keys(fired)) {
-        if (!key.startsWith(prefix)) continue;
-        fired[to + key.slice(from.length)] = fired[key];
-        delete fired[key];
-        moved = true;
-      }
-      if (moved) this.saveFired();
-    });
+    this.fired.move(from, to);
   }
 
   /** Notes gone for PENDING_MS with nothing to match are gone for good; notes made long enough ago match nothing. */
@@ -1168,7 +1136,7 @@ export class Background {
       return this.forget(entry.path);
     }
     this.hide(entry.path);
-    const fired = await this.firedState();
+    const fired = await this.fired.state();
     const key = pausedKey(entry.path);
     const was = fired[key];
     const now = this.env.now().getTime();
@@ -1177,12 +1145,12 @@ export class Background {
     this.publishPaused();
     if (!was || !("paused" in was) || was.reason !== why.reason) {
       fired[key] = { paused: since, reason: why.reason };
-      this.saveFired();
+      this.fired.save();
       if (now - since < PAUSE_TELL_MS) return;
     } else if (was.told || now - since < PAUSE_TELL_MS) return;
     if (!this.env.runsBackground()) return;
     fired[key] = { paused: since, reason: why.reason, told: true };
-    this.saveFired();
+    this.fired.save();
     const text = `${entry.name} is paused in the background: it ${why.reason}. ${why.next}`;
     if (!this.env.quietAlerts?.()) this.say(text);
     this.env.sink.alert?.({ app: entry.name, panel: "paused in the background", text });
@@ -1203,11 +1171,11 @@ export class Background {
   /** An app allowed again after a pause: its rhythms decide what they missed meanwhile, on this tick. */
   private async resume(entry: AppEntry): Promise<void> {
     if (this.pausedNow.delete(entry.path)) this.publishPaused();
-    const fired = await this.firedState();
+    const fired = await this.fired.state();
     const was = fired[pausedKey(entry.path)];
     if (!was || !("paused" in was)) return;
     delete fired[pausedKey(entry.path)];
-    this.saveFired();
+    this.fired.save();
     entry.pausedSince = was.paused;
   }
 
@@ -1222,36 +1190,6 @@ export class Background {
     if (json === this.pausedShown) return;
     this.pausedShown = json;
     this.env.sink.setPaused?.(list);
-  }
-
-  /**
-   * What alerts ran for, as kept. Kept in a version it knows, or not at all: rows were once told
-   * apart by when they were saved and now by their id, and reading the old keys would run every
-   * matching row's then again; an unknown version starts over, as a new runner does.
-   */
-  private firedState(): Promise<Record<string, Fired>> {
-    this.fired ??= (async () => {
-      try {
-        const text = await this.env.triggers?.read();
-        const parsed = text ? JSON.parse(text) as { v?: unknown; fired?: unknown } : undefined;
-        this.firedSaved = text ?? "";
-        const fired = parsed?.v === FIRED_VERSION ? parsed.fired : undefined;
-        return fired && typeof fired === "object" && !Array.isArray(fired) ? fired as Record<string, Fired> : {};
-      } catch {
-        return {};
-      }
-    })();
-    return this.fired;
-  }
-
-  /** Writes what alerts ran for when it changed, one write after another. */
-  private saveFired(): void {
-    void this.fired?.then((fired) => {
-      const text = JSON.stringify({ v: FIRED_VERSION, fired });
-      if (text === this.firedSaved) return;
-      this.firedSaved = text;
-      this.firedSaving = this.firedSaving.then(() => this.env.triggers?.write(text)).catch(() => {});
-    });
   }
 
   /** Takes an app's status items and alerts off the screen; what it was doing is kept. */
@@ -1279,15 +1217,7 @@ export class Background {
     }
     if (this.pausedNow.delete(path)) this.publishPaused();
     // An alert's `then` that is dropped starts over, noting what is true when it's back.
-    void this.fired?.then((fired) => {
-      let gone = false;
-      for (const key of Object.keys(fired)) {
-        if (!key.startsWith(`${path}\n`) || keep.has(key.replace(/\ntold$/, ""))) continue;
-        delete fired[key];
-        gone = true;
-      }
-      if (gone) this.saveFired();
-    });
+    this.fired.drop(path, keep);
     if (dropped) this.publish();
   }
 
@@ -1473,25 +1403,6 @@ function labelOf(p: Panel, fallback: string): string {
 }
 
 /** When a list's last row was saved, from its `at`. */
-/**
- * What a device taking over background work keeps: alerts start over (they note what is true now and
- * run their `then` only for what turns true after), while rhythms and pauses carry on. Each rhythm
- * goes on from the latest point any device decided it to, so a window nobody decided while devices
- * changed over is still decided, and one already decided elsewhere isn't decided again.
- */
-export function carryOver(mine: Record<string, Fired>, others: readonly Record<string, Fired>[]): Record<string, Fired> {
-  const out: Record<string, Fired> = {};
-  for (const [key, value] of Object.entries(mine)) if ("paused" in value || "decided" in value) out[key] = value;
-  for (const fired of others) {
-    for (const [key, value] of Object.entries(fired)) {
-      if (!("decided" in value) || typeof value.decided !== "number") continue;
-      const had = out[key];
-      if (!had || !("decided" in had) || had.decided < value.decided) out[key] = { decided: value.decided };
-    }
-  }
-  return out;
-}
-
 function lastSample(list: unknown): number | undefined {
   const last = Array.isArray(list) ? list[list.length - 1] : undefined;
   return last !== null && typeof last === "object" ? toTime((last as Row).at) : undefined;
