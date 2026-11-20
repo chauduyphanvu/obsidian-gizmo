@@ -30,6 +30,7 @@ import { registerMap } from "./map-view.ts";
 import { newLinkKey, shortcutId } from "./links.ts";
 import { GizmoSettings } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
+import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "./snapshots.ts";
 import { permissionsOf } from "./permissions.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
 import { logFileParts, logFolder } from "./ledger.ts";
@@ -74,8 +75,8 @@ export default class GizmoPlugin extends Plugin {
     // a change and at most every five minutes; what's waiting is written before Obsidian quits.
     this.dataLayer.setSnapshots({
       isRunner: () => this.beat?.isRunner() ?? false,
-      delayMs: 5000,
-      gapMs: 5 * 60_000,
+      delayMs: SNAPSHOT_DELAY_MS,
+      gapMs: SNAPSHOT_GAP_MS,
       writeNote: (path, fn) => obsidianWrites(this.app).writeFrontmatter(path, fn),
     });
     // As Obsidian quits: what's waiting is written, and this device says it's leaving, so another takes over now.

@@ -1,5 +1,6 @@
 import { Ledger } from "./ledger-store.ts";
 import type { ResponseHistory } from "./responses.ts";
+import { SnapshotWriter, type Snapshots } from "./snapshots.ts";
 import { parseBody, type Row } from "./data.ts";
 import { stampParts } from "./time.ts";
 import { fileDep, folderDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
@@ -46,16 +47,6 @@ export interface Host {
   fileSize?(path: string): number | undefined;
   /** This device's id, which its ledger files are named for. */
   device?(): string;
-}
-
-/** Who writes the ledger's snapshots into data notes: only the device that runs background work. */
-export interface Snapshots {
-  isRunner(): boolean;
-  /** How long after a change the snapshot is written, so a burst of changes makes one write. */
-  delayMs: number;
-  /** The least time between two snapshots of a note with recorded lists, so a list sampled every minute isn't rewritten every minute. */
-  gapMs: number;
-  writeNote(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -115,12 +106,7 @@ export class DataLayer {
   readonly host: Host;
   /** Every app's lists as events, when the host can keep files of any kind. */
   readonly ledger: Ledger | undefined;
-  private snapshots: Snapshots | undefined;
-  /** Each data note's app note, and its folder of old device notes, as the panels reading it said. */
-  private appOf = new Map<string, { appPath: string; devices?: string }>();
-  private snapshotTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; due: number }>();
-  /** When each data note's snapshot was last written. */
-  private snapshotted = new Map<string, number>();
+  private snapshotWriter: SnapshotWriter;
 
   /**
    * The vault as it was at this time (ms), for replay: lists from the ledger's events up to it and web
@@ -146,6 +132,7 @@ export class DataLayer {
       this.ledger.onWrite = (path) => this.fileChanged(path);
       if (opts.like?.ledger) this.ledger.capsFrom(opts.like.ledger);
     }
+    this.snapshotWriter = new SnapshotWriter(host, this.ledger, (folder) => this.deviceNotes(folder));
   }
 
   /** Moves a replay to another time: what it read is read again as of then. */
@@ -160,12 +147,12 @@ export class DataLayer {
 
   /** Who writes snapshots, and how; until set, none are written. */
   setSnapshots(s: Snapshots | undefined): void {
-    this.snapshots = s;
+    this.snapshotWriter.set(s);
   }
 
   /** The app note whose lists a data note keeps (for the lists typed in it), and its old device notes' folder. */
   noteApp(dataPath: string, appPath: string, devices?: string): void {
-    this.appOf.set(dataPath, { appPath, devices });
+    this.snapshotWriter.noteApp(dataPath, appPath, devices);
   }
 
   /** The frontmatter of the device notes an app kept under `devices: split`. */
@@ -173,65 +160,22 @@ export class DataLayer {
     return this.notesIn(folder).filter((path) => typeof this.host.frontmatter(path)?.device === "string").sort().map((path) => this.host.frontmatter(path)!);
   }
 
-  private writeSnapshot(dataPath: string, s: Snapshots, ledger: Ledger): Promise<void> {
-    this.snapshotted.set(dataPath, this.host.now());
-    const app = this.appOf.get(dataPath);
-    const appFm = (app && this.host.frontmatter(app.appPath)) || {};
-    return ledger.snapshot(dataPath, appFm, (fn) => s.writeNote(dataPath, fn), false, app?.devices ? this.deviceNotes(app.devices) : []).catch(() => {});
-  }
-
-  /**
-   * Writes a data note's snapshot a little after its ledger last changed, when this device is the one
-   * that does. A note with recorded lists is written at most once a gap, so samples coming in wait for
-   * the gap's end; any other note, a few seconds after what a person saved.
-   */
-  private snapshotSoon(dataPath: string): void {
-    const s = this.snapshots;
-    const ledger = this.ledger;
-    if (!s || !ledger || !s.isRunner()) return;
-    const now = this.host.now();
-    const gap = ledger.recorded(dataPath) ? s.gapMs : 0;
-    const due = Math.max(now + s.delayMs, (this.snapshotted.get(dataPath) ?? -Infinity) + gap);
-    const waiting = this.snapshotTimers.get(dataPath);
-    // One waiting for the gap to end keeps its time; one waiting for changes to stop waits again.
-    if (waiting && waiting.due > now + s.delayMs) return;
-    if (waiting) clearTimeout(waiting.timer);
-    const timer = setTimeout(() => {
-      this.snapshotTimers.delete(dataPath);
-      void this.writeSnapshot(dataPath, s, ledger);
-    }, due - now);
-    this.snapshotTimers.set(dataPath, { timer, due });
-  }
-
   /**
    * Writes a data note's snapshot now, from any device: after Import or Discard, `force` writes it
    * over a hand edit.
    */
-  async snapshotNow(dataPath: string, force: boolean): Promise<void> {
-    const s = this.snapshots;
-    const ledger = this.ledger;
-    if (!s || !ledger) return;
-    const app = this.appOf.get(dataPath);
-    await ledger.snapshot(dataPath, (app && this.host.frontmatter(app.appPath)) || {}, (fn) => s.writeNote(dataPath, fn), force, app?.devices ? this.deviceNotes(app.devices) : []);
+  snapshotNow(dataPath: string, force: boolean): Promise<void> {
+    return this.snapshotWriter.now(dataPath, force);
   }
 
   /** Stops waiting snapshots: the plugin is going, and the runner writes them next time. */
   dispose(): void {
-    for (const t of this.snapshotTimers.values()) clearTimeout(t.timer);
-    this.snapshotTimers.clear();
+    this.snapshotWriter.dispose();
   }
 
   /** Writes now the snapshots waiting to be written. */
-  async flushSnapshots(): Promise<void> {
-    const s = this.snapshots;
-    const ledger = this.ledger;
-    if (!s || !ledger) return;
-    const waiting = [...this.snapshotTimers.keys()];
-    for (const dataPath of waiting) {
-      clearTimeout(this.snapshotTimers.get(dataPath)!.timer);
-      this.snapshotTimers.delete(dataPath);
-      await this.writeSnapshot(dataPath, s, ledger);
-    }
+  flushSnapshots(): Promise<void> {
+    return this.snapshotWriter.flush();
   }
 
   // ---- Panel data ---------------------------------------------------------------------------
@@ -443,7 +387,7 @@ export class DataLayer {
 
   fileChanged(path: string): void {
     const dataPath = this.ledger?.fileChanged(path);
-    if (dataPath) this.snapshotSoon(dataPath);
+    if (dataPath) this.snapshotWriter.soon(dataPath);
     this.parsed.delete(path);
     const before = this.index?.get(path);
     const info = this.host.fileInfo(path);

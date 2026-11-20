@@ -18,6 +18,7 @@ import { localZone } from "../time.ts";
 import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../responses.ts";
+import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../snapshots.ts";
 import { isApp, notePath, storeTarget } from "../store.ts";
 import { captureNamesOf, destinationsOf, linkKeyOf, type StoredData } from "../stored.ts";
 import { NodeVault, yamlText } from "./vault.ts";
@@ -240,7 +241,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     quietAlerts: () => false,
   };
   // Only the device running background work writes data notes' snapshots: gizmod, when it's there.
-  data.setSnapshots({ isRunner: () => beat.isRunner(), delayMs: 5000, gapMs: 5 * 60_000, writeNote: (path, fn) => io.writeFrontmatter(path, fn) });
+  data.setSnapshots({ isRunner: () => beat.isRunner(), delayMs: SNAPSHOT_DELAY_MS, gapMs: SNAPSHOT_GAP_MS, writeNote: (path, fn) => io.writeFrontmatter(path, fn) });
 
   return { vault, data, host, io, activity, beat, sink, notices, bgEnv, store, pluginDir, unseenMs: UNSEEN_MS };
 }
