@@ -25,7 +25,7 @@ const phases = [
     name: "vault",
     fill: (vault) => cpSync(join(repo, "test/vault"), vault, { recursive: true }),
     // In this order: `fresh` needs apps nobody has opened yet; `apps` opens (and allows) every app.
-    checks: ["fresh", "concise", "apps", "data", "interaction", "sources", "tasks", "display", "views", "embeds", "lenses", "background", "triggers", "map", "answers", "try", "authoring", "fixes", "bases", "screens"],
+    checks: ["fresh", "concise", "apps", "data", "interaction", "sources", "tasks", "display", "views", "embeds", "lenses", "background", "triggers", "map", "answers", "capture", "try", "authoring", "fixes", "bases", "screens"],
   },
   {
     name: "gallery",

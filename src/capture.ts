@@ -46,7 +46,8 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
       const fields = p.view === "form" ? Object.entries(p.fields ?? p.schema ?? {}) : [];
       const target: CaptureTarget = {
         name: p.alias ?? shortcut, path: app.path, app: app.name, shortcut,
-        label: p.label ?? p.title ?? shortcut, view: p.view as CaptureTarget["view"],
+        // A form's title says what it's for better than its button's label, as the activity log names it.
+        label: p.title ?? p.label ?? shortcut, view: p.view as CaptureTarget["view"],
         fields, items: (p.items ?? []).map(String),
       };
       all.push({ target, alias: p.alias });
