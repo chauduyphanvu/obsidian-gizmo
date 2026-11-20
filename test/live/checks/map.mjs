@@ -81,7 +81,7 @@ export default async function map(t) {
         return c?.querySelector(".gz-map-state")?.textContent;
       }, 3000);
       // Paused for eleven minutes as far as what it kept says: the next tick tells it, and the one after doesn't again.
-      const fired = await bg.fired;
+      const fired = await bg.fired.state();
       fired[path + "\\npaused:"].paused -= 11 * 60_000;
       const mark = na.notices.length;
       await bg.tick();
