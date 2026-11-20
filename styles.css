@@ -497,3 +497,7 @@ button.gz-lens-toggle {
 .modal.gz-try-modal { width: min(1000px, 94vw); }
 .gizmo.gz-try .gz-try-app { border: 1px dashed var(--background-modifier-border); border-radius: var(--radius-m); margin: var(--size-4-3) 0; }
 .gizmo.gz-try .gz-try-app > .gizmo { padding: var(--size-4-3); max-width: none; }
+.gizmo.gz-capture .gz-capture-input { width: 100%; font-size: var(--font-ui-medium); }
+.gizmo.gz-capture .gz-capture-hint { margin: var(--size-4-2) 0 var(--size-4-1); min-height: 1.4em; }
+.gizmo.gz-capture .gz-capture-chips { display: flex; flex-wrap: wrap; gap: var(--size-4-1); margin-bottom: var(--size-4-2); }
+.gizmo.gz-capture .gz-effects:empty { display: none; }

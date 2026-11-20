@@ -14,6 +14,7 @@ import { obsidianHost, obsidianUndoIO, pluginFile } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import type { LensIndex } from "./lenses.ts";
+import { registerCaptureCommand } from "./capture-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
 import { newLinkKey } from "./links.ts";
@@ -93,6 +94,7 @@ export default class GizmoPlugin extends Plugin {
     registerInsertPanel(this);
     registerGalleryCommand(this);
     registerLinkCommand(this);
+    registerCaptureCommand(this);
     registerShareCommands(this);
     registerActivity(this);
     registerMap(this);

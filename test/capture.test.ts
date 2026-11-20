@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { captureDate, captureTargets, captureTime, parseLine, type CaptureApp } from "../src/capture.ts";
+import { captureDate, captureTargets, captureTime, completed, parseLine, type CaptureApp } from "../src/capture.ts";
 import { readSpec } from "../src/spec.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
@@ -156,4 +156,10 @@ test("the background previews a line with a dry run, then runs it as the shortcu
   assert.equal(ran.entryId, entry.id);
   const wrong = await t.bg.capture("spend lots");
   assert.deepEqual([wrong.ok, wrong.error], [false, "amount must be a number, not “lots”"]);
+});
+
+test("taking a completion replaces the last word and leaves a space for the next; one with spaces is quoted", () => {
+  assert.equal(completed("spend 5 f", "food"), "spend 5 food ");
+  assert.equal(completed("sp", "spend"), "spend ");
+  assert.equal(completed("pack ", "Phone charger"), 'pack "Phone charger" ');
 });

@@ -298,3 +298,10 @@ function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
   const nextField = open.find(([n]) => !Object.hasOwn(params, n));
   return { ok: true, target, params, next: nextField ? describe(nextField[0], nextField[1]) : undefined };
 }
+
+/** The last word of a line, replaced by a completion, with a space after it to type the next value. */
+export function completed(line: string, completion: string): string {
+  const at = /\S*$/.exec(line)!.index;
+  const word = /\s/.test(completion) ? `"${completion}"` : completion;
+  return `${line.slice(0, at)}${word} `;
+}
