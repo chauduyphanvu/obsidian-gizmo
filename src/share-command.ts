@@ -101,7 +101,10 @@ class InstallModal extends Modal {
     this.installButton = row.createEl("button", { cls: "mod-cta", text: "Install" });
     this.installButton.disabled = true;
     this.installButton.addEventListener("click", () => void this.install());
-    if (this.start) void this.read(this.start);
+    // A link fills the box but fetches nothing until Preview: any web page can send an install link.
+    const url = /^\w+:\/\//.test(this.start.trim()) ? sharedUrl(this.start.trim()) : undefined;
+    if (url) this.say(`Press Preview to fetch ${new URL(url).hostname}`);
+    else if (this.start) void this.read(this.start);
     else area.focus();
   }
 
