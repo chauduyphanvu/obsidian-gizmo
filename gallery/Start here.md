@@ -24,4 +24,11 @@ A gizmo is an ordinary note whose properties start with `app:` and one sentence 
 Gizmo's board, calendar (or year heatmap), timeline, chart and number also work inside any base, with
 no app note: add a view to the base and pick one whose name starts with Gizmo.
 
+You can log to an app without opening it. Gizmo: Do… takes one line that starts with a shortcut's
+name and goes on with its values: `spend 14.5 food lunch`, `weight 81.2`, `meds`, `task renew the
+passport`, `pack charg`. A line starting `;;` in any note does the same and leaves a receipt behind.
+Each shows what it will do before you press Enter. Values fill the form's fields in order, dates can
+be words (today, yday, fri, last mon), and a name is the panel's `alias:` or its `shortcut:`. Copy
+capture link gives a phone's shortcut or a launcher the same line.
+
 Copy a note into your vault and open it; it will ask before it touches anything.

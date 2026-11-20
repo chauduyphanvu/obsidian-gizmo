@@ -12,6 +12,7 @@ panels:
       note: text
     save: $what
     label: Log
+    alias: $what
   - view: number
     title: This week
     source: $what

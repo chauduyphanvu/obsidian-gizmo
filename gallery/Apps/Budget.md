@@ -15,6 +15,7 @@ panels:
     title: Spent something
     save: spend
     label: Add
+    alias: spend
   - view: number
     title: This month
     source: month

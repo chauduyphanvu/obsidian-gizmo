@@ -6,6 +6,7 @@ panels:
     save: doses
     notify: Dose logged
     shortcut: took-meds
+    alias: meds
   - view: number
     title: Doses today
     source: doses

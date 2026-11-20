@@ -25,6 +25,7 @@ tabs:
       title: Packing
       items: [Passport, Chargers, Plug adapter, Medication, Rain jacket, Cash]
       save: packed
+      alias: pack
   Itinerary:
     - view: table
       title: Itinerary

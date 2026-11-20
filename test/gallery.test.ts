@@ -935,3 +935,21 @@ test("Movers (test vault): pick one of the biggest moves, note why it happened, 
     [{ symbol: "SPY", session: 5, close: 99, change: -3.41, reason: "Rate decision", at: "2026-11-18T12:00" }]);
   assert.equal(text(why.querySelector("li")), "SPY session 5, -3.41%: Rate decision");
 });
+
+test("the gallery's capture names each reach one shortcut, and a line for each runs it", async () => {
+  const notes: Notes = {};
+  for (const folder of ["Apps", "Components"]) for (const n of noteNames(folder)) notes[`${folder}/${n}`] = { fm: fm(`${folder}/${n}`) };
+  const t = fakeBackground(notes);
+  await t.bg.start();
+  const index = t.bg.captureIndex();
+  assert.deepEqual([...index.clashes.keys()], []);
+  assert.deepEqual([...index.names.keys()].sort(), ["add", "decide", "did", "meds", "pack", "saw-aurora", "sleep", "spend", "task", "took-meds", "weight"]);
+  assert.equal(index.names.get("weight")?.app, "Weight");
+  assert.equal(index.names.get("sleep")?.app, "Sleep");
+  for (const line of ["spend 14.5 food lunch", "weight 81.2", "meds", "task renew the passport", "pack charg"]) {
+    const r = await t.bg.capture(line);
+    assert.equal(r.ok, true, `${line}: ${r.error ?? ""}`);
+  }
+  assert.deepEqual(t.f.files.get("Apps/Weight data.md")?.fm?.weight, [{ value: 81.2, note: "", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Trip planner data.md")?.fm?.packed, ["Chargers"]);
+});

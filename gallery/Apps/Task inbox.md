@@ -12,6 +12,7 @@ panels:
     line: "- [ ] {task}"
     label: Add
     shortcut: add
+    alias: task
   - view: table
     title: Open
     source: work
