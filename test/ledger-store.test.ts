@@ -150,3 +150,22 @@ test("lists typed in the app note are the base of lists the data note lacks, and
   await a.ledger.write(DATA, [{ op: "set", l: "flights", row: rowIdOf(second)!, f: "seat", v: "4A", from: undefined }]);
   assert.deepEqual((await a.ledger.state(DATA, app)).lists.get("flights")!.rows, [{ code: "BA1" }, { code: "BA2", seat: "4A" }]);
 });
+
+test("a cell two devices set at once is still offered both ways after a snapshot, until one is picked", async () => {
+  const v = vault();
+  const a = device(v, "a");
+  const b = device(v, "b");
+  await a.ledger.write(DATA, [{ op: "add", l: "s", row: "r1", v: { who: "x" } }]);
+  await b.ledger.state(DATA);
+  await a.ledger.write(DATA, [{ op: "set", l: "s", row: "r1", f: "who", v: "Ann", from: "x" }]);
+  await b.ledger.write(DATA, [{ op: "set", l: "s", row: "r1", f: "who", v: "Bo", from: "x" }]);
+  for (const p of v.files.keys()) a.ledger.fileChanged(p);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  const r = device(v, "r");
+  const s = (await r.ledger.state(DATA)).lists.get("s")!;
+  assert.equal(s.conflicts.length, 1, "read from the snapshot, which keeps the conflict");
+  await a.ledger.write(DATA, [{ op: "set", l: "s", row: "r1", f: "who", v: s.conflicts[0].value, from: s.rows[0].who }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  assert.equal(v.fms.get(DATA)!["gizmo-conflicts"], undefined);
+  assert.deepEqual((await device(v, "r2").ledger.state(DATA)).lists.get("s")!.conflicts, []);
+});

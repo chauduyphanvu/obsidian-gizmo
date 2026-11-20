@@ -188,7 +188,7 @@ export interface Folded {
 
 /** Where folding starts: lists as a note held them (a snapshot, or a hand-kept note), with their ids. */
 export interface FoldBase {
-  lists: Record<string, { rows: Row[]; ids: string[] }>;
+  lists: Record<string, { rows: Row[]; ids: string[]; conflicts?: Conflict[] }>;
   ticked: Record<string, string[]>;
 }
 
@@ -223,8 +223,9 @@ export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {
     }
     return l;
   };
-  for (const [name, { rows, ids }] of Object.entries(base.lists)) {
+  for (const [name, { rows, ids, conflicts }] of Object.entries(base.lists)) {
     const l = listOf(name);
+    l.conflicts.push(...(conflicts ?? []));
     rows.forEach((r, i) => {
       if (l.rows.has(ids[i])) return;
       l.order.push(ids[i]);

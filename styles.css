@@ -516,3 +516,17 @@ button.gz-lens-toggle {
 .gizmo.gz-capture .gz-capture-chips { display: flex; flex-wrap: wrap; gap: var(--size-4-1); margin-bottom: var(--size-4-2); }
 .gizmo.gz-capture .gz-effects:empty { display: none; }
 .gizmo.gz-activity .gz-activity-focus { background: var(--background-modifier-hover); border-radius: var(--radius-s); }
+
+/* The ledger: a data note edited by hand, and a cell two devices set at once */
+.gizmo .gz-hand-edit { border-color: var(--text-warning); }
+.gizmo .gz-conflict {
+  margin-left: var(--size-4-1);
+  font-size: var(--font-ui-smaller);
+  padding: 0 6px;
+  height: auto;
+  border: 1px dashed var(--text-warning);
+  border-radius: var(--radius-s);
+  background: transparent;
+  color: var(--text-warning);
+  cursor: pointer;
+}

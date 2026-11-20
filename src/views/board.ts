@@ -2,7 +2,7 @@ import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
 import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { heading, noteLink, rowKey, rowNote, selectable } from "./common.ts";
+import { conflictChip, heading, noteLink, rowKey, rowNote, selectable } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
@@ -111,6 +111,8 @@ export const board: ViewDef = {
         const note = rowNote(p, row);
         if (note) noteLink(title, text, note, ctx);
         else title.setText(text);
+        // Moved to two columns at once on two devices: the other column is offered.
+        conflictChip(card, row, p.group!, (value) => ctx.editRow(row, p.group!, value));
         card.addEventListener("dragstart", (e) => {
           dragging = { row, from: column, card };
           card.classList.add("gz-dragging");

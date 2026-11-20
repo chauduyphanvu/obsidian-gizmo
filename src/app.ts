@@ -1,13 +1,14 @@
+import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
 import type { NewEntry } from "./activity.ts";
-import { renderEmpty, renderErrors, renderOpenOnce, renderBlocked, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
+import { editWords, renderBlocked, renderEmpty, renderErrors, renderHandEdit, renderOpenOnce, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./cache.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
-import { fileDep, nameDep } from "./deps.ts";
+import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import { typedName, type NoteReader } from "./expand.ts";
 import {
@@ -175,6 +176,8 @@ export class AppController {
   private dataPath = "";
   private unsubscribe: (() => void) | undefined;
   private hosting: Hosting | undefined;
+  /** The card saying the data note was edited by hand, while it is. */
+  private handEdit: HTMLElement | undefined;
   private grantKey: string;
   private hostPath: string;
   /** What `$this` reads, and as JSON, to tell when it changed. */
@@ -631,6 +634,8 @@ export class AppController {
     const definition = this.definitionDeps();
     const deps = new Set(definition);
     for (const m of this.mounted.values()) for (const d of m.deps) deps.add(d);
+    const kept = [fileDep(this.dataPath), folderDep(logFolder(this.dataPath))];
+    for (const d of kept) deps.add(d);
     // An embed's keys are in its block, not in the note it names as its path.
     const self = this.hosting?.kind === "embed" ? "" : fileDep(this.appPath);
     this.unsubscribe = this.env.data.subscribe(deps, (changed) => {
@@ -640,6 +645,31 @@ export class AppController {
       for (const m of this.mounted.values()) {
         if (m.source && m.deps.some((d) => d !== self && changed.has(d))) void this.loadPanel(m);
       }
+      if (kept.some((d) => changed.has(d))) void this.checkHandEdit();
+    });
+    void this.checkHandEdit();
+  }
+
+  /** Says so when the data note was edited by hand since the app's log was last written into it, with Import and Discard. */
+  private async checkHandEdit(): Promise<void> {
+    const ledger = this.env.data.ledger;
+    // Only where the app's lists are kept in the ledger; a lens keeps no data note of its own.
+    if (!ledger || !this.env.store || this.hosting?.kind === "lens") return;
+    const dataPath = this.dataPath;
+    const appFm = this.env.frontmatter(this.appPath) ?? {};
+    const state = await ledger.state(dataPath, appFm);
+    const ops = state.handEdited ? await ledger.importOps(dataPath, appFm) : [];
+    if (this.dataPath !== dataPath) return;
+    this.handEdit?.remove();
+    this.handEdit = undefined;
+    const header = this.shell.querySelector(".gz-header") as HTMLElement | null;
+    if (!state.handEdited || !header) return;
+    this.handEdit = renderHandEdit(header, basename(dataPath), editWords(ops).length ? editWords(ops) : ["its layout only"], {
+      import: async () => {
+        await ledger.write(dataPath, ops);
+        await this.env.data.snapshotNow(dataPath, true);
+      },
+      discard: () => this.env.data.snapshotNow(dataPath, true),
     });
   }
 

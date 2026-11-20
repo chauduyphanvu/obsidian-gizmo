@@ -165,6 +165,18 @@ export class DataLayer {
     }, s.delayMs));
   }
 
+  /**
+   * Writes a data note's snapshot now, from any device: after Import or Discard, `force` writes it
+   * over a hand edit.
+   */
+  async snapshotNow(dataPath: string, force: boolean): Promise<void> {
+    const s = this.snapshots;
+    const ledger = this.ledger;
+    if (!s || !ledger) return;
+    const app = this.appOf.get(dataPath);
+    await ledger.snapshot(dataPath, (app && this.host.frontmatter(app.appPath)) || {}, (fn) => s.writeNote(dataPath, fn), force, app?.devices ? this.deviceNotes(app.devices) : []);
+  }
+
   /** Writes now the snapshots waiting to be written. */
   async flushSnapshots(): Promise<void> {
     const s = this.snapshots;

@@ -2,7 +2,7 @@ import { fillWith, type Row } from "../data.ts";
 import { display } from "../format.ts";
 import { ACTION_KEYS } from "../keys.ts";
 import { ROW_INDEX } from "../sources/list.ts";
-import { rowIdOf } from "../ledger-store.ts";
+import { conflictsOf, rowIdOf } from "../ledger-store.ts";
 import { rowsAreNotes } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
@@ -153,6 +153,22 @@ export function mountView(def: ViewDef, el: HTMLElement, p: Panel, ctx: PanelCtx
     },
     ...(resize ? { resize(width: number) { resize.call(handle, width); drawDetail(el); } } : {}),
   };
+}
+
+/**
+ * When another device set this cell at the same time as the value shown, a chip offering its value:
+ * picking it keeps that one instead. Drawn again with each new row, so a settled cell drops it.
+ */
+export function conflictChip(box: HTMLElement, row: Row, field: string, pick: (value: unknown) => unknown): void {
+  box.querySelector(":scope > .gz-conflict")?.remove();
+  const other = conflictsOf(row).filter((c) => c.field === field).at(-1);
+  if (!other) return;
+  const shown = typeof other.value === "string" ? other.value : JSON.stringify(other.value);
+  const chip = box.createEl("button", { cls: "gz-conflict", text: `or ${shown}`, attr: { title: "Another device set this at the same time; pick it to keep that instead" } });
+  chip.addEventListener("click", (e) => {
+    e.stopPropagation();
+    void pick(other.value);
+  });
 }
 
 /** What tells a row apart from the others of its panel across reloads: its id in the app's ledger, its place in a saved list, or its note. */

@@ -22,8 +22,10 @@ export interface LedgerIO {
 export const SNAPSHOT_KEY = "gizmo-snapshot";
 export const IDS_KEY = "gizmo-ids";
 const HASH_KEY = "gizmo-hash";
+/** Cells two devices set at once, kept with the snapshot so a fold that starts there still offers both. */
+const CONFLICTS_KEY = "gizmo-conflicts";
 /** The snapshot's own keys, and Obsidian's lists of properties, which are no app's data. */
-const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY, "tags", "aliases", "cssclasses"];
+const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY, CONFLICTS_KEY, "tags", "aliases", "cssclasses"];
 
 /** What a snapshot says it was folded from: how many lines of each log file, and the newest event's time. */
 export interface SnapshotMark {
@@ -33,6 +35,14 @@ export interface SnapshotMark {
 
 /** A row's id, carried on the rows a list source loads, not enumerable so rows still compare and save as typed. */
 export const ROW_ID = Symbol("row id");
+
+/** A row's cells another device set at the same time from the same value: the value that lost, and who set it. */
+export const ROW_CONFLICTS = Symbol("row conflicts");
+
+export function conflictsOf(row: unknown): { field: string; value: unknown; by: string }[] {
+  const c = row && typeof row === "object" ? (row as Record<symbol, unknown>)[ROW_CONFLICTS] : undefined;
+  return Array.isArray(c) ? c : [];
+}
 
 export function rowIdOf(row: unknown): string | undefined {
   const id = row && typeof row === "object" ? (row as Record<symbol, unknown>)[ROW_ID] : undefined;
@@ -190,7 +200,16 @@ export class Ledger {
     }
     const lists = new Map<string, { rows: Row[]; conflicts: Conflict[] }>();
     for (const [name, l] of n.folded.lists) {
-      lists.set(name, { rows: l.rows.map((r, i) => Object.defineProperty({ ...r }, ROW_ID, { value: l.ids[i] })), conflicts: l.conflicts });
+      const byRow = new Map<string, { field: string; value: unknown; by: string }[]>();
+      for (const c of l.conflicts) byRow.set(c.row, [...(byRow.get(c.row) ?? []), { field: c.field, value: c.value, by: c.by }]);
+      lists.set(name, {
+        rows: l.rows.map((r, i) => {
+          const row = Object.defineProperty({ ...r }, ROW_ID, { value: l.ids[i] });
+          const conflicts = byRow.get(l.ids[i]);
+          return conflicts ? Object.defineProperty(row, ROW_CONFLICTS, { value: conflicts }) : row;
+        }),
+        conflicts: l.conflicts,
+      });
     }
     return { lists, ticked: n.folded.ticked, undone: n.folded.undone, handEdited };
   }
@@ -213,11 +232,13 @@ export class Ledger {
     const ids = new Set(events.map(eventId));
     if (events.some((e) => (e.op === "undo" || e.op === "redo") && e.ev.some((id) => !ids.has(id)))) return undefined;
     const kept = isRecord(fm[IDS_KEY]) ? fm[IDS_KEY] : {};
+    const conflicts = isRecord(fm[CONFLICTS_KEY]) ? fm[CONFLICTS_KEY] : {};
     const base = listsOf(fm);
     for (const [name, l] of Object.entries(base.lists)) {
       const ids = kept[name];
       if (!Array.isArray(ids) || ids.length !== l.rows.length) return undefined;
       l.ids = ids.map(String);
+      if (Array.isArray(conflicts[name])) l.conflicts = conflicts[name] as Conflict[];
     }
     return { base, events };
   }
@@ -289,6 +310,9 @@ export class Ledger {
       for (const [name, l] of state.lists) if (kept.has(name)) note[name] = l.rows.map((r) => ({ ...r }));
       for (const [name, items] of state.ticked) if (kept.has(name)) note[name] = [...items];
       note[IDS_KEY] = Object.fromEntries([...state.lists].filter(([name]) => kept.has(name)).map(([name, l]) => [name, l.rows.map((r) => rowIdOf(r)!)]));
+      const open = [...state.lists].filter(([name, l]) => kept.has(name) && l.conflicts.length);
+      if (open.length) note[CONFLICTS_KEY] = Object.fromEntries(open.map(([name, l]) => [name, l.conflicts]));
+      else delete note[CONFLICTS_KEY];
       note[SNAPSHOT_KEY] = { files, at } satisfies SnapshotMark;
       note[HASH_KEY] = listsHash(note);
     });

@@ -1,4 +1,5 @@
 import type { AppEnv } from "./app.ts";
+import type { Op } from "./ledger.ts";
 import { describePermission } from "./permissions.ts";
 import type { ComponentPreview } from "./spec.ts";
 import { basename } from "./store.ts";
@@ -59,6 +60,50 @@ export function renderBlocked(header: HTMLElement, violations: string[], pending
       : "Change the app, or change Gizmo policy.md and apply it from the automation map.",
   });
   if (!app.hosted) card.createDiv({ cls: "gz-actions" }).createEl("button", { text: "Edit source" }).addEventListener("click", () => app.env.showSource());
+}
+
+/**
+ * The data note was edited by hand since the app last wrote it: the app shows what its log holds,
+ * and nothing in the note is taken in until the person says so.
+ */
+export function renderHandEdit(header: HTMLElement, note: string, changes: string[], act: { import(): Promise<void>; discard(): Promise<void> }): HTMLElement {
+  const card = header.createDiv({ cls: "gz-card gz-hand-edit" });
+  card.createDiv({ cls: "gz-title", text: `${note} was edited by hand` });
+  card.createDiv({ cls: "gz-muted", text: "The app shows its data as it keeps it, not as the note says now. The note differs by:" });
+  const ul = card.createEl("ul");
+  for (const c of changes) ul.createEl("li", { text: c });
+  const row = card.createDiv({ cls: "gz-actions" });
+  const button = (text: string, cta: boolean, run: () => Promise<void>) => {
+    const b = row.createEl("button", { text, ...(cta && { cls: "mod-cta" }) });
+    b.addEventListener("click", async () => {
+      for (const x of row.querySelectorAll("button")) (x as HTMLButtonElement).disabled = true;
+      await run();
+    });
+  };
+  button("Import the edit", true, act.import);
+  button("Discard it", false, act.discard);
+  return card;
+}
+
+/** What a hand edit changed, list by list, in words. */
+export function editWords(ops: Op[]): string[] {
+  const by = new Map<string, { added: number; removed: number; ticked: string[]; unticked: string[] }>();
+  for (const o of ops) {
+    if (!("l" in o)) continue;
+    const s = by.get(o.l) ?? { added: 0, removed: 0, ticked: [], unticked: [] };
+    if (o.op === "add") s.added++;
+    else if (o.op === "del") s.removed++;
+    else if (o.op === "tick") s.ticked.push(o.item);
+    else if (o.op === "untick") s.unticked.push(o.item);
+    by.set(o.l, s);
+  }
+  const rows = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
+  return [...by].map(([list, s]) => `${list}: ${[
+    ...(s.added ? [`${rows(s.added)} added or changed`] : []),
+    ...(s.removed ? [`${rows(s.removed)} taken out or changed`] : []),
+    ...(s.ticked.length ? [`${s.ticked.join(", ")} ticked`] : []),
+    ...(s.unticked.length ? [`${s.unticked.join(", ")} unticked`] : []),
+  ].join("; ")}`);
 }
 
 /** In an embed of an app that isn't allowed yet: the app asks for itself when it is opened. */

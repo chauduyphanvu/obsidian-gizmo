@@ -3,7 +3,7 @@ import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts"
 import type { Panel } from "../spec.ts";
 import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
-  busy, fieldControl, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote, selectable, shownRows,
+  busy, conflictChip, fieldControl, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote, selectable, shownRows,
 } from "./common.ts";
 import { ACTION_KEYS, DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
@@ -112,7 +112,10 @@ function column(box: HTMLElement, env: RowEnv, c: string, i: number, title = fal
   const show = fieldControl(box, type, (value) => env.ctx.editRow(env.current[i], c, value), {
     cls: "gz-edit", label: c, input: (t) => (["number", "date", "time"].includes(t) ? t : "text"),
   });
-  return (row) => show(getPath(row, c));
+  return (row) => {
+    show(getPath(row, c));
+    conflictChip(box, row, c, (value) => env.ctx.editRow(env.current[i], c, value));
+  };
 }
 
 function tableRow(body: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
