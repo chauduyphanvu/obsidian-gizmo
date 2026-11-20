@@ -178,7 +178,7 @@ export default async function capture(t) {
       if (ask) na.button("Cancel", ask).click();
       await na.sleep(500);
       const afterCancel = rows() - before;
-      const key = await na.plugin().newCaptureKey(["spend"]);
+      const key = await na.plugin().newCaptureKey([na.plugin().background.captureIndex().names.get("spend")]);
       app.workspace.protocolHandler.dispatch({ action: "gizmo", key, line: "spend 11 food" });
       await na.until(() => rows() === before + 1, 3000);
       const asked = modals().some((m) => m.innerText.includes("A link asks to run"));
