@@ -5,6 +5,7 @@ import { Background } from "../../src/background.ts";
 import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { isAllowed, isAllowedUnder } from "../../src/grants.ts";
+import { ledgerStore, type DataStore } from "../../src/datastore.ts";
 import { policyHash, type Policy } from "../../src/policy.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
@@ -92,6 +93,19 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
     parseYaml,
     cacheRead: (key) => cache.read(key),
     cacheWrite: (key, entry) => cache.write(key, entry),
+    // Files that aren't notes (an app's ledger) are kept as text in `others`.
+    filesIn: (folder) => [...files.keys(), ...others.keys()].filter((p) => p.startsWith(`${folder}/`) && !p.slice(folder.length + 1).includes("/")),
+    append: async (path, text) => {
+      const given = files.get(path);
+      if (given) given.raw = (given.raw ?? "") + text;
+      else others.set(path, (others.get(path) ?? "") + text);
+    },
+    writeFile: async (path, text) => {
+      const given = files.get(path);
+      if (given) given.raw = text;
+      else others.set(path, text);
+    },
+    device: () => "d1mac000",
   };
   return {
     host,
@@ -130,6 +144,8 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
   const writes: string[] = [];
   const notices: string[] = [];
   const opened: string[] = [];
+  // As Obsidian tells of a file a device appended to, at once here.
+  if (data.ledger) data.ledger.onWrite = (path) => changed(path);
   /** The app note's text, which `sourceLines` gives back, and the lines `showSourceAt` was asked for. */
   const source = { lines: [] as string[], shownAt: [] as number[] };
   const copied: string[] = [];
@@ -147,6 +163,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     granted: (path) => (Object.hasOwn(grants, path) ? [...grants[path]] : undefined),
     grant: async (path, wanted) => { grants[path] = [...wanted]; },
     storePath: (store) => `${storeTarget(store)}.md`,
+    store: (dataPath, appPath) => snapshotting(ledgerStore(data.ledger!, dataPath, () => f.files.get(appPath)?.fm ?? {}), data),
     writeFrontmatter: async (path, fn) => {
       writes.push(path);
       const note = f.files.get(path) ?? {};
@@ -205,6 +222,8 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     log: (entry) => void activity.add(entry),
     now: () => new Date(2026, 10, 18, 12, 0),
   };
+  // This device runs background work, so it writes each data note's snapshot, at once here.
+  data.setSnapshots({ isRunner: () => true, delayMs: 0, writeNote: (path, fn) => env.writeFrontmatter(path, fn) });
   /** The activity log, kept in memory, its clock the env's. */
   const kept = { text: undefined as string | undefined };
   const activity = new ActivityLog({ read: async () => kept.text, write: async (text) => { kept.text = text; } }, () => env.now().getTime());
@@ -213,6 +232,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     frontmatter: (path) => f.files.get(path)?.fm,
     updateFrontmatter: env.updateFrontmatter,
     setTaskDone: env.setTaskDone,
+    undoEvents: (dataPath, events) => snapshotting(ledgerStore(data.ledger!, dataPath), data).undo(events),
     processText: async (path, fn) => {
       const note = f.files.get(path);
       if (!note) return false;
@@ -232,6 +252,28 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     },
   };
   return { env, f, data, writes, notices, opened, changed, source, copied, grants, activity, undoIO };
+}
+
+/**
+ * A store whose every write is followed by the snapshot it leads to, so a test reads the data note
+ * as the device running background work leaves it a few seconds later.
+ */
+function snapshotting(store: DataStore, data: DataLayer): DataStore {
+  const after = <A extends unknown[], R>(fn: (...a: A) => Promise<R>) => async (...a: A): Promise<R> => {
+    const r = await fn(...a);
+    await data.flushSnapshots();
+    return r;
+  };
+  return {
+    dataPath: store.dataPath,
+    rows: (list) => store.rows(list),
+    add: after(store.add), set: after(store.set), tick: after(store.tick), untick: after(store.untick), clear: after(store.clear), undo: after(store.undo),
+  };
+}
+
+/** A data note's properties without the keys the ledger's snapshot adds: its lists, as an app shows them. */
+export function listsIn(fm: Record<string, unknown> | undefined): Record<string, unknown> | undefined {
+  return fm && Object.fromEntries(Object.entries(fm).filter(([k]) => !k.startsWith("gizmo-")));
 }
 
 /** A fake note's whole text, as Obsidian would have written it. */
@@ -290,6 +332,7 @@ export function fakeBackground(
     storePath: t.env.storePath,
     actionDeps: (appPath, dataPath, actor) => ({
       now, dataPath, appPath,
+      store: t.env.store!(dataPath, appPath),
       writeFrontmatter: t.env.writeFrontmatter,
       appendLine: t.env.appendLine,
       createNote: t.env.createNote,

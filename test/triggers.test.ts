@@ -135,7 +135,9 @@ test("a row alert's then runs once for each row that newly matches, never for wh
   assert.equal(tasks(t)!.length, 1);
 
   // A restart with the same vault: what ran is remembered.
-  const again = fakeBackground({ ...renewals([]), "Apps/Renewals data.md": t.f.files.get("Apps/Renewals data.md")!, "Apps/Inbox data.md": t.f.files.get("Apps/Inbox data.md")! }, {}, { triggers: t.triggers });
+  // The vault as it is, the Inbox's ledger with it.
+  const logs = Object.fromEntries([...t.f.others].map(([path, raw]) => [path, { raw }]));
+  const again = fakeBackground({ ...renewals([]), ...logs, "Apps/Renewals data.md": t.f.files.get("Apps/Renewals data.md")!, "Apps/Inbox data.md": t.f.files.get("Apps/Inbox data.md")! }, {}, { triggers: t.triggers });
   await again.bg.start();
   await settle();
   assert.equal(tasks(again)!.length, 1);

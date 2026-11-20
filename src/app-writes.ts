@@ -3,10 +3,9 @@ import type { Change } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import type { Row } from "./data.ts";
 import { editErrors, editableSource } from "./edit.ts";
-import { ROW_INDEX, ROW_SOURCE } from "./sources/list.ts";
+import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { Panel } from "./spec.ts";
-import type { Split } from "./store.ts";
 import { frontmatterStore, type DataStore } from "./datastore.ts";
 import { rowIdOf } from "./ledger-store.ts";
 
@@ -20,8 +19,6 @@ export interface WriteSite {
   readonly hostPath: string;
   /** The app's data note as it is now; a change to `store` moves it. */
   dataPath(): string;
-  /** With `devices: split`, where this device's rows go. */
-  split(): Split | undefined;
   /** What the activity log calls a checklist: its panel's title, else the list it ticks into. */
   checklistName(key: string): string;
 }
@@ -119,11 +116,7 @@ export class AppWrites {
       const index = symbols[ROW_INDEX];
       const id = rowIdOf(row);
       if (typeof index !== "number" && id === undefined) return;
-      // A row read from a device's own note is changed there; that device's next save keeps it.
-      const source = symbols[ROW_SOURCE];
-      const store = typeof source === "string"
-        ? frontmatterStore(source, (path, fn) => this.env.writeFrontmatter(path, fn), (path) => this.env.frontmatter(path))
-        : this.store();
+      const store = this.store();
       const name = m.p.source!;
       const r = await store.set(name, { id, index: typeof index === "number" ? index : undefined, shown: row }, field, value);
       if ("row" in r) {
@@ -154,10 +147,8 @@ export class AppWrites {
   async runActions(p: Panel, row: Row): Promise<void> {
     const env = this.env;
     const appPath = this.site.appPath;
-    const split = this.site.split();
     await runActions(p, row, {
-      ...actionDepsOf(env, appPath, split?.mine ?? this.site.dataPath()),
-      stamp: split && { device: split.id },
+      ...actionDepsOf(env, appPath, this.site.dataPath()),
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
     });

@@ -52,6 +52,17 @@ export function grantedOf(grants: Record<string, string[]>, key: string): string
   return Array.isArray(entry) ? [...entry] : undefined;
 }
 
+/** Takes `split:` out of what was allowed: no app asks for it any more. True when any grant changed. */
+export function dropSplitGrants(grants: Record<string, string[]>): boolean {
+  let changed = false;
+  for (const [key, entry] of Object.entries(grants)) {
+    if (!Array.isArray(entry) || !entry.some((p) => p.startsWith("split:"))) continue;
+    grants[key] = entry.filter((p) => !p.startsWith("split:"));
+    changed = true;
+  }
+  return changed;
+}
+
 /** Keeps that exactly `wanted` is allowed under a grant key. */
 export function setGrant(grants: Record<string, string[]>, key: string, wanted: readonly string[]): void {
   grants[key] = [...wanted];

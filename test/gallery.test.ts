@@ -8,7 +8,7 @@ import { HostedApp, parseHosted } from "../src/hosted.ts";
 import { LensIndex, LensStack } from "../src/lenses.ts";
 import { pickPanels, readComponentPreview, readSpec } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
-import { fakeBackground, fakeEnv, raw } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv, listsIn, raw } from "./support/fakes.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 // The notes under gallery/, proved: each reads without errors and asks for exactly the permissions
@@ -69,7 +69,7 @@ const APPS: Record<string, string[]> = {
   "Apps/Book finder.md": ["create:Books", "edit:Books", "images", "net:openlibrary.org", "read:Books", "send:openlibrary.org|typed.q"],
   "Apps/Budget.md": ["answer:spent"],
   "Apps/Decision journal.md": ["create:Decisions", "edit:Decisions", "read:Decisions"],
-  "Apps/Household chores.md": ["split:Apps/Household chores data"],
+  "Apps/Household chores.md": [],
   "Apps/Medication log.md": ["answer:doses-today"],
   "Apps/Project board.md": ["create:Projects", "edit:Projects", "read:Projects"],
   "Apps/Read later.md": ["create:Reading", "edit:Reading", "net:feeds.bbci.co.uk", "net:feeds.npr.org", "read:Reading"],
@@ -903,7 +903,7 @@ test("Today: the medication button and a water counter work from inside a plain 
   assert.equal(text(water.querySelector(".gz-view-progress .gz-big")), "0/ 8 glasses");
   click(water.querySelector("button.gz-button")!);
   await settle();
-  assert.deepEqual(t.f.files.get("Today data.md")!.fm, { water: [{ at: "2026-11-18T12:00" }] });
+  assert.deepEqual(listsIn(t.f.files.get("Today data.md")!.fm), { water: [{ at: "2026-11-18T12:00" }] });
   assert.equal(text(water.querySelector(".gz-view-progress .gz-big")), "1/ 8 glasses");
 });
 

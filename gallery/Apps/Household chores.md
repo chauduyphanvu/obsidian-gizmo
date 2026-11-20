@@ -1,6 +1,5 @@
 ---
 app: Log the chores we do on our own phones and see who did what this week
-devices: split
 panels:
   - view: form
     title: Did a chore
@@ -34,7 +33,6 @@ panels:
     edit: [chore, who]
 ---
 For a household that shares this vault through iCloud, Syncthing or any other sync: each phone or
-computer saves the chores done on it into a note of its own in Household chores data (named for the
-device, as Settings → Gizmo calls it), so two people logging at the same moment never overwrite
-each other's rows; the app reads every device's note together. Fixing a row in Lately writes the
-note of the device that saved it. It asks only to keep those notes, one per device.
+computer keeps what it saves in a log of its own, so two people logging at the same moment never
+overwrite each other's rows, and every device reads them all together. When two people fix the same
+row in Lately at once, both values are kept and the cell offers the other. It asks for nothing.

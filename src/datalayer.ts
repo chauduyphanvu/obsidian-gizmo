@@ -1,3 +1,4 @@
+import { Ledger } from "./ledger-store.ts";
 import type { CacheEntry } from "./cache.ts";
 import { parseBody, stampParts, type Row } from "./data.ts";
 import { fileDep, folderDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
@@ -5,7 +6,7 @@ import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
 import type { Panel } from "./spec.ts";
-import { basename, type Split } from "./store.ts";
+import { basename } from "./store.ts";
 import { secretIds, stringsIn } from "./template.ts";
 
 export interface FileInfo {
@@ -36,6 +37,22 @@ export interface Host {
   cacheRead?(key: string): Promise<CacheEntry | undefined>;
   /** Keeps a web response on disk; never rejects. */
   cacheWrite?(key: string, entry: CacheEntry): Promise<void>;
+  /** The files directly in a folder, of any kind: with append and writeFile, what an app's ledger is kept in. */
+  filesIn?(folder: string): string[];
+  /** Adds text at the end of a file, making it and its folders when there's none. */
+  append?(path: string, text: string): Promise<void>;
+  /** Writes a whole file, making it and its folders when there's none. */
+  writeFile?(path: string, text: string): Promise<void>;
+  /** This device's id, which its ledger files are named for. */
+  device?(): string;
+}
+
+/** Who writes the ledger's snapshots into data notes: only the device that runs background work. */
+export interface Snapshots {
+  isRunner(): boolean;
+  /** How long after a change the snapshot is written, so a burst of changes makes one write. */
+  delayMs: number;
+  writeNote(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
 }
 
 /** The notes an app is about: its own note and its data note. */
@@ -44,8 +61,8 @@ export interface AppFiles {
   dataPath: string;
   /** The note it sits in (`$this`, `source: this`) when that isn't its own: an embed's or a lens's note. */
   hostPath?: string;
-  /** With `devices: split`, where each device's rows are kept. */
-  split?: Split;
+  /** With `devices: split`, the folder of device notes from before the ledger, read in as the app's rows. */
+  devices?: string;
 }
 
 /** A note as a row: its properties, then its name, path, tags and file times (which win over properties of those names). */
@@ -93,9 +110,72 @@ export class DataLayer {
 
   /** What sources read the vault through. */
   readonly host: Host;
+  /** Every app's lists as events, when the host can keep files of any kind. */
+  readonly ledger: Ledger | undefined;
+  private snapshots: Snapshots | undefined;
+  /** Each data note's app note, and its folder of old device notes, as the panels reading it said. */
+  private appOf = new Map<string, { appPath: string; devices?: string }>();
+  private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   constructor(host: Host) {
     this.host = host;
+    const { filesIn, append, writeFile } = host;
+    if (filesIn && append && writeFile) {
+      this.ledger = new Ledger({
+        filesIn: (folder) => filesIn.call(host, folder),
+        readFile: (path) => host.readFile(path),
+        append: (path, text) => append.call(host, path, text),
+        writeFile: (path, text) => writeFile.call(host, path, text),
+        frontmatter: (path) => host.frontmatter(path),
+      }, () => host.device?.() ?? "device", () => host.now());
+      this.ledger.onWrite = (path) => this.fileChanged(path);
+    }
+  }
+
+  /** Who writes snapshots, and how; until set, none are written. */
+  setSnapshots(s: Snapshots | undefined): void {
+    this.snapshots = s;
+  }
+
+  /** The app note whose lists a data note keeps (for the lists typed in it), and its old device notes' folder. */
+  noteApp(dataPath: string, appPath: string, devices?: string): void {
+    this.appOf.set(dataPath, { appPath, devices });
+  }
+
+  /** The frontmatter of the device notes an app kept under `devices: split`. */
+  deviceNotes(folder: string): Record<string, unknown>[] {
+    return this.notesIn(folder).filter((path) => typeof this.host.frontmatter(path)?.device === "string").sort().map((path) => this.host.frontmatter(path)!);
+  }
+
+  private writeSnapshot(dataPath: string, s: Snapshots, ledger: Ledger): Promise<void> {
+    const app = this.appOf.get(dataPath);
+    const appFm = (app && this.host.frontmatter(app.appPath)) || {};
+    return ledger.snapshot(dataPath, appFm, (fn) => s.writeNote(dataPath, fn), false, app?.devices ? this.deviceNotes(app.devices) : []).catch(() => {});
+  }
+
+  /** Writes a data note's snapshot a little after its ledger last changed, when this device is the one that does. */
+  private snapshotSoon(dataPath: string): void {
+    const s = this.snapshots;
+    const ledger = this.ledger;
+    if (!s || !ledger || !s.isRunner()) return;
+    clearTimeout(this.snapshotTimers.get(dataPath));
+    this.snapshotTimers.set(dataPath, setTimeout(() => {
+      this.snapshotTimers.delete(dataPath);
+      void this.writeSnapshot(dataPath, s, ledger);
+    }, s.delayMs));
+  }
+
+  /** Writes now the snapshots waiting to be written. */
+  async flushSnapshots(): Promise<void> {
+    const s = this.snapshots;
+    const ledger = this.ledger;
+    if (!s || !ledger) return;
+    const waiting = [...this.snapshotTimers.keys()];
+    for (const dataPath of waiting) {
+      clearTimeout(this.snapshotTimers.get(dataPath));
+      this.snapshotTimers.delete(dataPath);
+      await this.writeSnapshot(dataPath, s, ledger);
+    }
   }
 
   // ---- Panel data ---------------------------------------------------------------------------
@@ -295,6 +375,8 @@ export class DataLayer {
   // ---- Changes ------------------------------------------------------------------------------
 
   fileChanged(path: string): void {
+    const dataPath = this.ledger?.fileChanged(path);
+    if (dataPath) this.snapshotSoon(dataPath);
     this.parsed.delete(path);
     const before = this.index?.get(path);
     const info = this.host.fileInfo(path);

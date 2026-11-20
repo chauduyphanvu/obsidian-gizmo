@@ -61,7 +61,7 @@ test("a form's save is kept as what you did, in words, and undoing it takes the 
   assert.deepEqual(data(t.f, "weights"), [{ kg: 80, at: "2026-11-17T08:00" }]);
 });
 
-test("an undo of a row edited by hand since is refused, and doesn't rewrite the note", async () => {
+test("an undo after the data note was edited by hand takes the row out of the app's data, and leaves the edited note alone", async () => {
   const fm = { app: "W", panels: [{ view: "button", label: "Coffee", save: "cups" }] };
   const t = open(fm);
   await settle();
@@ -70,9 +70,9 @@ test("an undo of a row edited by hand since is refused, and doesn't rewrite the 
   (data(t.f, "cups") as Record<string, unknown>[])[0].note = "decaf";
   const writes = t.writes.length;
   const r = await t.undoLatest();
-  assert.deepEqual(r, { undone: 0, total: 1, refusal: "the row it saved in W data has changed or is gone" });
-  assert.equal(undoMessage(r), "Couldn't undo it: the row it saved in W data has changed or is gone");
-  assert.equal(t.writes.length, writes, "the note wasn't written");
+  assert.deepEqual(r, { undone: 1, total: 1 });
+  assert.deepEqual((await t.data.ledger!.state(DATA)).lists.get("cups")!.rows, []);
+  assert.equal(t.writes.length, writes, "the note isn't rewritten over the hand edit, which waits for Import or Discard");
   assert.deepEqual(data(t.f, "cups"), [{ at: "2026-11-18T12:00", note: "decaf" }]);
 });
 

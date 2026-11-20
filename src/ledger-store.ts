@@ -1,4 +1,5 @@
 import { fnv1a, stableJson } from "./hash.ts";
+import { DEFINITION_KEYS } from "./store.ts";
 import type { Row } from "./data.ts";
 import {
   Clock, baseIds, eventId, eventLine, fold, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp,
@@ -21,7 +22,8 @@ export interface LedgerIO {
 export const SNAPSHOT_KEY = "gizmo-snapshot";
 export const IDS_KEY = "gizmo-ids";
 const HASH_KEY = "gizmo-hash";
-const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY];
+/** The snapshot's own keys, and Obsidian's lists of properties, which are no app's data. */
+const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY, "tags", "aliases", "cssclasses"];
 
 /** What a snapshot says it was folded from: how many lines of each log file, and the newest event's time. */
 export interface SnapshotMark {
@@ -64,7 +66,11 @@ interface NoteLog {
   /** Files changed since read. */
   dirty: Set<string>;
   folded?: Folded;
+  /** The data note and app note as they were when `folded` was made: a new snapshot or a hand edit folds again. */
+  foldedFrom?: string;
   version: number;
+  /** Recorded lists keep only their newest rows. */
+  caps: Record<string, number>;
 }
 
 /** A data note's lists as the ledger folds them, and whether its note was edited by hand since the last snapshot. */
@@ -88,6 +94,8 @@ export class Ledger {
   private now: () => number;
   private clock = new Clock();
   private notes = new Map<string, NoteLog>();
+  /** Told the path of each log file this device appended to. */
+  onWrite: (path: string) => void = () => {};
 
   constructor(io: LedgerIO, device: () => string, now: () => number) {
     this.io = io;
@@ -98,7 +106,7 @@ export class Ledger {
   private log(dataPath: string): NoteLog {
     let n = this.notes.get(dataPath);
     if (!n) {
-      n = { files: new Map(), dirty: new Set(), version: 0 };
+      n = { files: new Map(), dirty: new Set(), version: 0, caps: {} };
       this.notes.set(dataPath, n);
     }
     return n;
@@ -144,6 +152,14 @@ export class Ledger {
     return n;
   }
 
+  /** Keeps only the newest `cap` rows of these lists of a data note (what an app records on its own). */
+  setCaps(dataPath: string, caps: Record<string, number>): void {
+    const n = this.log(dataPath);
+    if (JSON.stringify(n.caps) === JSON.stringify(caps)) return;
+    n.caps = caps;
+    n.folded = undefined;
+  }
+
   /** The version of a data note's log: it moves whenever an event is added or read. */
   version(dataPath: string): number {
     return this.notes.get(dataPath)?.version ?? 0;
@@ -155,18 +171,22 @@ export class Ledger {
    * the base the first snapshot kept. Lists typed in the app note are the base of lists the data
    * note doesn't have. `caps` keeps the newest rows of recorded lists.
    */
-  async state(dataPath: string, appFm: Record<string, unknown> = {}, caps: Record<string, number> = {}): Promise<LedgerState> {
+  async state(dataPath: string, appFm: Record<string, unknown> = {}, devices: Record<string, unknown>[] = []): Promise<LedgerState> {
     const n = await this.refresh(dataPath);
     const fm = this.io.frontmatter(dataPath);
     const snapshot = readMark(fm);
     const handEdited = snapshot !== undefined && listsHash(fm) !== fm?.[HASH_KEY];
+    const caps = n.caps;
+    const from = `${listsHash(fm)}\n${JSON.stringify(snapshot ?? null)}\n${listsHash(appFm)}\n${devices.map(listsHash).join(",")}`;
+    if (n.foldedFrom !== from) n.folded = undefined;
     if (!n.folded) {
+      n.foldedFrom = from;
       const all = [...n.files.values()].flatMap((f) => f.events);
       for (const e of all) this.clock.seen(e.t);
       const fromSnapshot = snapshot && !handEdited ? this.tail(n, snapshot, fm!) : undefined;
       n.folded = fromSnapshot
         ? fold(fromSnapshot.events, fromSnapshot.base, caps)
-        : fold(all, withApp(snapshot ? await this.base(dataPath) : listsOf(fm), appFm), caps);
+        : fold(all, withApp(snapshot ? await this.base(dataPath) : withDevices(listsOf(fm), devices), appFm), caps);
     }
     const lists = new Map<string, { rows: Row[]; conflicts: Conflict[] }>();
     for (const [name, l] of n.folded.lists) {
@@ -182,6 +202,11 @@ export class Ledger {
     for (const [path, f] of n.files) {
       const name = path.slice(path.lastIndexOf("/") + 1);
       events.push(...f.events.slice(mark.files[name] ?? 0));
+    }
+    // A file the snapshot read more of than is there now (cut short, or gone) can't be trusted to start from.
+    for (const [name, count] of Object.entries(mark.files)) {
+      const f = [...n.files].find(([p]) => p.endsWith(`/${name}`))?.[1];
+      if ((f?.events.length ?? 0) < count) return undefined;
     }
     // An event from before the snapshot that arrived after it would apply out of order.
     if (events.some((e) => (parseStamp(e.t)?.wall ?? 0) < at)) return undefined;
@@ -218,6 +243,7 @@ export class Ledger {
     const path = logFile(dataPath, d, new Date(now));
     const text = events.map(eventLine).join("");
     await this.io.append(path, text);
+    this.onWrite(path);
     const f = n.files.get(path) ?? { text: "", events: [] };
     f.text += text;
     f.events.push(...events);
@@ -239,16 +265,16 @@ export class Ledger {
    * A note edited by hand is left as it is, unless `force` (after Import, or to discard the edit).
    */
   async snapshot(
-    dataPath: string, appFm: Record<string, unknown>, caps: Record<string, number>,
-    writeNote: (fn: (fm: Record<string, unknown>) => void) => Promise<void>, force = false,
+    dataPath: string, appFm: Record<string, unknown>, writeNote: (fn: (fm: Record<string, unknown>) => void) => Promise<void>,
+    force = false, devices: Record<string, unknown>[] = [],
   ): Promise<void> {
     const n = await this.refresh(dataPath);
     const fm = this.io.frontmatter(dataPath);
     if (readMark(fm) === undefined) {
-      const base = listsOf(fm);
+      const base = withDevices(listsOf(fm), devices);
       if (Object.keys(base.lists).length || Object.keys(base.ticked).length) await this.io.writeFile(`${logFolder(dataPath)}/base.json`, JSON.stringify(base));
     }
-    const state = await this.state(dataPath, appFm, caps);
+    const state = await this.state(dataPath, appFm, devices);
     if (state.handEdited && !force) return;
     const files: Record<string, number> = {};
     let at = "";
@@ -257,10 +283,12 @@ export class Ledger {
       for (const e of f.events) if (!at || compareTimes(e.t, at) > 0) at = e.t;
     }
     if (!at) return;
+    // A list typed in the app note stays there until an event changes it; then the data note keeps it, as an edit always did.
+    const kept = new Set([...Object.keys(fm ?? {}), ...devices.flatMap((d) => Object.keys(listsOf(d).lists)), ...[...n.files.values()].flatMap((f) => f.events.flatMap((e) => ("l" in e ? [e.l] : [])))]);
     await writeNote((note) => {
-      for (const [name, l] of state.lists) note[name] = l.rows.map((r) => ({ ...r }));
-      for (const [name, items] of state.ticked) note[name] = [...items];
-      note[IDS_KEY] = Object.fromEntries([...state.lists].map(([name, l]) => [name, l.rows.map((r) => rowIdOf(r)!)]));
+      for (const [name, l] of state.lists) if (kept.has(name)) note[name] = l.rows.map((r) => ({ ...r }));
+      for (const [name, items] of state.ticked) if (kept.has(name)) note[name] = [...items];
+      note[IDS_KEY] = Object.fromEntries([...state.lists].filter(([name]) => kept.has(name)).map(([name, l]) => [name, l.rows.map((r) => rowIdOf(r)!)]));
       note[SNAPSHOT_KEY] = { files, at } satisfies SnapshotMark;
       note[HASH_KEY] = listsHash(note);
     });
@@ -314,9 +342,26 @@ function compareTimes(a: string, b: string): number {
   return pa.wall - pb.wall || pa.counter - pb.counter;
 }
 
-/** A base with the app note's own lists for those it lacks. */
+/**
+ * A data note's lists with the rows each device kept in a note of its own under `devices: split`,
+ * in the order they were saved; the first snapshot keeps them all in the base.
+ */
+function withDevices(base: FoldBase, devices: Record<string, unknown>[]): FoldBase {
+  if (!devices.length) return base;
+  const lists: FoldBase["lists"] = {};
+  const names = new Set([...Object.keys(base.lists), ...devices.flatMap((d) => Object.keys(listsOf(d).lists))]);
+  for (const name of names) {
+    const rows = [...(base.lists[name]?.rows ?? []), ...devices.flatMap((d) => listsOf(d).lists[name]?.rows ?? [])];
+    const savedAt = (r: Row) => (typeof r.at === "string" ? r.at : "");
+    const sorted = rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => savedAt(a).localeCompare(savedAt(b)) || i - j).map(([r]) => r);
+    lists[name] = { rows: sorted, ids: baseIds(sorted) };
+  }
+  return { lists, ticked: base.ticked };
+}
+
+/** A base with the app note's own lists for those it lacks: lists typed there, not the keys that define the app. */
 function withApp(base: FoldBase, appFm: Record<string, unknown>): FoldBase {
-  const app = listsOf(appFm);
+  const app = listsOf(Object.fromEntries(Object.entries(appFm).filter(([k]) => !DEFINITION_KEYS.includes(k))));
   const lists = { ...app.lists, ...base.lists };
   const ticked = { ...app.ticked, ...base.ticked };
   return { lists, ticked };

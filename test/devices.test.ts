@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActivityLog, type Entry } from "../src/activity.ts";
-import { RUNNING_WITHIN_MS, defaultName, deviceNoteName, otherRunners, thisDevice, type PlatformInfo } from "../src/device.ts";
+import { RUNNING_WITHIN_MS, defaultName, otherRunners, thisDevice, type PlatformInfo } from "../src/device.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -34,13 +34,6 @@ test("other devices running background work: only recent ones, not this one, not
     { id: "c", name: "iPhone", background: false, seen: now },
   ];
   assert.deepEqual(otherRunners(seen, "me", now).map((s) => s.name), ["iMac"]);
-});
-
-test("a device's data note is named for it and carries its id, so two Macs never share one", () => {
-  assert.equal(deviceNoteName({ id: "3f9a71bc", name: "Mac" }), "Mac-3f9a");
-  assert.equal(deviceNoteName({ id: "77aa0000", name: "Kim's: phone/2" }), "Kim's phone 2-77aa");
-  assert.equal(deviceNoteName({ id: "77aa0000", name: "  " }), "Device-77aa");
-  assert.equal(deviceNoteName({ id: "77aa0000", name: ". work" }), "work-77aa", "a leading dot would hide the note");
 });
 
 test("with background work off, records and alerts' thens don't run here; turned on, alerts start from what is true now", async () => {

@@ -7,7 +7,7 @@ import { ROW_INDEX } from "../src/sources/list.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { describePermission, editPermissions, permissionsOf } from "../src/permissions.ts";
 import { editErrors } from "../src/edit.ts";
-import { fakeEnv, fakeHost } from "./support/fakes.ts";
+import { fakeEnv, fakeHost, listsIn } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12);
 const APP = "Apps/W.md";
@@ -154,7 +154,7 @@ test("editing a saved list writes that row in the data note, found by its place"
   assert.deepEqual(notices, []);
 });
 
-test("a list row that changed since it was shown isn't written; the panel shows it as it is", async () => {
+test("a list row moved since it was shown is still the one edited: a row is found by its id, not its place", async () => {
   const fm = { app: "Chores", panels: [{ view: "table", source: "chores", columns: ["task", "done"], edit: ["done"] }] };
   const { root, f, notices } = open(fm, { [DATA]: { fm: { chores: [{ task: "bins", done: false }, { task: "dishes", done: false }] } } });
   await settle();
@@ -164,10 +164,10 @@ test("a list row that changed since it was shown isn't written; the panel shows 
   box.checked = true;
   change(box);
   await settle();
-  assert.deepEqual(notices, ["That row has changed; reload"]);
-  assert.deepEqual(f.files.get(DATA)!.fm, { chores: [{ task: "dishes", done: false }, { task: "bins", done: false }] });
+  assert.deepEqual(notices, []);
+  assert.deepEqual(listsIn(f.files.get(DATA)!.fm), { chores: [{ task: "dishes", done: true }, { task: "bins", done: false }] });
   assert.deepEqual([...root.querySelectorAll("tbody tr")].map((r) => [r.textContent, (r.querySelector("input") as HTMLInputElement).checked]),
-    [["dishes", false], ["bins", false]]);
+    [["dishes", true], ["bins", false]]);
 });
 
 test("a list kept in the app note is copied to the data note when a row is edited", async () => {
@@ -178,7 +178,7 @@ test("a list kept in the app note is copied to the data note when a row is edite
   box.checked = true;
   change(box);
   await settle();
-  assert.deepEqual(f.files.get(DATA)!.fm, { chores: [{ task: "bins", done: true }] });
+  assert.deepEqual(listsIn(f.files.get(DATA)!.fm), { chores: [{ task: "bins", done: true }] });
   assert.deepEqual(f.files.get(APP)!.fm!.chores, [{ task: "bins", done: false }]);
 });
 

@@ -150,7 +150,10 @@ export function panelIds(templates: Record<string, unknown>[]): string[] {
 export interface AppSpec {
   /** Link or path of the note that holds recorded data, when not the default `<App> data.md`. */
   store?: string;
-  /** `devices: split`: each device adds rows to a note of its own beside the data note, so two never write one note. */
+  /**
+   * `devices: split`, from before every device kept its own log: the rows each device kept in a note
+   * of its own beside the data note are read in as the app's rows.
+   */
   split?: boolean;
   description: string;
   panels: PanelSpec[];
@@ -676,12 +679,6 @@ export function readSpec(
     if (fm.devices === "split") split = true;
     else errors.push("devices must be split, e.g. devices: split");
   }
-  // A device's note says which device it is under `device`, so no list can have that name.
-  const lists = [
-    ...panels.flatMap((ps) => (ps.panel.target?.kind === "list" ? [ps.panel.target.name] : [])),
-    ...Object.entries(blocks).flatMap(([name, b]) => (b.record !== undefined ? [typeof b.into === "string" ? b.into : `${name}_log`] : [])),
-  ];
-  if (split && lists.includes("device")) errors.push(`with devices: split, a list can't be called "device"; that names each device's note`);
   const spec = {
     description, panels, refreshMs, store, split, inputs, selections,
     blocks: Object.fromEntries(blocks), recorded, read: expander.read, links: [...expander.links],

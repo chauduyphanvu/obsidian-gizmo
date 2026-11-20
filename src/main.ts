@@ -10,8 +10,8 @@ import { thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
-import { dropGrants, grantedOf, isAllowed, isAllowedUnder, moveGrants, setGrant } from "./grants.ts";
-import { obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
+import { dropGrants, dropSplitGrants, grantedOf, isAllowed, isAllowedUnder, moveGrants, setGrant } from "./grants.ts";
+import { obsidianAppEnvWrites, obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
 import type { AppSpec } from "./spec.ts";
@@ -27,6 +27,7 @@ import { DeviceBeat, GizmoSettings, adoptOldLog, devicesSeen, otherLogs } from "
 import { registerShareCommands } from "./share-command.ts";
 import { permissionsOf } from "./permissions.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
+import { logFileParts, logFolder } from "./ledger.ts";
 import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
@@ -66,12 +67,20 @@ export default class GizmoPlugin extends Plugin {
 
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
-    this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
+    // Each device keeps its own log now, so no app asks to keep a note per device; what was allowed for that goes.
+    if (dropSplitGrants(this.store.grants)) await this.saveData(this.store);
+    this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir, () => this.device.id));
     this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
     this.device = thisDevice(this.deviceStore, Platform, (await devicesSeen(this).catch(() => [])).some((s) => s.background));
     // Each device writes only its own log, which a sync never has to merge; it reads the others'.
     await adoptOldLog(this).catch(() => {});
     this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
+    // The device that runs background work keeps each data note's snapshot current, a few seconds after a change.
+    this.dataLayer.setSnapshots({
+      isRunner: () => this.device.background,
+      delayMs: 5000,
+      writeNote: (path, fn) => obsidianAppEnvWrites(this).writeFrontmatter(path, fn),
+    });
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
       this.dataLayer.fileChanged(file.path);
@@ -158,21 +167,25 @@ export default class GizmoPlugin extends Plugin {
   }
 
   /**
-   * A renamed or moved app takes its default data note along, and the folder of its devices' notes
-   * (devices: split), so its recorded data stays attached.
+   * A renamed or moved app takes its default data note along; a renamed data note (or store) takes
+   * the log its rows are kept in, so the app's data stays attached.
    */
-  private async moveDataNote(app: TFile, oldPath: string): Promise<void> {
+  private async moveDataNote(file: TFile, oldPath: string): Promise<void> {
     const vault = this.app.vault;
-    const data = vault.getFileByPath(defaultDataPath(oldPath));
-    const target = defaultDataPath(app.path);
-    if (data && data !== app && !vault.getAbstractFileByPath(target)) await this.app.fileManager.renameFile(data, target);
-    // Only a split app's own folder of device notes: a folder of the same name may be the person's.
-    const fm = this.app.metadataCache.getFileCache(app)?.frontmatter;
-    if (fm?.devices !== "split" || fm.store) return;
-    const folder = vault.getFolderByPath(defaultDataPath(oldPath).replace(/\.md$/i, ""));
-    const folderTarget = target.replace(/\.md$/i, "");
-    const holdsDevices = folder?.children.some((c) => c instanceof TFile && typeof this.app.metadataCache.getFileCache(c)?.frontmatter?.device === "string");
-    if (folder && holdsDevices && !vault.getAbstractFileByPath(folderTarget)) await this.app.fileManager.renameFile(folder, folderTarget);
+    if (this.isApp(file)) {
+      const data = vault.getFileByPath(defaultDataPath(oldPath));
+      const target = defaultDataPath(file.path);
+      if (data && data !== file && !vault.getAbstractFileByPath(target)) await this.app.fileManager.renameFile(data, target);
+    }
+    // Only a folder of log files: a folder of that name may be the person's own.
+    const log = vault.getFolderByPath(logFolder(oldPath));
+    const logTarget = logFolder(file.path);
+    const holdsLogs = log?.children.some((c) => c instanceof TFile && logFileParts(c.path) !== undefined);
+    if (log && holdsLogs && !vault.getAbstractFileByPath(logTarget)) {
+      const parent = logTarget.slice(0, logTarget.lastIndexOf("/"));
+      if (!vault.getAbstractFileByPath(parent)) await vault.createFolder(parent);
+      await this.app.fileManager.renameFile(log, logTarget);
+    }
   }
 
   /** Notes that open as apps: apps, and components (which show how to use them). */

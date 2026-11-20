@@ -78,7 +78,7 @@ test("a hand-kept data note is the base until the first snapshot, which keeps it
     { op: "set", l: "spend", row: rowIdOf(first)!, f: "amount", v: 10, from: 1 },
     { op: "tick", l: "packed", item: "Charger" },
   ]);
-  await a.ledger.snapshot(DATA, {}, {}, v.writeNote(DATA));
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
   const fm = v.fms.get(DATA)!;
   assert.deepEqual(fm.spend, [{ amount: 10 }, { amount: 2 }]);
   assert.deepEqual(fm.packed, ["Passport", "Charger"]);
@@ -102,7 +102,7 @@ test("an event from before the snapshot that arrives after it, or an undo of an 
   await b.ledger.state(DATA);
   a.clock.now = T0 + 20_000;
   const [setY] = await a.ledger.write(DATA, [{ op: "set", l: "s", row: "r1", f: "note", v: "y", from: "x" }]);
-  await a.ledger.snapshot(DATA, {}, {}, v.writeNote(DATA));
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
   // b set the note before a did; its file syncs in after the snapshot.
   await b.ledger.write(DATA, [{ op: "set", l: "s", row: "r1", f: "note", v: "z", from: "x" }]);
   const r = device(v, "r");
@@ -122,7 +122,7 @@ test("a data note edited by hand after a snapshot is noticed, and Import turns t
     { op: "add", l: "spend", row: "r2", v: { amount: 7 } },
     { op: "tick", l: "packed", item: "Passport" },
   ]);
-  await a.ledger.snapshot(DATA, {}, {}, v.writeNote(DATA));
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
   const fm = v.fms.get(DATA)!;
   fm.spend = [{ amount: 5 }, { amount: 8 }, { amount: 1 }];
   fm.packed = ["Charger"];
@@ -132,7 +132,7 @@ test("a data note edited by hand after a snapshot is noticed, and Import turns t
   const ops = await a.ledger.importOps(DATA);
   assert.deepEqual(ops.map((o) => o.op).sort(), ["add", "add", "del", "tick", "untick"]);
   await a.ledger.write(DATA, ops);
-  await a.ledger.snapshot(DATA, {}, {}, v.writeNote(DATA), true);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA), true);
   const after = await a.ledger.state(DATA);
   assert.equal(after.handEdited, false);
   assert.deepEqual(after.lists.get("spend")!.rows, [{ amount: 5 }, { amount: 8 }, { amount: 1 }]);

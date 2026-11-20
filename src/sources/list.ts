@@ -2,6 +2,8 @@ import type { Row } from "../data.ts";
 import type { DataLayer } from "../datalayer.ts";
 import { fileDep, folderDep } from "../deps.ts";
 import { RESERVED, resolveList } from "../store.ts";
+import { copyRow } from "../data.ts";
+import { logFolder } from "../ledger.ts";
 import type { SourceDef } from "./types.ts";
 
 /**
@@ -9,27 +11,15 @@ import type { SourceDef } from "./types.ts";
  * limit and compute (rows are copied with their symbol keys), so an edit can find it again.
  */
 export const ROW_INDEX = Symbol("row index");
-/** A row read from a device's own note (`devices: split`) carries that note; any other comes from the data note. */
-export const ROW_SOURCE = Symbol("row source");
 
 const isRow = (v: unknown): v is Row => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** Copies, so the rows in the metadata cache are never changed; their place kept, not enumerable, so rows still compare and serialise as typed. */
-function placed(list: unknown[], source?: string): unknown[] {
-  return list.map((r, i) => {
-    if (!isRow(r)) return r;
-    const row = Object.defineProperty({ ...r }, ROW_INDEX, { value: i });
-    return source === undefined ? row : Object.defineProperty(row, ROW_SOURCE, { value: source });
-  });
+function placed(list: unknown[]): unknown[] {
+  return list.map((r, i) => (isRow(r) ? Object.defineProperty(copyRow(r), ROW_INDEX, { value: i }) : r));
 }
 
-/** The device notes directly in a split app's folder: the notes there that say which device they are. */
-export function deviceNotes(layer: DataLayer, folder: string): string[] {
-  return layer.notesIn(folder).filter((path) => typeof layer.host.frontmatter(path)?.device === "string").sort();
-}
 
-/** When a row was saved, as its text sorts: `YYYY-MM-DDTHH:MM`; a row without one sorts first. */
-const savedAt = (r: unknown) => (isRow(r) && typeof r.at === "string" ? r.at : "");
 
 /** Any other text names a list in the data note or the app note. */
 export const list: SourceDef = {
@@ -37,23 +27,27 @@ export const list: SourceDef = {
   matches: () => true,
   validate: (p) => (RESERVED.includes(p.source!) ? [`source can't use "${p.source}", which names part of the app`] : []),
   permissions: () => [],
-  deps: (_p, files) => [fileDep(files.dataPath), fileDep(files.appPath), ...(files.split ? [folderDep(files.split.folder)] : [])],
+  deps: (_p, files) => [fileDep(files.dataPath), fileDep(files.appPath), folderDep(logFolder(files.dataPath)), ...(files.devices ? [folderDep(files.devices)] : [])],
   // One copy per version of the notes, shared by every panel and the background: nothing
   // downstream changes a loaded row or list in place.
   load: (p, files, layer) => {
-    const split = files.split;
-    const paths = [files.dataPath, files.appPath, ...(split ? [`${split.folder}/`] : [])];
-    return layer.kept(`list\n${files.dataPath}\n${files.appPath}\n${split?.folder ?? ""}\n${p.source}`, paths, () => {
+    const ledger = layer.ledger;
+    if (ledger) {
+      const devices = files.devices;
+      layer.noteApp(files.dataPath, files.appPath, devices);
+      return layer.kept(`list\n${files.dataPath}\n${files.appPath}\n${p.source}`, [files.dataPath, files.appPath, `${logFolder(files.dataPath)}/`, ...(devices ? [`${devices}/`] : [])], async () => {
+        const old = devices ? layer.deviceNotes(devices) : [];
+        const state = await ledger.state(files.dataPath, layer.host.frontmatter(files.appPath) ?? {}, old);
+        const rows = state.lists.get(p.source!)?.rows;
+        if (rows) return placed(rows);
+        const ticked = state.ticked.get(p.source!);
+        if (ticked) return [...ticked];
+        return resolveList(p.source!, layer.host.frontmatter(files.dataPath), layer.host.frontmatter(files.appPath) ?? {});
+      });
+    }
+    return layer.kept(`list\n${files.dataPath}\n${files.appPath}\n${p.source}`, [files.dataPath, files.appPath], () => {
       const value = resolveList(p.source!, layer.host.frontmatter(files.dataPath), layer.host.frontmatter(files.appPath) ?? {});
-      const own = Array.isArray(value) ? placed(value) : value;
-      const devices = split ? deviceNotes(layer, split.folder) : [];
-      if (!devices.length || !Array.isArray(own)) return own;
-      // Each device adds rows to its own note; read together, they are in the order they were saved.
-      const rows = [...own, ...devices.flatMap((path) => {
-        const list = layer.host.frontmatter(path)?.[p.source!];
-        return Array.isArray(list) ? placed(list, path) : [];
-      })];
-      return rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => savedAt(a).localeCompare(savedAt(b)) || i - j).map(([r]) => r);
+      return Array.isArray(value) ? placed(value) : value;
     });
   },
 };

@@ -233,6 +233,11 @@ export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {
   }
   const ticked = new Map<string, string[]>(Object.entries(base.ticked).map(([k, v]) => [k, [...v]]));
   const applied = new Set<string>();
+  // A list whose every event was undone is still there, empty: its note's copy must say so.
+  for (const e of ordered) {
+    if (e.op === "add" || e.op === "set" || e.op === "del") listOf(e.l);
+    else if ((e.op === "tick" || e.op === "untick" || e.op === "clear") && !ticked.has(e.l)) ticked.set(e.l, []);
+  }
 
   for (const e of ordered) {
     const id = eventId(e);

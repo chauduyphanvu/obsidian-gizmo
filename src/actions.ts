@@ -11,10 +11,8 @@ import { startOf } from "./keys.ts";
  */
 export interface ActionDeps {
   now(): Date;
-  /** The app's data note, where lists are saved; with `devices: split`, this device's own note. */
+  /** The app's data note, where lists are saved. */
   dataPath: string;
-  /** Properties the note rows are saved to must carry: a device's note says which device it is. */
-  stamp?: Record<string, unknown>;
   /** The app note: links in `open` resolve from it. */
   appPath: string;
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
@@ -227,8 +225,6 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
-      const stamp = deps.stamp;
-      if (stamp) await deps.writeFrontmatter(deps.dataPath, (fm) => { for (const [k, v] of Object.entries(stamp)) fm[k] = v; });
       const { event } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
       changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });
     } else if (target?.kind === "folder") {

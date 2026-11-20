@@ -177,7 +177,6 @@ function writeReason(a: AppSummary, path: string, inScope: (scope: string, path:
     const what = rest.join(":");
     if (kind === "write" && notePath(what) === path) return [perm];
     if (kind === "store" && what === path) return [perm];
-    if (kind === "split" && path.startsWith(`${what}/`)) return [perm];
     if (kind === "create" && path.startsWith(`${what.replace(/\/+$/, "")}/`)) return [perm];
     if ((kind === "edit" || kind === "tasks") && (what === "*" || inScope(what, path))) return [perm];
     return [];

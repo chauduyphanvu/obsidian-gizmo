@@ -48,7 +48,8 @@ test("a dry run shows exactly what the real run then does, across a then, and wr
   // The real run, through a keyed link, logs the same changes, field by field.
   const link = new URL(t.bg.shortcutLinks().find((l) => l.shortcut === "log")!.link);
   await t.bg.runUri({ ...Object.fromEntries(link.searchParams), ...params });
-  const logged = (await t.activity.list()).reverse().map((e) => e.changes);
+  // The real run's list changes also carry the ledger event that made each; a dry run makes none.
+  const logged = (await t.activity.list()).reverse().map((e) => e.changes.map(({ event: _, ...c }: Record<string, unknown>) => c));
   assert.deepEqual(logged, steps.map((s) => s.changes));
 });
 

@@ -75,10 +75,3 @@ export function saveDevice(store: DeviceStore, device: Device): void {
 export function otherRunners(seen: Seen[], me: string, now: number): Seen[] {
   return seen.filter((s) => s.id !== me && s.background && now - s.seen < RUNNING_WITHIN_MS);
 }
-
-/** A device's own note in a folder of per-device data notes: its name, and its id so two of the same name never share one. */
-export function deviceNoteName(device: Pick<Device, "id" | "name">): string {
-  // A leading dot would hide the note from Obsidian, so its rows would never be read.
-  const name = device.name.replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/^[\s.]+/, "").replace(/\s+/g, " ").trim() || "Device";
-  return `${name}-${device.id.slice(0, 4)}`;
-}

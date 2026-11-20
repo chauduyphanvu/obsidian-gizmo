@@ -1,6 +1,7 @@
 import { isPolicyPath } from "./policy.ts";
+import { ledgerStore, type DataStore } from "./datastore.ts";
 import {
-  Notice, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf,
+  Notice, TFile, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type WorkspaceLeaf,
 } from "obsidian";
 import { bodyOf, noteText, withLine } from "./actions.ts";
 import type { LogStore, UndoIO } from "./activity.ts";
@@ -67,7 +68,7 @@ function info(f: TFile): FileInfo {
 }
 
 /** `pluginDir` (the plugin's folder) turns on the disk copy of web responses, in its `cache` folder. */
-export function obsidianHost(app: App, pluginDir?: string): Host {
+export function obsidianHost(app: App, pluginDir?: string, device?: () => string): Host {
   const file = (path: string) => app.vault.getFileByPath(path);
   const disk = pluginDir ? new DiskCache(app.vault.adapter, normalizePath(`${pluginDir}/cache`)) : undefined;
   return {
@@ -107,6 +108,20 @@ export function obsidianHost(app: App, pluginDir?: string): Host {
     parseYaml: (text) => parseYaml(text) as unknown,
     cacheRead: async (key) => disk?.read(key),
     cacheWrite: async (key, entry) => disk?.write(key, entry),
+    filesIn: (folder) => (app.vault.getFolderByPath(normalizePath(folder))?.children ?? []).filter((c): c is TFile => c instanceof TFile).map((f) => f.path),
+    append: (path, text) => queued(normalizePath(path), async () => {
+      const f = file(normalizePath(path));
+      if (f) return app.vault.append(f, text);
+      await ensureFolder(app, normalizePath(path));
+      await app.vault.create(normalizePath(path), text);
+    }),
+    writeFile: (path, text) => queued(normalizePath(path), async () => {
+      const f = file(normalizePath(path));
+      if (f) return app.vault.modify(f, text);
+      await ensureFolder(app, normalizePath(path));
+      await app.vault.create(normalizePath(path), text);
+    }),
+    ...(device && { device }),
   };
 }
 
@@ -187,6 +202,28 @@ async function setTaskDoneIn(app: App, path: string, line: number, text: string,
   return ticked;
 }
 
+/** Writing a note's frontmatter as apps do, after any other app's write to it: what snapshots are written with. */
+export function obsidianAppEnvWrites(plugin: GizmoPlugin): Pick<AppEnv, "writeFrontmatter"> {
+  const app = plugin.app;
+  return {
+    writeFrontmatter: (path, fn) => queued(path, async () => {
+      let target = app.vault.getFileByPath(path);
+      if (!target) {
+        await ensureFolder(app, path);
+        target = await app.vault.create(path, "");
+      }
+      await app.fileManager.processFrontMatter(target, fn);
+    }),
+  };
+}
+
+/** Where an app's lists are kept: the ledger, when the vault's data layer keeps one. */
+export function vaultStore(plugin: GizmoPlugin): ((dataPath: string, appPath: string) => DataStore) | undefined {
+  const ledger = plugin.dataLayer.ledger;
+  const fm = vaultFrontmatter(plugin.app);
+  return ledger && ((dataPath, appPath) => ledgerStore(ledger, dataPath, () => fm(appPath) ?? {}));
+}
+
 /** Without a leaf (an embed, a lens) there is no app tab to show the source in. */
 export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
   const app = plugin.app;
@@ -200,14 +237,8 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     verdict: (spec, wanted, where) => plugin.verdict(spec, wanted, where),
     policyPending: () => plugin.policyPending(),
     storePath: vaultStorePath(app),
-    writeFrontmatter: (path, fn) => queued(path, async () => {
-      let target = app.vault.getFileByPath(path);
-      if (!target) {
-        await ensureFolder(app, path);
-        target = await app.vault.create(path, "");
-      }
-      await app.fileManager.processFrontMatter(target, fn);
-    }),
+    writeFrontmatter: obsidianAppEnvWrites(plugin).writeFrontmatter,
+    store: vaultStore(plugin),
     updateFrontmatter: (path, fn) => updateFrontmatterOf(app, path, fn),
     async appendLine(path, line) {
       let created = false;
@@ -274,6 +305,10 @@ export function obsidianUndoIO(plugin: GizmoPlugin): UndoIO {
     frontmatter: vaultFrontmatter(app),
     updateFrontmatter: (path, fn) => updateFrontmatterOf(app, path, fn),
     setTaskDone: (path, line, text, done) => setTaskDoneIn(app, path, line, text, done),
+    undoEvents: async (dataPath, events) => {
+      const ledger = plugin.dataLayer.ledger;
+      if (ledger) await ledgerStore(ledger, dataPath).undo(events);
+    },
     async processText(path, fn) {
       let written = false;
       await queued(path, async () => {

@@ -1,7 +1,8 @@
 import { fillWith, type Row } from "../data.ts";
 import { display } from "../format.ts";
 import { ACTION_KEYS } from "../keys.ts";
-import { ROW_INDEX, ROW_SOURCE } from "../sources/list.ts";
+import { ROW_INDEX } from "../sources/list.ts";
+import { rowIdOf } from "../ledger-store.ts";
 import { rowsAreNotes } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
@@ -154,12 +155,12 @@ export function mountView(def: ViewDef, el: HTMLElement, p: Panel, ctx: PanelCtx
   };
 }
 
-/** What tells a row apart from the others of its panel across reloads: its place in a saved list, or its note. */
+/** What tells a row apart from the others of its panel across reloads: its id in the app's ledger, its place in a saved list, or its note. */
 export function rowKey(r: Row): unknown {
+  const id = rowIdOf(r);
+  if (id) return id;
   const index = (r as Record<symbol, unknown>)[ROW_INDEX];
-  // Two devices' notes each have a first row.
-  const source = (r as Record<symbol, unknown>)[ROW_SOURCE];
-  if (typeof index === "number") return typeof source === "string" ? `${source}#${index}` : index;
+  if (typeof index === "number") return index;
   // A note holds many tasks, each on its own line.
   return typeof r.path === "string" ? (typeof r.line === "number" ? `${r.path}:${r.line}` : r.path) : undefined;
 }

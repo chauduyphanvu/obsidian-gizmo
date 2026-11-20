@@ -1,4 +1,5 @@
 import { rowId as ledgerRowId } from "./ledger.ts";
+import { rowIdOf } from "./ledger-store.ts";
 import { fillLine, runActions, storeOf, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activity.ts";
 import { captureTargets, parseLine, type CaptureIndex, type Parsed } from "./capture.ts";
@@ -20,9 +21,7 @@ import type { AppSummary } from "./map.ts";
 import { askersOf, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
 import type { AppliedPolicy, Policy } from "./policy.ts";
-import { basename, dataPathOf, notePath, resolveList, splitOf, storeTarget, type Split } from "./store.ts";
-import { deviceNoteName } from "./device.ts";
-import { ROW_SOURCE, deviceNotes } from "./sources/list.ts";
+import { basename, dataPathOf, devicesFolder, notePath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
@@ -167,8 +166,8 @@ interface AppEntry {
   definition: string;
   spec: AppSpec;
   dataPath: string;
-  /** With `devices: split`, worked out when it is used: renaming this device changes its note. */
-  split?: () => Split;
+  /** With `devices: split`, the folder of device notes from before the ledger, read in as the app's rows. */
+  devices?: string;
   /** What the app needs allowed; it acts only while exactly this is granted. */
   wanted: string[];
   /** What the data policy says of it, when there is one: flows it refuses, permissions it covers, the rest asked. */
@@ -374,7 +373,7 @@ export class Background {
     const p = r.panel;
     const source = sourceOf(p);
     try {
-      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath, split: entry.split?.() }, { ttlMs: entry.refreshMs, now, force });
+      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath, devices: entry.devices }, { ttlMs: entry.refreshMs, now, force });
       const rows = splitByWindow(p, loaded, now).current;
       const { value, text, unit } = panelValue(p, rows, now);
       return { value, shown: unit ? `${text} ${unit}` : text, rows, panel: p };
@@ -539,18 +538,13 @@ export class Background {
       told = true;
       say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
     };
-    const split = entry.split?.();
     let result: ActionResult;
     if (p.view === "checklist") {
-      // Ticks are kept in the app's own data note, also with devices: split, as ticking a box keeps them.
       const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       result = await tickItem(p, String(input.item), dry ? recordingDeps(dry.overlay, base, step) : base);
       if (result.ok) say(`${entry.name}: ${result.already ? `${String(input.item)} was already ticked` : `ticked ${String(input.item)}`}${triggered ? ` for ${by(actor)}` : ""}`);
     } else {
-      const base: ActionDeps = {
-        ...this.env.actionDeps(entry.path, split?.mine ?? entry.dataPath, dry ? undefined : actor),
-        stamp: split && { device: split.id },
-      };
+      const base: ActionDeps = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       const deps: ActionDeps = {
         ...(dry ? recordingDeps(dry.overlay, base, step) : base),
         then: async (panel, ctx) => {
@@ -919,14 +913,11 @@ export class Background {
     this.sampling.add(key);
     try {
       const now = this.env.now();
-      // With devices: split, the newest sample any device took counts, whichever device took it.
-      const split = entry.split?.();
-      const devices = split ? deviceNotes(this.env.data, split.folder) : [];
-      const last = Math.max(
-        lastSample(resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {})) ?? -Infinity,
-        ...devices.map((path) => lastSample(this.env.frontmatter(path)?.[job.list]) ?? -Infinity),
-      );
-      if (last !== -Infinity && now.getTime() - last < job.everyMs) return;
+      // The newest sample any device took counts, whichever device took it.
+      const deps = this.env.actionDeps(entry.path, entry.dataPath);
+      const kept = this.env.data.ledger ? await storeOf(deps).rows(job.list) : resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {});
+      const last = lastSample(kept);
+      if (last !== undefined && now.getTime() - last < job.everyMs) return;
       const r = await this.evaluate(entry.path, entry.spec.recorded[job.block], true);
       if (!("panel" in r)) return;
       const row = oneRow(r.rows);
@@ -934,9 +925,6 @@ export class Background {
       const at = stampParts(now).at;
       const sample: Row = { at, ...row };
       sample.at = at;
-      const into = split?.mine ?? entry.dataPath;
-      const deps = this.env.actionDeps(entry.path, into);
-      if (split) await deps.writeFrontmatter(into, (fm) => { fm.device = split.id; });
       // One id per interval: two devices sampling the same interval keep one row.
       await storeOf(deps).add(job.list, sample, { cap: MAX_SAMPLES, id: ledgerRowId(`sample\n${entry.path}\n${job.list}\n${Math.floor(now.getTime() / job.everyMs)}`) });
     } finally {
@@ -990,7 +978,7 @@ export class Background {
       definition,
       spec,
       dataPath,
-      split: spec.split ? () => splitOf(dataPath, this.env.device(), deviceNoteName) : undefined,
+      ...(spec.split && { devices: devicesFolder(dataPath) }),
       wanted: permissionsOf(spec, path),
       records: recordJobs(spec),
       shortcuts,
@@ -998,8 +986,11 @@ export class Background {
       refreshMs: spec.refreshMs ?? DEFAULT_REFRESH_MS,
       stop: () => {},
     };
+    // What an app records keeps only its newest rows, in its ledger as in its snapshot.
+    this.env.data.ledger?.setCaps(dataPath, Object.fromEntries(entry.records.map((j) => [j.list, MAX_SAMPLES])));
+    this.env.data.noteApp(dataPath, path, entry.devices);
     const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
-    const files = { appPath: path, dataPath: entry.dataPath, split: entry.split?.() };
+    const files = { appPath: path, dataPath: entry.dataPath, devices: entry.devices };
     const start = this.valuesOf(path, spec, this.env.now());
     const dataDeps = entry.watched.flatMap(({ ps }) => {
       const p = resolvePanel(ps, start).panel;
@@ -1040,13 +1031,14 @@ function by(actor: Actor): string {
 }
 
 /**
- * A row as an alert's `then` remembers it: its note (and task text), else when it was saved (and,
- * with devices: split, on which device: two can save in the same minute), else all of it.
+ * A row as an alert's `then` remembers it: its note (and task text), else its id in the app's
+ * ledger, else when it was saved, else all of it.
  */
 function rowId(row: Row): string {
   if (typeof row.path === "string") return typeof row.text === "string" ? `${row.path}\n${row.text}` : row.path;
-  const source = (row as Record<symbol, unknown>)[ROW_SOURCE];
-  if (typeof row.at === "string") return typeof source === "string" ? `${source}\nat:${row.at}` : `at:${row.at}`;
+  const id = rowIdOf(row);
+  if (id) return `id:${id}`;
+  if (typeof row.at === "string") return `at:${row.at}`;
   return stableJson(row);
 }
 

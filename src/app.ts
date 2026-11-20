@@ -20,8 +20,7 @@ import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
-import { basename, dataPathOf, isComponent, splitOf, type Split } from "./store.ts";
-import { deviceNoteName } from "./device.ts";
+import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";
@@ -176,10 +175,6 @@ export class AppController {
   private spec: AppSpec | undefined;
   private definition = "";
   private dataPath = "";
-  /** With `devices: split`: where this device's rows go, beside the data note; renaming the device moves its note. */
-  private get split(): Split | undefined {
-    return this.spec?.split && this.env.device ? splitOf(this.dataPath, this.env.device, deviceNoteName) : undefined;
-  }
   private unsubscribe: (() => void) | undefined;
   private hosting: Hosting | undefined;
   private grantKey: string;
@@ -225,7 +220,7 @@ export class AppController {
     this.hostPath = hosting?.hostPath ?? appPath;
     this.memory = hosting?.memory ?? newMemory();
     this.writes = new AppWrites(env, {
-      appPath, hostPath: this.hostPath, dataPath: () => this.dataPath, split: () => this.split, checklistName: (key) => this.checklistName(key),
+      appPath, hostPath: this.hostPath, dataPath: () => this.dataPath, checklistName: (key) => this.checklistName(key),
     });
     this.timers = new Timers(this.memory.timers, {
       panel: (key) => this.mounted.get(key),
@@ -630,7 +625,7 @@ export class AppController {
   }
 
   private files(): AppFiles {
-    return { appPath: this.appPath, dataPath: this.dataPath, hostPath: this.hostPath, split: this.split };
+    return { appPath: this.appPath, dataPath: this.dataPath, hostPath: this.hostPath, ...(this.spec?.split && { devices: devicesFolder(this.dataPath) }) };
   }
 
   private subscribe(): void {

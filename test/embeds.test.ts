@@ -6,7 +6,7 @@ import { HostedApp, Memories, blockKey, parseHosted } from "../src/hosted.ts";
 import { dropGrants, moveGrants } from "../src/grants.ts";
 import { SAVE_THIS_HOSTED, readSpec, resolvePanel } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
-import { fakeEnv } from "./support/fakes.ts";
+import { fakeEnv, listsIn } from "./support/fakes.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
@@ -73,7 +73,7 @@ test("an embed draws its panels; its identity is its note and its block's text",
   change(root.querySelector(".gz-checklist input")!);
   await settle();
   // Recorded data goes to the note's own data note, as an app note's does.
-  assert.deepEqual(f.files.get("Journal/2026-11-18 data.md")!.fm, { packed: ["Passport"] });
+  assert.deepEqual(listsIn(f.files.get("Journal/2026-11-18 data.md")!.fm), { packed: ["Passport"] });
   assert.match(key, /^Journal\/2026-11-18\.md#[0-9a-z]+$/);
   assert.equal(blockKey(HOST, `${JSON.stringify(value)}\n`), key, "a trailing line break isn't part of the text");
   assert.notEqual(blockKey(HOST, JSON.stringify({ ...value, title: "x" })), key);

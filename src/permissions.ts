@@ -4,7 +4,7 @@ import { isPlainObject } from "./keys.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { urlHost } from "./sources/url.ts";
 import type { AppSpec, Panel, PanelSpec } from "./spec.ts";
-import { notePath, splitFolder, storeTarget } from "./store.ts";
+import { notePath, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
 
 /** A panel's permissions, each with the key that asks for it. */
@@ -90,7 +90,6 @@ export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
     for (const perm of sendPermissions(ps, spec)) out.add(perm);
   }
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
-  if (spec.split) out.add(`split:${splitFolder(spec.store, selfPath)}`);
   return [...out].sort();
 }
 
@@ -111,7 +110,6 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
     for (const perm of sendPermissions(ps, spec)) add(perm, selfPath);
   }
   if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
-  if (spec.split) add(`split:${splitFolder(spec.store, selfPath)}`, selfPath);
   return out;
 }
 
@@ -147,7 +145,6 @@ export function describePermission(perm: string): string {
     case "read": return /\.[A-Za-z0-9]+$/.test(what) ? `Read ${what}` : `Read notes in ${what}`;
     case "write": return `Add lines to ${what}`;
     case "store": return `Save its data in ${what}`;
-    case "split": return `Keep a note of its own for each device in ${what}`;
     case "create": return `Create notes in ${what}`;
     case "edit": return `Change properties of notes in ${what}`;
     case "tasks": return `Tick tasks in notes in ${what}`;

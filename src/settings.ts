@@ -88,7 +88,7 @@ export class GizmoSettings extends PluginSettingTab {
     new Setting(el).setName("This device").setHeading();
     new Setting(el)
       .setName("Name")
-      .setDesc("What other devices call this one, and the name of its own data notes in apps with devices: split.")
+      .setDesc("What other devices call this one.")
       .addText((t) => t.setValue(device.name).onChange((value) => {
         if (!value.trim()) return;
         device.name = value.trim();

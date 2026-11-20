@@ -123,12 +123,11 @@ export interface DryStep {
  * Action deps that write to an overlay and keep what they would have changed and told, for a run
  * that only shows what it would do. `base` gives the time and reads templates; it is never written with.
  */
-export function recordingDeps(overlay: Overlay, base: Pick<ActionDeps, "now" | "readBody" | "appPath" | "dataPath" | "stamp">, step: DryStep): ActionDeps {
+export function recordingDeps(overlay: Overlay, base: Pick<ActionDeps, "now" | "readBody" | "appPath" | "dataPath">, step: DryStep): ActionDeps {
   return {
     now: () => base.now(),
     appPath: base.appPath,
     dataPath: base.dataPath,
-    stamp: base.stamp,
     readBody: (path) => base.readBody(path),
     writeFrontmatter: async (path, fn) => overlay.writeFrontmatter(path, fn),
     appendLine: (path, line) => overlay.appendLine(path, line),
