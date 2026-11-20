@@ -171,6 +171,8 @@ try {
   });
 
   await check("gizmod: a rhythm missed by its deadline is pushed; one whose row came in time isn't", async () => {
+    // The row must come before the deadline, set when the script started; a run that got here late says so.
+    if (Date.now() > due.getTime() - 20_000 || due.getDate() !== new Date(due.getTime() - 150_000).getDate()) throw new Error(`started too close to ${by} to tell a row in time from a late one`);
     const took = cli("run", "Vitamins", "took");
     const wait = due.getTime() + 90_000 - Date.now();
     const pushed = await until(() => pushes.find((p) => p.body.startsWith("Pills")), Math.max(wait, 1000));

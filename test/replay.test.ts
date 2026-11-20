@@ -78,3 +78,13 @@ test("the same time twice gives the same page; the live app beside it shows now,
   assert.ok(t.notices.some((n) => n.includes(PAST)), t.notices.join(" | "));
   assert.deepEqual((await t.env.store!("Apps/W data.md", "Apps/W.md").rows("weight")).map((r) => r.kg), [80, 79]);
 });
+
+test("a replay keeps the newest rows of a recorded list as the live app does", async () => {
+  const t = await history();
+  t.env.data.ledger!.setCaps("Apps/W data.md", { weight: 1 });
+  const past = open(pastEnv(t.env, T0 + 2 * HOUR));
+  await settle();
+  assert.equal(past.big("Last"), "79");
+  const rows = await pastEnv(t.env, T0 + 2 * HOUR).store!("Apps/W data.md", "Apps/W.md").rows("weight");
+  assert.deepEqual(rows.map((r) => r.kg), [79]);
+});

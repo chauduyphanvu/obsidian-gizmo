@@ -9,7 +9,6 @@ import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, rowsOf } from "./data.ts";
 import { cacheKey, type DataLayer } from "./datalayer.ts";
 import { metIn, windowsDue, type Rhythm, type Window } from "./expect.ts";
-import { panelKey } from "./flows.ts";
 import { stableJson } from "./hash.ts";
 import { resolvePanel, startingValues, type AppSpec, type PanelSpec, type Then } from "./spec.ts";
 import { thisValues } from "./sources/this.ts";
@@ -62,12 +61,21 @@ export interface BacktestJob {
 
 interface Watched { key: string; ps: PanelSpec; what: string; then?: Then }
 
-/** A spec's alerts and state rules, as the background watches them. */
+/**
+ * A spec's alerts and state rules, as the background watches them. An alert is known across the two
+ * definitions by its title, or its view and source, not by where it's written: a panel added above
+ * it moves it without changing what it does.
+ */
 function alertsOf(spec: AppSpec): Watched[] {
   const out: Watched[] = [];
+  const seen = new Map<string, number>();
   for (const ps of spec.panels) {
-    if (ps.panel.alert === undefined) continue;
-    out.push({ key: panelKey(ps), ps, what: ps.panel.title ?? ps.panel.label ?? (ps.label || "the app"), then: ps.panel.then });
+    const p = ps.panel;
+    if (p.alert === undefined) continue;
+    const name = p.title ?? `${p.view} of ${p.source ?? "nothing"}`;
+    const n = seen.get(name) ?? 0;
+    seen.set(name, n + 1);
+    out.push({ key: n ? `${name} #${n + 1}` : name, ps, what: p.title ?? p.label ?? (ps.label || "the app"), then: p.then });
   }
   for (const r of spec.expect) {
     const ps = spec.expected[r.id];
@@ -112,7 +120,9 @@ export async function backtest(job: BacktestJob): Promise<BacktestResult | undef
       for (const t of await layer.host.responses?.times(cacheKey(source, p.headers, p.body)) ?? []) changes.add(t);
     }
   }
-  const earliest = Math.min(...changes);
+  // A loop, not a spread: a year of samples is more arguments than a call takes.
+  let earliest = Infinity;
+  for (const t of changes) if (t < earliest) earliest = t;
   let from = Math.max(job.to - SPAN_MS, Number.isFinite(earliest) ? startOfDay(earliest) : job.to - 30 * 86_400_000);
   const steps = new Set([...changes].filter((t) => t >= from && t <= job.to));
   for (let t = nextMidnight(from); t <= job.to; t = nextMidnight(t)) steps.add(t);
@@ -208,8 +218,10 @@ export class EditSession {
   private last: { fm: Record<string, unknown>; text: string } | undefined;
   private lastAt = -Infinity;
 
+  /** A note Obsidian hasn't read yet (no frontmatter) isn't a definition to start from. */
   seen(fm: Record<string, unknown> | undefined, now: number): void {
-    const copy = structuredClone(fm ?? {});
+    if (!fm) return;
+    const copy = structuredClone(fm);
     const text = stableJson(copy);
     if (this.last && text === this.last.text) return;
     if (this.last && now - this.lastAt > SESSION_GAP_MS) this.before = this.last.fm;

@@ -81,7 +81,8 @@ test("a state rule fires when a row comes to match it, as an alert does", async 
 });
 
 test("steps past the limit start the backtest later and say so", async () => {
-  const many: [number, number][] = Array.from({ length: MAX_STEPS + 5 }, (_, i) => [day(19, 0) + i * 1000, 80]);
+  // More times than a call takes as arguments, as a year of samples every few minutes would be.
+  const many: [number, number][] = Array.from({ length: 150_000 }, (_, i) => [day(19, 0) + i * 100, 80]);
   const t = await logged(many.slice(0, 3), weightApp("< 75"));
   // Times of events alone are what is counted; three real ones and a stand-in for the rest.
   const j = job(t, weightApp("< 75"), undefined, day(19, 20));
@@ -93,8 +94,18 @@ test("steps past the limit start the backtest later and say so", async () => {
   assert.ok(r.from > day(19, 0));
 });
 
+test("a panel added above the alert moves it without changing it: nothing added or lost", async () => {
+  const t = await logged(WEIGHTS, weightApp("< 78"));
+  const moved = { ...weightApp("< 78"), panels: [{ view: "text", title: "Note", text: "Weigh in the morning" }, ...weightApp("< 78").panels] };
+  const r = (await backtest(job(t, moved, weightApp("< 78"), day(24, 20))))!;
+  assert.equal(r.before!.length, 3);
+  assert.deepEqual([r.added, r.lost], [[], []]);
+});
+
 test("an editing session's before is the definition from before its first change after two minutes without one", () => {
   const s = new EditSession();
+  // A note Obsidian hasn't read yet starts nothing.
+  s.seen(undefined, 0);
   s.seen({ alert: "< 75" }, 0);
   assert.equal(s.changed(), false);
   s.seen({ alert: "< 7" }, 1000);

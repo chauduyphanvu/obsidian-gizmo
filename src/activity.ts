@@ -56,13 +56,13 @@ export interface LogStore {
   write(text: string): Promise<void>;
 }
 
-/** The ledger events an entry's changes are, when every one of them is one; else undefined. */
 /** When an entry's changes were all made: its time, or its latest event's when that came later. */
 export function doneAt(entry: Entry): number {
   const walls = (eventsOf(entry) ?? []).map((e) => parseStamp(e.event.slice(e.event.indexOf("@") + 1))?.wall ?? 0);
   return Math.max(entry.at, ...walls);
 }
 
+/** The ledger events an entry's changes are, when every one of them is one; else undefined. */
 export function eventsOf(entry: Entry): { path: string; event: string }[] | undefined {
   const out = entry.changes.map((c) => ("event" in c && c.event ? { path: c.path, event: c.event } : undefined));
   return out.length && out.every(Boolean) ? (out as { path: string; event: string }[]) : undefined;

@@ -235,6 +235,11 @@ export class Ledger {
     return n;
   }
 
+  /** Keeps the same newest rows of recorded lists as another ledger does: a replay folds as the live one. */
+  capsFrom(other: Ledger): void {
+    for (const [path, n] of other.notes) if (Object.keys(n.caps).length) this.setCaps(path, n.caps);
+  }
+
   /** Keeps only the newest `cap` rows of these lists of a data note (what an app records on its own). */
   setCaps(dataPath: string, caps: Record<string, number>): void {
     const n = this.log(dataPath);
@@ -266,17 +271,17 @@ export class Ledger {
     return lists;
   }
 
-  /**
-   * `appFm` and `devices` are the app note and old device notes; a reader that leaves them out (the
-   * activity list, a store that doesn't know the device notes) gets the last ones given, so readers
-   * don't fold the note again for each other.
-   */
   /** When each of a data note's events was written (ms), every device's: the moments its lists changed. */
   async times(dataPath: string): Promise<number[]> {
     const n = await this.refresh(dataPath);
     return [...n.files.values()].flatMap((f) => f.events.map((e) => parseStamp(e.t)!.wall));
   }
 
+  /**
+   * `appFm` and `devices` are the app note and old device notes; a reader that leaves them out (the
+   * activity list, a store that doesn't know the device notes) gets the last ones given, so readers
+   * don't fold the note again for each other.
+   */
   async state(dataPath: string, given?: Record<string, unknown>, givenDevices?: Record<string, unknown>[]): Promise<LedgerState> {
     const n = await this.refresh(dataPath);
     if (given) n.appFm = given;

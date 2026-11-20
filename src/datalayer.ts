@@ -116,12 +116,14 @@ export class DataLayer {
   private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
   /**
-   * The vault as it was at this time (ms), for replay: lists from the ledger's events up to it, web
-   * answers from the response history at or before it, and no note made after it. Nothing is written.
+   * The vault as it was at this time (ms), for replay: lists from the ledger's events up to it and web
+   * answers from the response history at or before it. Notes are read as they are now (a synced
+   * note's ctime is when it arrived here, not when it was made). Nothing is written.
    */
   at: number | undefined;
 
-  constructor(host: Host, opts: { at?: number } = {}) {
+  /** `like`: the live layer a replay folds recorded lists as. */
+  constructor(host: Host, opts: { at?: number; like?: DataLayer } = {}) {
     this.host = host;
     this.at = opts.at;
     const { filesIn, append, writeFile } = host;
@@ -134,6 +136,7 @@ export class DataLayer {
         frontmatter: (path) => host.frontmatter(path),
       }, () => host.device?.() ?? "device", () => host.now(), opts.at);
       this.ledger.onWrite = (path) => this.fileChanged(path);
+      if (opts.like?.ledger) this.ledger.capsFrom(opts.like.ledger);
     }
   }
 
@@ -407,8 +410,7 @@ export class DataLayer {
   private rows(): Map<string, Row> {
     if (!this.index) {
       this.index = new Map();
-      // A note made after the time being shown wasn't there yet.
-      for (const f of this.host.markdownFiles()) if (this.at === undefined || f.ctime <= this.at) this.index.set(f.path, this.row(f));
+      for (const f of this.host.markdownFiles()) this.index.set(f.path, this.row(f));
     }
     return this.index;
   }

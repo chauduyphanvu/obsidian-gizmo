@@ -1,7 +1,7 @@
 /**
  * An app as it was at a past time: its own data layer, so nothing of now mixes in, with lists from
- * the ledger's events up to then, web answers from the response history at or before then, and no
- * note made after then. Nothing can be changed, nothing is logged and no then runs.
+ * the ledger's events up to then and web answers from the response history at or before then; notes
+ * are read as they are now. Nothing can be changed, nothing is logged and no then runs.
  */
 import type { AppEnv } from "./app.ts";
 import { DataLayer } from "./datalayer.ts";
@@ -15,7 +15,7 @@ export function pastEnv(env: AppEnv, at: number, back?: () => void): AppEnv {
   const host = env.data.host;
   // Another device's history may have grown since it was last read.
   host.responses?.changed?.();
-  const data = new DataLayer(host, { at });
+  const data = new DataLayer(host, { at, like: env.data });
   const ledger = data.ledger;
   const refuse = () => Promise.reject(new Error(PAST));
   return {

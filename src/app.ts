@@ -269,7 +269,7 @@ export class AppController {
     this.definition = "";
     this.reconcile();
     this.timers.resume();
-    if (this.env.data.at === undefined) this.env.opened?.(this.appPath);
+    this.env.opened?.(this.appPath);
   }
 
   /** Looks again at what may have changed without a note changing: whether the app is allowed now. */

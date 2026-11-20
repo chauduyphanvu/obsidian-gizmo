@@ -5,7 +5,7 @@ import { vaultNotes, vaultStorePath } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { pastText } from "./replay.ts";
 import { readSpec, type AppSpec } from "./spec.ts";
-import { basename, dataPathOf } from "./store.ts";
+import { basename, dataPathOf, devicesFolder } from "./store.ts";
 import { VIEW_TYPE } from "./view.ts";
 
 const DAY = 86_400_000;
@@ -103,10 +103,12 @@ export class BacktestModal extends Modal {
     const host = this.plugin.dataLayer.host;
     // Another device's history may have grown since it was last read.
     host.responses?.changed?.();
+    const dataPath = dataPathOf(after.store, this.path, vaultStorePath(this.app));
     const result = await backtest({
-      layer: new DataLayer(host, { at: now.getTime() }),
+      layer: new DataLayer(host, { at: now.getTime(), like: this.plugin.dataLayer }),
       appPath: this.path,
-      dataPath: dataPathOf(after.store, this.path, vaultStorePath(this.app)),
+      dataPath,
+      devices: after.split ? devicesFolder(dataPath) : undefined,
       before,
       after,
       to: now.getTime(),
