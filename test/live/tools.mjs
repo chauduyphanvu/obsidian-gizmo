@@ -19,6 +19,10 @@ const PAGE_HELPERS = `(async () => {
     await sleep(200);
   };
   const buttons = (root) => [...(root ?? view().contentEl).querySelectorAll("button")];
+  // The test Obsidian shares the computer's clipboard with whoever is using it: copies stay in the page.
+  let clip = "";
+  navigator.clipboard.writeText = async (t) => { clip = String(t); };
+  navigator.clipboard.readText = async () => clip;
   // Notices are drawn and taken away again within seconds; every one shown is kept here. They go
   // to activeDocument, which in the test instance can be another window (Obsidian's settings).
   const notices = [];
