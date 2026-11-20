@@ -3,7 +3,7 @@ import {
 } from "obsidian";
 import { undoMessage } from "./activity.ts";
 import { copyText } from "./host.ts";
-import { captureLine, completed, receipt, type Parsed } from "./capture.ts";
+import { captureLine, completed, parseLine, receipt, type Parsed } from "./capture.ts";
 import type GizmoPlugin from "./main.ts";
 
 /** A notice saying a capture line ran, with Undo for what it changed. */
@@ -53,7 +53,10 @@ class CaptureModal extends Modal {
     this.input.addEventListener("input", () => this.schedule());
     this.input.addEventListener("keydown", (e) => {
       if (e.key === "Tab") {
-        const first = this.parsed && !this.parsed.ok ? this.parsed.completions[0] : undefined;
+        // What was typed since the last preview counts: the line is read again as it is now.
+        const bg = this.plugin.background;
+        const now = bg ? parseLine(this.input.value, bg.captureIndex(), new Date()) : undefined;
+        const first = now && !now.ok ? now.completions[0] : undefined;
         if (first === undefined) return;
         e.preventDefault();
         this.take(first);
@@ -190,8 +193,14 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
 
   selectSuggestion(s: LineSuggestion): void {
     const ctx = this.context;
-    if (!ctx || s.kind === "problem") return;
+    if (!ctx) return;
     const { editor, start, end, query } = ctx;
+    // A line that can't run yet is only told why; Enter goes on as it would without the hint.
+    if (s.kind === "problem") {
+      editor.replaceRange("\n", end);
+      editor.setCursor({ line: end.line + 1, ch: 0 });
+      return;
+    }
     if (s.kind === "complete") {
       const text = editor.getLine(start.line);
       const prefix = text.slice(0, text.length - query.length);
@@ -254,7 +263,7 @@ class CaptureLinkModal extends Modal {
     }
     const row = el.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { cls: "mod-cta", text: "Copy link" }).addEventListener("click", async () => {
-      const key = await this.plugin.newCaptureKey([...picked]);
+      const key = await this.plugin.newCaptureKey(targets.filter((t) => picked.has(t.name)));
       copyText(captureLinkOf(key), () => { new Notice(`Copied a capture link for ${picked.size ? [...picked].sort().join(", ") : "no names (every line asks)"}. Revoke it on the automation map.`); });
       this.close();
     });

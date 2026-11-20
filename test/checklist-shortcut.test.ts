@@ -32,6 +32,8 @@ test("ticking an item already ticked leaves it ticked and keeps nothing in the a
   await t.bg.start();
   await t.bg.runUri({ app: "Trip", do: "pack", item: "Passport" });
   assert.deepEqual(t.packed(), ["Passport"]);
+  assert.deepEqual(t.notices, ["Trip: Passport was already ticked"]);
+  assert.deepEqual(await t.activity.list("Apps/Trip.md"), []);
 });
 
 test("an item that isn't there, could be two, is missing, or comes with other values ticks nothing and says why", async () => {
@@ -94,14 +96,34 @@ test("a checklist's copied link says it takes item", async () => {
   assert.match(linkNotice(link), /Add &item=… to say which item to tick\./);
 });
 
-test("an alias makes the shortcut when there is none, and a bad alias is told once", () => {
+test("an alias makes the shortcut when there is none, from its words; a bad alias is told once", () => {
   const spec = readSpec({ app: "a", panels: [{ view: "button", label: "Took meds", save: "doses", alias: "meds" }] }, { now: new Date(2026, 10, 18) })!.spec!;
   assert.equal(spec.panels[0].panel.shortcut, "meds");
   assert.equal(spec.panels[0].panel.alias, "meds");
   const both = readSpec({ app: "a", panels: [{ view: "button", label: "x", save: "d", alias: "m", shortcut: "took-meds" }] }, { now: new Date(2026, 10, 18) })!.spec!;
   assert.equal(both.panels[0].panel.shortcut, "took-meds");
-  const bad = readSpec({ app: "a", panels: [{ view: "button", label: "x", save: "d", alias: "My meds" }] }, { now: new Date(2026, 10, 18) })!;
-  assert.deepEqual(bad.errors, ["panel 1: alias must be lowercase letters, digits and -"]);
+  const words = readSpec({ app: "a", panels: [{ view: "form", fields: { bpm: "number" }, save: "hr", alias: "Resting heart rate" }] }, { now: new Date(2026, 10, 18) })!.spec!;
+  assert.equal(words.panels[0].panel.shortcut, "resting-heart-rate");
+  const bad = readSpec({ app: "a", panels: [{ view: "button", label: "x", save: "d", alias: "meds!" }] }, { now: new Date(2026, 10, 18) })!;
+  assert.deepEqual(bad.errors, ["panel 1: alias must be words of letters and digits (with - and '), up to 40 characters"]);
+  const none = readSpec({ app: "a", panels: [{ view: "button", label: "x", save: "d", alias: "体重" }] }, { now: new Date(2026, 10, 18) })!;
+  assert.deepEqual(none.errors, ["panel 1: alias “体重” makes no shortcut (it has no letters a-z or digits); add shortcut: too"]);
+});
+
+test("a kit's param of several words makes a working alias, and in an embed the alias is left out without a word", () => {
+  const kit = {
+    component: "Log a number",
+    params: { what: "weight" },
+    panels: [{ view: "form", fields: { value: "number" }, save: "log", alias: "$what" }],
+  };
+  const notes = { resolve: (link: string) => (link === "Kit" ? "Kit.md" : undefined), frontmatter: (p: string) => (p === "Kit.md" ? kit : undefined) };
+  const r = readSpec({ app: "a", use: "[[Kit]]", with: { what: "resting heart rate" } }, { now: new Date(2026, 10, 18), notes, path: "HR.md" })!;
+  assert.deepEqual(r.errors, []);
+  assert.equal(r.spec!.panels[0].panel.shortcut, "resting-heart-rate");
+  const embedded = readSpec({ app: "a", use: "[[Kit]]", with: { what: "Weight" } }, { now: new Date(2026, 10, 18), notes, path: "Day.md", host: {} })!;
+  assert.deepEqual(embedded.errors, []);
+  assert.equal(embedded.spec!.panels[0].panel.alias, undefined);
+  assert.equal(embedded.spec!.panels[0].panel.shortcut, undefined);
 });
 
 test("a kit's literal param may name the alias; an input may not", () => {

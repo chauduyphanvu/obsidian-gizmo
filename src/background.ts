@@ -76,8 +76,8 @@ export interface BackgroundEnv {
   triggers?: LogStore;
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined;
-  /** The capture names a capture link's key may run without asking; undefined for a key Gizmo never made. */
-  captureNames(key: string): string[] | undefined;
+  /** What a capture link's key may run without asking: name → `<app path>#<shortcut>`; undefined for a key Gizmo never made. */
+  captureKey(key: string): Record<string, string> | undefined;
   /** The apps (`scheme://host`) a shortcut's keyed link may send to without asking. */
   destinations(path: string, shortcut: string): string[];
   allowDestination(path: string, shortcut: string, to: string): void;
@@ -89,22 +89,16 @@ export interface BackgroundEnv {
   device(): { id: string; name: string };
 }
 
-/**
- * How running a shortcut went: whether it ran, why not (as the notice told it), the activity log's
- * entry for what it changed, and for a shortcut that answers, the value and the value as shown.
- */
+/** How running a shortcut went: whether it ran, why not (as the notice told it), and the activity log's entry for what it changed. */
 export interface ShortcutResult {
   ok: boolean;
   error?: string;
   entryId?: string;
-  value?: unknown;
-  shown?: string;
 }
 
-/** A shortcut that answers: its value, or why there is none. */
+/** A shortcut that answers: whether it had a value, or why not. */
 function answered(r: Evaluation): ShortcutResult {
-  if ("shown" in r) return { ok: true, value: r.value, shown: r.shown };
-  return { ok: false, error: "waiting" in r ? `it waits for ${r.waiting}` : r.error };
+  return "shown" in r ? { ok: true } : { ok: false, error: "waiting" in r ? `it waits for ${r.waiting}` : r.error };
 }
 
 /** What a link brings besides a form's values: the key it carries and where it wants word back. */
@@ -391,9 +385,11 @@ export class Background {
     if ("problem" in callbacks) return this.say(`Refused a capture link: ${callbacks.problem}`);
     const parsed = parseLine(line, this.captureIndex(), this.env.now());
     if (!parsed.ok) return this.say(`A capture link couldn't run “${line}”: ${parsed.error}`);
-    const names = params.key !== undefined ? this.env.captureNames(params.key) : undefined;
-    const captureKeyed = names?.includes(parsed.target.name) ?? false;
-    await this.runShortcut(parsed.target.path, parsed.target.shortcut, "link", parsed.params, undefined, { callbacks, captureKeyed });
+    const granted = params.key !== undefined ? this.env.captureKey(params.key) : undefined;
+    const { name, path, shortcut } = parsed.target;
+    // A name that now reaches another shortcut than the one it was copied for asks again.
+    const captureKeyed = !!granted && Object.hasOwn(granted, name) && granted[name] === `${path}#${shortcut}`;
+    await this.runShortcut(path, shortcut, "link", parsed.params, undefined, { callbacks, captureKeyed });
   }
 
   /** Runs the command `<app path>:<shortcut>`. */
@@ -509,7 +505,7 @@ export class Background {
       // Ticks are kept in the app's own data note, also with devices: split, as ticking a box keeps them.
       const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       result = await tickItem(p, String(input.item), dry ? recordingDeps(dry.overlay, base, step) : base);
-      if (result.ok) say(`${entry.name}: ticked ${String(input.item)}${triggered ? ` for ${by(actor)}` : ""}`);
+      if (result.ok) say(`${entry.name}: ${result.already ? `${String(input.item)} was already ticked` : `ticked ${String(input.item)}`}${triggered ? ` for ${by(actor)}` : ""}`);
     } else {
       const base: ActionDeps = {
         ...this.env.actionDeps(entry.path, split?.mine ?? entry.dataPath, dry ? undefined : actor),
@@ -529,7 +525,7 @@ export class Background {
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
     if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: `“${label}” didn't run` }));
-    const entryId = await result.logged;
+    const entryId = await result.logged?.catch(() => undefined);
     return result.ok ? { ok: true, entryId } : { ok: false, error: `“${label}” didn't run`, entryId };
   }
 

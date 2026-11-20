@@ -270,8 +270,8 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
   const linkKeys = new Map<string, string>();
   /** Where each shortcut's keyed link may send word back without asking. */
   const destinations = new Map<string, string[]>();
-  /** Capture links' keys and the names each runs without asking. */
-  const captureKeys = new Map<string, string[]>();
+  /** Capture links' keys and what each runs without asking: name → `<app path>#<shortcut>`. */
+  const captureKeys = new Map<string, Record<string, string>>();
   /** Whether this (fake) device runs background work. */
   const device = { background: true };
   const bg = new Background({
@@ -298,7 +298,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
       if (!linkKeys.has(id) && create) linkKeys.set(id, `k${linkKeys.size + 1}`);
       return linkKeys.get(id);
     },
-    captureNames: (key) => captureKeys.get(key),
+    captureKey: (key) => captureKeys.get(key),
     destinations: (path, shortcut) => destinations.get(`${path}#${shortcut}`) ?? [],
     allowDestination: (path, shortcut, to) => {
       const id = `${path}#${shortcut}`;

@@ -17,7 +17,7 @@ import { COMMON_KEYS, KEY_TYPES, isPlainObject, readFields, readValue, type Fiel
 import { editErrors, editableSource } from "./edit.ts";
 import { CONTROL_PROBLEM, controlKey, hasControl } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import { SHORTCUT, backgroundKeyErrors } from "./views/alerts.ts";
+import { aliasShortcut, backgroundKeyErrors } from "./views/alerts.ts";
 
 export { parseDuration };
 
@@ -332,8 +332,6 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
   }
   const p = { ...panel, ...internal } as Panel;
   const fieldProblems = settleFields(p);
-  // An alias is typed to run a shortcut, so it makes one under its own name when there is none.
-  if (p.alias !== undefined && p.shortcut === undefined && SHORTCUT.test(p.alias)) p.shortcut = p.alias;
   // A checklist's save is the list it ticks; anything else may save to a folder.
   if (p.save && def.id !== "checklist") p.target ??= saveTarget(p.save);
   const problems = [
@@ -577,6 +575,16 @@ export function readSpec(
         if (other.length === 0) continue;
         errors.push(...other.map((e) => at(`${e} (when $${def.name} is ${option})`)));
         break;
+      }
+    }
+    if (r.panel?.alias !== undefined) {
+      // Nothing in an embed or a lens runs a shortcut, so an alias there (often a kit's) is left out, not an error.
+      if (opts.host) delete r.panel.alias;
+      // An alias is typed to run a shortcut, so it makes one from its words when there is none.
+      else if (r.panel.shortcut === undefined) {
+        const id = aliasShortcut(r.panel.alias);
+        if (id) r.panel.shortcut = id;
+        else errors.push(at(`alias “${r.panel.alias}” makes no shortcut (it has no letters a-z or digits); add shortcut: too`));
       }
     }
     for (const key of ["shortcut", "pin", "alert", "then"] as const) {

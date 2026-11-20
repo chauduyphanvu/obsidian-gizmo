@@ -20,6 +20,19 @@ export interface AlertFeed {
 
 export const SHORTCUT = /^[a-z0-9-]+$/;
 
+/** An alias is typed at the start of a capture line: words of letters and digits, - and ', up to 40 characters. */
+const ALIAS = /^[\p{L}\p{N}](?:[\p{L}\p{N}'’ -]{0,38}[\p{L}\p{N}])?$/u;
+
+/**
+ * The shortcut an alias makes when its panel has none: its words in lowercase joined by -, with
+ * anything but a-z and 0-9 left out ("Resting heart rate" makes resting-heart-rate); undefined
+ * when nothing is left.
+ */
+export function aliasShortcut(alias: string): string | undefined {
+  const id = alias.toLowerCase().replace(/['’]/g, "").replace(/\s+/g, "-").replace(/[^a-z0-9-]/g, "").replace(/-+/g, "-").replace(/^-|-$/g, "");
+  return id || undefined;
+}
+
 /**
  * Problems with the keys that make a panel work while its app is closed: `shortcut` (an id for a
  * command and a link), `pin` (to the status bar) and `alert`. A condition on the value is only for
@@ -28,7 +41,7 @@ export const SHORTCUT = /^[a-z0-9-]+$/;
 export function backgroundKeyErrors(p: Panel): string[] {
   return [
     ...(p.shortcut !== undefined && !SHORTCUT.test(p.shortcut) ? ["shortcut must be lowercase letters, digits and -"] : []),
-    ...(p.alias !== undefined && !SHORTCUT.test(p.alias) ? ["alias must be lowercase letters, digits and -"] : []),
+    ...(p.alias !== undefined && !ALIAS.test(p.alias) ? ["alias must be words of letters and digits (with - and '), up to 40 characters"] : []),
     ...(p.pin !== undefined && p.pin !== "status" ? ["pin must be status"] : []),
     ...(typeof p.alert === "string" && p.view !== "number" && p.view !== "progress"
       ? [`alert on a ${p.view} needs a field, e.g. alert: {amount: "> 100"}`] : []),

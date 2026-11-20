@@ -3,7 +3,7 @@ import type { PanelSpec } from "./spec.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */
 export interface CaptureTarget {
-  /** The name typed first on the line: the panel's alias, else its shortcut. */
+  /** The name typed first on the line, in lowercase: the panel's alias (which may be several words), else its shortcut. */
   name: string;
   path: string;
   app: string;
@@ -45,7 +45,7 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
       if (!VIEWS.has(p.view)) continue;
       const fields = p.view === "form" ? Object.entries(p.fields ?? p.schema ?? {}) : [];
       const target: CaptureTarget = {
-        name: p.alias ?? shortcut, path: app.path, app: app.name, shortcut,
+        name: (p.alias ?? shortcut).toLowerCase(), path: app.path, app: app.name, shortcut,
         // A form's title says what it's for better than its button's label, as the activity log names it.
         label: p.title ?? p.label ?? shortcut, view: p.view as CaptureTarget["view"],
         fields, items: (p.items ?? []).map(String),
@@ -60,7 +60,7 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
     byName.set(name, list);
   };
   for (const { target, alias } of all) {
-    if (alias !== undefined) add(alias, target);
+    if (alias !== undefined) add(alias.toLowerCase(), target);
     // A shortcut's own name only reaches it while no other app has a shortcut by that name.
     if (shortcutCount.get(target.shortcut) === 1 || alias === undefined) add(target.shortcut, target);
   }
@@ -230,21 +230,30 @@ function readValue(name: string, type: string | string[], words: string[], now: 
  * guessed: anything unclear is an error, with what could be typed instead.
  */
 export function parseLine(line: string, index: CaptureIndex, now: Date): Parsed {
-  const tokens = tokenize(line.trim());
-  if ("error" in tokens) return { ok: false, error: tokens.error, completions: [] };
-  const [first, ...rest] = tokens;
+  // A link or a phone's shortcut could carry more than one line; like any link's value, that is refused whole.
+  if (/[\r\n]/.test(line)) return { ok: false, error: "a capture line is one line", completions: [] };
+  const text = line.trim();
   const all = [...index.names.keys()].sort();
-  if (!first || first.name !== undefined) return { ok: false, error: "type the name of a shortcut", completions: all };
-  const word = first.text.toLowerCase();
+  if (!text || /^[^\s"=]+=/.test(text)) return { ok: false, error: "type the name of a shortcut", completions: all };
+  // The longest name the line starts with, as a whole word or words: an alias may be several.
+  const lower = text.toLowerCase();
+  const names = [...index.names.keys(), ...index.clashes.keys()].sort((a, b) => b.length - a.length);
+  const word = names.find((n) => lower === n || lower.startsWith(`${n} `)) ?? lower.split(/\s/)[0];
   const clash = index.clashes.get(word);
   if (clash) {
     return { ok: false, error: `“${word}” is a shortcut in ${clash.map((t) => t.app).join(" and ")}; give one of them an alias:`, completions: [] };
   }
   const target = index.names.get(word);
   if (!target) {
-    const completions = all.filter((n) => n.startsWith(word));
-    return { ok: false, error: `no shortcut called “${first.text}”`, completions };
+    // Names are offered while the name is being typed (all of it, as an alias may be several words).
+    const completions = all.filter((n) => n.startsWith(lower));
+    return { ok: false, error: `no shortcut called “${text.split(/\s/)[0]}”`, completions };
   }
+  // The name as typed, in whatever case, is cut off the line's start; the values follow it.
+  const typed = new RegExp(`^${word.replace(/[.*+?^${}()|[\]\\]/g, "\\$&")}(?=\\s|$)`, "iu").exec(text)?.[0] ?? word;
+  const tokens = tokenize(text.slice(typed.length));
+  if ("error" in tokens) return { ok: false, error: tokens.error, target, completions: [] };
+  const rest = tokens;
   if (target.view === "button") {
     if (rest.length) return { ok: false, error: `${word} takes no values`, target, completions: [] };
     return { ok: true, target };
@@ -267,12 +276,13 @@ function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
   const fail = (error: string, completions: string[] = [], next?: string): Parsed => ({ ok: false, error, target, completions, next });
   for (const t of tokens) {
     if (t.name === undefined) continue;
-    const type = types.get(t.name);
-    if (type === undefined) return fail(`${target.name} has no field “${t.name}”; its fields are ${target.fields.map(([n]) => n).join(", ")}`);
-    if (Object.hasOwn(params, t.name)) return fail(`${t.name} is given twice`);
-    const v = readValue(t.name, type, [t.text], now);
-    if ("error" in v) return fail(v.error, completionsFor(type, t.text));
-    params[t.name] = v.value;
+    // Typed in any case; kept as the form spells it.
+    const field = target.fields.find(([n]) => n.toLowerCase() === t.name)?.[0];
+    if (field === undefined) return fail(`${target.name} has no field “${t.name}”; its fields are ${target.fields.map(([n]) => n).join(", ")}`);
+    if (Object.hasOwn(params, field)) return fail(`${field} is given twice`);
+    const v = readValue(field, types.get(field)!, [t.text], now);
+    if ("error" in v) return fail(v.error, completionsFor(types.get(field)!, t.text));
+    params[field] = v.value;
   }
   const open = target.fields.filter(([n]) => !Object.hasOwn(params, n));
   const words = tokens.filter((t) => t.name === undefined);
@@ -300,8 +310,12 @@ function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
   return { ok: true, target, params, next: nextField ? describe(nextField[0], nextField[1]) : undefined };
 }
 
-/** The last word of a line, replaced by a completion, with a space after it to type the next value. */
+/**
+ * A line with a completion taken, and a space after it to type the next value: a name replaces
+ * all that was typed of it (an alias may be several words), a value replaces the last word.
+ */
 export function completed(line: string, completion: string): string {
+  if (completion.toLowerCase().startsWith(line.trim().toLowerCase())) return `${completion} `;
   const at = /\S*$/.exec(line)!.index;
   const word = /\s/.test(completion) ? `"${completion}"` : completion;
   return `${line.slice(0, at)}${word} `;

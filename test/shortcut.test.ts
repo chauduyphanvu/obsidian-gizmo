@@ -275,12 +275,13 @@ test("running a shortcut gives its result: the activity entry it kept, or why it
   assert.deepEqual(missing, { ok: false, error: "Meds has no shortcut “nope”" });
 });
 
-test("a shortcut that answers gives its value and the value as shown", async () => {
+test("a shortcut that answers tells its value", async () => {
   const t = fakeBackground({
     "Apps/Meds.md": { fm: { app: "m", panels: [{ view: "number", title: "Doses", source: "doses", agg: "count", shortcut: "doses" }] } },
     "Apps/Meds data.md": { fm: { doses: [{ at: "2026-11-18T08:00" }, { at: "2026-11-18T09:00" }] } },
   });
   await t.bg.start();
   const r = await t.bg.runCommand("Apps/Meds.md:doses");
-  assert.deepEqual(r, { ok: true, value: 2, shown: "2" });
+  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(t.notices, ["Meds: Doses: 2"]);
 });

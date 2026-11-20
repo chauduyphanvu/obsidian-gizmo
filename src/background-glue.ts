@@ -40,14 +40,15 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       if (!env) throw new Error(`can't find ${appPath}`);
       return {
         ...actionDepsOf(env, appPath, dataPath),
-        log: actor ? (what, changes) => plugin.activity.add({ app: appPath, actor, what, changes }).then((e) => e?.id) : undefined,
+        // The run has already written; a log that can't be kept doesn't make it fail.
+        log: actor ? (what, changes) => plugin.activity.add({ app: appPath, actor, what, changes }).then((e) => e?.id, () => undefined) : undefined,
       };
     },
     now: () => new Date(),
     // What alerts already ran for is this device's own: only the device running them writes it.
     triggers: pluginFile(plugin, `triggers/${plugin.device.id}.json`),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
-    captureNames: (key) => plugin.store.captureKeys?.[key],
+    captureKey: (key) => (plugin.store.captureKeys && Object.hasOwn(plugin.store.captureKeys, key) ? plugin.store.captureKeys[key] : undefined),
     destinations: (path, shortcut) => plugin.store.answerTo?.[`${path}#${shortcut}`] ?? [],
     allowDestination(path, shortcut, to) {
       const id = `${path}#${shortcut}`;

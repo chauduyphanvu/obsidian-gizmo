@@ -103,7 +103,8 @@ export class MapView extends ItemView {
     const keys = Object.entries(this.plugin.store.captureKeys ?? {});
     if (!keys.length) return;
     el.createEl("h4", { text: "Capture links" });
-    for (const [key, names] of keys) {
+    for (const [key, granted] of keys) {
+      const names = Object.keys(granted).sort();
       const card = el.createDiv({ cls: "gz-card gz-map-app" });
       const head = card.createDiv({ cls: "gz-map-app-head" });
       head.createSpan({ cls: "gz-title", text: `Key ${key.slice(0, 4)}…` });

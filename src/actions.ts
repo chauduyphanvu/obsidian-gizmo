@@ -54,6 +54,8 @@ export interface ActionResult {
   path?: string;
   /** The activity log's entry for what it changed, once kept; undefined when it changed nothing. */
   logged?: Promise<string | undefined>;
+  /** A checklist item that was already ticked, so nothing changed. */
+  already?: boolean;
 }
 
 /** Characters Obsidian won't take in a file name. */
@@ -175,7 +177,8 @@ export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promis
     deps.notify(`Couldn't save: ${(e as Error).message}`);
     return { ok: false };
   }
-  const logged = ticked ? deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]) : undefined;
+  if (!ticked) return { ok: true, already: true };
+  const logged = deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]);
   return { ok: true, ...(logged && { logged }) };
 }
 

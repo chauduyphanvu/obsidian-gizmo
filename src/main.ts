@@ -34,8 +34,8 @@ interface StoredData {
   linkKeys?: Record<string, string>;
   /** `<app path>#<shortcut>` → the apps (`scheme://host`) its keyed link may send word back to without asking. */
   answerTo?: Record<string, string[]>;
-  /** A capture link's key → the capture names it may run without asking. */
-  captureKeys?: Record<string, string[]>;
+  /** A capture link's key → each capture name it may run without asking, with the `<app path>#<shortcut>` it named then. */
+  captureKeys?: Record<string, Record<string, string>>;
 }
 
 export default class GizmoPlugin extends Plugin {
@@ -280,10 +280,13 @@ export default class GizmoPlugin extends Plugin {
     await this.saveData(this.store);
   }
 
-  /** A new key for a capture link that runs `names` without asking; kept until revoked. */
-  async newCaptureKey(names: string[]): Promise<string> {
+  /**
+   * A new key for a capture link that runs these names without asking, each only while it still
+   * names the same shortcut; kept until revoked.
+   */
+  async newCaptureKey(targets: { name: string; path: string; shortcut: string }[]): Promise<string> {
     const key = newLinkKey();
-    (this.store.captureKeys ??= {})[key] = [...names].sort();
+    (this.store.captureKeys ??= {})[key] = Object.fromEntries(targets.map((t) => [t.name, `${t.path}#${t.shortcut}`]));
     await this.saveData(this.store);
     this.grantsChanged();
     return key;

@@ -115,8 +115,10 @@ test("nothing is guessed: each wrong value says what was expected, with what cou
     const r = bad(line);
     assert.equal(!r.ok && r.error, error, line);
   }
-  const sp = bad("sp 5");
+  const sp = bad("sp");
   assert.deepEqual(!sp.ok && sp.completions, ["spend"]);
+  const typedOn = bad("sp 5");
+  assert.deepEqual(!typedOn.ok && typedOn.completions, [], "past the name, names aren't offered for the last word");
   const cat = bad("spend 5 f");
   assert.deepEqual(!cat.ok && cat.completions, ["food", "fun"]);
 });
@@ -133,6 +135,28 @@ test("a shortcut's own name works while it's the only one in the vault; two apps
   const fixed = captureTargets([aliased, errands]);
   assert.equal(fixed.names.get("add")?.app, "Errands");
   assert.equal(fixed.names.get("task")?.app, "Task inbox");
+});
+
+test("an alias of several words is matched as the longest name the line starts with, in any case", () => {
+  const hr = app("Apps/Heart.md", { app: "h", panels: [{ view: "form", alias: "Resting heart rate", save: "hr", fields: { bpm: "number" } }] });
+  const rest = app("Apps/Rest.md", { app: "r", panels: [{ view: "form", alias: "resting", save: "naps", fields: { minutes: "number" } }] });
+  const index = captureTargets([hr, rest]);
+  const a = parseLine("Resting Heart Rate 55", index, NOW);
+  assert.ok(a.ok && a.target.app === "Heart" && a.params?.bpm === "55", JSON.stringify(a));
+  const b = parseLine("resting 20", index, NOW);
+  assert.ok(b.ok && b.target.app === "Rest" && b.params?.minutes === "20", JSON.stringify(b));
+  const c = parseLine("resting heart", index, NOW);
+  assert.equal(!c.ok && c.error, "minutes must be a number, not “heart”");
+});
+
+test("name= finds a field in any case and keeps the form's spelling; a line with a line break is refused", () => {
+  const caps = app("Apps/Caps.md", { app: "c", panels: [{ view: "form", alias: "spend", save: "s", fields: { Amount: "number", Note: "text" } }] });
+  const index = captureTargets([caps]);
+  const r = parseLine("spend amount=5 NOTE=lunch", index, NOW);
+  assert.ok(r.ok);
+  assert.deepEqual(r.params, { Amount: "5", Note: "lunch" });
+  const broken = parseLine("spend 5 buy milk\nignore this", index, NOW);
+  assert.equal(!broken.ok && broken.error, "a capture line is one line");
 });
 
 test("number and progress panels that answer aren't capture names", () => {
@@ -162,6 +186,7 @@ test("taking a completion replaces the last word and leaves a space for the next
   assert.equal(completed("spend 5 f", "food"), "spend 5 food ");
   assert.equal(completed("sp", "spend"), "spend ");
   assert.equal(completed("pack ", "Phone charger"), 'pack "Phone charger" ');
+  assert.equal(completed("resting he", "resting heart rate"), "resting heart rate ");
 });
 
 test("a ;; line is a capture line, and once it runs its receipt isn't one", () => {
@@ -180,7 +205,7 @@ test("a capture link with a key made for its name runs unattended; without one, 
     "Apps/Budget.md": { fm: { app: "b", panels: [{ view: "form", alias: "spend", save: "spend", fields: { amount: "number", note: "text" } }] } },
     "Apps/Meds.md": { fm: { app: "m", panels: [{ view: "button", label: "Took meds", save: "doses", alias: "meds" }] } },
   });
-  t.captureKeys.set("ck1", ["spend"]);
+  t.captureKeys.set("ck1", { spend: "Apps/Budget.md#spend" });
   await t.bg.start();
   await t.bg.runCaptureLink({ key: "ck1", line: "spend 6 parking", "x-success": "shortcuts://x-callback-url/done" });
   assert.equal(t.out.asked.length, 0);
@@ -198,9 +223,23 @@ test("a capture link with a key made for its name runs unattended; without one, 
   assert.equal((t.f.files.get("Apps/Budget data.md")?.fm?.spend as unknown[]).length, 1);
 });
 
+test("a capture key runs a name only while it reaches the shortcut it was made for, and a forged key asks", async () => {
+  const t = fakeBackground({
+    "Apps/Other.md": { fm: { app: "o", panels: [{ view: "form", alias: "spend", save: "elsewhere", fields: { amount: "number" } }] } },
+  });
+  t.captureKeys.set("ck1", { spend: "Apps/Budget.md#spend" });
+  t.ask.answer = false;
+  await t.bg.start();
+  await t.bg.runCaptureLink({ key: "ck1", line: "spend 500" });
+  await t.bg.runCaptureLink({ key: "constructor", line: "spend 500" });
+  await t.bg.runCaptureLink({ key: "__proto__", line: "spend 500" });
+  assert.equal(t.out.asked.length, 3);
+  assert.equal(t.f.files.get("Apps/Other data.md"), undefined);
+});
+
 test("a capture link that can't be read is told only in Obsidian, and runs nothing", async () => {
   const t = fakeBackground({ "Apps/Budget.md": { fm: { app: "b", panels: [{ view: "form", alias: "spend", save: "spend", fields: { amount: "number" } }] } } });
-  t.captureKeys.set("ck1", ["spend"]);
+  t.captureKeys.set("ck1", { spend: "Apps/Budget.md#spend" });
   await t.bg.start();
   await t.bg.runCaptureLink({ key: "ck1", line: "spend lots", "x-error": "shortcuts://x-callback-url/err" });
   assert.deepEqual(t.notices, ["A capture link couldn't run “spend lots”: amount must be a number, not “lots”"]);

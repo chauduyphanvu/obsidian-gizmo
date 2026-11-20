@@ -20,7 +20,8 @@ export const button: ViewDef = {
     { panel: { view: "button", label: "Took meds", save: "doses", shortcut: "took-meds" } },
     { panel: { view: "button", label: "Took meds", save: "doses", shortcut: "Took meds" }, errors: ["shortcut must be lowercase letters, digits and -"] },
     { panel: { view: "button", label: "Took meds", save: "doses", alias: "meds" } },
-    { panel: { view: "button", label: "Took meds", save: "doses", alias: "My meds" }, errors: ["alias must be lowercase letters, digits and -"] },
+    { panel: { view: "button", label: "Took meds", save: "doses", alias: "My meds" } },
+    { panel: { view: "button", label: "Took meds", save: "doses", alias: "meds!" }, errors: ["alias must be words of letters and digits (with - and '), up to 40 characters"] },
   ],
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
