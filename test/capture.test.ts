@@ -174,3 +174,35 @@ test("a ;; line is a capture line, and once it runs its receipt isn't one", () =
   assert.equal(captureLine(r), undefined);
   assert.equal(receipt("meds", "Medication log", new Date(2026, 10, 19, 8, 14), undefined), "✓ meds · Medication log · 08:14");
 });
+
+test("a capture link with a key made for its name runs unattended; without one, or for another name, it asks first", async () => {
+  const t = fakeBackground({
+    "Apps/Budget.md": { fm: { app: "b", panels: [{ view: "form", alias: "spend", save: "spend", fields: { amount: "number", note: "text" } }] } },
+    "Apps/Meds.md": { fm: { app: "m", panels: [{ view: "button", label: "Took meds", save: "doses", alias: "meds" }] } },
+  });
+  t.captureKeys.set("ck1", ["spend"]);
+  await t.bg.start();
+  await t.bg.runCaptureLink({ key: "ck1", line: "spend 6 parking", "x-success": "shortcuts://x-callback-url/done" });
+  assert.equal(t.out.asked.length, 0);
+  assert.deepEqual(t.f.files.get("Apps/Budget data.md")?.fm?.spend, [{ amount: 6, note: "parking", at: "2026-11-18T12:00" }]);
+  // Word goes back to an app it hasn't sent to yet only once allowed, as for a shortcut's keyed link.
+  assert.equal(t.out.chose.length, 1);
+  t.ask.answer = false;
+  await t.bg.runCaptureLink({ key: "ck1", line: "meds" });
+  await t.bg.runCaptureLink({ line: "spend 7" });
+  await t.bg.runCaptureLink({ key: "forged", line: "spend 8" });
+  assert.equal(t.out.asked.length, 3);
+  assert.match(t.out.asked[1].title, /A link asks to run “spend” in Budget/);
+  assert.ok(t.out.asked[1].effects?.some((l) => l.includes("7")), JSON.stringify(t.out.asked[1]));
+  assert.equal(t.f.files.get("Apps/Meds data.md"), undefined);
+  assert.equal((t.f.files.get("Apps/Budget data.md")?.fm?.spend as unknown[]).length, 1);
+});
+
+test("a capture link that can't be read is told only in Obsidian, and runs nothing", async () => {
+  const t = fakeBackground({ "Apps/Budget.md": { fm: { app: "b", panels: [{ view: "form", alias: "spend", save: "spend", fields: { amount: "number" } }] } } });
+  t.captureKeys.set("ck1", ["spend"]);
+  await t.bg.start();
+  await t.bg.runCaptureLink({ key: "ck1", line: "spend lots", "x-error": "shortcuts://x-callback-url/err" });
+  assert.deepEqual(t.notices, ["A capture link couldn't run “spend lots”: amount must be a number, not “lots”"]);
+  assert.deepEqual(t.out.opened, []);
+});

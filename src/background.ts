@@ -76,6 +76,8 @@ export interface BackgroundEnv {
   triggers?: LogStore;
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined;
+  /** The capture names a capture link's key may run without asking; undefined for a key Gizmo never made. */
+  captureNames(key: string): string[] | undefined;
   /** The apps (`scheme://host`) a shortcut's keyed link may send to without asking. */
   destinations(path: string, shortcut: string): string[];
   allowDestination(path: string, shortcut: string, to: string): void;
@@ -109,6 +111,8 @@ function answered(r: Evaluation): ShortcutResult {
 export interface LinkCall {
   key?: string;
   callbacks: Callbacks;
+  /** A capture link whose key covers this shortcut's name: it runs as a keyed link does. */
+  captureKeyed?: boolean;
 }
 
 /** A dry run in progress: the copies of the notes it touched, and what each app would do. */
@@ -375,6 +379,23 @@ export class Background {
     return { ...(await this.runShortcut(parsed.target.path, parsed.target.shortcut, actor, parsed.params)), parsed };
   }
 
+  /**
+   * Answers `obsidian://gizmo?key=…&line=…`: a capture line sent from outside Obsidian (a phone's
+   * shortcut, a launcher). A key copied with "Copy capture link" runs the names it was made for
+   * unattended, as a shortcut's keyed link does; any other line asks first, showing what it would
+   * do. As for any link, a line that can't run is told only in Obsidian.
+   */
+  async runCaptureLink(params: Record<string, string>): Promise<void> {
+    const line = (params.line ?? "").trim();
+    const callbacks = readCallbacks(params);
+    if ("problem" in callbacks) return this.say(`Refused a capture link: ${callbacks.problem}`);
+    const parsed = parseLine(line, this.captureIndex(), this.env.now());
+    if (!parsed.ok) return this.say(`A capture link couldn't run “${line}”: ${parsed.error}`);
+    const names = params.key !== undefined ? this.env.captureNames(params.key) : undefined;
+    const captureKeyed = names?.includes(parsed.target.name) ?? false;
+    await this.runShortcut(parsed.target.path, parsed.target.shortcut, "link", parsed.params, undefined, { callbacks, captureKeyed });
+  }
+
   /** Runs the command `<app path>:<shortcut>`. */
   runCommand(id: string): Promise<ShortcutResult> {
     const cut = id.lastIndexOf(":");
@@ -599,7 +620,7 @@ export class Background {
       return false;
     }
     const expected = this.env.linkKey(entry.path, shortcut, false);
-    const keyed = expected !== undefined && link?.key === expected;
+    const keyed = link?.captureKeyed === true || (expected !== undefined && link?.key === expected);
     const cb = link?.callbacks ?? {};
     const asks = !keyed || (cb.to !== undefined && !this.env.destinations(entry.path, shortcut).includes(cb.to));
     if (asks && this.asking) {

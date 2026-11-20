@@ -34,6 +34,8 @@ interface StoredData {
   linkKeys?: Record<string, string>;
   /** `<app path>#<shortcut>` → the apps (`scheme://host`) its keyed link may send word back to without asking. */
   answerTo?: Record<string, string[]>;
+  /** A capture link's key → the capture names it may run without asking. */
+  captureKeys?: Record<string, string[]>;
 }
 
 export default class GizmoPlugin extends Plugin {
@@ -276,6 +278,23 @@ export default class GizmoPlugin extends Plugin {
     // Where the old key's link was allowed to send word back goes with it.
     delete this.store.answerTo?.[`${path}#${shortcut}`];
     await this.saveData(this.store);
+  }
+
+  /** A new key for a capture link that runs `names` without asking; kept until revoked. */
+  async newCaptureKey(names: string[]): Promise<string> {
+    const key = newLinkKey();
+    (this.store.captureKeys ??= {})[key] = [...names].sort();
+    await this.saveData(this.store);
+    this.grantsChanged();
+    return key;
+  }
+
+  /** Takes back a capture link's key: lines it sends ask before they run. */
+  async revokeCaptureKey(key: string): Promise<void> {
+    if (!this.store.captureKeys || !Object.hasOwn(this.store.captureKeys, key)) return;
+    delete this.store.captureKeys[key];
+    await this.saveData(this.store);
+    this.grantsChanged();
   }
 
   /** Calls `cb` whenever something is allowed or taken back; returns how to stop. */

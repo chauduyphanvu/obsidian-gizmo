@@ -95,6 +95,24 @@ export class MapView extends ItemView {
     this.drawApps(list, map);
     const inNotes = box.createDiv();
     this.drawInNotes(inNotes, map);
+    this.drawCaptureKeys(box);
+  }
+
+  /** Capture links' keys, each with the names it runs without asking, and Revoke. */
+  private drawCaptureKeys(el: HTMLElement): void {
+    const keys = Object.entries(this.plugin.store.captureKeys ?? {});
+    if (!keys.length) return;
+    el.createEl("h4", { text: "Capture links" });
+    for (const [key, names] of keys) {
+      const card = el.createDiv({ cls: "gz-card gz-map-app" });
+      const head = card.createDiv({ cls: "gz-map-app-head" });
+      head.createSpan({ cls: "gz-title", text: `Key ${key.slice(0, 4)}…` });
+      head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", async () => {
+        await this.plugin.revokeCaptureKey(key);
+        new Notice("That capture link's lines now ask before they run");
+      });
+      card.createDiv({ cls: "gz-muted", text: names.length ? `Runs without asking: ${names.join(", ")}` : "Every line it sends asks first" });
+    }
   }
 
   /** The filter's words, if any, in what is shown for an app. */

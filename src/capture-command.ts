@@ -2,6 +2,7 @@ import {
   EditorSuggest, Modal, Notice, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo,
 } from "obsidian";
 import { undoMessage } from "./activity.ts";
+import { copyText } from "./host.ts";
 import { captureLine, completed, receipt, type Parsed } from "./capture.ts";
 import type GizmoPlugin from "./main.ts";
 
@@ -214,6 +215,56 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
   }
 }
 
+/** The link a phone's shortcut or a launcher opens with a capture line after `line=`. */
+export function captureLinkOf(key: string): string {
+  return `obsidian://gizmo?key=${encodeURIComponent(key)}&line=`;
+}
+
+/**
+ * "Copy capture link": which names a new key may run without asking (all of them to start with),
+ * then copies the link that sends a line with it.
+ */
+class CaptureLinkModal extends Modal {
+  private plugin: GizmoPlugin;
+
+  constructor(plugin: GizmoPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Copy capture link");
+    const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture" });
+    const index = this.plugin.background?.captureIndex();
+    const targets = [...(index?.names.values() ?? [])].sort((a, b) => a.name.localeCompare(b.name));
+    if (!targets.length) {
+      el.createEl("p", { cls: "gz-muted", text: "No shortcut has a name to type yet: add alias: or shortcut: to a form, button or checklist." });
+      return;
+    }
+    el.createEl("p", { text: "A phone's shortcut or a launcher opens this link with a line after line=, URL-encoded. Lines for the names ticked here run without asking; any other line asks first." });
+    const picked = new Set(targets.map((t) => t.name));
+    const list = el.createDiv({ cls: "gz-capture-names" });
+    for (const t of targets) {
+      const label = list.createEl("label", { cls: "gz-input" });
+      const box = label.createEl("input", { type: "checkbox" });
+      box.checked = true;
+      box.addEventListener("change", () => (box.checked ? picked.add(t.name) : picked.delete(t.name)));
+      label.createSpan({ text: ` ${t.name}` });
+      label.createSpan({ cls: "gz-muted", text: ` · ${t.app}: ${t.label}` });
+    }
+    const row = el.createDiv({ cls: "modal-button-container" });
+    row.createEl("button", { cls: "mod-cta", text: "Copy link" }).addEventListener("click", async () => {
+      const key = await this.plugin.newCaptureKey([...picked]);
+      copyText(captureLinkOf(key), () => { new Notice(`Copied a capture link for ${picked.size ? [...picked].sort().join(", ") : "no names (every line asks)"}. Revoke it on the automation map.`); });
+      this.close();
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
 /** "Do…" and `;;` lines: run any app's shortcut by typing its name and values. */
 export function registerCaptureCommand(plugin: GizmoPlugin): void {
   plugin.addCommand({
@@ -222,4 +273,9 @@ export function registerCaptureCommand(plugin: GizmoPlugin): void {
     callback: () => new CaptureModal(plugin).open(),
   });
   plugin.registerEditorSuggest(new CaptureSuggest(plugin));
+  plugin.addCommand({
+    id: "copy-capture-link",
+    name: "Copy capture link",
+    callback: () => new CaptureLinkModal(plugin).open(),
+  });
 }

@@ -47,6 +47,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     // What alerts already ran for is this device's own: only the device running them writes it.
     triggers: pluginFile(plugin, `triggers/${plugin.device.id}.json`),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
+    captureNames: (key) => plugin.store.captureKeys?.[key],
     destinations: (path, shortcut) => plugin.store.answerTo?.[`${path}#${shortcut}`] ?? [],
     allowDestination(path, shortcut, to) {
       const id = `${path}#${shortcut}`;
@@ -106,6 +107,8 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       if (typeof params.install === "string") return openInstall(plugin, params.install);
       // A capture line's receipt: opening the activity log changes nothing, whoever sent it.
       if (typeof params.activity === "string") return openActivity(plugin, undefined, params.activity);
+      // A link naming no app but carrying a line is a capture line; one naming an app fills its form, even a field called line.
+      if (typeof params.line === "string" && params.app === undefined) return void bg.runCaptureLink({ ...params });
       void bg.runUri({ ...params });
     });
   });
