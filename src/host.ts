@@ -5,6 +5,7 @@ import {
 import { bodyOf } from "./actions.ts";
 import type { LogStore, UndoIO } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
+import { DEVICE_FOLDERS, deviceFile, otherLogs, type PluginFiles } from "./device.ts";
 import { ResponseHistory } from "./responses.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type { NoteReader } from "./expand.ts";
@@ -55,6 +56,30 @@ export async function pluginFolder(plugin: GizmoPlugin, name: string): Promise<{
     }
   }
   return out;
+}
+
+/** The plugin's folder, as both hosts read and write it (see device.ts). */
+export function pluginFiles(plugin: GizmoPlugin): PluginFiles {
+  return { file: (name) => pluginFile(plugin, name), folder: (name) => pluginFolder(plugin, name) };
+}
+
+/** The log kept before Gizmo told devices apart becomes this device's own, unless another device already keeps one. */
+export async function adoptOldLog(plugin: GizmoPlugin): Promise<void> {
+  const adapter = plugin.app.vault.adapter;
+  const dir = plugin.manifest.dir ?? "";
+  const old = normalizePath(`${dir}/activity.json`);
+  const mine = normalizePath(`${dir}/${deviceFile(DEVICE_FOLDERS.activity, plugin.device.id)}`);
+  if (!(await adapter.exists(old)) || (await adapter.exists(mine))) return;
+  if ((await pluginFolder(plugin, DEVICE_FOLDERS.activity)).length) return;
+  if (!(await adapter.exists(normalizePath(`${dir}/${DEVICE_FOLDERS.activity}`)))) await adapter.mkdir(normalizePath(`${dir}/${DEVICE_FOLDERS.activity}`));
+  await adapter.rename(old, mine);
+}
+
+/** The other devices' logs, and an old shared one no device took, each named for its device. */
+export async function obsidianOtherLogs(plugin: GizmoPlugin): Promise<{ device: string; text: string }[]> {
+  const logs = await otherLogs(pluginFiles(plugin), plugin.device.id);
+  const old = await pluginFile(plugin, "activity.json").read().catch(() => undefined);
+  return old ? [...logs, { device: "another device", text: old }] : logs;
 }
 
 /** Puts text on the clipboard, then runs `done`; says so when it can't. */

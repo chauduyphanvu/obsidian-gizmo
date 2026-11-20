@@ -13,7 +13,7 @@ import type { Actor } from "../activity.ts";
 import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../background.ts";
 import { DataLayer, type Host } from "../datalayer.ts";
 import { ledgerStore } from "../datastore.ts";
-import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, startsOver, whereYouAre, type Beat } from "../device.ts";
+import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherTriggers, whereYouAre, type PluginFiles } from "../device.ts";
 import { localZone } from "../time.ts";
 import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../policy.ts";
@@ -45,6 +45,24 @@ export function fileStore(path: string): LogStore {
   return {
     read: async () => (existsSync(path) ? fs.readFile(path, "utf8") : undefined),
     write: async (text) => { await fs.mkdir(dirname(path), { recursive: true }); await fs.writeFile(path, text); },
+  };
+}
+
+/** The plugin's folder on disk, as both hosts read and write it (see device.ts). */
+export function pluginFiles(pluginDir: string): PluginFiles {
+  return {
+    file: (name) => fileStore(join(pluginDir, name)),
+    async folder(name) {
+      const dir = join(pluginDir, name);
+      if (!existsSync(dir)) return [];
+      const out: { name: string; text: string }[] = [];
+      for (const f of await fs.readdir(dir)) {
+        if (!f.endsWith(".json")) continue;
+        const text = await fs.readFile(join(dir, f), "utf8").catch(() => undefined);
+        if (text !== undefined) out.push({ name: f.slice(0, -".json".length), text });
+      }
+      return out;
+    },
   };
 }
 
@@ -82,6 +100,7 @@ export function gizmodEnv(opts: GizmodOptions) {
   const doFetch = opts.fetch ?? fetch;
   const vault = new NodeVault(opts.vault, opts.configDir);
   const pluginDir = join(opts.vault, opts.configDir ?? ".obsidian", "plugins", "gizmo");
+  const files = pluginFiles(pluginDir);
   const id = opts.device;
 
   let settings: Settings = { grants: {} };
@@ -157,68 +176,16 @@ export function gizmodEnv(opts: GizmodOptions) {
     setTaskDone: (path, line, text, done) => writes.setTaskDone(path, line, text, done),
   };
 
-  const deviceNames = async () => {
-    const out = new Map<string, string>();
-    for (const b of await beats()) out.set(b.id, b.name);
-    return out;
-  };
-  const activity = new ActivityLog(fileStore(join(pluginDir, "activity", `${id}.json`)), now, async () => {
-    const dir = join(pluginDir, "activity");
-    if (!existsSync(dir)) return [];
-    const names = await deviceNames();
-    const out: { device: string; text: string }[] = [];
-    for (const f of await fs.readdir(dir)) {
-      if (!f.endsWith(".json") || f === `${id}.json`) continue;
-      const text = await fs.readFile(join(dir, f), "utf8").catch(() => undefined);
-      if (text !== undefined) out.push({ device: names.get(f.slice(0, -5)) ?? "another device", text });
-    }
-    return out;
-  });
+  const activity = new ActivityLog(files.file(deviceFile(DEVICE_FOLDERS.activity, id)), now, () => otherLogs(files, id));
 
-  /** Every device's word, from the plugin folder's devices/. */
-  const beats = async (): Promise<Beat[]> => {
-    const dir = join(pluginDir, "devices");
-    if (!existsSync(dir)) return [];
-    const out: Beat[] = [];
-    for (const f of await fs.readdir(dir)) {
-      if (!f.endsWith(".json")) continue;
-      const b = readBeat(await fs.readFile(join(dir, f), "utf8").catch(() => ""));
-      if (b) out.push(b);
-    }
-    return out;
-  };
-  const beat = {
-    heard: false,
-    runner: undefined as Beat | undefined,
-    seen: [] as Beat[],
-    saidAt: 0,
-    onStartOver: () => {},
-    async beat(force = false): Promise<void> {
-      const t = now();
-      const me: Beat = { id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() };
-      // A folder a sync is rewriting is read next time: who runs stays as it was, and nothing starts over.
-      const all = await beats().catch(() => undefined);
-      if (!all) return;
-      const last = this.heard ? undefined : all.find((b) => b.id === id)?.seen;
-      if (!this.heard || force || t - this.saidAt >= BEAT_EVERY_MS) {
-        await fileStore(join(pluginDir, "devices", `${id}.json`)).write(JSON.stringify(me)).then(() => { this.saidAt = t; }, (e: Error) => log(`couldn't write gizmod's beat: ${e.message}`));
-      }
-      const others = all.filter((b) => b.id !== id);
-      this.seen = [me, ...others];
-      const was = this.runner?.id;
-      this.runner = runnerOf(this.seen, t);
-      if (startsOver(id, this.runner?.id, was, !this.heard, last, others)) this.onStartOver();
-      this.heard = true;
-    },
-    isRunner(): boolean {
-      return this.heard && this.runner?.id === id;
-    },
-    /** Says gizmod is leaving, as it stops, so Obsidian takes over background work now. */
-    async leave(): Promise<void> {
-      const me: Beat = { id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: now(), zone: localZone(), left: true };
-      await fileStore(join(pluginDir, "devices", `${id}.json`)).write(JSON.stringify(me)).catch(() => {});
-    },
-  };
+  // gizmod says only on its interval; a beat it couldn't write is logged and written on the next one.
+  const beat = new Heartbeat({
+    id,
+    files,
+    now,
+    mine: (t) => ({ id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() }),
+    writeFailed: (e) => log(`couldn't write gizmod's beat: ${e.message}`),
+  });
 
   const notices: string[] = [];
   const sink: BackgroundSink = {
@@ -257,20 +224,10 @@ export function gizmodEnv(opts: GizmodOptions) {
     },
     now: () => new Date(now()),
     sink,
-    triggers: fileStore(join(pluginDir, "triggers", `${id}.json`)),
+    triggers: files.file(deviceFile(DEVICE_FOLDERS.triggers, id)),
     // gizmod never writes data.json; its own activity follows a rename it sees as a delete and a create.
     renamed: (from, to) => void activity.rename(from, to),
-    otherTriggers: async () => {
-      const dir = join(pluginDir, "triggers");
-      if (!existsSync(dir)) return [];
-      const out: string[] = [];
-      for (const f of await fs.readdir(dir)) {
-        if (!f.endsWith(".json") || f === `${id}.json`) continue;
-        const text = await fs.readFile(join(dir, f), "utf8").catch(() => undefined);
-        if (text !== undefined) out.push(text);
-      }
-      return out;
-    },
+    otherTriggers: () => otherTriggers(files, id),
     // gizmod uses the keys Obsidian made; it never makes one.
     linkKey: (path, shortcut) => linkKeyOf(store(), path, shortcut),
     captureKey: (key) => captureNamesOf(store(), key),
@@ -279,7 +236,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     logSent: (entry: NewEntry) => void activity.add(entry),
     runsBackground: () => beat.isRunner(),
     // Deadlines mean where the person is: the zone of the phone or desktop they used last.
-    zone: () => whereYouAre(beat.seen),
+    zone: () => whereYouAre(beat.beats),
     quietAlerts: () => false,
   };
   // Only the device running background work writes data notes' snapshots: gizmod, when it's there.

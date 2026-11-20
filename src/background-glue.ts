@@ -1,17 +1,18 @@
 import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
 import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
-import { obsidianAppEnv, pluginFile, pluginFolder, vaultFrontmatter, vaultNotes } from "./host.ts";
+import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherTriggers, whereYouAre } from "./device.ts";
+import { obsidianAppEnv, pluginFile, pluginFiles, vaultFrontmatter, vaultNotes } from "./host.ts";
 import { openMap } from "./map-view.ts";
 import { dropKeys } from "./identity.ts";
 import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
 import { shortcutId } from "./links.ts";
-import { DeviceBeat } from "./settings.ts";
 import { captureNamesOf, destinationsOf } from "./stored.ts";
 import { openInstall } from "./share-command.ts";
 import { isApp, notePath, storeTarget } from "./store.ts";
+import { localZone } from "./time.ts";
 
 /**
  * Obsidian glue for the background service: it starts once the layout is ready, hears about app
@@ -53,10 +54,10 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     },
     now: () => new Date(),
     // What alerts already ran for is this device's own: only the device running them writes it.
-    triggers: pluginFile(plugin, `triggers/${plugin.device.id}.json`),
+    triggers: pluginFile(plugin, deviceFile(DEVICE_FOLDERS.triggers, plugin.device.id)),
     renamed: (from, to) => void plugin.activity.rename(from, to),
     dropped: (path) => { if (dropKeys(plugin.store, path)) void plugin.saveSettings(); },
-    otherTriggers: async () => (await pluginFolder(plugin, "triggers")).filter((f) => f.name !== plugin.device.id).map((f) => f.text),
+    otherTriggers: () => otherTriggers(pluginFiles(plugin), plugin.device.id),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
     captureKey: (key) => captureNamesOf(plugin.store, key),
     destinations: (path, shortcut) => destinationsOf(plugin.store, path, shortcut),
@@ -160,4 +161,51 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     pausedItem?.remove();
   });
   return bg;
+}
+
+/** The computer Obsidian runs on, by name; empty where there's none to ask (a phone). */
+function hostName(): string {
+  try {
+    const os = (window as unknown as { require?: (m: string) => { hostname(): string } }).require?.("os");
+    return os?.hostname() ?? "";
+  } catch {
+    return "";
+  }
+}
+
+/**
+ * This device's heartbeat (see Heartbeat). It says a new name or zone at once, and with each beat when
+ * the person last touched Obsidian here, so a phone opened abroad moves deadlines there.
+ */
+export class DeviceBeat extends Heartbeat {
+  constructor(plugin: GizmoPlugin) {
+    const used = { at: Date.now() };
+    super({
+      id: plugin.device.id,
+      files: pluginFiles(plugin),
+      now: () => Date.now(),
+      // Read at every beat: a laptop renamed, or moved to another network, says so.
+      mine: (now) => {
+        const d = plugin.device;
+        return { id: d.id, name: d.name, host: hostName(), priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now, zone: localZone(), used: used.at };
+      },
+      sayChanges: true,
+    });
+    this.onStartOver = () => plugin.background?.startOver();
+    const touched = () => { used.at = Date.now(); };
+    plugin.registerDomEvent(document, "pointerdown", touched, { passive: true });
+    plugin.registerDomEvent(document, "keydown", touched, { passive: true });
+  }
+
+  /** The zone a rhythm's deadline means: that of the phone or desktop used last. */
+  whereYouAre(): string | undefined {
+    return whereYouAre(this.beats);
+  }
+
+  /** gizmod runs on this computer and was heard from lately: it tells of alerts, so Obsidian here doesn't as well. */
+  gizmodHere(): boolean {
+    const now = Date.now();
+    const host = hostName();
+    return !!host && this.beats.some((b) => b.priority === PRIORITY.gizmod && b.host === host && now - b.seen < UNSEEN_MS && !b.left);
+  }
 }

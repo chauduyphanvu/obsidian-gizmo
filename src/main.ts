@@ -4,17 +4,19 @@ import {
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
 import { registerBacktest } from "./past-views.ts";
-import { registerBackground } from "./background-glue.ts";
+import { registerBackground, type DeviceBeat } from "./background-glue.ts";
 import { registerBases } from "./bases.ts";
 import { DataLayer } from "./datalayer.ts";
-import { thisDevice, type Device, type DeviceStore } from "./device.ts";
+import { DEVICE_FOLDERS, deviceFile, thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
 import { grantedOf, isAllowed, isAllowedUnder, migrateGrants, sameGrant, setGrant } from "./grants.ts";
 import { moveKeys } from "./identity.ts";
 import { mergeSettings, type StoredData } from "./stored.ts";
-import { obsidianHost, obsidianUndoIO, obsidianWrites, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
+import {
+  adoptOldLog, obsidianHost, obsidianOtherLogs, obsidianUndoIO, obsidianWrites, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath,
+} from "./host.ts";
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
 import type { AppSpec } from "./spec.ts";
@@ -26,7 +28,7 @@ import { registerCaptureCommand } from "./capture-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
 import { newLinkKey, shortcutId } from "./links.ts";
-import { DeviceBeat, GizmoSettings, adoptOldLog, devicesSeen, otherLogs } from "./settings.ts";
+import { GizmoSettings } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
 import { permissionsOf } from "./permissions.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
@@ -67,7 +69,7 @@ export default class GizmoPlugin extends Plugin {
     this.device = thisDevice(this.deviceStore, Platform);
     // Each device writes only its own log, which a sync never has to merge; it reads the others'.
     await adoptOldLog(this).catch(() => {});
-    this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
+    this.activity = new ActivityLog(pluginFile(this, deviceFile(DEVICE_FOLDERS.activity, this.device.id)), Date.now, () => obsidianOtherLogs(this));
     // The device that runs background work keeps each data note's snapshot current, a few seconds after
     // a change and at most every five minutes; what's waiting is written before Obsidian quits.
     this.dataLayer.setSnapshots({

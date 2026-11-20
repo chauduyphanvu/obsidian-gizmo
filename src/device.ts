@@ -1,3 +1,5 @@
+import type { LogStore } from "./activity.ts";
+
 /** This device as Gizmo knows it: kept on the device itself, never in a file a sync tool copies. */
 export interface Device {
   id: string;
@@ -83,6 +85,125 @@ export function whereYouAre(beats: readonly Beat[]): string | undefined {
   let latest: Beat | undefined;
   for (const b of beats) if (b.used !== undefined && b.zone && b.priority < PRIORITY.gizmod && (!latest || b.used > latest.used!)) latest = b;
   return latest?.zone;
+}
+
+/**
+ * The folders in the plugin's folder where each device keeps a file of its own, which a sync never has
+ * to merge: its beat, what its alerts ran for, and its activity log. It reads the other devices' files.
+ */
+export const DEVICE_FOLDERS = { beats: "devices", triggers: "triggers", activity: "activity" } as const;
+
+/** A device's own file in one of DEVICE_FOLDERS. */
+export function deviceFile(folder: string, id: string): string {
+  return `${folder}/${id}.json`;
+}
+
+/** The plugin's folder, in Obsidian or on disk for gizmod: a file read and written whole, and the `.json` files of a folder. */
+export interface PluginFiles {
+  file(name: string): LogStore;
+  /** The texts of a folder's `.json` files, by name without `.json`; none when there is no such folder. A file that can't be read is left out. */
+  folder(name: string): Promise<{ name: string; text: string }[]>;
+}
+
+/** What every device last said about itself. */
+export async function beatsIn(files: PluginFiles): Promise<Beat[]> {
+  return (await files.folder(DEVICE_FOLDERS.beats)).flatMap(({ text }) => {
+    const b = readBeat(text);
+    return b ? [b] : [];
+  });
+}
+
+/** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
+export async function otherTriggers(files: PluginFiles, id: string): Promise<string[]> {
+  return (await files.folder(DEVICE_FOLDERS.triggers)).filter((f) => f.name !== id).map((f) => f.text);
+}
+
+/** The other devices' activity logs, each named for its device. */
+export async function otherLogs(files: PluginFiles, id: string): Promise<{ device: string; text: string }[]> {
+  const logs = (await files.folder(DEVICE_FOLDERS.activity)).filter((l) => l.name !== id);
+  if (!logs.length) return [];
+  const names = new Map((await beatsIn(files)).map((b) => [b.id, b.name]));
+  return logs.map((l) => ({ device: names.get(l.name) ?? "another device", text: l.text }));
+}
+
+/** What a heartbeat needs from the program it runs in (Obsidian or gizmod). */
+export interface HeartbeatIO {
+  /** This device's id. */
+  id: string;
+  files: PluginFiles;
+  now(): number;
+  /** What this device says about itself now. */
+  mine(now: number): Beat;
+  /** A new name or zone (a laptop renamed, a phone landed abroad) is said at once rather than at the next interval. */
+  sayChanges?: boolean;
+  /** Told of a beat that couldn't be written, which is then tried again on the next beat; without it, a failed write counts as said. */
+  writeFailed?(e: Error): void;
+}
+
+/**
+ * Each device says, in a file of its own, that it is still there, every five minutes, and works out
+ * from every device's word which one runs background work (see runnerOf). Becoming the one, it
+ * starts over: alerts note what is true now rather than running for what changed while another ran.
+ */
+export class Heartbeat {
+  protected io: HeartbeatIO;
+  private saidAt = 0;
+  private said = "";
+  private zoneSaid = "";
+  /** Whether this session has read every device's beat yet. */
+  private heard = false;
+  /** Every device's last word, as last read. */
+  beats: Beat[] = [];
+  runner: Beat | undefined;
+  /** Called when this device becomes the runner and its alerts start over. */
+  onStartOver: () => void = () => {};
+
+  constructor(io: HeartbeatIO) {
+    this.io = io;
+  }
+
+  private write(beat: Beat): Promise<void> {
+    return this.io.files.file(deviceFile(DEVICE_FOLDERS.beats, beat.id)).write(JSON.stringify(beat));
+  }
+
+  async beat(force = false): Promise<void> {
+    const now = this.io.now();
+    const me = this.io.mine(now);
+    // A folder a sync is rewriting is read next time: who runs stays as it was, and nothing starts over.
+    const all = await beatsIn(this.io.files).catch(() => undefined);
+    if (!all) return;
+    // This device's word from its last session, read before this one is written over it.
+    const last = this.heard ? undefined : all.find((b) => b.id === me.id)?.seen;
+    const changed = this.io.sayChanges === true && (me.name !== this.said || me.zone !== this.zoneSaid);
+    if (!this.heard || force || changed || now - this.saidAt >= BEAT_EVERY_MS) {
+      const said = await this.write(me).then(() => true, (e: Error) => {
+        if (!this.io.writeFailed) return true;
+        this.io.writeFailed(e);
+        return false;
+      });
+      if (said) {
+        this.said = me.name;
+        this.zoneSaid = me.zone ?? "";
+        this.saidAt = now;
+      }
+    }
+    const others = all.filter((b) => b.id !== me.id);
+    this.beats = [me, ...others];
+    const was = this.runner?.id;
+    this.runner = runnerOf(this.beats, now);
+    if (startsOver(me.id, this.runner?.id, was, !this.heard, last, others)) this.onStartOver();
+    this.heard = true;
+  }
+
+  /** Whether this device runs background work; not until it has read every device's beat. */
+  isRunner(): boolean {
+    return this.heard && this.runner?.id === this.io.id;
+  }
+
+  /** Says this device is leaving, as it quits, so another takes over background work now. */
+  async leave(): Promise<void> {
+    await this.write({ ...this.io.mine(this.io.now()), left: true }).catch(() => {});
+  }
 }
 
 /** Obsidian's Platform, as far as naming a device and choosing its default goes. */
