@@ -83,7 +83,7 @@ export default async function map(t) {
       await na.sleep(300);
       return { changed: na.plugin().store.linkKeys[id] !== key, title, effects, notices: na.notices.slice(mark), errands: (na.fm("Apps/Errands data.md")?.errands ?? []).map((e) => e.errand) };`);
     expect(r.changed && r.title?.includes("A link asks to run") && !r.errands.includes("Old link"), r);
-    expect(r.effects.join() === "Saved errand Old link to errands in Errands data", r);
+    expect(r.effects.join() === "Save errand Old link to errands in Errands data", r);
     return `${r.title}: ${r.effects.join(" | ")}`;
   });
 
@@ -106,7 +106,7 @@ export default async function map(t) {
       modal.querySelector(".modal-close-button")?.click();
       await na.sleep(300);
       return { lines, title: modal.querySelector(".modal-title")?.textContent, same: JSON.stringify([na.fm("Apps/Calls data.md"), na.fm("Apps/Errands data.md")]) === before };`);
-    expect(r.same && r.lines?.some((l) => l.startsWith("Saved who Kim")) && r.lines.some((l) => l === "Errands: Saved errand Call Kim back by 2099-02-01 to errands in Errands data"), r);
+    expect(r.same && r.lines?.some((l) => l.startsWith("Save who Kim")) && r.lines.some((l) => l === "Errands: Save errand Call Kim back by 2099-02-01 to errands in Errands data"), r);
     return `${r.title}: ${r.lines.join(" | ")}`;
   });
 
