@@ -1,0 +1,27 @@
+filters:
+  and:
+    - file.inFolder("Projects")
+views:
+  - type: gizmo-board
+    name: Board
+    group: note.status
+    item: "{name} · due {due}"
+  - type: gizmo-calendar
+    name: Due dates
+    date: note.due
+  - type: gizmo-timeline
+    name: Schedule
+    start: note.start
+    end: note.due
+  - type: gizmo-chart
+    name: By area
+    x: note.area
+  - type: gizmo-number
+    name: Count
+    label: projects
+  - type: table
+    name: Table
+    order:
+      - file.name
+      - status
+      - due
