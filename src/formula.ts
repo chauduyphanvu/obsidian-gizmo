@@ -223,6 +223,28 @@ export function computesRowByRow(compute: Record<string, string | number>): bool
   });
 }
 
+/** The row fields a tree reads, by their first name; "*" when `field()` names one only as it runs. */
+function fieldsOf(n: Node, out: Set<string>): Set<string> | "*" {
+  if (n.k === "field") out.add(n.path.split(".")[0]);
+  if (n.k === "call" && n.fn === "field") return "*";
+  const kids = n.k === "unary" ? [n.a] : n.k === "binary" ? [n.a, n.b] : n.k === "call" ? n.args : [];
+  for (const k of kids) if (fieldsOf(k, out) === "*") return "*";
+  return out;
+}
+
+/**
+ * The row fields a formula reads, for working out what its result is made of; "*" when it may read
+ * any (`field()` with a name it works out), undefined when it can't be read.
+ */
+export function fieldsRead(text: string): string[] | "*" | undefined {
+  try {
+    const found = fieldsOf(parse(tokenize(text)), new Set());
+    return found === "*" ? "*" : [...found];
+  } catch {
+    return undefined;
+  }
+}
+
 function varsIn(n: Node, out: Set<string>): Set<string> {
   if (n.k === "var") out.add(n.name);
   else if (n.k === "unary") varsIn(n.a, out);

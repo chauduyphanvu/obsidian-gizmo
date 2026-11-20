@@ -325,6 +325,11 @@ export function formatValue(v: unknown, decimals?: number, group = true): string
   return String(v);
 }
 
+/** The names a template's {placeholders} read, by their first part ({row.amount} reads row). */
+export function namesInTemplate(template: string): string[] {
+  return [...new Set([...template.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1].trim().split(".")[0]))];
+}
+
 /** Fills {path} placeholders from ctx, each value shown by `show`. Unknown paths become empty strings. */
 export function fillWith(template: string, ctx: unknown, show: (path: string, value: unknown) => string): string {
   return template.replace(/\{([^{}]+)\}/g, (_, raw: string) => {
