@@ -21,4 +21,7 @@ A gizmo is an ordinary note whose properties start with `app:` and one sentence 
 - [[Destination weather]]: A destination's weather now, the week ahead and a typical year
 - [[Tracker kit]]: Log a number each time I measure it, and see this week against the last and the trend toward my goal
 
+Gizmo's board, calendar (or year heatmap), timeline, chart and number also work inside any base, with
+no app note: add a view to the base and pick one whose name starts with Gizmo.
+
 Copy a note into your vault and open it; it will ask before it touches anything.
