@@ -245,6 +245,12 @@ export class DataLayer {
     return rows;
   }
 
+  /** Whether a note is in any of the comma-separated scopes, as `notes(from)` would list it. */
+  inScope(from: string, path: string): boolean {
+    const row = this.rows().get(path);
+    return !!row && inScopes(row, splitScopes(from));
+  }
+
   /** Every markdown note in the vault. */
   allNotes(): Row[] {
     return [...this.rows().values()];

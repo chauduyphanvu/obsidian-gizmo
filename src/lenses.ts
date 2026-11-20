@@ -64,6 +64,11 @@ export class LensIndex {
     this.changed(path);
   }
 
+  /** Every lens: its component's path and its `for` scope. */
+  lenses(): [string, string][] {
+    return [...this.all()];
+  }
+
   scopeOf(componentPath: string): string | undefined {
     return this.all().get(componentPath);
   }

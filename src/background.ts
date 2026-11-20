@@ -11,8 +11,9 @@ import { thisValues } from "./sources/this.ts";
 import {
   panelIds, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
-import { permissionsOf } from "./permissions.ts";
-import { basename, dataPathOf, resolveList, storeTarget } from "./store.ts";
+import type { AppSummary } from "./map.ts";
+import { askersOf, permissionsOf } from "./permissions.ts";
+import { basename, dataPathOf, notePath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
@@ -132,6 +133,8 @@ export class Background {
   /** Whether each alert was true when last evaluated this session (unknown at first, so one already true is told). */
   private alertOn = new Map<string, boolean>();
   private listeners = new Set<() => void>();
+  /** Told when the apps it knows, or what one of them is, change. */
+  private indexListeners = new Set<() => void>();
   private alertsShown = "[]";
   /** By watched panel key, what each alert with `then` already ran for; read once from `env.triggers`. */
   private fired: Promise<Record<string, Fired>> | undefined;
@@ -170,6 +173,7 @@ export class Background {
     this.pins.clear();
     this.active.clear();
     this.listeners.clear();
+    this.indexListeners.clear();
   }
 
   /** A note changed, appeared or was renamed to this path: index it if it became an app. Known apps follow their own changes. */
@@ -180,6 +184,43 @@ export class Background {
   /** The checked keys of an indexed app. */
   spec(appPath: string): AppSpec | undefined {
     return this.apps.get(appPath)?.spec;
+  }
+
+  /** Every app it knows, with what each may do and what makes it act, for the automation map. */
+  list(): AppSummary[] {
+    return [...this.apps.values()].map((e): AppSummary => {
+      const resolved = (then: Then) => ({ app: then.app, do: then.do, path: this.env.notes.resolve(storeTarget(then.app), e.path) });
+      const panels = e.spec.panels.map((ps) => ps.panel);
+      return {
+        path: e.path,
+        name: e.name,
+        description: e.spec.description,
+        dataPath: e.dataPath,
+        wanted: e.wanted,
+        askers: askersOf(e.spec, e.path),
+        shortcuts: [...e.shortcuts].map(([id, ps]) => ({
+          id, label: labelOf(ps.panel, id), view: ps.panel.view,
+          fields: ps.panel.view === "form" ? Object.keys(ps.panel.fields ?? ps.panel.schema ?? {}) : [],
+        })),
+        records: e.records.map((r) => ({ ...r })),
+        alerts: panels.filter((p) => p.alert !== undefined).map((p) => ({
+          title: p.title ?? p.label ?? e.name, then: p.then ? resolved(p.then) : undefined,
+        })),
+        thens: panels.filter((p) => p.then && p.alert === undefined).map((p) => ({ from: labelOf(p, p.view), ...resolved(p.then!) })),
+        writesSelf: panels.some((p) => p.append !== undefined && notePath(p.append) === e.path),
+      };
+    });
+  }
+
+  /** Calls `cb` whenever the apps it knows, or one's keys, change; returns how to stop. */
+  onIndexChange(cb: () => void): () => void {
+    this.indexListeners.add(cb);
+    return () => this.indexListeners.delete(cb);
+  }
+
+  /** An app's permission was taken back: it stops at once, its pins and alerts go, and its `then`s start over when allowed again. */
+  revoked(path: string): void {
+    this.forget(path);
   }
 
   /** Runs whatever is due for every allowed app. Never rejects; one app's failure doesn't stop the others. */
@@ -609,6 +650,7 @@ export class Background {
     const entry = spec && this.entry(path, spec, definition);
     // A panel that is still there keeps its alert's state, so editing the app doesn't tell it again.
     this.forget(path, new Set(entry?.watched.map((w) => w.key)));
+    for (const cb of [...this.indexListeners]) cb();
     if (!this.running) return entry;
     this.publishCommands();
     if (entry) void this.check(entry);
