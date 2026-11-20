@@ -9,8 +9,12 @@ import { DataLayer } from "./datalayer.ts";
 import { thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
-import { dropGrants, grantedOf, isAllowed, moveGrants, setGrant } from "./grants.ts";
-import { obsidianHost, obsidianUndoIO, pluginFile } from "./host.ts";
+import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
+import { dropGrants, grantedOf, isAllowed, isAllowedUnder, moveGrants, setGrant } from "./grants.ts";
+import { obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
+import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
+import { registerPolicyCommand } from "./policy-command.ts";
+import type { AppSpec } from "./spec.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import type { LensIndex } from "./lenses.ts";
@@ -36,6 +40,8 @@ interface StoredData {
   answerTo?: Record<string, string[]>;
   /** A capture link's key → each capture name it may run without asking, with the `<app path>#<shortcut>` it named then. */
   captureKeys?: Record<string, Record<string, string>>;
+  /** The data policy as last applied: until Apply, an edited policy note changes nothing. */
+  policy?: AppliedPolicy;
 }
 
 export default class GizmoPlugin extends Plugin {
@@ -66,7 +72,11 @@ export default class GizmoPlugin extends Plugin {
     await adoptOldLog(this).catch(() => {});
     this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
-    this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
+    this.registerEvent(this.app.metadataCache.on("changed", (file) => {
+      this.dataLayer.fileChanged(file.path);
+      // The map says when the policy note no longer matches what was applied.
+      if (isPolicyPath(file.path)) this.grantsChanged();
+    }));
     // Notes that change reach the data layer through the metadata event above; any other file only through here.
     this.registerEvent(this.app.vault.on("modify", (file) => {
       if (file instanceof TFile && file.extension !== "md") this.dataLayer.fileChanged(file.path);
@@ -97,6 +107,7 @@ export default class GizmoPlugin extends Plugin {
     registerGalleryCommand(this);
     registerLinkCommand(this);
     registerCaptureCommand(this);
+    registerPolicyCommand(this);
     registerShareCommands(this);
     registerActivity(this);
     registerMap(this);
@@ -121,7 +132,9 @@ export default class GizmoPlugin extends Plugin {
 
   /** `data.json` changed on disk (a sync from another device): what was allowed there holds here too. */
   async onExternalSettingsChange(): Promise<void> {
+    const before = this.store.policy?.hash;
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
+    if (this.store.policy?.hash !== before) this.background?.policyChanged();
     this.grantsChanged();
   }
 
@@ -228,9 +241,39 @@ export default class GizmoPlugin extends Plugin {
     view.editor.focus();
   }
 
-  /** `opened`: the app must also have been opened in its own tab (see isAllowed). */
-  isGranted(path: string, wanted: string[], opened = false): boolean {
-    return isAllowed(this.store.grants, path, wanted, opened);
+  /** `opened`: the app must also have been opened in its own tab (see isAllowed); `asked`: under a policy, what it doesn't cover. */
+  isGranted(path: string, wanted: string[], opened = false, asked?: string[]): boolean {
+    return asked ? isAllowedUnder(this.store.grants, path, wanted, asked, opened) : isAllowed(this.store.grants, path, wanted, opened);
+  }
+
+  /** What the applied data policy says of an app running here; undefined with no policy applied. */
+  verdict(spec: AppSpec, wanted: string[], where: FlowWhere, policy: Policy | undefined = this.store.policy?.rules): Verdict | undefined {
+    if (!policy) return undefined;
+    const ctx = flowContext(policy, where, vaultNotes(this.app), vaultStorePath(this.app), (p) => this.dataLayer.host.tags(p));
+    return checkFlows(spec, wanted, ctx);
+  }
+
+  /** The policy note as it reads now: no note, its errors, or its rules with their fingerprint. */
+  readPolicyNote(): { none: true } | { errors: string[] } | { applied: AppliedPolicy } {
+    if (!this.app.vault.getFileByPath(POLICY_PATH)) return { none: true };
+    const read = readPolicy(vaultFrontmatter(this.app)(POLICY_PATH));
+    return read.policy ? { applied: { hash: policyHash(read.policy), rules: read.policy } } : { errors: read.errors };
+  }
+
+  /** Whether the policy note says something other than what was applied. */
+  policyPending(): boolean {
+    const now = this.readPolicyNote();
+    if ("none" in now) return this.store.policy !== undefined;
+    return "errors" in now || now.applied.hash !== this.store.policy?.hash;
+  }
+
+  /** Uses these rules from now on, or no policy: every app is checked again, here and on devices that sync this. */
+  async applyPolicy(applied: AppliedPolicy | undefined): Promise<void> {
+    if (applied) this.store.policy = applied;
+    else delete this.store.policy;
+    await this.saveData(this.store);
+    this.background?.policyChanged();
+    this.grantsChanged();
   }
 
   granted(path: string): string[] | undefined {
@@ -306,7 +349,7 @@ export default class GizmoPlugin extends Plugin {
     return () => this.grantListeners.delete(cb);
   }
 
-  private grantsChanged(): void {
+  grantsChanged(): void {
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) (leaf.view as AppView).recheck();
     for (const cb of [...this.grantListeners]) cb();
   }

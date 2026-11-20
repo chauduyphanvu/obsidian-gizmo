@@ -1,5 +1,6 @@
+import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
 import type { NewEntry } from "./activity.ts";
-import { renderEmpty, renderErrors, renderOpenOnce, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
+import { renderEmpty, renderErrors, renderOpenOnce, renderBlocked, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./cache.ts";
@@ -34,7 +35,12 @@ export interface AppEnv {
   frontmatter(path: string): Record<string, unknown> | undefined;
   /** Reads the component notes an app uses. */
   notes: NoteReader;
-  isGranted(path: string, wanted: string[]): boolean;
+  /** Whether the app may run; under a data policy, `asked` is what the policy doesn't cover. */
+  isGranted(path: string, wanted: string[], asked?: string[]): boolean;
+  /** What the applied data policy says of the app here; undefined with no policy. */
+  verdict?(spec: AppSpec, wanted: string[], where: FlowWhere): Verdict | undefined;
+  /** Whether the policy note has changes that weren't applied. */
+  policyPending?(): boolean;
   /** What the app was allowed last time, to mark what's new; undefined when it was never allowed or opened. */
   granted(path: string): string[] | undefined;
   grant(path: string, wanted: string[]): Promise<void>;
@@ -391,9 +397,13 @@ export class AppController {
     const picked = read?.spec && h?.panels ? pickPanels(read.spec, h.panels, `[[${basename(this.appPath)}]]`) : undefined;
     const result = read && picked ? { ...read, errors: [...read.errors, ...picked.errors] } : read;
     const wanted = read?.spec ? permissionsOf(read.spec, this.appPath) : [];
-    const granted = this.env.isGranted(this.grantKey, wanted);
+    const dataPath = h?.dataPath ?? dataPathOf((picked?.spec ?? result?.spec)?.store, this.appPath, (store, from) => this.env.storePath(store, from));
+    const lensScope = h?.kind === "lens" ? h.scope : undefined;
+    const verdict = read?.spec ? this.env.verdict?.(read.spec, wanted, { appPath: this.appPath, dataPath, hostPath: this.hostPath, lensScope }) : undefined;
+    const blocked = verdict?.violations.length ? verdict.violations.map(violationText) : undefined;
+    const granted = !blocked && this.env.isGranted(this.grantKey, wanted, verdict?.asked);
     // The app is its own keys plus those of every component it uses, and whether it may run.
-    const definition = JSON.stringify([fm, result?.spec?.read ?? null, granted]);
+    const definition = JSON.stringify([fm, result?.spec?.read ?? null, granted, blocked ?? null, verdict?.asked ?? null]);
     if (definition === this.definition) {
       if (moved) this.refillHostReaders();
       return;
@@ -401,7 +411,7 @@ export class AppController {
     this.definition = definition;
     this.links = result?.spec?.links ?? [];
     this.spec = picked?.spec ?? result?.spec;
-    this.dataPath = h?.dataPath ?? dataPathOf(this.spec?.store, this.appPath, (store, from) => this.env.storePath(store, from));
+    this.dataPath = dataPath;
 
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
     const header = createDivIn(this.shell, "gz-header");
@@ -424,14 +434,22 @@ export class AppController {
     const spec = this.spec;
     if (!spec?.panels.length || component?.missing.length || component?.lens) return this.showOnly(header);
 
+    if (blocked) {
+      renderBlocked(header, blocked, this.env.policyPending?.() ?? false, this.cards);
+      return this.showOnly(header);
+    }
     if (!granted) {
       if (h?.kind === "app") renderOpenOnce(header, this.cards);
-      else renderPermissionPrompt(header, wanted, askersOf(read!.spec!, this.appPath), this.cards);
+      else renderPermissionPrompt(header, verdict?.asked ?? wanted, askersOf(read!.spec!, this.appPath), this.cards, verdict?.covered.length ?? 0);
       return this.showOnly(header);
     }
 
     // An app opened in its own tab has been seen; the background acts only for those, even when they ask for nothing.
-    if (!h && !component && wanted.length === 0 && this.env.granted(this.appPath)?.length !== 0) void this.env.grant(this.appPath, []);
+    if (!h && !component) {
+      const before = this.env.granted(this.appPath);
+      // Under a policy that covers all it asks for, it is seen once; what it was allowed before stays.
+      if (verdict ? verdict.asked.length === 0 && before === undefined : wanted.length === 0 && before?.length !== 0) void this.env.grant(this.appPath, []);
+    }
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: "gz-grid" });

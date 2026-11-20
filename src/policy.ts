@@ -147,6 +147,12 @@ export function readPolicy(fm: Record<string, unknown> | undefined): { policy?: 
   return { policy: { labels, sinks, release, typed }, errors };
 }
 
+/** A policy as Obsidian applied it: its rules and their fingerprint, kept in the plugin's data. */
+export interface AppliedPolicy {
+  hash: string;
+  rules: Policy;
+}
+
 /** A policy's fingerprint: equal for equal rules, whatever their order in the note's text. */
 export function policyHash(policy: Policy): string {
   return fnv1a(stableJson(policy)).toString(36);

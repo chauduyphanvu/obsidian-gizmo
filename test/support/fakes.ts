@@ -4,7 +4,8 @@ import type { AppEnv } from "../../src/app.ts";
 import { Background } from "../../src/background.ts";
 import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
-import { isAllowed } from "../../src/grants.ts";
+import { isAllowed, isAllowedUnder } from "../../src/grants.ts";
+import { policyHash, type Policy } from "../../src/policy.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
 import { parseYaml } from "./yaml.ts";
@@ -246,7 +247,9 @@ function noteTextOf(note: { fm?: Record<string, unknown>; body?: string }): stri
  * they were opened and allowed, as in Obsidian. What it notifies goes to `notices`; the commands
  * and status items it publishes, and the apps it opens, are kept.
  */
-export function fakeBackground(notes: Notes = {}, responses: Record<string, unknown> = {}, opts: { seen?: boolean; triggers?: { text: string | undefined } } = {}) {
+export function fakeBackground(
+  notes: Notes = {}, responses: Record<string, unknown> = {}, opts: { seen?: boolean; triggers?: { text: string | undefined }; policy?: Policy } = {},
+) {
   const t = fakeEnv(notes, responses);
   let clock = new Date(2026, 10, 18, 12, 0).getTime();
   const now = () => new Date(clock);
@@ -274,12 +277,16 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
   const captureKeys = new Map<string, Record<string, string>>();
   /** Whether this (fake) device runs background work. */
   const device = { background: true };
+  /** The data policy applied, if any; change `rules`, then call `bg.policyChanged()`, as Apply does. */
+  const policy = { rules: opts.policy };
   const bg = new Background({
     data: t.data,
     frontmatter: t.env.frontmatter,
     notes: t.env.notes,
     appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined).map(([path]) => path),
-    isGranted: (path, wanted) => !denied.has(path) && (!opts.seen || isAllowed(t.grants, path, wanted, true)),
+    isGranted: (path, wanted, asked) => !denied.has(path)
+      && (!opts.seen || (asked ? isAllowedUnder(t.grants, path, wanted, asked, true) : isAllowed(t.grants, path, wanted, true))),
+    policy: () => (policy.rules ? { hash: policyHash(policy.rules), rules: policy.rules } : undefined),
     storePath: t.env.storePath,
     actionDeps: (appPath, dataPath, actor) => ({
       now, dataPath, appPath,
@@ -332,6 +339,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     linkKeys,
     captureKeys,
     device,
+    policy,
     triggers,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },
   };

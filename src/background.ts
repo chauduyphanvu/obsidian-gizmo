@@ -17,6 +17,8 @@ import {
 } from "./spec.ts";
 import type { AppSummary } from "./map.ts";
 import { askersOf, permissionsOf } from "./permissions.ts";
+import { checkFlows, flowContext, type Verdict } from "./flows.ts";
+import type { AppliedPolicy, Policy } from "./policy.ts";
 import { basename, dataPathOf, notePath, resolveList, splitOf, storeTarget, type Split } from "./store.ts";
 import { deviceNoteName } from "./device.ts";
 import { ROW_SOURCE, deviceNotes } from "./sources/list.ts";
@@ -65,8 +67,13 @@ export interface BackgroundEnv {
   notes: NoteReader;
   /** Notes whose frontmatter has `app`, from the metadata cache. */
   appPaths(): string[];
-  /** Whether the app was opened in its own tab and is allowed exactly `wanted`, even when that is nothing. */
-  isGranted(path: string, wanted: string[]): boolean;
+  /**
+   * Whether the app was opened in its own tab and is allowed exactly `wanted`, even when that is
+   * nothing; under a data policy, `asked` is what the policy doesn't cover (see isAllowedUnder).
+   */
+  isGranted(path: string, wanted: string[], asked?: string[]): boolean;
+  /** The data policy applied in Obsidian, if any, with its fingerprint. */
+  policy?(): AppliedPolicy | undefined;
   storePath(store: string, fromPath: string): string;
   /** What running an app's actions writes with; with an actor, what they change is kept in the activity log. */
   actionDeps(appPath: string, dataPath: string, actor?: Actor): ActionDeps;
@@ -163,6 +170,8 @@ interface AppEntry {
   split?: () => Split;
   /** What the app needs allowed; it acts only while exactly this is granted. */
   wanted: string[];
+  /** What the data policy says of it, when there is one: flows it refuses, permissions it covers, the rest asked. */
+  verdict?: Verdict;
   records: RecordJob[];
   /** Panels by their `shortcut`, the first panel winning. */
   shortcuts: Map<string, PanelSpec>;
@@ -265,6 +274,7 @@ export class Background {
         description: e.spec.description,
         dataPath: e.dataPath,
         wanted: e.wanted,
+        verdict: e.verdict,
         askers: askersOf(e.spec, e.path),
         shortcuts: [...e.shortcuts].map(([id, ps]) => ({
           id, label: labelOf(ps.panel, id), view: ps.panel.view,
@@ -318,7 +328,25 @@ export class Background {
   }
 
   private granted(entry: AppEntry): boolean {
-    return this.env.isGranted(entry.path, entry.wanted);
+    if (entry.verdict?.violations.length) return false;
+    return this.env.isGranted(entry.path, entry.wanted, entry.verdict?.asked);
+  }
+
+  private verdictOf(policy: Policy, spec: AppSpec, wanted: string[], path: string, dataPath: string): Verdict {
+    const where = { appPath: path, dataPath, hostPath: path };
+    return checkFlows(spec, wanted, flowContext(policy, where, this.env.notes, (store, from) => this.env.storePath(store, from), (p) => this.env.data.host.tags(p)));
+  }
+
+  /** What a policy would say of every app, before it is applied. */
+  judge(policy: Policy): { path: string; name: string; wanted: string[]; verdict: Verdict }[] {
+    return [...this.apps.values()]
+      .map((e) => ({ path: e.path, name: e.name, wanted: e.wanted, verdict: this.verdictOf(policy, e.spec, e.wanted, e.path, e.dataPath) }))
+      .sort((a, b) => a.name.localeCompare(b.name) || a.path.localeCompare(b.path));
+  }
+
+  /** The data policy changed: every app is checked against it again, and stops or starts as it now says. */
+  policyChanged(): void {
+    for (const path of [...this.apps.keys()]) this.index(path);
   }
 
   /**
@@ -922,7 +950,7 @@ export class Background {
     const spec = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path })?.spec;
     // Most notes that change aren't apps and never were.
     if (!old && !spec) return undefined;
-    const definition = JSON.stringify([fm, spec?.read ?? null]);
+    const definition = JSON.stringify([fm, spec?.read ?? null, this.env.policy?.()?.hash ?? null]);
     if (old && spec && old.definition === definition) return old;
     old?.stop();
     this.apps.delete(path);
@@ -959,6 +987,8 @@ export class Background {
       refreshMs: spec.refreshMs ?? DEFAULT_REFRESH_MS,
       stop: () => {},
     };
+    const policy = this.env.policy?.();
+    if (policy) entry.verdict = this.verdictOf(policy.rules, spec, entry.wanted, path, dataPath);
     const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
     const files = { appPath: path, dataPath: entry.dataPath, split: entry.split?.() };
     const start = this.valuesOf(path, spec, this.env.now());

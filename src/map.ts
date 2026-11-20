@@ -1,5 +1,6 @@
 import { describeActor, describeChange, describeSent, type Entry } from "./activity.ts";
-import { grantedOf, isAllowed } from "./grants.ts";
+import { violationText, type Verdict } from "./flows.ts";
+import { grantedOf, isAllowed, isAllowedUnder } from "./grants.ts";
 import { describePermission } from "./permissions.ts";
 import { basename, notePath } from "./store.ts";
 
@@ -11,6 +12,8 @@ export interface AppSummary {
   /** Its data note: `<App> data.md` or its `store`. */
   dataPath: string;
   wanted: string[];
+  /** What the data policy says of it, when there is one. */
+  verdict?: Verdict;
   /** For each permission, the notes whose keys ask for it (the app or a component it uses). */
   askers: Map<string, Set<string>>;
   shortcuts: { id: string; label: string; view: string; fields: string[] }[];
@@ -22,7 +25,7 @@ export interface AppSummary {
   writesSelf: boolean;
 }
 
-export type AppState = "allowed" | "not-opened" | "asks-again";
+export type AppState = "allowed" | "not-opened" | "asks-again" | "blocked";
 export type AskGroup = "Reads" | "Fetches" | "Sends" | "Changes" | "Runs";
 export const ASK_GROUPS: readonly AskGroup[] = ["Reads", "Fetches", "Sends", "Changes", "Runs"];
 
@@ -34,6 +37,8 @@ export interface Ask {
   by: string[];
   /** Asked for but not in what was allowed before. */
   isNew: boolean;
+  /** Granted by the data policy, without asking. */
+  covered?: boolean;
 }
 
 export interface MapApp {
@@ -42,6 +47,8 @@ export interface MapApp {
   description: string;
   state: AppState;
   asks: Ask[];
+  /** Under a data policy: whether it fits, and the flows it refuses, as lines. */
+  policy?: { violations: string[] };
   /** What makes it act on its own or from outside, as plain lines. */
   acts: string[];
   shortcuts: AppSummary["shortcuts"];
@@ -90,8 +97,9 @@ export function everyWords(ms: number): string {
   return minutes === 1 ? "every minute" : `every ${minutes} minutes`;
 }
 
-function stateOf(grants: Record<string, string[]>, key: string, wanted: string[]): AppState {
-  if (isAllowed(grants, key, wanted, true)) return "allowed";
+function stateOf(grants: Record<string, string[]>, key: string, wanted: string[], verdict?: Verdict): AppState {
+  if (verdict?.violations.length) return "blocked";
+  if (verdict ? isAllowedUnder(grants, key, wanted, verdict.asked, true) : isAllowed(grants, key, wanted, true)) return "allowed";
   return grantedOf(grants, key) === undefined ? "not-opened" : "asks-again";
 }
 
@@ -118,7 +126,8 @@ export function buildMap(apps: AppSummary[], grants: Record<string, string[]>, l
       group: askGroup(perm),
       text: describePermission(perm),
       by: [...(a.askers.get(perm) ?? [])].filter((p) => p !== a.path).sort(),
-      isNew: before !== undefined && !before.includes(perm),
+      isNew: before !== undefined && !before.includes(perm) && !a.verdict?.covered.includes(perm),
+      ...(a.verdict?.covered.includes(perm) && { covered: true }),
     }));
     const acts = [
       ...a.records.map((r) => `Records ${r.block} into ${r.list} ${everyWords(r.everyMs)}`),
@@ -132,8 +141,9 @@ export function buildMap(apps: AppSummary[], grants: Record<string, string[]>, l
       path: a.path,
       name: a.name,
       description: a.description,
-      state: stateOf(grants, a.path, a.wanted),
+      state: stateOf(grants, a.path, a.wanted, a.verdict),
       asks,
+      ...(a.verdict && { policy: { violations: a.verdict.violations.map(violationText) } }),
       acts,
       shortcuts: a.shortcuts,
       runBy: (runBy.get(a.path) ?? []).sort((x, y) => x.name.localeCompare(y.name)),

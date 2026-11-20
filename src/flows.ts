@@ -9,7 +9,8 @@ import {
 import { sourceDef } from "./sources/registry.ts";
 import { urlHost } from "./sources/url.ts";
 import { saveTarget, type AppSpec, type Panel } from "./spec.ts";
-import { basename, notePath } from "./store.ts";
+import type { NoteReader } from "./expand.ts";
+import { basename, dataPathOf, notePath, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
 
 /** What the flow check needs to know about where an app runs. */
@@ -44,6 +45,29 @@ export interface Verdict {
   violations: Violation[];
   covered: string[];
   asked: string[];
+}
+
+/** Where an app runs, for the flow check: its note, its data note, the note `$this` reads, a lens's scope. */
+export interface FlowWhere {
+  appPath: string;
+  dataPath: string;
+  hostPath: string;
+  lensScope?: string;
+}
+
+/** A flow context from the vault's readers. */
+export function flowContext(
+  policy: Policy, where: FlowWhere, notes: NoteReader, storePath: (store: string, from: string) => string, tags: (path: string) => string[],
+): FlowContext {
+  return { policy, ...where, tags, thenData: (app) => thenDataPath(notes, storePath, app, where.appPath) };
+}
+
+/** The data note of the app a `then` names, as its link resolves from `from`; undefined when there's no such note. */
+export function thenDataPath(notes: NoteReader, storePath: (store: string, from: string) => string, app: string, from: string): string | undefined {
+  const path = notes.resolve(storeTarget(app), from);
+  if (!path) return undefined;
+  const store = notes.frontmatter(path)?.store;
+  return dataPathOf(typeof store === "string" ? store : undefined, path, storePath);
 }
 
 /** A violation as one line: `Medication log data.med (private) → a notice (personal)`. */

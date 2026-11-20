@@ -3,12 +3,13 @@ import {
   fromBundle, fromFetched, previewInstall, sharedUrl, thenTargets, toBundle, type BundleNote, type InstallPreview,
 } from "./bundle.ts";
 import { existingNotes, installNotes } from "./gallery-command.ts";
-import { copyText, vaultNotes } from "./host.ts";
+import { copyText, vaultNotes, vaultStorePath } from "./host.ts";
+import { permissionsOf } from "./permissions.ts";
 import { planCopy } from "./gallery.ts";
 import type GizmoPlugin from "./main.ts";
 import { tryBundle } from "./try-modal.ts";
 import { readComponentPreview, readSpec } from "./spec.ts";
-import { basename, isApp, isComponent, storeTarget } from "./store.ts";
+import { basename, dataPathOf, isApp, isComponent, storeTarget } from "./store.ts";
 
 /**
  * The notes sharing an app takes along: the note itself, every component it reads at any depth,
@@ -155,6 +156,9 @@ class InstallModal extends Modal {
       existing: (name) => existing[name] ?? [],
       notes: vaultNotes(this.app),
       parse: parseYaml,
+      judge: (spec, path) => this.plugin.verdict(spec, permissionsOf(spec, path), {
+        appPath: path, dataPath: dataPathOf(spec.store, path, vaultStorePath(this.app)), hostPath: path,
+      }),
     });
     if ("error" in preview) return this.say(cap(preview.error), "gz-error-text");
     this.show(preview);
@@ -176,6 +180,13 @@ class InstallModal extends Modal {
       this.output.createEl("p", { cls: "gz-error-text", text: "Its own check says:" });
       const ul = this.output.createEl("ul");
       for (const e of p.errors) ul.createEl("li", { text: e });
+    }
+    if (p.policy?.violations.length) {
+      this.output.createEl("p", { cls: "gz-error-text", text: "Checked against your data policy: it would be blocked, as it sends data where your policy keeps it from going:" });
+      const ul = this.output.createEl("ul");
+      for (const v of p.policy.violations) ul.createEl("li", { text: v });
+    } else if (p.policy) {
+      this.output.createEl("p", { text: `Checked against your data policy: it fits${p.policy.covered.length ? `, and your policy lets it ${p.policy.covered.join("; ")} without asking` : ""}.` });
     }
     const kind = p.kind === "app" ? "When you open it, it will ask your OK to:" : "Where it's used, it will ask your OK to:";
     if (p.asks.length) {

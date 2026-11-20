@@ -1,3 +1,4 @@
+import { isPolicyPath } from "./policy.ts";
 import {
   Notice, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type TFile, type WorkspaceLeaf,
 } from "obsidian";
@@ -109,10 +110,20 @@ export function obsidianHost(app: App, pluginDir?: string): Host {
   };
 }
 
+/** Path of the note a `store:` value points at, resolved from the note that names it. */
+export function vaultStorePath(app: App): (store: string, fromPath: string) => string {
+  return (store, fromPath) => {
+    const target = storeTarget(store);
+    return app.metadataCache.getFirstLinkpathDest(target, fromPath)?.path ?? notePath(normalizePath(target));
+  };
+}
+
 /** Writes to one note run one after another, across every open app. */
 const writeQueues = new Map<string, Promise<void>>();
 
 function queued(path: string, write: () => Promise<void>): Promise<void> {
+  // The policy says what apps may do with data, so no app may change it; a person edits it by hand.
+  if (isPolicyPath(normalizePath(path))) return Promise.reject(new Error(`${path} is your Gizmo policy; apps can't change it`));
   const next = (writeQueues.get(path) ?? Promise.resolve()).then(write, write);
   writeQueues.set(path, next);
   void next.finally(() => { if (writeQueues.get(path) === next) writeQueues.delete(path); });
@@ -183,13 +194,12 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     data: plugin.dataLayer,
     frontmatter: vaultFrontmatter(app),
     notes: vaultNotes(app),
-    isGranted: (path, wanted) => plugin.isGranted(path, wanted),
+    isGranted: (path, wanted, asked) => plugin.isGranted(path, wanted, false, asked),
     granted: (path) => plugin.granted(path),
     grant: (path, wanted) => plugin.grant(path, wanted),
-    storePath(store, fromPath) {
-      const target = storeTarget(store);
-      return app.metadataCache.getFirstLinkpathDest(target, fromPath)?.path ?? notePath(normalizePath(target));
-    },
+    verdict: (spec, wanted, where) => plugin.verdict(spec, wanted, where),
+    policyPending: () => plugin.policyPending(),
+    storePath: vaultStorePath(app),
     writeFrontmatter: (path, fn) => queued(path, async () => {
       let target = app.vault.getFileByPath(path);
       if (!target) {
@@ -215,6 +225,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     },
     async createNote(path, frontmatter, body) {
       const target = normalizePath(path);
+      if (isPolicyPath(target)) throw new Error(`${path} is your Gizmo policy; apps can't change it`);
       if (app.vault.getAbstractFileByPath(target)) return false;
       await ensureFolder(app, target);
       const text = noteText(Object.keys(frontmatter).length ? stringifyYaml(frontmatter) : "", body);

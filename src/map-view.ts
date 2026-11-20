@@ -1,3 +1,4 @@
+import { PolicyModal } from "./policy-command.ts";
 import { ItemView, MarkdownView, Modal, Notice, parseYaml, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { dryLines } from "./background.ts";
 import { openActivity, when } from "./activity-view.ts";
@@ -11,7 +12,7 @@ import { basename } from "./store.ts";
 
 export const MAP_VIEW = "gizmo-map";
 
-const STATE_WORDS: Record<MapApp["state"], string> = { "allowed": "Allowed", "not-opened": "Never opened", "asks-again": "Asks again" };
+const STATE_WORDS: Record<MapApp["state"], string> = { "allowed": "Allowed", "not-opened": "Never opened", "asks-again": "Asks again", "blocked": "Blocked by your policy" };
 
 /**
  * Every app in the vault on one page: what each may do, what makes it act and when it last
@@ -85,8 +86,9 @@ export class MapView extends ItemView {
       this.drawInNotes(inNotes, map);
     });
     head.createEl("button", { text: "Save as canvas" }).addEventListener("click", () => void saveMapCanvas(plugin));
+    this.drawPolicy(box, map);
     if (this.note) this.drawWriters(box, this.note, apps, activity);
-    const counts = (["allowed", "not-opened", "asks-again"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
+    const counts = (["allowed", "blocked", "not-opened", "asks-again"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
     box.createDiv({
       cls: "gz-muted gz-map-summary",
       text: `${map.apps.length} ${map.apps.length === 1 ? "app" : "apps"}: ${counts.filter(([, n]) => n).map(([s, n]) => `${n} ${STATE_WORDS[s].toLowerCase()}`).join(", ") || "none yet"}`,
@@ -96,6 +98,21 @@ export class MapView extends ItemView {
     const inNotes = box.createDiv();
     this.drawInNotes(inNotes, map);
     this.drawCaptureKeys(box);
+  }
+
+  /** Whether a data policy is applied, and when its note says something else, a way to review it. */
+  private drawPolicy(el: HTMLElement, map: VaultMap): void {
+    const plugin = this.plugin;
+    const pending = plugin.policyPending();
+    if (!plugin.store.policy && !pending) return;
+    const card = el.createDiv({ cls: `gz-card gz-map-policy${pending ? " is-pending" : ""}` });
+    const blocked = map.apps.filter((a) => a.state === "blocked").length;
+    card.createSpan({
+      text: pending
+        ? "Gizmo policy.md has changes that aren't applied yet; apps follow the policy as it was."
+        : `Your data policy is applied: ${blocked ? `${blocked} ${blocked === 1 ? "app is" : "apps are"} blocked by it` : "every app fits it"}.`,
+    });
+    card.createEl("button", { text: pending ? "Review and apply" : "Review" }).addEventListener("click", () => new PolicyModal(plugin).open());
   }
 
   /** Capture links' keys, each with the names it runs without asking, and Revoke. */
@@ -179,6 +196,14 @@ export class MapView extends ItemView {
       });
     }
     if (a.description) card.createDiv({ cls: "gz-muted gz-map-desc", text: a.description });
+    if (a.policy?.violations.length) {
+      const blocked = card.createDiv({ cls: "gz-map-blocked" });
+      blocked.createDiv({ cls: "gz-label", text: "Breaks your policy" });
+      const ul = blocked.createEl("ul");
+      for (const v of a.policy.violations) ul.createEl("li", { text: v });
+    } else if (a.policy) {
+      card.createDiv({ cls: "gz-muted gz-map-fits", text: "Fits your policy" });
+    }
     this.drawAsks(card, a.asks);
 
     const acts = card.createDiv({ cls: "gz-map-acts" });
@@ -226,6 +251,7 @@ export class MapView extends ItemView {
       for (const ask of mine) {
         const li = ul.createEl("li");
         if (ask.isNew) li.createSpan({ cls: "gz-new", text: "New" });
+        if (ask.covered) li.createSpan({ cls: "gz-covered-tag", text: "Policy", attr: { title: "Your data policy grants this without asking" } });
         li.createSpan({ text: ask.text + (ask.by.length ? ` — for ${ask.by.map((p) => `[[${basename(p)}]]`).join(", ")}` : "") });
       }
     }

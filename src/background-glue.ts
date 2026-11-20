@@ -33,7 +33,8 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     frontmatter,
     notes: vaultNotes(app),
     appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
-    isGranted: (path, wanted) => plugin.isGranted(path, wanted, true),
+    isGranted: (path, wanted, asked) => plugin.isGranted(path, wanted, true, asked),
+    policy: () => plugin.store.policy,
     storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
     actionDeps(appPath, dataPath, actor) {
       const env = envFor(appPath);

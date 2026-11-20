@@ -11,6 +11,18 @@ export function isAllowed(grants: Record<string, string[]>, key: string, wanted:
   return Array.isArray(entry) && entry.length === wanted.length && entry.every((p, i) => p === wanted[i]);
 }
 
+/**
+ * Whether an app is allowed under a data policy: everything the policy doesn't cover (`asked`) was
+ * allowed, and nothing allowed is beyond what it wants now. A policy that comes to cover more never
+ * makes an allowed app ask again; one that covers less asks for just what it no longer covers.
+ * With `opened`, asking for nothing still needs the app to have been opened once, as `isAllowed`.
+ */
+export function isAllowedUnder(grants: Record<string, string[]>, key: string, wanted: readonly string[], asked: readonly string[], opened = false): boolean {
+  const entry = Object.hasOwn(grants, key) ? grants[key] : undefined;
+  if (asked.length === 0) return !opened || Array.isArray(entry);
+  return Array.isArray(entry) && asked.every((p) => entry.includes(p)) && entry.every((p) => wanted.includes(p));
+}
+
 /** The keys that belong to a note: its own (an app's) and its embeds' or shortcuts' (`<path>#…`). */
 function keysOf<T>(byKey: Record<string, T>, path: string): string[] {
   return Object.keys(byKey).filter((k) => k === path || k.startsWith(`${path}#`));

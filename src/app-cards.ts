@@ -18,7 +18,8 @@ export interface CardApp {
   load(): void;
 }
 
-export function renderPermissionPrompt(header: HTMLElement, wanted: string[], askers: Map<string, Set<string>>, app: CardApp): void {
+/** `covered`: how many more of its permissions the data policy grants, so they aren't asked for. */
+export function renderPermissionPrompt(header: HTMLElement, wanted: string[], askers: Map<string, Set<string>>, app: CardApp, covered = 0): void {
   const card = header.createDiv({ cls: "gz-card" });
   card.createDiv({ cls: "gz-title", text: "This app needs your OK to:" });
   const ul = card.createEl("ul");
@@ -31,6 +32,7 @@ export function renderPermissionPrompt(header: HTMLElement, wanted: string[], as
     const names = [...(others.length && who.includes(app.appPath) ? ["this note"] : []), ...others];
     li.createSpan({ text: describePermission(p) + (others.length ? ` — for ${names.join(", ")}` : "") });
   }
+  if (covered) card.createDiv({ cls: "gz-label gz-covered", text: `Your data policy covers ${covered} more.` });
   if (app.scope) card.createDiv({ cls: "gz-label gz-scope", text: `It shows on every note in ${app.scope}; this OK covers all of them.` });
   const row = card.createDiv({ cls: "gz-actions" });
   row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
@@ -41,6 +43,22 @@ export function renderPermissionPrompt(header: HTMLElement, wanted: string[], as
   if (!app.hosted && app.env.tryFirst) row.createEl("button", { text: "Try it first" }).addEventListener("click", () => app.env.tryFirst?.());
   // An embed's keys are in the note it is drawn in, and a lens's in its component.
   if (!app.hosted) row.createEl("button", { text: "Edit source" }).addEventListener("click", () => app.env.showSource());
+}
+
+/** An app whose data would go somewhere the data policy keeps it from: it runs nothing, and says each flow. */
+export function renderBlocked(header: HTMLElement, violations: string[], pending: boolean, app: CardApp): void {
+  const card = header.createDiv({ cls: "gz-card gz-error gz-blocked" });
+  card.createDiv({ cls: "gz-title", text: "Blocked by your data policy" });
+  card.createDiv({ cls: "gz-muted", text: "It runs nothing while it would send data where your policy keeps it from going:" });
+  const ul = card.createEl("ul");
+  for (const v of violations) ul.createEl("li", { text: v });
+  card.createDiv({
+    cls: "gz-muted",
+    text: pending
+      ? "Gizmo policy.md has changes not applied yet; review and apply them from the automation map."
+      : "Change the app, or change Gizmo policy.md and apply it from the automation map.",
+  });
+  if (!app.hosted) card.createDiv({ cls: "gz-actions" }).createEl("button", { text: "Edit source" }).addEventListener("click", () => app.env.showSource());
 }
 
 /** In an embed of an app that isn't allowed yet: the app asks for itself when it is opened. */

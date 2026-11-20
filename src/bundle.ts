@@ -1,7 +1,8 @@
+import { violationText, type Verdict } from "./flows.ts";
 import type { NoteReader } from "./expand.ts";
 import { planCopy, type Plan } from "./gallery.ts";
 import { isApp, isComponent, storeTarget } from "./store.ts";
-import { readComponentPreview, readSpec } from "./spec.ts";
+import { readComponentPreview, readSpec, type AppSpec } from "./spec.ts";
 import { describePermission, permissionsOf } from "./permissions.ts";
 
 /**
@@ -108,6 +109,8 @@ export interface InstallTarget {
   existing(name: string): string[];
   notes: NoteReader;
   parse(yaml: string): unknown;
+  /** What the applied data policy says of the app at `path`; undefined with no policy. */
+  judge?(spec: AppSpec, path: string): Verdict | undefined;
 }
 
 /** What installing shared notes would do, for a person to read before saying yes. */
@@ -122,6 +125,8 @@ export interface InstallPreview {
   asks: string[];
   /** Notes in it that do something on their own: other apps, and lenses that show on notes. */
   extras: string[];
+  /** Checked against the data policy: the flows that would block it, and what the policy grants it without asking. */
+  policy?: { violations: string[]; covered: string[] };
 }
 
 /**
@@ -146,7 +151,8 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
   const component = fm.app === undefined;
   const preview = component ? readComponentPreview(fm, { path: self, notes: reader }) : undefined;
   const result = preview?.result ?? readSpec(fm, { path: self, notes: reader }) ?? { errors: [], empty: true };
-  const asks = result.spec ? permissionsOf(result.spec, self).map(describePermission) : [];
+  const verdict = result.spec && !component ? target.judge?.(result.spec, self) : undefined;
+  const asks = result.spec ? (verdict?.asked ?? permissionsOf(result.spec, self)).map(describePermission) : [];
   const extras = notes.slice(1).flatMap((n) => {
     const other = fms.get(pathOf(n.name));
     if (isApp(other)) return [`${n.name} is an app of its own`];
@@ -166,6 +172,7 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
     errors: result.errors,
     asks,
     extras,
+    ...(verdict && { policy: { violations: verdict.violations.map(violationText), covered: verdict.covered.map(describePermission) } }),
   };
 }
 

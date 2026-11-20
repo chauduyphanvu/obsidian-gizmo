@@ -1,3 +1,4 @@
+import { POLICY_PATH } from "./policy.ts";
 import { basename, storeTarget } from "./store.ts";
 
 /** A note of the gallery: its path under gallery/ (`Apps/Budget.md`) and its text exactly as written. */
@@ -85,6 +86,9 @@ export function componentsNeeded(app: GalleryNote, notes: GalleryNote[]): Galler
  */
 export function planCopy(app: GalleryNote, components: GalleryNote[], existing: Record<string, string[]>): Plan {
   const appName = basename(app.path);
+  // Installed where new notes go, which may be the vault's root: a shared note never becomes the policy.
+  const policy = [app, ...components].find((n) => basename(n.path).toLowerCase() === basename(POLICY_PATH).toLowerCase());
+  if (policy) return { refusal: `“${basename(policy.path)}” is the name of your data policy's note, which a copied note can't take` };
   if (existing[appName]?.length) return { refusal: `“${appName}” already exists` };
   const create: GalleryNote[] = [];
   const reuse: string[] = [];

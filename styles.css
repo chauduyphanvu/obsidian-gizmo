@@ -484,6 +484,20 @@ button.gz-lens-toggle {
 .gizmo .gz-map-state { font-size: var(--font-ui-smaller); padding: 0 6px; border-radius: var(--radius-s); background: var(--background-modifier-hover); color: var(--text-muted); white-space: nowrap; }
 .gizmo .gz-map-state.is-allowed { color: var(--text-success); }
 .gizmo .gz-map-state.is-asks-again { color: var(--text-warning); }
+.gizmo .gz-map-state.is-blocked { color: var(--text-error); }
+.gizmo .gz-map-policy { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); }
+.gizmo .gz-map-policy.is-pending { border-color: var(--text-warning); }
+.gizmo .gz-map-blocked .gz-label { color: var(--text-error); }
+.gizmo .gz-map-fits { color: var(--text-success); }
+.gizmo .gz-covered-tag {
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-s);
+  padding: 0 6px;
+  margin-right: 6px;
+}
+.gz-policy .gz-card { margin-bottom: var(--size-4-2); }
 .gizmo .gz-map-desc { margin-top: var(--size-4-1); }
 .gizmo .gz-map-groups { display: grid; grid-template-columns: repeat(auto-fill, minmax(18em, 1fr)); gap: var(--size-4-2) var(--size-4-4); margin-top: var(--size-4-2); }
 .gizmo .gz-map-app ul, .gizmo .gz-map-writers ul { margin: var(--size-4-1) 0 0; padding-left: 1.2em; }
