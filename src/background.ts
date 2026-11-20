@@ -186,6 +186,8 @@ interface RecordJob {
 
 /** What the background knows about one app note. */
 interface AppEntry {
+  /** Its rhythms' deadlines are being decided. */
+  deciding?: boolean;
   path: string;
   /** The note's name, as commands and notices call the app. */
   name: string;
@@ -366,7 +368,17 @@ export class Background {
   private async rhythms(entry: AppEntry): Promise<void> {
     if (!this.env.runsBackground()) return;
     const rules = entry.spec.expect.filter((r): r is Rhythm => r.kind === "rhythm");
-    if (!rules.length) return;
+    // A tick that comes while the last is still deciding leaves it to that one.
+    if (!rules.length || entry.deciding) return;
+    entry.deciding = true;
+    try {
+      await this.decide(entry, rules);
+    } finally {
+      entry.deciding = false;
+    }
+  }
+
+  private async decide(entry: AppEntry, rules: Rhythm[]): Promise<void> {
     const fired = await this.firedState();
     const now = this.env.now();
     for (const rule of rules) {
@@ -1089,7 +1101,9 @@ export class Background {
     this.apps.delete(path);
     const entry = spec && this.entry(path, spec, definition);
     // A panel that is still there keeps its alert's state, so editing the app doesn't tell it again.
-    this.forget(path, new Set(entry?.watched.map((w) => w.key)));
+    // A rule still there keeps where its rhythm got to, so editing the app doesn't skip a deadline.
+    const rhythms = entry?.spec.expect.filter((r) => r.kind === "rhythm").map((r) => `${path}\nexpect:${r.id}`) ?? [];
+    this.forget(path, new Set([...(entry?.watched.map((w) => w.key) ?? []), ...rhythms]));
     for (const cb of [...this.indexListeners]) cb();
     if (!this.running) return entry;
     this.publishCommands();

@@ -217,12 +217,15 @@ function compileCondition(cond: string | number | boolean, now: Date): Test {
     };
   }
   const range = cond.match(/^\s*between\s+(.+?)\s+and\s+(.+?)\s*$/i);
-  if (range) {
-    const [lo, hi] = [range[1], range[2]].map((x) => toNumber(x) ?? toTime(x));
-    if (lo === undefined || hi === undefined) return () => false;
+  const [lo, hi] = range ? [range[1], range[2]].map((x) => toNumber(x) ?? toTime(x)) : [];
+  // Ends that aren't numbers or dates ("between friends and family") leave the text to match as it is.
+  if (range && lo !== undefined && hi !== undefined) {
+    // A last day given as a date takes in the whole day, as date windows do.
+    const dayOnly = /^\d{4}-\d{2}-\d{2}$/.test(range[2].trim());
+    const end = dayOnly ? new Date(new Date(hi).getFullYear(), new Date(hi).getMonth(), new Date(hi).getDate() + 1).getTime() : hi;
     return (v) => {
       const a = toNumber(v) ?? toTime(v);
-      return a !== undefined && a >= lo && a <= hi;
+      return a !== undefined && a >= lo && (dayOnly ? a < end : a <= end);
     };
   }
   const m = cond.match(/^\s*(>=|<=|!=|>|<)\s*(.+)$/);

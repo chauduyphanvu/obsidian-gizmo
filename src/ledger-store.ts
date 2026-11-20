@@ -1,5 +1,6 @@
 import { fnv1a, stableJson } from "./hash.ts";
 import { DEFINITION_KEYS } from "./store.ts";
+import { areRules } from "./expect.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import type { Row } from "./data.ts";
 import {
@@ -30,6 +31,7 @@ export const PAST = "This is the app as it was; nothing can be changed here";
 const CONFLICTS_KEY = "gizmo-conflicts";
 /** Rows deleted (or added by an undone add), kept with the snapshot so a late copy of their add stays out after it. */
 const GONE_KEY = "gizmo-gone";
+const MAX_GONE = 1000;
 /** The snapshot's own keys, and Obsidian's lists of properties, which are no app's data. */
 const META_KEYS = [SNAPSHOT_KEY, IDS_KEY, HASH_KEY, CONFLICTS_KEY, GONE_KEY, "tags", "aliases", "cssclasses"];
 
@@ -460,7 +462,8 @@ export class Ledger {
         }
       }
       note[IDS_KEY] = Object.fromEntries([...state.lists].filter(([name]) => kept.has(name)).map(([name, l]) => [name, l.rows.map((r) => rowIdOf(r)!)]));
-      const gone = Object.fromEntries([...state.lists.keys()].filter((name) => kept.has(name)).map((name) => [name, n.folder!.goneIn(name)]).filter(([, ids]) => ids.length));
+      // The newest of them: a late copy of an add comes within days, not after a thousand deletes.
+      const gone = Object.fromEntries([...state.lists.keys()].filter((name) => kept.has(name)).map((name) => [name, n.folder!.goneIn(name).slice(-MAX_GONE)]).filter(([, ids]) => ids.length));
       if (Object.keys(gone).length) note[GONE_KEY] = gone;
       else delete note[GONE_KEY];
       const open = [...state.lists].filter(([name, l]) => kept.has(name) && l.conflicts.length);
@@ -544,7 +547,7 @@ function withDevices(base: FoldBase, devices: Record<string, unknown>[]): FoldBa
 
 /** A base with the app note's own lists for those it lacks: lists typed there, not the keys that define the app. */
 function withApp(base: FoldBase, appFm: Record<string, unknown>): FoldBase {
-  const app = listsOf(Object.fromEntries(Object.entries(appFm).filter(([k]) => !DEFINITION_KEYS.includes(k))));
+  const app = listsOf(Object.fromEntries(Object.entries(appFm).filter(([k, v]) => !DEFINITION_KEYS.includes(k) && !(k === "expect" && areRules(v)))));
   const lists = { ...app.lists, ...base.lists };
   const ticked = { ...app.ticked, ...base.ticked };
   return { lists, ticked };

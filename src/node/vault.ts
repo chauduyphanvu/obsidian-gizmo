@@ -214,9 +214,12 @@ export class NodeVault {
   private async changed(path: string): Promise<void> {
     const stat = await fs.stat(this.abs(path)).catch(() => undefined);
     if (stat?.isDirectory()) {
+      // What was there and still is changes on its own events; only what came or went is read here.
       for (const p of [...this.files.keys()]) if (p.startsWith(`${path}/`) && !existsSync(this.abs(p))) await this.changed(p);
       for (const e of await fs.readdir(this.abs(path), { withFileTypes: true }).catch(() => [])) {
-        if (!e.name.startsWith(".")) await this.changed(`${path}/${e.name}`);
+        const child = `${path}/${e.name}`;
+        if (e.name.startsWith(".") || !this.ours(child)) continue;
+        if (e.isDirectory() || !this.files.has(child)) await this.changed(child);
       }
       return;
     }

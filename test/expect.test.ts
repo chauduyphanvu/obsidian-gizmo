@@ -4,7 +4,7 @@ import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { EXPECT_MISSED } from "../src/background.ts";
-import { matches } from "../src/data.ts";
+import { matches, rowsOf, type Row } from "../src/data.ts";
 import { expectRows, metIn, readBy, readExpect, refusal, windowAt, windowsDue, type Rhythm } from "../src/expect.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
@@ -95,6 +95,8 @@ test("a value rule says what's wrong with a row; between A and B works in where 
   assert.equal(refusal(rules, "other", { weight: 812 }, now), undefined, "only its own list");
   assert.equal(matches("2026-11-20", "between 2026-11-01 and 2026-11-30", now), true);
   assert.equal(matches(31, "between 1 and 30", now), false);
+  assert.equal(matches("2026-11-30T18:00", "between 2026-11-01 and 2026-11-30", now), true, "the last day is a whole day");
+  assert.equal(matches("between friends and family", "between friends and family", now), true, "ends that aren't numbers or dates are text");
 });
 
 test("expect runs as hidden panels: their thens are asked for, a state rule's alert is checked, and an app's own expect field stays data", () => {
@@ -110,6 +112,16 @@ test("expect runs as hidden panels: their thens are asked for, a state rule's al
   const read = readSpec(journal, { path: "Apps/Decision journal.md" })!;
   assert.deepEqual([read.errors, read.spec!.expect], [[], []]);
   assert.deepEqual(readSpec({ app: "x", view: "table", source: "s", expect: "high" }, { path: "x.md" })!.spec!.expect, [], "not a list: data");
+  const older = readSpec({ app: "x", view: "table", source: "expect", expect: [{ task: "dentist" }] }, { path: "x.md" })!;
+  assert.deepEqual([older.errors, older.spec!.expect], [[], []], "a list of rows called expect: data");
+});
+
+test("an older app's list called expect is still its data, and source: expect reads it; rules are never read as rows", async () => {
+  const e = fakeEnv({ "Apps/Old.md": { fm: { app: "Old", view: "table", source: "expect", expect: [{ task: "dentist" }] } }, "Apps/Meds.md": { fm: MEDS } });
+  const files = (name: string) => ({ appPath: `Apps/${name}.md`, dataPath: `Apps/${name} data.md` });
+  const read = (name: string) => e.env.data.rawData("expect", { view: "table", source: "expect" }, files(name), { ttlMs: 0, now: new Date(at(2026, 11, 18, 12)) });
+  assert.deepEqual(rowsOf(await read("Old")).map((r) => (r as Row).task), ["dentist"]);
+  assert.deepEqual(await e.env.store!("Apps/Meds data.md", "Apps/Meds.md").rows("expect"), []);
 });
 
 const MEDS = {
@@ -141,6 +153,20 @@ test("a rhythm missed is decided once at its deadline: kept, told and its then r
   await t.bg.tick();
   await settle();
   assert.equal((t.notices as string[]).filter((n) => n.startsWith("Meds")).length, 1);
+});
+
+test("editing the app before a deadline is decided doesn't skip it; two ticks at once tell a miss once", async () => {
+  const t = fakeBackground(notes());
+  await t.bg.start();
+  await settle();
+  // Thursday 10:00:20: the deadline passed, not yet decided, and the app is edited.
+  t.advance(22 * HOUR + 20_000);
+  t.f.files.get("Apps/Meds.md")!.fm = { ...MEDS, expect: [{ ...MEDS.expect[0], say: "no dose by ten" }] };
+  t.changed("Apps/Meds.md");
+  await settle();
+  await Promise.all([t.bg.tick(), t.bg.tick()]);
+  await settle();
+  assert.deepEqual((t.notices as string[]).filter((n) => n.startsWith("Meds")), ["Meds: no dose by ten"]);
 });
 
 test("after days with nothing running, each missed window is told once, judged on its own rows; a late row in one doesn't meet the next", async () => {
@@ -222,6 +248,17 @@ test("a value rule refuses a row from every way in: a form keeps what was typed,
   assert.deepEqual([ran.ok, t.notices.at(-1)], [false, "Not saved: weight 900 isn't between 30 and 250"]);
   const preview = await t.bg.previewLine("weigh 900");
   assert.ok(preview.effects?.some((l) => l.includes("weight 900 isn't between 30 and 250")), JSON.stringify(preview.effects));
+  assert.deepEqual(await t.env.store!("Apps/Weight data.md", "Apps/Weight.md").rows("weight"), []);
+});
+
+test("a refused row writes nothing at all: the line a form appends isn't added either", async () => {
+  const LOG = { app: "Weight", panels: [{ view: "form", title: "Log", fields: { weight: "number" }, save: "weight", append: "[[Journal]]", line: "weighed {weight}", shortcut: "log" }], expect: [{ source: "weight", check: { weight: "between 30 and 250" } }] };
+  const t = fakeBackground({ "Apps/Weight.md": { fm: LOG }, "Journal.md": { fm: {}, body: "" } });
+  await t.bg.start();
+  const ran = await t.bg.capture("log 500");
+  assert.equal(ran.ok, false);
+  await settle();
+  assert.equal(t.f.files.get("Journal.md")!.body ?? "", "");
   assert.deepEqual(await t.env.store!("Apps/Weight data.md", "Apps/Weight.md").rows("weight"), []);
 });
 

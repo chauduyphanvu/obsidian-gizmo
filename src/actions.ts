@@ -221,6 +221,14 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     logged = deps.log?.(p.title ?? p.label ?? p.view, changes) ?? undefined;
   };
   try {
+    // A row its rules refuse is refused before anything is written, the line it appends included.
+    if (target?.kind === "list") {
+      const refused = refusal(deps.expect ?? [], target.name, saved, deps.now());
+      if (refused) {
+        deps.notify(`Not saved: ${refused}`);
+        return { ok: false, error: refused };
+      }
+    }
     if (p.append) {
       // The row's values are added after filling, so they are never read as placeholders themselves.
       const fields = Object.entries(row).map(([k, v]) => `${k}: ${oneLine(String(v))}`).join(", ");
@@ -230,11 +238,6 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
-      const refused = refusal(deps.expect ?? [], target.name, saved, deps.now());
-      if (refused) {
-        deps.notify(`Not saved: ${refused}`);
-        return { ok: false, error: refused };
-      }
       const { event, already } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
       // Another runner already saved this very row: nothing was written here.
       if (!already) changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });

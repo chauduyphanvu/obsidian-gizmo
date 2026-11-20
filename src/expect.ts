@@ -64,6 +64,14 @@ export function readBy(text: string, every: Every): { day: number; minutes: numb
   return Number.isInteger(day) && day >= 1 && day <= 31 ? { day: day - 1, minutes } : `by's day must be 1 to 31, e.g. ${example}`;
 }
 
+/**
+ * Whether `expect:` holds rules: a list with an item that says every, check or none. Anything else
+ * (an older app's list of rows called expect) stays data.
+ */
+export function areRules(v: unknown): boolean {
+  return Array.isArray(v) && v.some((r) => isMap(r) && ("every" in r || "check" in r || "none" in r));
+}
+
 /** The rules under `expect:`, checked; each problem goes in `errors` as `expect <n>: …`. */
 export function readExpect(raw: unknown, errors: string[]): Expectation[] {
   if (raw === undefined) return [];

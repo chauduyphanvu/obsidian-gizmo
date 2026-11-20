@@ -149,7 +149,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   const sourceLabels = (p: Panel): Labels => {
     if (!p.source) return { base: "public", fields: {} };
     switch (sourceDef(p.source).id) {
-      case "list": return dataLabels;
+      case "list": case "expect": return dataLabels;
       case "notes": case "tasks": return p.from ? scopeLabels(policy, p.from) : vaultLabels(policy);
       case "base": return vaultLabels(policy);
       case "file": return noteLabels(policy, filePath(p.source), ctx.tags(filePath(p.source)));
@@ -363,7 +363,7 @@ function filePath(source: string): string {
 function sourceName(p: Panel, ctx: FlowContext): string {
   if (!p.source) return p.view === "form" ? "what you type" : "the panel";
   switch (sourceDef(p.source).id) {
-    case "list": return basename(ctx.dataPath);
+    case "list": case "expect": return basename(ctx.dataPath);
     case "notes": case "tasks": return p.from ? `notes in ${p.from}` : "notes anywhere";
     case "base": return "a base";
     case "file": return basename(filePath(p.source));

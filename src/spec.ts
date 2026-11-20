@@ -1,4 +1,4 @@
-import { readExpect, type Expectation } from "./expect.ts";
+import { readExpect, type Expectation, areRules } from "./expect.ts";
 import { POLICY_PATH, isPolicyPath } from "./policy.ts";
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
@@ -688,7 +688,7 @@ export function readSpec(
     else errors.push("devices must be split, e.g. devices: split");
   }
   // Only a list is the setting: an app that saves a field called expect into its own note keeps it as data.
-  const expect = Array.isArray(fm.expect) ? readExpect(fm.expect, errors) : [];
+  const expect = areRules(fm.expect) ? readExpect(fm.expect, errors) : [];
   const expected: Record<string, PanelSpec> = {};
   for (const rule of expect) {
     if (rule.kind === "value") continue;
