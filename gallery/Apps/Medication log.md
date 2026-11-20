@@ -21,6 +21,14 @@ panels:
     per: day
     agg: streak
     unit: days
+  - view: number
+    title: Days on time
+    source: expect
+    where: {rule: morning-dose, met: true}
+    group: at
+    per: day
+    agg: streak
+    unit: days
   - view: calendar
     title: My year
     source: doses
@@ -34,6 +42,12 @@ panels:
     sort: at
     item: "{at}"
     format: {at: time}
+expect:
+  - id: morning-dose
+    every: day
+    by: "10:00"
+    source: doses
+    say: no dose logged by 10:00
 ---
 Press the button each time you take a dose: today's count sits in the status bar, and a hotkey or
 the link "Copy link to an app shortcut" gives for Took meds logs one with the app closed (a link
@@ -41,3 +55,6 @@ without the key a copied one carries asks first). The link for Doses today answe
 with today's count instead, so a phone shortcut (Shortcuts' Open X-Callback URL) can ask how many
 doses you've had without opening Obsidian; the first time, it asks which app the answer may go to.
 That is all it asks for: everything is saved in the note Medication log data next to it.
+
+`expect` says a dose is due by 10:00 each day: if none is logged by then, it tells you (on your phone
+too, when gizmod runs), and Days on time counts the days in a row you made it.

@@ -196,10 +196,11 @@ test("Medication log: a dose from the button, a hotkey or a link; the count, str
 
   const root = await t.open(path);
   assert.equal(root.querySelector(".gz-error"), null);
-  const [, today, streak, year, day] = panels(root);
+  const [, today, streak, onTime, year, day] = panels(root);
   const square = (date: string) => root.querySelector(`rect[data-date="${date}"]`)!;
   assert.equal(text(today.querySelector(".gz-big")), "0");
   assert.equal(text(streak.querySelector(".gz-big")), "2days");
+  assert.match(text(onTime.querySelector(".gz-big")), /^\d+days$/);
   assert.equal(text(day.querySelector(".gz-waiting")), "Pick a row in “My year”");
 
   click(root.querySelector("button.gz-button")!);
