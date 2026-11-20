@@ -2,7 +2,7 @@ import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
-import { MAX_SAMPLES } from "../src/background.ts";
+import { MAX_SAMPLES } from "../src/background-record.ts";
 import { NOTE_ROWS } from "../src/ledger-store.ts";
 import { readSpec } from "../src/spec.ts";
 import { askersOf, permissionsOf } from "../src/permissions.ts";

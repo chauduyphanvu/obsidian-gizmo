@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { EXPECT_MISSED } from "../src/background.ts";
+import { EXPECT_MISSED } from "../src/background-rhythms.ts";
 import { compileWhere, formatValue, sortRows } from "../src/data.ts";
 import { readBeat, whereYouAre, type Beat } from "../src/device.ts";
 import { readExpect, windowAt, type Rhythm } from "../src/expect.ts";

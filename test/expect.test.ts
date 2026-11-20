@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
-import { EXPECT_MISSED } from "../src/background.ts";
+import { EXPECT_MISSED } from "../src/background-rhythms.ts";
 import { matches, rowsOf, type Row } from "../src/data.ts";
 import { expectRows, metIn, readBy, readExpect, refusal, windowAt, windowsDue, type Rhythm } from "../src/expect.ts";
 import { permissionsOf } from "../src/permissions.ts";

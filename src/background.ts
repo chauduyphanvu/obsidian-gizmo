@@ -1,19 +1,20 @@
-import { metIn, refusal, windowDay, windowsDue, type Rhythm, type Window } from "./expect.ts";
 import { panelKey, violationText } from "./flows.ts";
 import { rowId as ledgerRowId } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
-import { fillLine, runActions, storeOf, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
+import { fillLine, runActions, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activity.ts";
 import { captureTargets, parseLine, type CaptureIndex, type Parsed } from "./capture.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
-import { compileWhere, matches, parseDuration, rowsOf, type Row } from "./data.ts";
-import { stampOf, toTime } from "./time.ts";
+import { compileWhere, matches, rowsOf, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { fileDep, nameDep } from "./deps.ts";
 import { FiredStore, pausedKey } from "./background-fired.ts";
+import { MAX_SAMPLES, Recorder, recordJobs, type RecordJob } from "./background-record.ts";
+import { RenameMatcher } from "./background-renames.ts";
+import { Rhythms } from "./background-rhythms.ts";
 import { stableJson } from "./hash.ts";
-import { PENDING_MS, RENAME_MS, fingerprint } from "./identity.ts";
+import { PENDING_MS, fingerprint } from "./identity.ts";
 import type { NoteReader } from "./expand.ts";
 import {
   answerParams, appOfShortcut, appsNamed, captureCovers, formRow, pickItem, readCallbacks, readLink, shortcutId, shortcutLink, withParams,
@@ -27,7 +28,7 @@ import type { AppSummary } from "./map.ts";
 import { askersOf, describePermission, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
 import { clearance, rank, released, type AppliedPolicy, type Label, type Policy } from "./policy.ts";
-import { basename, dataPathOf, devicesFolder, notePath, resolveList, storeTarget } from "./store.ts";
+import { basename, dataPathOf, devicesFolder, notePath, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
@@ -36,10 +37,6 @@ import { panelValue } from "./views/value.ts";
 /** The plugin's one timer ticks this often; an app without `refresh` is checked this often. */
 export const TICK_MS = 60_000;
 export const DEFAULT_REFRESH_MS = 10 * 60_000;
-/** The shortest `record` interval; shorter ones are treated as this. */
-export const MIN_RECORD_MS = 60_000;
-/** Where a rhythm's misses are kept, in the app's data note. */
-export const EXPECT_MISSED = "expect_missed";
 
 /**
  * How long an app is paused before it is told: two beats, so a component edit that syncs here before
@@ -47,9 +44,6 @@ export const EXPECT_MISSED = "expect_missed";
  */
 export const PAUSE_TELL_MS = 10 * 60_000;
 
-/** A recorded list keeps this many rows, the newest. */
-/** A week of samples at the shortest interval, so a late copy of a sample can't fall past the cap. */
-export const MAX_SAMPLES = 10_080;
 /** How many shortcuts one action may run through `then`, one app after another. */
 export const MAX_CHAIN = 4;
 /** How many times one `then` may run in an hour; more is a loop going through data. */
@@ -199,24 +193,14 @@ function answers(p: Panel): boolean {
   return p.view === "number" || p.view === "progress";
 }
 
-/** A rhythm missed while nothing ran (Obsidian closed, no gizmod): told for at most this many of its latest windows. */
-const MAX_CATCH_UP = 3;
-
 /**
  * A panel worked out without drawing it: its value, that value as its view shows it (`shown`, unit
  * included) and its rows, or why not. A compare panel's value and rows are its current window's.
  */
 export type Evaluation = { value: unknown; shown: string; rows: unknown; panel: Panel } | { waiting: string } | { error: string };
 
-/** A block whose output is appended to a list in the app's data note on an interval. */
-interface RecordJob {
-  block: string;
-  list: string;
-  everyMs: number;
-}
-
 /** What the background knows about one app note. */
-interface AppEntry {
+export interface AppEntry {
   /** Its rhythms' deadlines are being decided. */
   deciding?: boolean;
   path: string;
@@ -263,10 +247,9 @@ export class Background {
   private env: BackgroundEnv;
   private apps = new Map<string, AppEntry>();
   private running = false;
-  /** Blocks being sampled now (app path and block), so a tick and an open don't both write one. */
-  private sampling = new Set<string>();
-  /** Problems already told this session. */
-  private told = new Set<string>();
+  private recorder: Recorder;
+  private rhythms: Rhythms;
+  private renames = new RenameMatcher();
   /** The command list last published, as JSON. */
   private commands = "";
   /** Status bar items and alerts true now, by watched panel key; the status list last published. */
@@ -287,9 +270,6 @@ export class Background {
   private asking = false;
   /** Apps paused here, by path; the list last published. */
   private pausedNow = new Map<string, PausedApp>();
-  /** App notes deleted lately, and app notes made lately, by path: a pair of the same keys is a rename another device made. */
-  private gone = new Map<string, { fingerprint: string; at: number }>();
-  private appeared = new Map<string, { fingerprint: string; at: number }>();
   private pausedShown = "[]";
 
   /** Alerts true now across the vault, for `view: alerts`. */
@@ -304,6 +284,9 @@ export class Background {
   constructor(env: BackgroundEnv) {
     this.env = env;
     this.fired = new FiredStore(env);
+    this.recorder = new Recorder(env, (appPath, ps, force) => this.evaluate(appPath, ps, force), (message) => this.say(message));
+    this.rhythms = new Rhythms(env, this.fired, (appPath, ps, force) => this.evaluate(appPath, ps, force),
+      (fromPath, then, ctx, chain, dry, seed) => this.runThen(fromPath, then, ctx, chain, dry, seed), (message) => this.say(message));
   }
 
   /** Reads every app note once (after the layout is ready) and does what is due. */
@@ -389,83 +372,16 @@ export class Background {
   opened(appPath: string): void {
     const entry = this.running ? this.apps.get(appPath) ?? this.index(appPath) : undefined;
     if (!entry || !this.granted(entry)) return;
-    for (const job of entry.records) void this.sample(entry, job, true).catch(() => {});
+    for (const job of entry.records) void this.recorder.sample(entry, job, true).catch(() => {});
     if (entry.checkedAt === undefined) void this.check(entry);
   }
 
   private async work(entry: AppEntry): Promise<void> {
     if (!this.granted(entry)) return this.pauseOrForget(entry);
     await this.resume(entry);
-    for (const job of entry.records) await this.sample(entry, job, false).catch(() => {});
+    for (const job of entry.records) await this.recorder.sample(entry, job, false).catch(() => {});
     if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.check(entry);
-    await this.rhythms(entry).catch(() => {});
-  }
-
-  // ---- Expect -------------------------------------------------------------------------------
-
-  /**
-   * Decides each rhythm's deadlines that passed since it last decided, once: a window with no row
-   * by its deadline is a miss, kept in the data note's `expect_missed` under an id made from the
-   * rule and window (so two runners keep it once and only the first tells it), told, and its then
-   * run. A rule seen for the first time starts from now; one that can't be read now waits a tick.
-   */
-  private async rhythms(entry: AppEntry): Promise<void> {
-    if (!this.env.runsBackground()) {
-      entry.pausedSince = undefined;
-      return;
-    }
-    const rules = entry.spec.expect.filter((r): r is Rhythm => r.kind === "rhythm");
-    // A tick that comes while the last is still deciding leaves it to that one.
-    if (!rules.length || entry.deciding) return;
-    entry.deciding = true;
-    try {
-      await this.decide(entry, rules);
-    } finally {
-      entry.deciding = false;
-    }
-  }
-
-  private async decide(entry: AppEntry, rules: Rhythm[]): Promise<void> {
-    const fired = await this.fired.state();
-    const now = this.env.now();
-    const zone = this.env.zone?.();
-    for (const rule of rules) {
-      const key = `${entry.path}\nexpect:${rule.id}`;
-      const before = fired[key];
-      if (!before || !("decided" in before)) {
-        fired[key] = { decided: now.getTime() };
-        this.fired.save();
-        continue;
-      }
-      const due = windowsDue(rule, before.decided, now.getTime(), zone);
-      if (!due.length) continue;
-      const ps = entry.spec.expected[rule.id];
-      const r = ps && (await this.evaluate(entry.path, ps, true));
-      if (!r || !("panel" in r)) continue;
-      const rows = rowsOf(r.rows);
-      // Every window missed is kept; only the newest few are told, the rest were long ago.
-      const misses = due.filter((w) => !metIn(rows, rule, w, now));
-      for (const [i, w] of misses.entries()) {
-        const whilePaused = entry.pausedSince !== undefined && w.deadline >= entry.pausedSince;
-        await this.missed(entry, rule, w, zone, i >= misses.length - MAX_CATCH_UP, whilePaused);
-      }
-      fired[key] = { decided: due.at(-1)!.deadline };
-      this.fired.save();
-    }
-    entry.pausedSince = undefined;
-  }
-
-  private async missed(entry: AppEntry, rule: Rhythm, w: Window, zone: string | undefined, tell: boolean, whilePaused: boolean): Promise<void> {
-    // Named by its date where the person is, so two devices, or one that moved zone, keep it once.
-    const window = windowDay(w, zone);
-    const seed = `miss\n${entry.path}\n${rule.id}\n${window}`;
-    const deps = this.env.actionDeps(entry.path, entry.dataPath);
-    const { already } = await storeOf(deps).add(EXPECT_MISSED, { rule: rule.id, window, at: stampOf(this.env.now()) }, { id: ledgerRowId(seed) });
-    if (already || !tell) return;
-    const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}${whilePaused ? ` (${window}, missed while paused)` : ""}`;
-    this.say(text);
-    this.env.sink.alert?.({ app: entry.name, panel: rule.say ?? rule.id, text });
-    if (rule.then) await this.runThen(entry.path, rule.then, { rule: rule.id, window }, [], undefined, seed);
+    await this.rhythms.run(entry).catch(() => {});
   }
 
   private granted(entry: AppEntry): boolean {
@@ -1042,8 +958,7 @@ export class Background {
       this.apps.delete(from);
       this.hide(from);
     }
-    this.gone.delete(from);
-    this.appeared.delete(to);
+    this.renames.renamed(from, to);
     this.carry(from, to);
     if (!this.running) return;
     const entry = this.apps.get(to) ?? this.index(to);
@@ -1060,12 +975,8 @@ export class Background {
     this.apps.delete(old.path);
     this.hide(old.path);
     if (this.pausedNow.delete(old.path)) this.publishPaused();
-    const now = this.env.now().getTime();
-    const twin = this.twinOf(this.appeared, old.fingerprint, now);
-    if (twin) {
-      this.appeared.delete(twin);
-      this.carried(old.path, twin);
-    } else this.gone.set(old.path, { fingerprint: old.fingerprint, at: now });
+    const twin = this.renames.went(old.path, old.fingerprint, this.env.now().getTime());
+    if (twin) this.carried(old.path, twin);
     for (const cb of [...this.indexListeners]) cb();
     if (this.running) this.publishCommands();
     return undefined;
@@ -1075,18 +986,8 @@ export class Background {
   private arrived(entry: AppEntry): void {
     // The apps read at start-up weren't made lately.
     if (!this.running) return;
-    const now = this.env.now().getTime();
-    const twin = this.twinOf(this.gone, entry.fingerprint, now);
-    if (twin) {
-      this.gone.delete(twin);
-      this.carried(twin, entry.path);
-    } else this.appeared.set(entry.path, { fingerprint: entry.fingerprint, at: now });
-  }
-
-  /** The one note with these keys that went or came within RENAME_MS; none when there are two (two copies aren't a rename). */
-  private twinOf(notes: Map<string, { fingerprint: string; at: number }>, print: string, now: number): string | undefined {
-    const near = [...notes].filter(([, n]) => n.fingerprint === print && now - n.at <= RENAME_MS);
-    return near.length === 1 ? near[0][0] : undefined;
+    const twin = this.renames.came(entry.path, entry.fingerprint, this.env.now().getTime());
+    if (twin) this.carried(twin, entry.path);
   }
 
   /** A rename another device made, matched here: this device's own files follow. */
@@ -1110,14 +1011,10 @@ export class Background {
 
   /** Notes gone for PENDING_MS with nothing to match are gone for good; notes made long enough ago match nothing. */
   private expire(): void {
-    const now = this.env.now().getTime();
-    for (const [path, n] of this.appeared) if (now - n.at > RENAME_MS) this.appeared.delete(path);
-    for (const [path, n] of this.gone) {
-      if (now - n.at <= PENDING_MS) continue;
-      this.gone.delete(path);
+    this.renames.expire(this.env.now().getTime(), (path) => {
       this.forget(path);
       this.env.dropped?.(path);
-    }
+    });
   }
 
   // ---- Pause --------------------------------------------------------------------------------
@@ -1242,49 +1139,6 @@ export class Background {
       .flatMap((e) => e.watched.flatMap((w) => (items.has(w.key) ? [items.get(w.key)!] : [])));
   }
 
-  // ---- Record -------------------------------------------------------------------------------
-
-  /**
-   * Appends one sample of a block's output (`{at, …the row}`) to its list in the data note, unless
-   * the list's last row is younger than the interval; that row's `at` is the only state, so it
-   * holds across restarts. A failed fetch writes nothing and is tried again on the next tick.
-   */
-  private async sample(entry: AppEntry, job: RecordJob, opened: boolean): Promise<void> {
-    if (!this.env.runsBackground()) return;
-    const key = `${entry.path}\n${job.block}`;
-    if (this.sampling.has(key)) return;
-    this.sampling.add(key);
-    try {
-      const now = this.env.now();
-      // The newest sample any device took counts, whichever device took it.
-      const deps = this.env.actionDeps(entry.path, entry.dataPath);
-      const kept = this.env.data.ledger ? await storeOf(deps).rows(job.list) : resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {});
-      const last = lastSample(kept);
-      if (last !== undefined && now.getTime() - last < job.everyMs) return;
-      const r = await this.evaluate(entry.path, entry.spec.recorded[job.block], true);
-      if (!("panel" in r)) return;
-      const row = oneRow(r.rows);
-      if (!row) return this.problem(entry, `data.${job.block}: record needs one row; add limit: 1 or pick`, opened);
-      const at = stampOf(now);
-      const sample: Row = { at, ...row };
-      sample.at = at;
-      const refused = refusal(entry.spec.expect, job.list, sample, now);
-      if (refused) return this.problem(entry, `data.${job.block}: not recorded: ${refused}`, opened);
-      // One id per interval: two devices sampling the same interval keep one row.
-      await storeOf(deps).add(job.list, sample, { cap: MAX_SAMPLES, id: ledgerRowId(`sample\n${entry.path}\n${job.list}\n${Math.floor(now.getTime() / job.everyMs)}`) });
-    } finally {
-      this.sampling.delete(key);
-    }
-  }
-
-  /** A problem only data can show: told once a session, and again whenever the app is opened. */
-  private problem(entry: AppEntry, message: string, opened: boolean): void {
-    const key = `${entry.path}\n${message}`;
-    if (!opened && this.told.has(key)) return;
-    this.told.add(key);
-    this.say(`${entry.name}: ${message}`);
-  }
-
   // ---- Index --------------------------------------------------------------------------------
 
   /** Reads an app note into the index, or drops it when it's no longer an app; returns what is indexed now. */
@@ -1402,24 +1256,3 @@ function labelOf(p: Panel, fallback: string): string {
   return p.label ?? p.title ?? fallback;
 }
 
-/** When a list's last row was saved, from its `at`. */
-function lastSample(list: unknown): number | undefined {
-  const last = Array.isArray(list) ? list[list.length - 1] : undefined;
-  return last !== null && typeof last === "object" ? toTime((last as Row).at) : undefined;
-}
-
-/** A block's output as one row: an object, or a list holding exactly one. */
-function oneRow(data: unknown): Row | undefined {
-  const row = Array.isArray(data) ? (data.length === 1 ? data[0] : undefined) : data;
-  return row !== null && typeof row === "object" && !Array.isArray(row) ? { ...(row as Row) } : undefined;
-}
-
-/** The blocks an app records: root blocks with `record` on a web source that check out as a panel. */
-function recordJobs(spec: AppSpec): RecordJob[] {
-  return Object.keys(spec.recorded).flatMap((block) => {
-    const keys = spec.blocks[block];
-    const every = parseDuration(keys.record);
-    if (!every) return [];
-    return [{ block, list: typeof keys.into === "string" ? keys.into : `${block}_log`, everyMs: Math.max(MIN_RECORD_MS, every) }];
-  });
-}
