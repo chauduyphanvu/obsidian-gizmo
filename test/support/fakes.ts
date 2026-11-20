@@ -269,6 +269,8 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
   const linkKeys = new Map<string, string>();
   /** Where each shortcut's keyed link may send word back without asking. */
   const destinations = new Map<string, string[]>();
+  /** Whether this (fake) device runs background work. */
+  const device = { background: true };
   const bg = new Background({
     data: t.data,
     frontmatter: t.env.frontmatter,
@@ -299,6 +301,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
       destinations.set(id, [...(destinations.get(id) ?? []), to]);
     },
     logSent: (entry) => void t.activity.add(entry),
+    runsBackground: () => device.background,
     sink: {
       notify: t.env.notify,
       setCommands: (list) => { out.commands = list; },
@@ -322,6 +325,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     out,
     ask,
     linkKeys,
+    device,
     triggers,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },
   };

@@ -28,8 +28,32 @@ export function vaultNotes(app: App): NoteReader {
 /** A file in the plugin's folder, read and written whole; reading one that isn't there gives undefined. */
 export function pluginFile(plugin: GizmoPlugin, name: string): LogStore {
   const path = normalizePath(`${plugin.manifest.dir ?? ""}/${name}`);
+  const folder = path.slice(0, path.lastIndexOf("/"));
   const adapter = plugin.app.vault.adapter;
-  return { read: async () => ((await adapter.exists(path)) ? adapter.read(path) : undefined), write: (text: string) => adapter.write(path, text) };
+  return {
+    read: async () => ((await adapter.exists(path)) ? adapter.read(path) : undefined),
+    async write(text: string) {
+      if (folder && !(await adapter.exists(folder))) await adapter.mkdir(folder);
+      await adapter.write(path, text);
+    },
+  };
+}
+
+/** The texts of the `.json` files in a folder of the plugin's, by name without `.json`; none when there is no such folder. */
+export async function pluginFolder(plugin: GizmoPlugin, name: string): Promise<{ name: string; text: string }[]> {
+  const adapter = plugin.app.vault.adapter;
+  const folder = normalizePath(`${plugin.manifest.dir ?? ""}/${name}`);
+  if (!(await adapter.exists(folder))) return [];
+  const { files } = await adapter.list(folder);
+  const out: { name: string; text: string }[] = [];
+  for (const file of files.filter((f) => f.endsWith(".json"))) {
+    try {
+      out.push({ name: file.slice(file.lastIndexOf("/") + 1, -".json".length), text: await adapter.read(file) });
+    } catch {
+      // Gone, or being written by a sync: read next time.
+    }
+  }
+  return out;
 }
 
 /** Puts text on the clipboard, then runs `done`; says so when it can't. */

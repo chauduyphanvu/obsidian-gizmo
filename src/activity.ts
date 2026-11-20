@@ -35,6 +35,8 @@ export interface Entry {
   changes: Change[];
   /** A value it sent out of Obsidian, answering a link: where to, and the value as shown. */
   sent?: { to: string; shown: string };
+  /** On an entry another device kept: that device's name. Only the device that made a change undoes it. */
+  device?: string;
   /** How many changes, from the last, have been undone. */
   undone: number;
 }
@@ -48,6 +50,14 @@ export const MAX_PER_APP = 200;
 export interface LogStore {
   read(): Promise<string | undefined>;
   write(text: string): Promise<void>;
+}
+
+/** What other devices kept, each log's text with the name of the device that kept it. */
+export type OtherLogs = () => Promise<{ device: string; text: string }[]>;
+
+function entriesIn(text: string | undefined): Entry[] {
+  const parsed = text ? JSON.parse(text) as unknown : [];
+  return Array.isArray(parsed) ? parsed.filter((e): e is Entry => !!e && typeof e === "object" && Array.isArray((e as Entry).changes)) : [];
 }
 
 /** A short fingerprint of a note's text, to tell whether it changed after the app wrote it. */
@@ -67,23 +77,42 @@ export class ActivityLog {
   private now: () => number;
   private listeners = new Set<() => void>();
 
-  constructor(store: LogStore, now: () => number = Date.now) {
+  private others: OtherLogs;
+
+  /**
+   * `store` is this device's own log, the only one it writes; `others` are the other devices'
+   * logs, read when listing, so what every device did shows and none of them writes another's.
+   */
+  constructor(store: LogStore, now: () => number = Date.now, others: OtherLogs = async () => []) {
     this.store = store;
     this.now = now;
+    this.others = others;
   }
 
   /** Reads the kept log once; a log that can't be read starts empty. */
   load(): Promise<void> {
     this.loaded ??= (async () => {
       try {
-        const text = await this.store.read();
-        const parsed = text ? JSON.parse(text) as unknown : [];
-        if (Array.isArray(parsed)) this.entries = parsed.filter((e): e is Entry => !!e && typeof e === "object" && Array.isArray((e as Entry).changes));
+        this.entries = entriesIn(await this.store.read());
       } catch {
         this.entries = [];
       }
     })();
     return this.loaded;
+  }
+
+  /** Other devices' entries, each with its device's name; one this device also has (a log copied over) is its own. */
+  private async theirs(): Promise<Entry[]> {
+    const mine = new Set(this.entries.map((e) => e.id));
+    const out: Entry[] = [];
+    for (const { device, text } of await this.others().catch(() => [])) {
+      try {
+        for (const e of entriesIn(text)) if (!mine.has(e.id)) out.push({ ...e, device });
+      } catch {
+        // A log another device is halfway through writing is read next time.
+      }
+    }
+    return out;
   }
 
   /** Calls `cb` whenever an entry is added, undone or moved; returns how to stop. */
@@ -114,10 +143,11 @@ export class ActivityLog {
     if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(-MAX_ENTRIES);
   }
 
-  /** An app's entries (or everyone's), newest first. */
+  /** An app's entries (or everyone's), every device's, newest first. */
   async list(app?: string): Promise<Entry[]> {
     await this.load();
-    return this.entries.filter((e) => app === undefined || e.app === app).reverse();
+    const all = [...this.entries, ...(await this.theirs())].sort((a, b) => a.at - b.at);
+    return all.filter((e) => app === undefined || e.app === app).reverse();
   }
 
   async get(id: string): Promise<Entry | undefined> {

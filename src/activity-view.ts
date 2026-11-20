@@ -49,7 +49,8 @@ class ActivityModal extends Modal {
 
   private renderEntry(row: HTMLElement, entry: Entry, now: Date): void {
     const head = row.createDiv({ cls: "gz-activity-head" });
-    const who = this.app_ ? describeActor(entry.actor) : `${basename(entry.app)} · ${describeActor(entry.actor)}`;
+    const where = entry.device ? ` on ${entry.device}` : "";
+    const who = (this.app_ ? describeActor(entry.actor) : `${basename(entry.app)} · ${describeActor(entry.actor)}`) + where;
     head.createSpan({ cls: "gz-activity-when", text: when(entry.at, now) });
     head.createSpan({ cls: "gz-activity-who", text: ` ${who}: ${entry.what}` });
     const ul = row.createEl("ul");
@@ -59,8 +60,8 @@ class ActivityModal extends Modal {
       if (i >= total - entry.undone) li.addClass("gz-undone");
     });
     if (entry.sent) ul.createEl("li", { text: describeSent(entry.what, entry.sent) });
-    // What was sent out can't be taken back.
-    if (total === 0) return;
+    // What was sent out can't be taken back, and only the device that made a change undoes it.
+    if (total === 0 || entry.device) return;
     if (entry.undone >= total) {
       head.createSpan({ cls: "gz-activity-undone", text: "Undone" });
       return;

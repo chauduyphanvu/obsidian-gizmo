@@ -28,12 +28,20 @@ export class AppView extends FileView {
     this.addAction("history", "Activity", () => this.file && openActivity(this.plugin, this.file.path));
   }
 
-  /** The tab's menu offers the link to each of this app's shortcuts. */
+  /**
+   * The tab's menu offers the link to each of this app's shortcuts. A link's key is made when one
+   * is copied, not when the menu opens, so opening it never writes the plugin's settings.
+   */
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source);
     const path = this.file?.path;
-    for (const s of this.plugin.background?.shortcutLinks().filter((l) => l.path === path) ?? []) {
-      menu.addItem((item) => item.setTitle(`Copy link: ${s.label}`).setIcon("link").setSection("action").onClick(() => copyShortcutLink(s)));
+    const bg = this.plugin.background;
+    const app = bg?.list().find((a) => a.path === path);
+    for (const s of app?.shortcuts ?? []) {
+      menu.addItem((item) => item.setTitle(`Copy link: ${s.label}`).setIcon("link").setSection("action").onClick(() => {
+        const link = bg?.shortcutLinks().find((l) => l.path === path && l.shortcut === s.id);
+        if (link) copyShortcutLink(link);
+      }));
     }
   }
 

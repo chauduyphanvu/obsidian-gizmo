@@ -4,6 +4,7 @@ import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv, pluginFile, vaultFrontmatter, vaultNotes } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
+import { DeviceBeat } from "./settings.ts";
 import { openInstall } from "./share-command.ts";
 import { isApp, notePath, storeTarget } from "./store.ts";
 
@@ -42,7 +43,8 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       };
     },
     now: () => new Date(),
-    triggers: pluginFile(plugin, "triggers.json"),
+    // What alerts already ran for is this device's own: only the device running them writes it.
+    triggers: pluginFile(plugin, `triggers/${plugin.device.id}.json`),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
     destinations: (path, shortcut) => plugin.store.answerTo?.[`${path}#${shortcut}`] ?? [],
     allowDestination(path, shortcut, to) {
@@ -52,6 +54,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       void plugin.saveData(plugin.store);
     },
     logSent: (entry) => void plugin.activity.add(entry),
+    runsBackground: () => plugin.device.background,
     sink: {
       notify: (message) => { new Notice(message); },
       // Commands come and go with the apps that declare them; a hotkey stays bound to the id.
@@ -102,10 +105,16 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       void bg.runUri({ ...params });
     });
   });
+  const beat = new DeviceBeat(plugin);
+  plugin.beat = beat;
   app.workspace.onLayoutReady(() => {
     if (stopped) return;
     void bg.start();
-    plugin.registerInterval(window.setInterval(() => void bg.tick(), TICK_MS));
+    void beat.beat();
+    plugin.registerInterval(window.setInterval(() => {
+      void bg.tick();
+      void beat.beat();
+    }, TICK_MS));
   });
   plugin.register(() => {
     stopped = true;

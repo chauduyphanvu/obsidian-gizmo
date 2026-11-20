@@ -1,10 +1,11 @@
 import {
-  MarkdownView, Plugin, TFile, WorkspaceLeaf, type ViewState,
+  MarkdownView, Platform, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
 import { registerBackground } from "./background-glue.ts";
 import { DataLayer } from "./datalayer.ts";
+import { thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { dropGrants, grantedOf, isAllowed, moveGrants, setGrant } from "./grants.ts";
@@ -15,6 +16,7 @@ import type { LensIndex } from "./lenses.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
 import { newLinkKey } from "./links.ts";
+import { DeviceBeat, GizmoSettings, adoptOldLog, otherLogs } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
 import { permissionsOf } from "./permissions.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
@@ -42,6 +44,10 @@ export default class GizmoPlugin extends Plugin {
   activity!: ActivityLog;
   /** Which lenses show on which notes. */
   lenses!: LensIndex;
+  /** This device, kept on it alone (see device.ts). */
+  device!: Device;
+  deviceStore!: DeviceStore;
+  beat: DeviceBeat | undefined;
   private grantListeners = new Set<() => void>();
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
@@ -50,7 +56,11 @@ export default class GizmoPlugin extends Plugin {
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
-    this.activity = new ActivityLog(pluginFile(this, "activity.json"));
+    this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
+    this.device = thisDevice(this.deviceStore, Platform);
+    // Each device writes only its own log, which a sync never has to merge; it reads the others'.
+    await adoptOldLog(this).catch(() => {});
+    this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => this.dataLayer.fileChanged(file.path)));
     // Notes that change reach the data layer through the metadata event above; any other file only through here.
@@ -100,6 +110,13 @@ export default class GizmoPlugin extends Plugin {
       },
     });
     this.background = registerBackground(this);
+    this.addSettingTab(new GizmoSettings(this.app, this));
+  }
+
+  /** `data.json` changed on disk (a sync from another device): what was allowed there holds here too. */
+  async onExternalSettingsChange(): Promise<void> {
+    this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
+    this.grantsChanged();
   }
 
   onunload(): void {

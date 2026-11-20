@@ -78,6 +78,8 @@ export interface BackgroundEnv {
   allowDestination(path: string, shortcut: string, to: string): void;
   /** Keeps what an app sent out of Obsidian, answering a link, in the activity log. */
   logSent(entry: NewEntry): void;
+  /** Whether this device runs background work: records, and what alerts run. Other devices may run it instead. */
+  runsBackground(): boolean;
 }
 
 /** What a link brings besides a form's values: the key it carries and where it wants word back. */
@@ -645,6 +647,7 @@ export class Background {
    * true now, so already-true alerts don't all run at once.
    */
   private async alertThen(entry: AppEntry, key: string, then: Then, value: unknown, on: boolean, rows: Row[] | undefined): Promise<void> {
+    if (!this.env.runsBackground()) return;
     const fired = await this.firedState();
     const before = fired[key];
     if (rows === undefined) {
@@ -659,6 +662,15 @@ export class Background {
     if (!before || !("rows" in before)) return;
     const seen = new Set(before.rows);
     for (const [i, row] of rows.entries()) if (!seen.has(ids[i])) await this.runThen(entry.path, then, { ...row, value });
+  }
+
+  /**
+   * Background work was just turned on here: alerts note what is true now and run their `then`
+   * only for what turns true after, never for everything that changed while another device ran them.
+   */
+  startOver(): void {
+    this.fired = Promise.resolve({});
+    this.saveFired();
   }
 
   private firedState(): Promise<Record<string, Fired>> {
@@ -737,6 +749,7 @@ export class Background {
    * holds across restarts. A failed fetch writes nothing and is tried again on the next tick.
    */
   private async sample(entry: AppEntry, job: RecordJob, opened: boolean): Promise<void> {
+    if (!this.env.runsBackground()) return;
     const key = `${entry.path}\n${job.block}`;
     if (this.sampling.has(key)) return;
     this.sampling.add(key);
