@@ -4,6 +4,7 @@
 //
 //   node test/perf/big-data.ts [--size typical|large] [--iters N] [--apps a,b] [--out runs.jsonl] [--dry]
 //   node test/perf/big-data.ts --size large --golden <dir>   writes what each app showed and wrote
+//   --steady   times the vault as it is after one save: the data note snapshotted, its log beside it
 //
 // --dry builds the same vaults without opening anything: the harness's own cost.
 import { document } from "../support/dom.ts";
@@ -11,6 +12,7 @@ import { appendFileSync, mkdirSync, readFileSync, writeFileSync } from "node:fs"
 import { parseArgs } from "node:util";
 import { AppController } from "../../src/app.ts";
 import { fakeBackground } from "../support/fakes.ts";
+import { ledgerStore } from "../../src/datastore.ts";
 import { parseYaml } from "../support/yaml.ts";
 
 const { values: args } = parseArgs({
@@ -21,6 +23,7 @@ const { values: args } = parseArgs({
     out: { type: "string" },
     golden: { type: "string" },
     dry: { type: "boolean", default: false },
+    steady: { type: "boolean", default: false },
   },
 });
 
@@ -187,6 +190,13 @@ async function settle(t: ReturnType<typeof fakeBackground>) {
 
 async function run(name: string, w: Workload, notes: Notes) {
   const t = fakeBackground(notes);
+  // As in Obsidian, a save appends to the ledger and the data note's snapshot comes a few seconds
+  // later, off the save's path: timed below as a step of its own.
+  if (t.data.ledger) {
+    const ledger = t.data.ledger;
+    t.env.store = (dataPath, appPath) => ledgerStore(ledger, dataPath, () => t.f.files.get(appPath)?.fm ?? {});
+    t.data.setSnapshots({ isRunner: () => true, delayMs: 3_600_000, writeNote: (path, fn) => t.env.writeFrontmatter(path, fn) });
+  }
   const root = document.createElement("div");
   document.body.appendChild(root);
   t.env.opened = (path) => t.bg.opened(path);
@@ -206,6 +216,7 @@ async function run(name: string, w: Workload, notes: Notes) {
   });
   const opened = root.innerHTML;
   await time("save", () => w.save(root));
+  if (t.data.ledger) await time("snapshot", () => t.data.flushSnapshots());
   const shown = { opened, saved: root.innerHTML, status: t.out.status, notices: t.notices, writes: t.writes };
   c!.dispose();
   t.bg.stop();
@@ -215,6 +226,14 @@ async function run(name: string, w: Workload, notes: Notes) {
 
 const names = args.apps ? args.apps.split(",") : Object.keys(WORKLOADS);
 const vaults = new Map(names.map((n) => [n, WORKLOADS[n].notes()]));
+if (args.steady) {
+  for (const n of names) {
+    const { t } = await run(n, WORKLOADS[n], structuredClone(vaults.get(n)!));
+    const after: Notes = Object.fromEntries([...t.f.files].map(([p, f]) => [p, structuredClone(f)]));
+    for (const [p, text] of t.f.others) after[p] = { raw: text };
+    vaults.set(n, after);
+  }
+}
 
 if (args.golden) {
   mkdirSync(args.golden, { recursive: true });

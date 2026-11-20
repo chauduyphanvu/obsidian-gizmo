@@ -38,8 +38,9 @@ export const list: SourceDef = {
       return layer.kept(`list\n${files.dataPath}\n${files.appPath}\n${p.source}`, [files.dataPath, files.appPath, `${logFolder(files.dataPath)}/`, ...(devices ? [`${devices}/`] : [])], async () => {
         const old = devices ? layer.deviceNotes(devices) : [];
         const state = await ledger.state(files.dataPath, layer.host.frontmatter(files.appPath) ?? {}, old);
+        // Shared with every reader: rows carry their ids, and nothing downstream changes them in place.
         const rows = state.lists.get(p.source!)?.rows;
-        if (rows) return placed(rows);
+        if (rows) return rows;
         const ticked = state.ticked.get(p.source!);
         if (ticked) return [...ticked];
         return resolveList(p.source!, layer.host.frontmatter(files.dataPath), layer.host.frontmatter(files.appPath) ?? {});

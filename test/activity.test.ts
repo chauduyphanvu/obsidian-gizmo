@@ -68,6 +68,8 @@ test("an undo after the data note was edited by hand takes the row out of the ap
   click(t.root.querySelector("button")!);
   await settle();
   (data(t.f, "cups") as Record<string, unknown>[])[0].note = "decaf";
+  t.changed(DATA);
+  await settle();
   const writes = t.writes.length;
   const r = await t.undoLatest();
   assert.deepEqual(r, { undone: 1, total: 1 });

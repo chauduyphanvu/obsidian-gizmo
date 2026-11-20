@@ -1,4 +1,3 @@
-import { fnv1a, stableJson } from "./hash.ts";
 import type { Row } from "./data.ts";
 
 /**
@@ -135,9 +134,16 @@ function isEvent(e: unknown): e is LedgerEvent {
   }
 }
 
-/** A row id: 16 hex characters. */
+/** A row id: 16 hex characters, two FNV-1a hashes of the seed made in one pass. */
 export function rowId(seed: string): string {
-  return fnv1a(seed).toString(16).padStart(8, "0") + fnv1a(seed, 0x01000193).toString(16).padStart(8, "0");
+  let a = 0x811c9dc5;
+  let b = 0x01000193;
+  for (let i = 0; i < seed.length; i++) {
+    const c = seed.charCodeAt(i);
+    a = Math.imul(a ^ c, 0x01000193);
+    b = Math.imul(b ^ c, 0x01000193);
+  }
+  return (a >>> 0).toString(16).padStart(8, "0") + (b >>> 0).toString(16).padStart(8, "0");
 }
 
 /** A new row's id, from who wrote it and when: unique across devices. */
@@ -153,7 +159,8 @@ export function newRowId(device: string, t: string): string {
 export function baseIds(list: readonly unknown[]): string[] {
   const seen = new Map<string, number>();
   return list.map((r) => {
-    const content = stableJson(r);
+    // A row's keys come in the order its note's text has them, the same on every device.
+    const content = JSON.stringify(r);
     const n = seen.get(content) ?? 0;
     seen.set(content, n + 1);
     return rowId(`base\n${content}\n${n}`);
@@ -192,70 +199,79 @@ export interface FoldBase {
   ticked: Record<string, string[]>;
 }
 
-/**
- * Folds events onto a base into the lists they make. The order files were read in doesn't matter:
- * events apply by time, then counter, then device. A second copy of an event (a sync's
- * "… 2.jsonl") is dropped, an add for a row that exists is ignored, and undone events don't apply.
- * `caps` keeps only the newest rows of lists that grow on their own (recorded samples).
- */
-export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {}, ticked: {} }, caps: Record<string, number> = {}): Folded {
-  const unique = new Map<string, LedgerEvent>();
-  for (const e of events) if (!unique.has(eventId(e))) unique.set(eventId(e), e);
-  const ordered = [...unique.values()].sort(compareEvents);
+type Cell = { value: unknown; from: unknown; t: string; d: string };
 
-  // What's undone is settled first: the last undo or redo of an event, in order, decides.
-  const undone = new Set<string>();
-  for (const e of ordered) {
-    if (e.op !== "undo" && e.op !== "redo") continue;
-    for (const id of e.ev) {
-      if (e.op === "undo") undone.add(id);
-      else undone.delete(id);
+/**
+ * Lists being folded: a base, then events applied one at a time in the order they apply. Kept
+ * between reads, so the events a save or a sync adds are applied on top rather than folding
+ * everything again; it says which rows each application changed.
+ */
+export class Folder {
+  private lists = new Map<string, { order: string[]; rows: Map<string, Row>; cells: Map<string, Cell>; conflicts: Conflict[] }>();
+  readonly ticked: Map<string, string[]>;
+  readonly applied = new Set<string>();
+  /** The last event applied: one that comes after it can be applied on top. */
+  last: LedgerEvent | undefined;
+  /** Rows changed since last taken. */
+  private touched = new Set<string>();
+  private caps: Record<string, number>;
+
+  constructor(base: FoldBase, caps: Record<string, number>) {
+    this.caps = caps;
+    for (const [name, { rows, ids, conflicts }] of Object.entries(base.lists)) {
+      const l = this.listOf(name);
+      l.conflicts.push(...(conflicts ?? []));
+      // A base row is copied only when an event changes it.
+      rows.forEach((r, i) => {
+        if (l.rows.has(ids[i])) return;
+        l.order.push(ids[i]);
+        l.rows.set(ids[i], r);
+      });
     }
+    this.ticked = new Map(Object.entries(base.ticked).map(([k, v]) => [k, [...v]]));
   }
 
-  type Cell = { value: unknown; from: unknown; t: string; d: string };
-  const lists = new Map<string, { order: string[]; rows: Map<string, Row>; cells: Map<string, Cell>; conflicts: Conflict[] }>();
-  const listOf = (name: string) => {
-    let l = lists.get(name);
+  private listOf(name: string) {
+    let l = this.lists.get(name);
     if (!l) {
       l = { order: [], rows: new Map(), cells: new Map(), conflicts: [] };
-      lists.set(name, l);
+      this.lists.set(name, l);
     }
     return l;
-  };
-  for (const [name, { rows, ids, conflicts }] of Object.entries(base.lists)) {
-    const l = listOf(name);
-    l.conflicts.push(...(conflicts ?? []));
-    rows.forEach((r, i) => {
-      if (l.rows.has(ids[i])) return;
-      l.order.push(ids[i]);
-      l.rows.set(ids[i], { ...r });
-    });
-  }
-  const ticked = new Map<string, string[]>(Object.entries(base.ticked).map(([k, v]) => [k, [...v]]));
-  const applied = new Set<string>();
-  // A list whose every event was undone is still there, empty: its note's copy must say so.
-  for (const e of ordered) {
-    if (e.op === "add" || e.op === "set" || e.op === "del") listOf(e.l);
-    else if ((e.op === "tick" || e.op === "untick" || e.op === "clear") && !ticked.has(e.l)) ticked.set(e.l, []);
   }
 
-  for (const e of ordered) {
-    const id = eventId(e);
-    if (e.op === "undo" || e.op === "redo" || undone.has(id)) continue;
-    applied.add(id);
+  /** Whether an event comes after everything applied, so applying it on top gives what folding everything would. */
+  follows(e: LedgerEvent): boolean {
+    return !this.last || compareEvents(e, this.last) > 0;
+  }
+
+  /** Makes the list an event names, even when the event itself doesn't apply (it was undone). */
+  names(e: LedgerEvent): void {
+    if (e.op === "add" || e.op === "set" || e.op === "del") this.listOf(e.l);
+    else if ((e.op === "tick" || e.op === "untick" || e.op === "clear") && !this.ticked.has(e.l)) this.ticked.set(e.l, []);
+  }
+
+  apply(e: LedgerEvent): void {
+    this.names(e);
+    if (!this.last || compareEvents(e, this.last) > 0) this.last = e;
+    if (e.op === "undo" || e.op === "redo") return;
+    this.applied.add(eventId(e));
     switch (e.op) {
       case "add": {
-        const l = listOf(e.l);
+        const l = this.listOf(e.l);
         if (l.rows.has(e.row)) break;
         l.order.push(e.row);
-        l.rows.set(e.row, { ...e.v });
+        l.rows.set(e.row, e.v);
+        this.touched.add(e.row);
         break;
       }
       case "set": {
-        const l = listOf(e.l);
-        const row = l.rows.get(e.row);
-        if (!row) break;
+        const l = this.listOf(e.l);
+        const was = l.rows.get(e.row);
+        if (!was) break;
+        const row = { ...was };
+        l.rows.set(e.row, row);
+        this.touched.add(e.row);
         const key = `${e.row}\n${e.f}`;
         const last = l.cells.get(key);
         // Two sets from the same value that didn't see each other: the later wins, the other is kept.
@@ -270,37 +286,68 @@ export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {
         break;
       }
       case "del": {
-        const l = listOf(e.l);
+        const l = this.listOf(e.l);
         if (!l.rows.delete(e.row)) break;
         l.order = l.order.filter((r) => r !== e.row);
         l.conflicts = l.conflicts.filter((c) => c.row !== e.row);
+        this.touched.add(e.row);
         break;
       }
       case "tick": {
-        const items = ticked.get(e.l) ?? [];
-        if (!items.includes(e.item)) ticked.set(e.l, [...items, e.item]);
+        const items = this.ticked.get(e.l) ?? [];
+        if (!items.includes(e.item)) this.ticked.set(e.l, [...items, e.item]);
         break;
       }
       case "untick": {
-        ticked.set(e.l, (ticked.get(e.l) ?? []).filter((i) => i !== e.item));
+        this.ticked.set(e.l, (this.ticked.get(e.l) ?? []).filter((i) => i !== e.item));
         break;
       }
       case "clear": {
-        ticked.set(e.l, []);
+        this.ticked.set(e.l, []);
         break;
       }
     }
   }
 
-  const out = new Map<string, FoldedList>();
-  for (const [name, l] of lists) {
-    let ids = l.order;
-    const cap = caps[name];
-    if (cap !== undefined && ids.length > cap) ids = ids.slice(ids.length - cap);
-    const keep = new Set(ids);
-    out.set(name, { rows: ids.map((id) => l.rows.get(id)!), ids: [...ids], conflicts: l.conflicts.filter((c) => keep.has(c.row)) });
+  /** The rows applications changed since last asked. */
+  takeTouched(): Set<string> {
+    const t = this.touched;
+    this.touched = new Set();
+    return t;
   }
-  return { lists: out, ticked, undone, applied };
+
+  lists_(): Map<string, FoldedList> {
+    const out = new Map<string, FoldedList>();
+    for (const [name, l] of this.lists) {
+      let ids = l.order;
+      const cap = this.caps[name];
+      if (cap !== undefined && ids.length > cap) ids = ids.slice(ids.length - cap);
+      const keep = cap !== undefined ? new Set(ids) : undefined;
+      out.set(name, { rows: ids.map((id) => l.rows.get(id)!), ids: [...ids], conflicts: keep ? l.conflicts.filter((c) => keep.has(c.row)) : [...l.conflicts] });
+    }
+    return out;
+  }
+}
+
+/**
+ * Folds events onto a base into the lists they make. The order files were read in doesn't matter:
+ * events apply by time, then counter, then device. A second copy of an event (a sync's
+ * "… 2.jsonl") is dropped, an add for a row that exists is ignored, and undone events don't apply.
+ * `caps` keeps only the newest rows of lists that grow on their own (recorded samples).
+ */
+export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {}, ticked: {} }, caps: Record<string, number> = {}): Folded & { folder: Folder } {
+  const unique = new Map<string, LedgerEvent>();
+  for (const e of events) if (!unique.has(eventId(e))) unique.set(eventId(e), e);
+  const ordered = [...unique.values()].sort(compareEvents);
+  const undone = undoneEvents(ordered);
+  const folder = new Folder(base, caps);
+  // A list whose every event was undone is still there, empty: its note's copy must say so.
+  for (const e of ordered) {
+    if (undone.has(eventId(e))) folder.names(e);
+    else folder.apply(e);
+  }
+  folder.takeTouched();
+  return { lists: folder.lists_(), ticked: folder.ticked, undone, applied: folder.applied, folder };
 }
 
 /** Which events are undone: the last undo or redo of each, in order, decides. */

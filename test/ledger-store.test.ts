@@ -126,6 +126,7 @@ test("a data note edited by hand after a snapshot is noticed, and Import turns t
   const fm = v.fms.get(DATA)!;
   fm.spend = [{ amount: 5 }, { amount: 8 }, { amount: 1 }];
   fm.packed = ["Charger"];
+  a.ledger.fileChanged(DATA);
   const s = await a.ledger.state(DATA);
   assert.equal(s.handEdited, true);
   assert.deepEqual(s.lists.get("spend")!.rows, [{ amount: 5 }, { amount: 7 }], "nothing is taken in by itself");
