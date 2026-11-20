@@ -271,6 +271,12 @@ export class Ledger {
    * activity list, a store that doesn't know the device notes) gets the last ones given, so readers
    * don't fold the note again for each other.
    */
+  /** When each of a data note's events was written (ms), every device's: the moments its lists changed. */
+  async times(dataPath: string): Promise<number[]> {
+    const n = await this.refresh(dataPath);
+    return [...n.files.values()].flatMap((f) => f.events.map((e) => parseStamp(e.t)!.wall));
+  }
+
   async state(dataPath: string, given?: Record<string, unknown>, givenDevices?: Record<string, unknown>[]): Promise<LedgerState> {
     const n = await this.refresh(dataPath);
     if (given) n.appFm = given;

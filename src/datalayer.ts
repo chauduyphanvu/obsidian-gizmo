@@ -119,7 +119,7 @@ export class DataLayer {
    * The vault as it was at this time (ms), for replay: lists from the ledger's events up to it, web
    * answers from the response history at or before it, and no note made after it. Nothing is written.
    */
-  readonly at: number | undefined;
+  at: number | undefined;
 
   constructor(host: Host, opts: { at?: number } = {}) {
     this.host = host;
@@ -135,6 +135,16 @@ export class DataLayer {
       }, () => host.device?.() ?? "device", () => host.now(), opts.at);
       this.ledger.onWrite = (path) => this.fileChanged(path);
     }
+  }
+
+  /** Moves a replay to another time: what it read is read again as of then. */
+  setAt(at: number): void {
+    if (this.at === undefined) throw new Error("only a replay's time can be moved");
+    this.at = at;
+    if (this.ledger) this.ledger.until = at;
+    this.index = undefined;
+    this.queries.clear();
+    this.made.clear();
   }
 
   /** Who writes snapshots, and how; until set, none are written. */

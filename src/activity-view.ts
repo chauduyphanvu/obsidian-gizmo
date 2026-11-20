@@ -1,3 +1,4 @@
+import { openAppAt } from "./past-views.ts";
 import { Modal, Notice } from "obsidian";
 import { describeActor, describeChange, describeSent, eventsOf, undoMessage, undoneIn, type Entry } from "./activity.ts";
 import { basename } from "./store.ts";
@@ -78,6 +79,14 @@ class ActivityModal extends Modal {
       if (i >= total - entry.undone) li.addClass("gz-undone");
     });
     if (entry.sent) ul.createEl("li", { text: describeSent(entry.what, entry.sent) });
+    // In one app's history, each change can be seen as the app showed it just after.
+    if (this.app_ && total) {
+      const path = this.app_;
+      head.createEl("button", { cls: "gz-activity-then", text: "See it then" }).addEventListener("click", () => {
+        this.close();
+        void openAppAt(this.plugin, path, entry.at + 1000);
+      });
+    }
     // What was sent out can't be taken back; another device's change only when it is kept as events.
     if (total === 0 || (entry.device && !eventsOf(entry))) return;
     if (entry.undone >= total) {

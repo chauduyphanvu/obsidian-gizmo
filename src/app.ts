@@ -92,6 +92,8 @@ export interface AppEnv {
   now(): Date;
   /** Tells the background service the app was opened, so what it records is sampled if due. */
   opened?(appPath: string): void;
+  /** In an app shown as it was: shows it as it is now again. */
+  backToNow?(): void;
   /** Alerts true now across the vault, from the background service. */
   alerts?: AlertFeed;
   /** A try before Allow: nothing it draws may reach out of Obsidian (pictures are drawn as their address). */
@@ -421,7 +423,9 @@ export class AppController {
     const past = this.env.data.at;
     if (past !== undefined && this.spec) {
       const now = shownAsNow(this.spec);
-      header.createDiv({ cls: "gz-card gz-past", text: `As of ${pastText(past)}: read only.${now.length ? ` Shown as they are now, since their notes keep no history: ${now.join(", ")}.` : ""}` });
+      const banner = header.createDiv({ cls: "gz-card gz-past", text: `As of ${pastText(past)}: read only.${now.length ? ` Shown as they are now, since their notes keep no history: ${now.join(", ")}.` : ""}` });
+      const back = this.env.backToNow;
+      if (back) banner.createEl("button", { cls: "gz-past-back", text: "Back to now" }).addEventListener("click", () => back());
     }
 
     if (!result) {

@@ -10,7 +10,8 @@ import { PAST } from "./ledger-store.ts";
 import type { AppSpec } from "./spec.ts";
 import { sourceDef } from "./sources/registry.ts";
 
-export function pastEnv(env: AppEnv, at: number): AppEnv {
+/** `back` shows the app as it is now again, from the banner. */
+export function pastEnv(env: AppEnv, at: number, back?: () => void): AppEnv {
   const host = env.data.host;
   // Another device's history may have grown since it was last read.
   host.responses?.changed?.();
@@ -30,6 +31,7 @@ export function pastEnv(env: AppEnv, at: number): AppEnv {
     log: undefined,
     trigger: undefined,
     opened: undefined,
+    backToNow: back,
   };
 }
 

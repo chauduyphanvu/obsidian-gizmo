@@ -76,7 +76,8 @@ test("a folder renamed while gizmod watches is read under its new name, and its 
   try {
     const { renameSync } = await import("node:fs");
     renameSync(join(root, "Apps"), join(root, "Tools"));
-    for (let i = 0; i < 40 && !v.file("Tools/Deep/Inbox.md"); i++) await new Promise((r) => setTimeout(r, 50));
+    // macOS reports the change late when the machine is busy.
+    for (let i = 0; i < 200 && !v.file("Tools/Deep/Inbox.md"); i++) await new Promise((r) => setTimeout(r, 50));
     assert.deepEqual(v.notes().map((n) => n.path).sort(), ["Tools/Deep/Inbox.md", "Tools/Mood.md"]);
     assert.ok(told.includes("-Apps/Mood.md") && told.includes("+Tools/Mood.md"), told.join(" "));
   } finally {

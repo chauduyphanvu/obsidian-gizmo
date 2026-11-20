@@ -533,3 +533,17 @@ button.gz-lens-toggle {
 
 /* expect: a row a value rule refused stays in its form, with why */
 .gizmo .gz-form-error { color: var(--text-error); font-size: var(--font-ui-small); margin-top: var(--size-4-1); }
+
+/* An app as it was, and backtests */
+.gizmo .gz-past { display: flex; align-items: center; gap: var(--size-4-2); border-color: var(--interactive-accent); }
+.gizmo .gz-past-back { margin-left: auto; }
+.gizmo .gz-activity-then { font-size: var(--font-ui-small); }
+.gizmo.gz-asof .gz-asof-quick { display: flex; gap: var(--size-4-2); flex-wrap: wrap; margin-bottom: var(--size-4-3); }
+.gizmo.gz-asof form { display: flex; gap: var(--size-4-2); }
+.gizmo.gz-backtest progress { width: 100%; }
+.gizmo.gz-backtest .gz-muted { color: var(--text-muted); }
+.gizmo .gz-backtest-line { width: 100%; height: auto; max-height: 56px; display: block; }
+.gizmo .gz-backtest-axis { stroke: var(--background-modifier-border); stroke-width: 2; }
+.gizmo .gz-backtest-fire { fill: var(--interactive-accent); }
+.gizmo .gz-backtest-before { fill: var(--text-muted); }
+.gizmo .gz-backtest-legend { font-size: var(--font-ui-small); margin-top: var(--size-4-1); }

@@ -3,6 +3,7 @@ import {
 } from "obsidian";
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
+import { registerBacktest } from "./past-views.ts";
 import { registerBackground } from "./background-glue.ts";
 import { registerBases } from "./bases.ts";
 import { DataLayer } from "./datalayer.ts";
@@ -122,6 +123,7 @@ export default class GizmoPlugin extends Plugin {
     registerPolicyCommand(this);
     registerShareCommands(this);
     registerActivity(this);
+    registerBacktest(this);
     registerMap(this);
     registerBases(this);
 
