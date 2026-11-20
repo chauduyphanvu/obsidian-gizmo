@@ -8,11 +8,11 @@ import { basename } from "./store.ts";
  * what it wrote, to be sure nothing has changed it since.
  */
 export type Change =
-  | { kind: "row-added"; path: string; list: string; row: Row }
+  | { kind: "row-added"; path: string; list: string; row: Row; event?: string }
   /** `row` is the row as the edit left it. */
-  | { kind: "row-edited"; path: string; list: string; row: Row; field: string; from: unknown; to: unknown }
-  | { kind: "checklist"; path: string; list: string; item: string; checked: boolean }
-  | { kind: "cleared"; path: string; list: string; items: string[] }
+  | { kind: "row-edited"; path: string; list: string; row: Row; field: string; from: unknown; to: unknown; event?: string }
+  | { kind: "checklist"; path: string; list: string; item: string; checked: boolean; event?: string }
+  | { kind: "cleared"; path: string; list: string; items: string[]; event?: string }
   /** `had` says whether the property was there before; `from` is its value then. */
   | { kind: "property"; path: string; field: string; from: unknown; to: unknown; had: boolean }
   /** `created` when the note didn't exist and the line made it. */
@@ -264,11 +264,18 @@ export interface UndoIO {
   /** Moves a note to the trash while `unchanged(text)` holds; says what happened. */
   trashIf(path: string, unchanged: (text: string) => boolean): Promise<"trashed" | "changed" | "gone">;
   setTaskDone(path: string, line: number, text: string, done: boolean): Promise<boolean>;
+  /** Takes back events in a data note's ledger, whichever device made them. */
+  undoEvents?(dataPath: string, events: string[]): Promise<void>;
 }
 
 /** Undoes one change, re-checking it as it writes; a refusal when the vault no longer holds what the app wrote. */
 async function undoOne(change: Change, io: UndoIO): Promise<Refusal> {
   const note = basename(change.path);
+  // A change kept as an event is undone by another event, which holds after later edits and on every device.
+  if ("event" in change && change.event && io.undoEvents) {
+    await io.undoEvents(change.path, [change.event]);
+    return undefined;
+  }
   switch (change.kind) {
     case "row-added":
     case "row-edited":

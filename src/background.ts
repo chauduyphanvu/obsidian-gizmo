@@ -1,4 +1,5 @@
-import { fillLine, runActions, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
+import { rowId as ledgerRowId } from "./ledger.ts";
+import { fillLine, runActions, storeOf, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activity.ts";
 import { captureTargets, parseLine, type CaptureIndex, type Parsed } from "./capture.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
@@ -934,11 +935,10 @@ export class Background {
       const sample: Row = { at, ...row };
       sample.at = at;
       const into = split?.mine ?? entry.dataPath;
-      await this.env.actionDeps(entry.path, into).writeFrontmatter(into, (fm) => {
-        if (split) fm.device = split.id;
-        const list = Array.isArray(fm[job.list]) ? fm[job.list] as unknown[] : [];
-        fm[job.list] = [...list, sample].slice(-MAX_SAMPLES);
-      });
+      const deps = this.env.actionDeps(entry.path, into);
+      if (split) await deps.writeFrontmatter(into, (fm) => { fm.device = split.id; });
+      // One id per interval: two devices sampling the same interval keep one row.
+      await storeOf(deps).add(job.list, sample, { cap: MAX_SAMPLES, id: ledgerRowId(`sample\n${entry.path}\n${job.list}\n${Math.floor(now.getTime() / job.everyMs)}`) });
     } finally {
       this.sampling.delete(key);
     }

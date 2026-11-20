@@ -1,3 +1,4 @@
+import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
 import type { NewEntry } from "./activity.ts";
 import { renderEmpty, renderErrors, renderOpenOnce, renderBlocked, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
@@ -51,6 +52,8 @@ export interface AppEnv {
    * writes to one note run in order.
    */
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
+  /** Where an app's lists are kept, by its data note; without one, in the data note's properties. */
+  store?(dataPath: string, appPath: string): DataStore;
   /**
    * Changes an existing note's frontmatter (a note a row or `save: this` names); false, writing
    * nothing, when there is no note at that path any more, so a renamed or deleted note isn't

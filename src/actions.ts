@@ -2,6 +2,7 @@ import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
 import { saveTarget, type Panel } from "./spec.ts";
 import { notePath, withoutDefinition } from "./store.ts";
+import { frontmatterStore, type DataStore } from "./datastore.ts";
 import { startOf } from "./keys.ts";
 
 /**
@@ -17,6 +18,10 @@ export interface ActionDeps {
   /** The app note: links in `open` resolve from it. */
   appPath: string;
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
+  /** Where the app's lists are written; without one, rows go straight into the data note's properties. */
+  store?: DataStore;
+  /** The id a row this run saves gets, so the same run made twice (a then that fires on two devices) saves it once. */
+  rowId?: string;
   /** Adds a line at the end of a note, creating it when there's none; true when it created it. */
   appendLine(path: string, line: string): Promise<boolean | void>;
   /** Creates a note; its text (or true), or false, writing nothing, when one is already at that path. */
@@ -32,12 +37,16 @@ export interface ActionDeps {
 }
 
 /** What an app gives runActions to write and tell with. */
-export type ActionIO = Pick<ActionDeps, "now" | "writeFrontmatter" | "appendLine" | "createNote" | "readBody" | "notify" | "openNote">;
+export type ActionIO = Pick<ActionDeps, "now" | "writeFrontmatter" | "appendLine" | "createNote" | "readBody" | "notify" | "openNote"> & {
+  /** Where an app's lists are kept, by its data note. */
+  store?(dataPath: string, appPath: string): DataStore;
+};
 
 /** The deps an app's actions run with, through `io`; the caller adds `log` and `then`. */
 export function actionDepsOf(io: ActionIO, appPath: string, dataPath: string): ActionDeps {
   return {
     now: () => io.now(), dataPath, appPath,
+    store: io.store?.(dataPath, appPath),
     writeFrontmatter: (path, fn) => io.writeFrontmatter(path, fn),
     appendLine: (path, line) => io.appendLine(path, line),
     createNote: (path, fm, body) => io.createNote(path, fm, body),
@@ -56,6 +65,11 @@ export interface ActionResult {
   logged?: Promise<string | undefined>;
   /** A checklist item that was already ticked, so nothing changed. */
   already?: boolean;
+}
+
+/** Where a run writes the app's lists: its store, else the data note's properties. */
+export function storeOf(deps: ActionDeps): DataStore {
+  return deps.store ?? frontmatterStore(deps.dataPath, (path, fn) => deps.writeFrontmatter(path, fn), () => undefined);
 }
 
 /** Characters Obsidian won't take in a file name. */
@@ -165,20 +179,15 @@ async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: Ac
  */
 export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promise<ActionResult> {
   const list = p.save ?? "checked";
-  let ticked = false;
+  let ticked: { event?: string } | undefined;
   try {
-    await deps.writeFrontmatter(deps.dataPath, (fm) => {
-      const had = Array.isArray(fm[list]) ? (fm[list] as unknown[]).map(String) : [];
-      if (had.includes(item)) return;
-      ticked = true;
-      fm[list] = [...had, item];
-    });
+    ticked = await storeOf(deps).tick(list, item);
   } catch (e) {
     deps.notify(`Couldn't save: ${(e as Error).message}`);
     return { ok: false };
   }
   if (!ticked) return { ok: true, already: true };
-  const logged = deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]);
+  const logged = deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true, ...(ticked.event && { event: ticked.event }) }]);
   return { ok: true, ...(logged && { logged }) };
 }
 
@@ -218,12 +227,10 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
-      await deps.writeFrontmatter(deps.dataPath, (fm) => {
-        for (const [k, v] of Object.entries(deps.stamp ?? {})) fm[k] = v;
-        const list = fm[target.name];
-        fm[target.name] = Array.isArray(list) ? [...list, saved] : [saved];
-      });
-      changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved });
+      const stamp = deps.stamp;
+      if (stamp) await deps.writeFrontmatter(deps.dataPath, (fm) => { for (const [k, v] of Object.entries(stamp)) fm[k] = v; });
+      const { event } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
+      changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });
     } else if (target?.kind === "folder") {
       path = await saveNote(p, target.folder, saved, ctx, deps, changes);
       if (!path) return { ok: false };

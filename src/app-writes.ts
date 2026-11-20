@@ -6,16 +6,13 @@ import { editErrors, editableSource } from "./edit.ts";
 import { ROW_INDEX, ROW_SOURCE } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { Panel } from "./spec.ts";
-import { resolveList, type Split } from "./store.ts";
+import type { Split } from "./store.ts";
+import { frontmatterStore, type DataStore } from "./datastore.ts";
+import { rowIdOf } from "./ledger-store.ts";
 
 /** What a write to a note that was renamed or deleted since it was shown says. */
 const GONE = "That note is gone";
 
-/** Whether a stored list row still holds what was shown for it, apart from the field being changed. */
-function holds(stored: unknown, shown: Row, field: string): stored is Row {
-  if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return false;
-  return Object.entries(stored).every(([k, v]) => k === field || JSON.stringify(v) === JSON.stringify(shown[k]));
-}
 
 /** What the writes read of the open app, each when it is needed. */
 export interface WriteSite {
@@ -47,27 +44,27 @@ export class AppWrites {
     this.site = site;
   }
 
+  /** Ticks the item, or unticks it when it was ticked: the box's state is whatever the list holds when this runs. */
   async toggleChecked(key: string, item: string): Promise<void> {
-    let checked = false;
-    await this.writeData((fm) => {
-      const list = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
-      checked = !list.includes(item);
-      fm[key] = checked ? [...list, item] : list.filter((i) => i !== item);
-    });
-    this.log(this.site.checklistName(key), [{ kind: "checklist", path: this.site.dataPath(), list: key, item, checked }]);
+    const store = this.store();
+    const ticked = await store.tick(key, item);
+    const done = ticked ?? (await store.untick(key, item));
+    if (!done) return;
+    const event = done.event;
+    this.log(this.site.checklistName(key), [{ kind: "checklist", path: store.dataPath, list: key, item, checked: !!ticked, ...(event && { event }) }]);
   }
 
   async clearChecked(key: string): Promise<void> {
-    let items: string[] = [];
-    await this.writeData((fm) => {
-      items = Array.isArray(fm[key]) ? (fm[key] as unknown[]).map(String) : [];
-      fm[key] = [];
-    });
-    if (items.length) this.log(this.site.checklistName(key), [{ kind: "cleared", path: this.site.dataPath(), list: key, items }]);
+    const store = this.store();
+    const { items, event } = await store.clear(key);
+    if (items.length) this.log(this.site.checklistName(key), [{ kind: "cleared", path: store.dataPath, list: key, items, ...(event && { event }) }]);
   }
 
-  private writeData(fn: (fm: Record<string, unknown>) => void): Promise<void> {
-    return this.env.writeFrontmatter(this.site.dataPath(), fn);
+  /** Where the app's lists are kept. */
+  private store(): DataStore {
+    const dataPath = this.site.dataPath();
+    return this.env.store?.(dataPath, this.site.appPath)
+      ?? frontmatterStore(dataPath, (path, fn) => this.env.writeFrontmatter(path, fn), (path) => this.env.frontmatter(path), () => this.env.frontmatter(this.site.appPath) ?? {});
   }
 
   /** Keeps what the person just changed through the app, so the app's activity can show and undo it. */
@@ -118,32 +115,24 @@ export class AppWrites {
         if (!(await this.setField(path, field, value, m.p.title ?? field))) this.env.notify(GONE);
         return;
       }
-      const index = (row as Record<symbol, unknown>)[ROW_INDEX];
-      if (typeof index !== "number") return;
+      const symbols = row as Record<symbol, unknown>;
+      const index = symbols[ROW_INDEX];
+      const id = rowIdOf(row);
+      if (typeof index !== "number" && id === undefined) return;
       // A row read from a device's own note is changed there; that device's next save keeps it.
-      const source = (row as Record<symbol, unknown>)[ROW_SOURCE];
-      const path = typeof source === "string" ? source : this.site.dataPath();
+      const source = symbols[ROW_SOURCE];
+      const store = typeof source === "string"
+        ? frontmatterStore(source, (path, fn) => this.env.writeFrontmatter(path, fn), (path) => this.env.frontmatter(path))
+        : this.store();
       const name = m.p.source!;
-      let changed = false;
-      let edit: Change | undefined;
-      await this.env.writeFrontmatter(path, (fm) => {
-        const list = typeof source === "string" ? fm[name] : resolveList(name, fm, this.env.frontmatter(this.site.appPath) ?? {});
-        const stored = Array.isArray(list) ? list[index] : undefined;
-        if (!Array.isArray(list) || !holds(stored, row, field)) {
-          changed = true;
-          return;
-        }
-        const next = [...list];
-        next[index] = { ...stored, [field]: value };
-        fm[name] = next;
-        edit = { kind: "row-edited", path, list: name, row: next[index] as Row, field, from: stored[field], to: value };
-      });
-      if (edit) this.log(m.p.title ?? field, [edit]);
-      if (changed) {
-        this.env.notify("That row has changed; reload");
-        // Shows the list as it is now, putting back what the input claimed.
-        reload();
+      const r = await store.set(name, { id, index: typeof index === "number" ? index : undefined, shown: row }, field, value);
+      if ("row" in r) {
+        this.log(m.p.title ?? field, [{ kind: "row-edited", path: store.dataPath, list: name, row: r.row, field, from: row[field], to: value, ...(r.event && { event: r.event }) }]);
+        return;
       }
+      this.env.notify(r.refused === "gone" ? "That row is gone; reload" : "That row has changed; reload");
+      // Shows the list as it is now, putting back what the input claimed.
+      reload();
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
