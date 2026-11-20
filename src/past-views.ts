@@ -149,7 +149,7 @@ export class BacktestModal extends Modal {
     rows.forEach(([name, fires], i) => {
       svg.createSvg("line", { cls: "gz-backtest-axis", attr: { x1: 0, x2: 1000, y1: i * 28 + 14, y2: i * 28 + 14 } });
       for (const f of fires) {
-        const tick = svg.createSvg("rect", { cls: `gz-backtest-fire gz-backtest-${name.toLowerCase()}`, attr: { x: x(f.at) - 2, y: i * 28 + 4, width: 4, height: 20 } });
+        const tick = svg.createSvg("rect", { cls: ["gz-backtest-fire", `gz-backtest-${name.toLowerCase()}`], attr: { x: x(f.at) - 2, y: i * 28 + 4, width: 4, height: 20 } });
         tick.createSvg("title").textContent = `${name}: ${pastText(f.at)} · ${f.what}`;
       }
     });

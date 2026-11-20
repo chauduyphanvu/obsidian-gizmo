@@ -1,6 +1,6 @@
 import { openAppAt } from "./past-views.ts";
 import { Modal, Notice } from "obsidian";
-import { describeActor, describeChange, describeSent, eventsOf, undoMessage, undoneIn, type Entry } from "./activity.ts";
+import { describeActor, describeChange, describeSent, doneAt, eventsOf, undoMessage, undoneIn, type Entry } from "./activity.ts";
 import { basename } from "./store.ts";
 import type GizmoPlugin from "./main.ts";
 
@@ -84,7 +84,7 @@ class ActivityModal extends Modal {
       const path = this.app_;
       head.createEl("button", { cls: "gz-activity-then", text: "See it then" }).addEventListener("click", () => {
         this.close();
-        void openAppAt(this.plugin, path, entry.at + 1000);
+        void openAppAt(this.plugin, path, doneAt(entry));
       });
     }
     // What was sent out can't be taken back; another device's change only when it is kept as events.
