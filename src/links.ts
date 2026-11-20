@@ -13,7 +13,10 @@ export interface ShortcutLink {
   view: string;
   /** A form's fields, each filled by `&field=value`, or a checklist's `item`; none for a button. */
   fields: string[];
-  link: string;
+  /** The link with its key; reading it makes the key when there is none yet, so only copy it. */
+  readonly link: string;
+  /** The link without its key, for showing which shortcut it runs. */
+  address: string;
   allowed: boolean;
   /** It answers with a value (a number or progress panel) instead of acting. */
   answers: boolean;

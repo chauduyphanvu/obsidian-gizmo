@@ -320,6 +320,9 @@ export function fakeBackground(
     /** The apps paused here, as the status bar would show them; and the alerts pushed beyond the notice (gizmod's ntfy). */
     paused: [] as PausedApp[],
     pushed: [] as AlertNotice[],
+    /** Renames matched from a delete and a create, and apps gone for good, as told to the env. */
+    renamed: [] as [string, string][],
+    dropped: [] as string[],
   };
   /** The other devices' `triggers` files, as text, for a device taking over. */
   const others: string[] = [];
@@ -359,6 +362,8 @@ export function fakeBackground(
     now,
     triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },
     otherTriggers: async () => [...others],
+    renamed: (from, to) => { out.renamed.push([from, to]); },
+    dropped: (path) => { out.dropped.push(path); },
     linkKey: (path, shortcut, create) => {
       const id = `${path}#${shortcut}`;
       if (!linkKeys.has(id) && create) linkKeys.set(id, `k${linkKeys.size + 1}`);

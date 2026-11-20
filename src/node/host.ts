@@ -272,6 +272,8 @@ export function gizmodEnv(opts: GizmodOptions) {
     now: () => new Date(now()),
     sink,
     triggers: fileStore(join(pluginDir, "triggers", `${id}.json`)),
+    // gizmod never writes data.json; its own activity follows a rename it sees as a delete and a create.
+    renamed: (from, to) => void activity.rename(from, to),
     otherTriggers: async () => {
       const dir = join(pluginDir, "triggers");
       if (!existsSync(dir)) return [];

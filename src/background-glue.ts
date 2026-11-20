@@ -3,6 +3,7 @@ import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv, pluginFile, pluginFolder, vaultFrontmatter, vaultNotes } from "./host.ts";
 import { openMap } from "./map-view.ts";
+import { dropKeys } from "./identity.ts";
 import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
@@ -51,6 +52,8 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     now: () => new Date(),
     // What alerts already ran for is this device's own: only the device running them writes it.
     triggers: pluginFile(plugin, `triggers/${plugin.device.id}.json`),
+    renamed: (from, to) => void plugin.activity.rename(from, to),
+    dropped: (path) => { if (dropKeys(plugin.store, path)) void plugin.saveSettings(); },
     otherTriggers: async () => (await pluginFolder(plugin, "triggers")).filter((f) => f.name !== plugin.device.id).map((f) => f.text),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
     captureKey: (key) => (plugin.store.captureKeys && Object.hasOwn(plugin.store.captureKeys, key) ? plugin.store.captureKeys[key] : undefined),
@@ -59,7 +62,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       const id = `${path}#${shortcut}`;
       const all = (plugin.store.answerTo ??= {});
       all[id] = [...new Set([...(all[id] ?? []), to])];
-      void plugin.saveData(plugin.store);
+      void plugin.saveSettings();
     },
     logSent: (entry) => void plugin.activity.add(entry),
     runsBackground: () => plugin.beat?.isRunner() ?? false,

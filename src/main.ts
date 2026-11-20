@@ -11,7 +11,9 @@ import { thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
-import { dropGrants, grantedOf, isAllowed, isAllowedUnder, migrateGrants, moveGrants, sameGrant, setGrant } from "./grants.ts";
+import { grantedOf, isAllowed, isAllowedUnder, migrateGrants, sameGrant, setGrant } from "./grants.ts";
+import { moveKeys } from "./identity.ts";
+import { mergeSettings, type StoredData } from "./stored.ts";
 import { obsidianAppEnvWrites, obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
@@ -32,21 +34,6 @@ import { logFileParts, logFolder } from "./ledger.ts";
 import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
-interface StoredData {
-  /** Note path → the permissions the user allowed; empty for an app opened that asks for none. */
-  grants: Record<string, string[]>;
-  /** Lens component paths the user folded away. */
-  folded?: Record<string, true>;
-  /** `<app path>#<shortcut>` → the key that shortcut's copied link carries. */
-  linkKeys?: Record<string, string>;
-  /** `<app path>#<shortcut>` → the apps (`scheme://host`) its keyed link may send word back to without asking. */
-  answerTo?: Record<string, string[]>;
-  /** A capture link's key → each capture name it may run without asking, with the `<app path>#<shortcut>` it named then. */
-  captureKeys?: Record<string, Record<string, string>>;
-  /** The data policy as last applied: until Apply, an edited policy note changes nothing. */
-  policy?: AppliedPolicy;
-}
-
 export default class GizmoPlugin extends Plugin {
   store: StoredData = { grants: {} };
   /** Shared by every open app: web cache, notes index, change notifications. */
@@ -65,11 +52,16 @@ export default class GizmoPlugin extends Plugin {
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
+  /** The settings as last read from or written to data.json: what a save tells this device's changes by. */
+  private settingsBase: StoredData = { grants: {} };
+  /** Saves and reloads of data.json, one after another. */
+  private settingsQueue: Promise<unknown> = Promise.resolve();
 
   async onload(): Promise<void> {
-    this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
+    this.store = await this.readSettings();
+    this.settingsBase = structuredClone(this.store);
     // A permission a later Gizmo words differently is kept in both wordings, so nothing allowed asks again.
-    if (migrateGrants(this.store.grants)) await this.saveData(this.store);
+    if (migrateGrants(this.store.grants)) await this.saveSettings();
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir, () => this.device.id));
     this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
     this.device = thisDevice(this.deviceStore, Platform);
@@ -100,19 +92,20 @@ export default class GizmoPlugin extends Plugin {
 
     this.routeAppNotes();
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
+    // A delete may be half of a rename another device made, arriving by sync: what is kept for the
+    // app waits (see identity.ts), and data.json isn't written for what another device did.
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.dataLayer.fileDeleted(file.path);
       if (isPolicyPath(file.path)) this.grantsChanged();
-      const dropped = [this.store.grants, this.store.linkKeys ?? {}, this.store.answerTo ?? {}].map((m: Record<string, unknown>) => dropGrants(m, file.path));
-      if (dropped.some(Boolean)) void this.saveData(this.store);
     }));
+    // A rename made here: everything kept for the app follows it, data.json included.
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.dataLayer.fileRenamed(file.path, oldPath);
       if (isPolicyPath(file.path) || isPolicyPath(oldPath)) this.grantsChanged();
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
-      const moved = [this.store.grants, this.store.linkKeys ?? {}, this.store.answerTo ?? {}].map((m: Record<string, unknown>) => moveGrants(m, oldPath, file.path));
-      if (moved.some(Boolean)) void this.saveData(this.store);
+      if (moveKeys(this.store, oldPath, file.path)) void this.saveSettings();
       void this.activity.rename(oldPath, file.path);
+      this.background?.renamed(oldPath, file.path);
     }));
     registerEmbeds(this);
     this.lenses = registerLenses(this);
@@ -144,12 +137,46 @@ export default class GizmoPlugin extends Plugin {
     this.addSettingTab(new GizmoSettings(this.app, this));
   }
 
-  /** `data.json` changed on disk (a sync from another device): what was allowed there holds here too. */
+  /** `data.json` changed on disk (a sync from another device): what was allowed there holds here too, and what changed here and isn't saved yet stays. */
   async onExternalSettingsChange(): Promise<void> {
     const before = this.store.policy?.hash;
-    this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
+    await this.queueSettings(async () => {
+      const disk = await this.readSettings();
+      this.store = mergeSettings(this.settingsBase, disk, this.store);
+      this.settingsBase = disk;
+    });
     if (this.store.policy?.hash !== before) this.background?.policyChanged();
     this.grantsChanged();
+  }
+
+  /**
+   * Writes the settings to data.json: what changed here since they were last read or written, laid
+   * over what is on disk now, entry by entry, so what another device saved meanwhile isn't lost.
+   */
+  saveSettings(): Promise<void> {
+    return this.queueSettings(async () => {
+      const local = structuredClone(this.store);
+      const merged = mergeSettings(this.settingsBase, await this.readSettings(), local);
+      await this.saveData(merged);
+      this.settingsBase = structuredClone(merged);
+      // What changed here while this was written stays; what came from disk comes in.
+      this.store = mergeSettings(local, merged, this.store);
+    });
+  }
+
+  /** data.json as it is on disk; one that can't be read (a sync caught mid-write) counts as unchanged since last read. */
+  private async readSettings(): Promise<StoredData> {
+    try {
+      return { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
+    } catch {
+      return structuredClone(this.settingsBase);
+    }
+  }
+
+  private queueSettings(fn: () => Promise<void>): Promise<void> {
+    const run = this.settingsQueue.then(fn, fn);
+    this.settingsQueue = run.catch(() => {});
+    return run;
   }
 
   onunload(): void {
@@ -292,7 +319,7 @@ export default class GizmoPlugin extends Plugin {
   async applyPolicy(applied: AppliedPolicy | undefined): Promise<void> {
     if (applied) this.store.policy = applied;
     else delete this.store.policy;
-    await this.saveData(this.store);
+    await this.saveSettings();
     this.background?.policyChanged();
     this.grantsChanged();
   }
@@ -307,7 +334,7 @@ export default class GizmoPlugin extends Plugin {
     const id = `${path}#${shortcut}`;
     if (!Object.hasOwn(keys, id) && create) {
       keys[id] = newLinkKey();
-      void this.saveData(this.store);
+      void this.saveSettings();
     }
     return Object.hasOwn(keys, id) ? keys[id] : undefined;
   }
@@ -316,7 +343,7 @@ export default class GizmoPlugin extends Plugin {
     // An app that asks for nothing is granted that each time it draws; only a change is news.
     if (sameGrant(this.store.grants, path, wanted)) return;
     setGrant(this.store.grants, path, wanted);
-    await this.saveData(this.store);
+    await this.saveSettings();
     this.grantsChanged();
   }
 
@@ -327,7 +354,7 @@ export default class GizmoPlugin extends Plugin {
   async revoke(key: string): Promise<void> {
     if (!Object.hasOwn(this.store.grants, key)) return;
     delete this.store.grants[key];
-    await this.saveData(this.store);
+    await this.saveSettings();
     this.background?.revoked(key);
     const spec = this.background?.spec(key);
     if (spec && permissionsOf(spec, key).length === 0) {
@@ -341,7 +368,7 @@ export default class GizmoPlugin extends Plugin {
     (this.store.linkKeys ??= {})[`${path}#${shortcut}`] = newLinkKey();
     // Where the old key's link was allowed to send word back goes with it.
     delete this.store.answerTo?.[`${path}#${shortcut}`];
-    await this.saveData(this.store);
+    await this.saveSettings();
   }
 
   /**
@@ -351,7 +378,7 @@ export default class GizmoPlugin extends Plugin {
   async newCaptureKey(targets: { name: string; path: string; shortcut: string }[]): Promise<string> {
     const key = newLinkKey();
     (this.store.captureKeys ??= {})[key] = Object.fromEntries(targets.map((t) => [t.name, `${t.path}#${t.shortcut}`]));
-    await this.saveData(this.store);
+    await this.saveSettings();
     this.grantsChanged();
     return key;
   }
@@ -360,7 +387,7 @@ export default class GizmoPlugin extends Plugin {
   async revokeCaptureKey(key: string): Promise<void> {
     if (!this.store.captureKeys || !Object.hasOwn(this.store.captureKeys, key)) return;
     delete this.store.captureKeys[key];
-    await this.saveData(this.store);
+    await this.saveSettings();
     this.grantsChanged();
   }
 

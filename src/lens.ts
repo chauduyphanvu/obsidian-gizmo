@@ -20,7 +20,7 @@ export function registerLenses(plugin: GizmoPlugin): LensIndex {
       const store = (plugin.store.folded ??= {});
       if (folded) store[component] = true;
       else delete store[component];
-      void plugin.saveData(plugin.store);
+      void plugin.saveSettings();
     },
   };
   // Links and templates in a lens resolve from its component.

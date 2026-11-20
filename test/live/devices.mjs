@@ -3,7 +3,7 @@
 //   node test/live/devices.mjs <empty work dir>     (run `npm run build` first)
 // Shared, an app made here, is used on both at once: each device appends to its own log beside
 // the data note, and only the device that runs background work writes the note itself.
-import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
+import { cpSync, existsSync, mkdirSync, readFileSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { launch } from "./launch.mjs";
 import { tools } from "./tools.mjs";
@@ -142,6 +142,52 @@ try {
     const fm = await ta.run(`return na.until(() => { const fm = na.fm("${DATA}"); return fm?.chores?.length === 1 && fm; }, 10000);`);
     ta.expect(cards.every((c) => typeof c === "string" && c.includes("was edited by hand")) && gone.every((g) => g === "gone") && fm?.chores?.[0]?.task === "bins", { cards, gone, fm });
     return cards[0].split("\n")[0];
+  });
+
+  await ta.check("a lens folded on one device, not yet saved, while the other allows an app: data.json keeps both", async () => {
+    // Each device writes its own copy of data.json under a sync tool; here they share one file, so
+    // the two writes are kept apart in time and B's change waits unsaved while A's lands.
+    await tb.run(`(na.plugin().store.folded ??= {})["Components/Some lens.md"] = true; return true;`);
+    await ta.run(`await na.plugin().grant("Apps/Elsewhere.md", ["net:a.example"]); return true;`);
+    await new Promise((r) => setTimeout(r, 1500));
+    await tb.run(`await na.plugin().saveSettings(); return true;`);
+    // Both devices here write the one data.json a sync tool would keep a copy of per device: a read may catch a write.
+    const settings = () => { try { return JSON.parse(readFileSync(join(a.vault, ".obsidian/plugins/gizmo/data.json"), "utf8")); } catch { return {}; } };
+    let disk;
+    for (let i = 0; i < 30; i++) {
+      disk = settings();
+      if (disk.grants?.["Apps/Elsewhere.md"] && disk.folded?.["Components/Some lens.md"]) break;
+      await new Promise((r) => setTimeout(r, 200));
+    }
+    const stores = await both(`return na.until(() => { const s = na.plugin().store; return s.grants["Apps/Elsewhere.md"] && s.folded?.["Components/Some lens.md"] && "both"; }, 8000);`);
+    ta.expect(disk.grants["Apps/Elsewhere.md"]?.[0] === "net:a.example" && disk.folded["Components/Some lens.md"] === true && stores.every((x) => x === "both"), { disk, stores });
+    return "grant from A and fold from B on disk and on both devices";
+  });
+
+  await ta.check("an app renamed on one device: the other drops nothing, and grants, link keys and capture keys follow the new name", async () => {
+    await ta.run(`
+      const p = na.plugin();
+      p.linkKey("${APP}.md", "add", true);
+      await p.newCaptureKey([{ name: "chore", path: "${APP}.md", shortcut: "add" }]);
+      await na.sleep(1500);
+      await app.fileManager.renameFile(na.file("${APP}.md"), "Apps/Household.md");
+      return true;`);
+    // Both devices here write the one data.json a sync tool would keep a copy of per device: a read may catch a write.
+    const settings = () => { try { return JSON.parse(readFileSync(join(a.vault, ".obsidian/plugins/gizmo/data.json"), "utf8")); } catch { return {}; } };
+    const moved = (s) => !!s.grants?.["Apps/Household.md"] && !s.grants["${APP}.md"] && !!s.linkKeys?.["Apps/Household.md#add"]
+      && Object.values(s.captureKeys ?? {}).some((names) => names.chore === "Apps/Household.md#add");
+    let disk;
+    for (let i = 0; i < 40; i++) {
+      disk = settings();
+      if (moved(disk)) break;
+      await new Promise((r) => setTimeout(r, 250));
+    }
+    // B has seen the note go from under its old name; give it time to have dropped anything it was going to.
+    await new Promise((r) => setTimeout(r, 3000));
+    disk = settings();
+    const onB = await tb.run(`const s = na.plugin().store; return { grant: s.grants["Apps/Household.md"], old: s.grants["${APP}.md"], key: s.linkKeys?.["Apps/Household.md#add"] };`);
+    ta.expect(moved(disk) && Array.isArray(onB.grant) && onB.old === undefined && onB.key, { disk, onB });
+    return "kept under Apps/Household.md on disk and on B";
   });
 } catch (e) {
   results.push({ name: "devices: the run itself", status: "FAIL", detail: e.message.split("\n")[0] });

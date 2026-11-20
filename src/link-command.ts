@@ -28,7 +28,7 @@ class ShortcutPicker extends FuzzySuggestModal<ShortcutLink> {
   renderSuggestion(match: { item: ShortcutLink }, el: HTMLElement): void {
     const s = match.item;
     el.createDiv({ cls: "gz-suggest-key", text: `${s.app}: ${s.label}` });
-    el.createDiv({ cls: "gz-suggest-hint", text: s.allowed ? s.link : `${s.link} (open ${s.app} once to allow it)` });
+    el.createDiv({ cls: "gz-suggest-hint", text: s.allowed ? s.address : `${s.address} (open ${s.app} once to allow it)` });
   }
 
   onChooseItem(s: ShortcutLink): void {

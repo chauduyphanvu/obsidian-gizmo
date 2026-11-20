@@ -11,6 +11,7 @@ import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type 
 import type { DataLayer } from "./datalayer.ts";
 import { fileDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
+import { PENDING_MS, RENAME_MS, fingerprint } from "./identity.ts";
 import type { NoteReader } from "./expand.ts";
 import {
   answerParams, appsNamed, formRow, pickItem, readCallbacks, readLink, shortcutLink, withParams, type Callbacks, type ShortcutLink,
@@ -122,6 +123,10 @@ export interface BackgroundEnv {
   triggers?: LogStore;
   /** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
   otherTriggers?(): Promise<string[]>;
+  /** An app note renamed on another device, seen here as a delete and a create: what this device keeps elsewhere (its activity) follows. */
+  renamed?(from: string, to: string): void;
+  /** An app note gone for good (PENDING_MS with no create to match): what is kept for it elsewhere (data.json) can go. */
+  dropped?(path: string): void;
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined;
   /** What a capture link's key may run without asking: name → `<app path>#<shortcut>`; undefined for a key Gizmo never made. */
@@ -239,6 +244,10 @@ interface AppEntry {
   again?: boolean;
   /** Set when the app is allowed again after a pause: since when it was paused, until its rhythms decide the gap. */
   pausedSince?: number;
+  /** Its note's keys as a short text, for telling a sync's rename (a delete and a create) from two apps. */
+  fingerprint: string;
+  /** When it took over what another path kept (a rename): until its grant arrives too, that is kept rather than forgotten. */
+  carried?: number;
   stop(): void;
 }
 
@@ -279,6 +288,9 @@ export class Background {
   private asking = false;
   /** Apps paused here, by path; the list last published. */
   private pausedNow = new Map<string, PausedApp>();
+  /** App notes deleted lately, and app notes made lately, by path: a pair of the same keys is a rename another device made. */
+  private gone = new Map<string, { fingerprint: string; at: number }>();
+  private appeared = new Map<string, { fingerprint: string; at: number }>();
   private pausedShown = "[]";
 
   /** Alerts true now across the vault, for `view: alerts`. */
@@ -366,6 +378,7 @@ export class Background {
   /** Runs whatever is due for every allowed app. Never rejects; one app's failure doesn't stop the others. */
   async tick(): Promise<void> {
     if (!this.running) return;
+    this.expire();
     await Promise.all([...this.apps.values()].map((entry) => this.work(entry).catch(() => {})));
   }
 
@@ -602,9 +615,14 @@ export class Background {
     return [...this.apps.values()]
       .flatMap((e) => [...e.shortcuts].map(([shortcut, ps]): ShortcutLink => {
         const p = ps.panel;
+        const apps = this.apps;
+        const env = this.env;
+        const full = shortcutLink(apps, e.path, shortcut, "");
         return {
           path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), view: p.view, fields: shortcutFields(p),
-          link: shortcutLink(this.apps, e.path, shortcut, this.env.linkKey(e.path, shortcut, true)!),
+          // A key is made, and data.json written, only when a link is copied, not each time the list is drawn.
+          get link() { return shortcutLink(apps, e.path, shortcut, env.linkKey(e.path, shortcut, true)!); },
+          address: full.slice(0, full.indexOf("&key=")),
           allowed: this.granted(e),
           answers: answers(p),
         };
@@ -1024,6 +1042,106 @@ export class Background {
     });
   }
 
+  // ---- Renames ------------------------------------------------------------------------------
+
+  /**
+   * An app note renamed here (Obsidian's own rename): what this device kept for it follows at once.
+   * The caller moves the rest (data.json, the data note, the activity log); see identity.ts.
+   */
+  renamed(from: string, to: string): void {
+    const old = this.apps.get(from);
+    if (old) {
+      old.stop();
+      this.apps.delete(from);
+      this.hide(from);
+    }
+    this.gone.delete(from);
+    this.appeared.delete(to);
+    this.carry(from, to);
+    if (!this.running) return;
+    const entry = this.apps.get(to) ?? this.index(to);
+    if (entry) entry.carried = this.env.now().getTime();
+    this.publishCommands();
+  }
+
+  /**
+   * An app note that is gone: half of a rename when a note with the same keys arrived lately (a sync
+   * may bring the create first); else what was kept for it waits PENDING_MS for its other half.
+   */
+  private disappeared(old: AppEntry): undefined {
+    old.stop();
+    this.apps.delete(old.path);
+    this.hide(old.path);
+    if (this.pausedNow.delete(old.path)) this.publishPaused();
+    const now = this.env.now().getTime();
+    const twin = this.twinOf(this.appeared, old.fingerprint, now);
+    if (twin) {
+      this.appeared.delete(twin);
+      this.carried(old.path, twin);
+    } else this.gone.set(old.path, { fingerprint: old.fingerprint, at: now });
+    for (const cb of [...this.indexListeners]) cb();
+    if (this.running) this.publishCommands();
+    return undefined;
+  }
+
+  /** A new app note: the other half of a rename when a note with the same keys went lately. */
+  private arrived(entry: AppEntry): void {
+    // The apps read at start-up weren't made lately.
+    if (!this.running) return;
+    const now = this.env.now().getTime();
+    const twin = this.twinOf(this.gone, entry.fingerprint, now);
+    if (twin) {
+      this.gone.delete(twin);
+      this.carried(twin, entry.path);
+    } else this.appeared.set(entry.path, { fingerprint: entry.fingerprint, at: now });
+  }
+
+  /** The one note with these keys that went or came within RENAME_MS; none when there are two (two copies aren't a rename). */
+  private twinOf(notes: Map<string, { fingerprint: string; at: number }>, print: string, now: number): string | undefined {
+    const near = [...notes].filter(([, n]) => n.fingerprint === print && now - n.at <= RENAME_MS);
+    return near.length === 1 ? near[0][0] : undefined;
+  }
+
+  /** A rename another device made, matched here: this device's own files follow. */
+  private carried(from: string, to: string): void {
+    this.carry(from, to);
+    const entry = this.apps.get(to);
+    if (entry) entry.carried = this.env.now().getTime();
+    this.env.renamed?.(from, to);
+  }
+
+  /** Moves what alerts, rhythms and a pause kept under one path to another; what was kept there is replaced. */
+  private carry(from: string, to: string): void {
+    const prefix = `${from}\n`;
+    for (const [key, on] of [...this.alertOn]) {
+      if (!key.startsWith(prefix)) continue;
+      this.alertOn.delete(key);
+      this.alertOn.set(to + key.slice(from.length), on);
+    }
+    void this.firedState().then((fired) => {
+      let moved = false;
+      for (const key of Object.keys(fired)) {
+        if (!key.startsWith(prefix)) continue;
+        fired[to + key.slice(from.length)] = fired[key];
+        delete fired[key];
+        moved = true;
+      }
+      if (moved) this.saveFired();
+    });
+  }
+
+  /** Notes gone for PENDING_MS with nothing to match are gone for good; notes made long enough ago match nothing. */
+  private expire(): void {
+    const now = this.env.now().getTime();
+    for (const [path, n] of this.appeared) if (now - n.at > RENAME_MS) this.appeared.delete(path);
+    for (const [path, n] of this.gone) {
+      if (now - n.at <= PENDING_MS) continue;
+      this.gone.delete(path);
+      this.forget(path);
+      this.env.dropped?.(path);
+    }
+  }
+
   // ---- Pause --------------------------------------------------------------------------------
 
   /**
@@ -1034,7 +1152,11 @@ export class Background {
    */
   private async pauseOrForget(entry: AppEntry): Promise<void> {
     const why = this.pauseReason(entry);
-    if (!why) return this.forget(entry.path);
+    if (!why) {
+      // Renamed elsewhere, its grant still on its way here by sync: what it carried waits for it.
+      if (entry.carried !== undefined && this.env.now().getTime() - entry.carried < PENDING_MS && this.env.granted(entry.path) === undefined) return this.hide(entry.path);
+      return this.forget(entry.path);
+    }
     this.hide(entry.path);
     const fired = await this.firedState();
     const key = pausedKey(entry.path);
@@ -1232,11 +1354,13 @@ export class Background {
     const spec = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path })?.spec;
     // Most notes that change aren't apps and never were.
     if (!old && !spec) return undefined;
+    if (old && fm === undefined) return this.disappeared(old);
     const definition = JSON.stringify([fm, spec?.read ?? null, this.env.policy?.()?.hash ?? null]);
     if (old && spec && old.definition === definition) return old;
     old?.stop();
     this.apps.delete(path);
-    const entry = spec && this.entry(path, spec, definition);
+    const entry = spec && this.entry(path, spec, definition, fingerprint(fm!));
+    if (entry && !old) this.arrived(entry);
     // A panel that is still there keeps its alert's state, so editing the app doesn't tell it again.
     // A rule still there keeps where its rhythm got to, so editing the app doesn't skip a deadline.
     const rhythms = entry?.spec.expect.filter((r) => r.kind === "rhythm").map((r) => `${path}\nexpect:${r.id}`) ?? [];
@@ -1253,7 +1377,7 @@ export class Background {
    * A new entry for an app, listening for changes to what defines it (its note, the components it
    * links) and to the data its pinned and alerting panels read.
    */
-  private entry(path: string, spec: AppSpec, definition: string): AppEntry {
+  private entry(path: string, spec: AppSpec, definition: string, print: string): AppEntry {
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const shortcuts = new Map<string, PanelSpec>();
     for (const ps of spec.panels) if (ps.panel.shortcut && !shortcuts.has(ps.panel.shortcut)) shortcuts.set(ps.panel.shortcut, ps);
@@ -1262,6 +1386,7 @@ export class Background {
       path,
       name: basename(path),
       definition,
+      fingerprint: print,
       spec,
       dataPath,
       ...(spec.split && { devices: devicesFolder(dataPath) }),

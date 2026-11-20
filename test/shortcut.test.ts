@@ -149,9 +149,12 @@ test("each shortcut has the link that runs it, and copying one says how a form's
   t.denied.add("Apps/Weight.md");
   await t.bg.start();
   const links = t.bg.shortcutLinks();
+  // Drawing the list makes no key (each would write data.json); reading a link to copy it does.
+  assert.equal(t.linkKeys.size, 0);
+  assert.deepEqual(links.map((l) => l.address), ["obsidian://gizmo?app=Meds&do=effects", "obsidian://gizmo?app=Meds&do=took-meds", "obsidian://gizmo?app=Weight&do=weigh-in"]);
   assert.deepEqual(links.map((l) => [l.path, l.shortcut, l.label, l.fields, l.link, l.allowed]), [
-    ["Apps/Meds.md", "effects", "Side effects", ["note", "severity", "dizzy", "hours", "on", "when"], "obsidian://gizmo?app=Meds&do=effects&key=k2", true],
-    ["Apps/Meds.md", "took-meds", "Took meds", [], "obsidian://gizmo?app=Meds&do=took-meds&key=k1", true],
+    ["Apps/Meds.md", "effects", "Side effects", ["note", "severity", "dizzy", "hours", "on", "when"], "obsidian://gizmo?app=Meds&do=effects&key=k1", true],
+    ["Apps/Meds.md", "took-meds", "Took meds", [], "obsidian://gizmo?app=Meds&do=took-meds&key=k2", true],
     ["Apps/Weight.md", "weigh-in", "weigh-in", ["kg"], "obsidian://gizmo?app=Weight&do=weigh-in&key=k3", false],
   ]);
   assert.equal(linkNotice(links[1]), "Copied the link to “Took meds” in Meds.");
