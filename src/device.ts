@@ -21,6 +21,8 @@ export interface Beat {
   zone?: string;
   /** When the person last used it (ms); a phone or desktop only, never gizmod. */
   used?: number;
+  /** Said as it quits: another device takes over at once rather than after UNSEEN_MS. */
+  left?: true;
 }
 
 /** How much each kind of device should be the one running background work. */
@@ -32,12 +34,13 @@ export const BEAT_EVERY_MS = 5 * 60_000;
 export const UNSEEN_MS = 20 * 60_000;
 
 /**
- * The device that runs background work: of those heard from in the last 20 minutes, the one most
- * suited to it, then the lowest id, so every device works out the same one from the same beats.
- * A runner that goes quiet is replaced only once it has been unseen for 20 minutes.
+ * The device that runs background work: of those heard from in the last 20 minutes and still there,
+ * the one most suited to it, then the lowest id, so every device works out the same one from the
+ * same beats. A runner that quit says so and is replaced at once; one that goes quiet, once it has
+ * been unseen for 20 minutes.
  */
 export function runnerOf(beats: readonly Beat[], now: number): Beat | undefined {
-  const live = beats.filter((b) => now - b.seen < UNSEEN_MS);
+  const live = beats.filter((b) => now - b.seen < UNSEEN_MS && !b.left);
   return live.sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
 }
 
@@ -64,6 +67,7 @@ export function readBeat(text: string): Beat | undefined {
       id: b.id, name: b.name, host: typeof b.host === "string" ? b.host : "", priority: b.priority, seen: b.seen,
       ...(typeof b.zone === "string" && b.zone && { zone: b.zone }),
       ...(typeof b.used === "number" && { used: b.used }),
+      ...(b.left === true && { left: true as const }),
     };
   } catch {
     return undefined;

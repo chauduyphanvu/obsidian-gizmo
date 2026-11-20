@@ -249,8 +249,9 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       clearInterval(timer);
       if (addressTimer) clearInterval(addressTimer);
       bg.stop();
-      // What's waiting is written before the vault is let go of.
+      // What's waiting is written before the vault is let go of, and gizmod says it's leaving.
       await env.data.flushSnapshots().catch(() => {});
+      await env.beat.leave();
       env.vault.close();
       env.data.dispose();
       await Promise.all([...servers.values()].map((s) => new Promise((r) => s.close(r))));

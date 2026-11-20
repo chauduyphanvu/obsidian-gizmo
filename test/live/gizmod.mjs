@@ -79,6 +79,8 @@ expect:
 `;
 
 // Allowed in Obsidian as a plain button, then given a web panel while Obsidian is closed: gizmod finds it paused.
+// Adds a line to the Daily note, run by gizmod while Obsidian has that note open and is being typed in.
+const JOT = "---\napp: Jot\npanels:\n  - view: button\n    label: Jot\n    append: Daily.md\n    line: \"- jotted by gizmod\"\n    shortcut: jot\n---\n";
 const PAUSE = "---\napp: Pause\npanels:\n  - view: button\n    label: Did it\n    save: done\n---\n";
 const PAUSE_MORE = `---\napp: Pause\npanels:\n  - view: button\n    label: Did it\n    save: done\n  - view: number\n    title: Pulse\n    source: ${webUrl}/pulse\n    pick: now.v\n---\n`;
 
@@ -117,6 +119,7 @@ try {
     writeFileSync(join(vault, "Apps/Pills.md"), rhythmApp("Pills"));
     writeFileSync(join(vault, "Apps/Vitamins.md"), rhythmApp("Vitamins"));
     writeFileSync(join(vault, "Apps/Pause.md"), PAUSE);
+    writeFileSync(join(vault, "Apps/Jot.md"), JOT);
   } });
   const vault = a.vault;
   const ta = await tools(a.page, join(work, "shots"), "obsidian", results);
@@ -126,11 +129,14 @@ try {
     await na.open("Apps/Pills");
     await na.open("Apps/Vitamins");
     await na.open("Apps/Pause");
+    await na.open("Apps/Jot");
     const pack = na.plugin().background.captureIndex().names.get("pack");
     await na.open(pack.path.replace(/\\.md$/, ""));
     const link = na.plugin().linkKey("Apps/Errands.md", "add", true);
     const capture = await na.plugin().newCaptureKey([pack]);
     await na.sleep(1500);
+    // As Obsidian quitting does; the harness stops it with a signal, which skips its quit event.
+    await na.plugin().beat.leave();
     return { link, capture, pack: pack.path };`);
   a.page.close();
   a.quit();
@@ -221,6 +227,49 @@ try {
     expect(seen.runner === "gizmod" && !seen.here && seen.gizmodHere && seen.shown && seen.notices.length === 0, seen);
     await tb.shot("gizmod-errands.png");
     return `runner: ${seen.runner}; errands from gizmod shown; no Pulse notice here`;
+  });
+
+  await check("gizmod beside Obsidian: a line gizmod adds to the Daily note while it's open and being typed in loses nothing", async () => {
+    const typed = "typed while gizmod wrote";
+    const typing = tb.run(`
+      const leaf = app.workspace.getLeaf("tab");
+      await leaf.openFile(app.vault.getFileByPath("Daily.md"), { state: { mode: "source" } });
+      await na.sleep(800);
+      const ed = leaf.view.editor;
+      for (const ch of ${JSON.stringify(typed)}) {
+        ed.replaceRange(ch, { line: ed.lastLine(), ch: ed.getLine(ed.lastLine()).length });
+        await na.sleep(120);
+      }
+      return true;`);
+    // Midway through the typing, gizmod adds its line to the same note on disk.
+    await sleep(1800);
+    const jot = cli("run", "Jot", "jot");
+    await typing;
+    // Obsidian saves a couple of seconds after the typing stops.
+    await sleep(5000);
+    const onDisk = readFileSync(join(vault, "Daily.md"), "utf8");
+    const inEditor = await tb.run(`return app.workspace.activeEditor?.editor?.getValue() ?? null;`);
+    // Nothing lost: every character typed is there, in order, once gizmod's line is taken out.
+    const without = (text) => (text ?? "").replace("- jotted by gizmod\n", "").replace("- jotted by gizmod", "");
+    const kept = { typed: without(onDisk).includes(typed), jotted: onDisk.includes("- jotted by gizmod"), editor: without(inEditor).includes(typed) && !!inEditor?.includes("- jotted by gizmod") };
+    await tb.shot("gizmod-daily.png");
+    expect(jot.code === 0 && kept.typed && kept.jotted && kept.editor && onDisk === inEditor, { jot, kept, onDisk, inEditor });
+    // Obsidian merges a change made on disk into the note being typed in where the two part: the line may land mid-word.
+    return onDisk.includes(typed) ? "both kept, the line on its own" : `both kept; the line landed inside the typing: ${JSON.stringify(onDisk.split("\n").slice(-3).join("\n"))}`;
+  });
+
+  await check("gizmod quitting says so: Obsidian takes over background work at once, not after 20 minutes", async () => {
+    daemon.kill("SIGTERM");
+    const exited = await until(() => daemon.exitCode !== null || daemon.signalCode !== null, 10000);
+    const took = await tb.run(`
+      const p = na.plugin();
+      const t0 = Date.now();
+      const here = await na.until(async () => { await p.beat.beat(); return p.beat.isRunner(); }, 60000);
+      await na.sleep(3000);
+      return { here: !!here, ms: Date.now() - t0, runner: p.beat.runner?.name, gizmodHere: p.beat.gizmodHere(), notices: na.notices.filter((n) => n.startsWith("Pulse")) };`);
+    expect(exited && took.here && !took.gizmodHere && took.notices.length === 0, { exited, took, log: log.slice(-600) });
+    daemon = undefined;
+    return `Obsidian runs it ${Math.round(took.ms / 1000)} s after gizmod quit; no Pulse alert told again`;
   });
   b.page.close();
   b.quit();

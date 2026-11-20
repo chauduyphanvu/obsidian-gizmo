@@ -76,7 +76,11 @@ export default class GizmoPlugin extends Plugin {
       gapMs: 5 * 60_000,
       writeNote: (path, fn) => obsidianWrites(this.app).writeFrontmatter(path, fn),
     });
-    this.registerEvent(this.app.workspace.on("quit", (tasks) => tasks.add(() => this.dataLayer.flushSnapshots())));
+    // As Obsidian quits: what's waiting is written, and this device says it's leaving, so another takes over now.
+    this.registerEvent(this.app.workspace.on("quit", (tasks) => tasks.add(async () => {
+      await this.dataLayer.flushSnapshots();
+      await this.beat?.leave();
+    })));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
       this.dataLayer.fileChanged(file.path);
@@ -183,6 +187,8 @@ export default class GizmoPlugin extends Plugin {
   }
 
   onunload(): void {
+    // Turned off: another device takes over background work now.
+    void this.beat?.leave();
     this.dataLayer?.dispose();
     // Without this, open app tabs turn into empty placeholders when the plugin is turned off.
     this.unloading = true;

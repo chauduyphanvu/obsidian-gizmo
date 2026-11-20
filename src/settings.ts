@@ -33,7 +33,6 @@ export class DeviceBeat {
   private plugin: GizmoPlugin;
   private saidAt = 0;
   private said = "";
-  private host = hostName();
   /** Every device's last word, as last read. */
   beats: Beat[] = [];
   runner: Beat | undefined;
@@ -52,7 +51,14 @@ export class DeviceBeat {
 
   private mine(now: number): Beat {
     const d = this.plugin.device;
-    return { id: d.id, name: d.name, host: this.host, priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now, zone: localZone(), used: this.used };
+    // Read at every beat: a laptop renamed, or moved to another network, says so.
+    return { id: d.id, name: d.name, host: hostName(), priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now, zone: localZone(), used: this.used };
+  }
+
+  /** Says this device is leaving, as Obsidian quits, so another takes over background work now. */
+  async leave(): Promise<void> {
+    const me: Beat = { ...this.mine(Date.now()), left: true };
+    await pluginFile(this.plugin, `devices/${me.id}.json`).write(JSON.stringify(me)).catch(() => {});
   }
 
   async beat(force = false): Promise<void> {
@@ -91,7 +97,8 @@ export class DeviceBeat {
   /** gizmod runs on this computer and was heard from lately: it tells of alerts, so Obsidian here doesn't as well. */
   gizmodHere(): boolean {
     const now = Date.now();
-    return !!this.host && this.beats.some((b) => b.priority === PRIORITY.gizmod && b.host === this.host && now - b.seen < UNSEEN_MS);
+    const host = hostName();
+    return !!host && this.beats.some((b) => b.priority === PRIORITY.gizmod && b.host === host && now - b.seen < UNSEEN_MS && !b.left);
   }
 }
 

@@ -40,6 +40,11 @@ test("one device runs background work: gizmod over a desktop over a phone, then 
   assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - UNSEEN_MS + 1000 }], now)?.id, "g");
   assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - UNSEEN_MS }], now)?.id, "m2");
   assert.equal(runnerOf([], now), undefined);
+  // gizmod quitting says so: the desktop takes over at once, and gizmod again when it's back.
+  assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - 1000, left: true }], now)?.id, "m2");
+  assert.equal(runnerOf([phone, mac, { ...daemon, seen: now }], now)?.id, "g");
+  assert.deepEqual(readBeat(JSON.stringify({ ...daemon, left: true })), { ...daemon, left: true });
+  assert.deepEqual(readBeat(JSON.stringify({ ...daemon, left: "yes" })), daemon, "only true counts");
   // A beat written before priorities were kept is left out: that device decides for itself, and beats too seldom to count.
   assert.equal(readBeat(JSON.stringify({ id: "x", name: "Mac", background: true, seen: 5 })), undefined);
   assert.deepEqual(readBeat(JSON.stringify({ id: "x", name: "Mac", priority: 1, seen: 5 })), { id: "x", name: "Mac", host: "", priority: PRIORITY.desktop, seen: 5 });

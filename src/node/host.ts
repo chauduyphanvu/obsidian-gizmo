@@ -218,6 +218,11 @@ export function gizmodEnv(opts: GizmodOptions) {
     isRunner(): boolean {
       return this.heard && this.runner?.id === id;
     },
+    /** Says gizmod is leaving, as it stops, so Obsidian takes over background work now. */
+    async leave(): Promise<void> {
+      const me: Beat = { id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: now(), zone: localZone(), left: true };
+      await fileStore(join(pluginDir, "devices", `${id}.json`)).write(JSON.stringify(me)).catch(() => {});
+    },
   };
 
   const notices: string[] = [];

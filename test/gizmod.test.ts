@@ -10,6 +10,7 @@ import { pushText, secretFromEnv } from "../src/node/host.ts";
 import { NodeVault, inlineTags, splitNote } from "../src/node/vault.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
+import { PRIORITY, readBeat, runnerOf } from "../src/device.ts";
 
 const made: string[] = [];
 after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
@@ -266,6 +267,17 @@ test("gizmod reads data.json again when Obsidian changes it", async () => {
   } finally {
     await t.s.close();
   }
+});
+
+test("gizmod stopping writes what's waiting and says it's leaving, so Obsidian takes over at once", async () => {
+  const t = await served();
+  await t.s.env.beat.beat(true);
+  const beatFile = () => readdirSync(join(t.root, ".obsidian/plugins/gizmo/devices")).map((f) => readBeat(readFileSync(join(t.root, ".obsidian/plugins/gizmo/devices", f), "utf8"))!);
+  assert.equal(beatFile()[0].left, undefined);
+  await t.s.close();
+  const [said] = beatFile();
+  assert.equal(said.left, true);
+  assert.equal(runnerOf([said, { id: "mac", name: "Mac", host: "", priority: PRIORITY.desktop, seen: Date.now() }], Date.now())?.id, "mac");
 });
 
 test("a line gizmod adds to a note someone else is writing keeps their edit", async () => {
