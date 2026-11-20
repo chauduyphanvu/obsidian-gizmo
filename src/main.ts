@@ -11,7 +11,7 @@ import { thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
-import { dropGrants, dropSplitGrants, grantedOf, isAllowed, isAllowedUnder, moveGrants, setGrant } from "./grants.ts";
+import { dropGrants, grantedOf, isAllowed, isAllowedUnder, migrateGrants, moveGrants, sameGrant, setGrant } from "./grants.ts";
 import { obsidianAppEnvWrites, obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
@@ -68,8 +68,8 @@ export default class GizmoPlugin extends Plugin {
 
   async onload(): Promise<void> {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
-    // Each device keeps its own log now, so no app asks to keep a note per device; what was allowed for that goes.
-    if (dropSplitGrants(this.store.grants)) await this.saveData(this.store);
+    // A permission a later Gizmo words differently is kept in both wordings, so nothing allowed asks again.
+    if (migrateGrants(this.store.grants)) await this.saveData(this.store);
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir, () => this.device.id));
     this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
     this.device = thisDevice(this.deviceStore, Platform);
@@ -262,7 +262,7 @@ export default class GizmoPlugin extends Plugin {
 
   /** `opened`: the app must also have been opened in its own tab (see isAllowed); `asked`: under a policy, what it doesn't cover. */
   isGranted(path: string, wanted: string[], opened = false, asked?: string[]): boolean {
-    return asked ? isAllowedUnder(this.store.grants, path, wanted, asked, opened) : isAllowed(this.store.grants, path, wanted, opened);
+    return asked ? isAllowedUnder(this.store.grants, path, asked, opened) : isAllowed(this.store.grants, path, wanted, opened);
   }
 
   /** What the applied data policy says of an app running here; undefined with no policy applied. */
@@ -314,7 +314,7 @@ export default class GizmoPlugin extends Plugin {
 
   async grant(path: string, wanted: string[]): Promise<void> {
     // An app that asks for nothing is granted that each time it draws; only a change is news.
-    if (isAllowed(this.store.grants, path, wanted, true)) return;
+    if (sameGrant(this.store.grants, path, wanted)) return;
     setGrant(this.store.grants, path, wanted);
     await this.saveData(this.store);
     this.grantsChanged();

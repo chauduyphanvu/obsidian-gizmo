@@ -169,7 +169,7 @@ test("editing the app before a deadline is decided doesn't skip it; two ticks at
   assert.deepEqual((t.notices as string[]).filter((n) => n.startsWith("Meds")), ["Meds: no dose by ten"]);
 });
 
-test("after days with nothing running, each missed window is told once, judged on its own rows; a late row in one doesn't meet the next", async () => {
+test("after days with nothing running, each missed window is kept, judged on its own rows, and the newest three are told; a late row in one doesn't meet the next", async () => {
   const t = fakeBackground(notes());
   await t.bg.start();
   await settle();
@@ -179,9 +179,10 @@ test("after days with nothing running, each missed window is told once, judged o
   await t.bg.tick();
   await settle();
   const missed = await t.env.store!("Apps/Meds data.md", "Apps/Meds.md").rows(EXPECT_MISSED);
-  // The latest three windows are told: Saturday to Monday.
-  assert.deepEqual(missed.map((r) => r.window), ["2026-11-21", "2026-11-22", "2026-11-23"]);
+  // Every window missed is kept, Friday's late dose included; the latest three are told: Saturday to Monday.
+  assert.deepEqual(missed.map((r) => r.window), ["2026-11-19", "2026-11-20", "2026-11-21", "2026-11-22", "2026-11-23"]);
   assert.equal((t.notices as string[]).filter((n) => n.startsWith("Meds")).length, 3);
+  assert.equal((await t.env.store!("Apps/Inbox data.md", "Apps/Inbox.md").rows("todo")).length, 3, "a then runs for those told only");
 });
 
 test("two runners deciding one miss keep it once, and only the first tells it", async () => {

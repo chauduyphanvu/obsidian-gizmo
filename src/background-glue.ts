@@ -1,7 +1,8 @@
 import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
 import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
-import { obsidianAppEnv, pluginFile, vaultFrontmatter, vaultNotes } from "./host.ts";
+import { obsidianAppEnv, pluginFile, pluginFolder, vaultFrontmatter, vaultNotes } from "./host.ts";
+import { openMap } from "./map-view.ts";
 import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
@@ -25,6 +26,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
   /** Command id (without the plugin's prefix) → name, as registered. */
   const commands = new Map<string, string>();
   const bar: HTMLElement[] = [];
+  let pausedItem: HTMLElement | undefined;
   let shown: StatusItem[] = [];
   let stopped = false;
 
@@ -34,6 +36,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     notes: vaultNotes(app),
     appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
     isGranted: (path, wanted, asked) => plugin.isGranted(path, wanted, true, asked),
+    granted: (path) => plugin.granted(path),
     policy: () => plugin.store.policy,
     storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
     actionDeps(appPath, dataPath, actor) {
@@ -48,6 +51,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     now: () => new Date(),
     // What alerts already ran for is this device's own: only the device running them writes it.
     triggers: pluginFile(plugin, `triggers/${plugin.device.id}.json`),
+    otherTriggers: async () => (await pluginFolder(plugin, "triggers")).filter((f) => f.name !== plugin.device.id).map((f) => f.text),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
     captureKey: (key) => (plugin.store.captureKeys && Object.hasOwn(plugin.store.captureKeys, key) ? plugin.store.captureKeys[key] : undefined),
     destinations: (path, shortcut) => plugin.store.answerTo?.[`${path}#${shortcut}`] ?? [],
@@ -94,6 +98,22 @@ export function registerBackground(plugin: GizmoPlugin): Background {
           bar[i].setAttr("aria-label", `Open ${item.title}`);
         });
       },
+      // One item saying how many apps are paused, opening the automation map, which says why.
+      setPaused(apps) {
+        if (Platform.isMobile) return;
+        if (!apps.length) {
+          pausedItem?.remove();
+          pausedItem = undefined;
+          return;
+        }
+        if (!pausedItem) {
+          pausedItem = plugin.addStatusBarItem();
+          pausedItem.addClass("gz-status", "gz-status-paused", "mod-clickable");
+          pausedItem.addEventListener("click", () => void openMap(plugin));
+        }
+        pausedItem.setText(`Gizmo: ${apps.length} paused`);
+        pausedItem.setAttr("aria-label", apps.map((a) => `${a.name}: it ${a.reason}`).join("\n"));
+      },
       openApp,
       confirm: (title, lines, effects) => askToRun(app, title, lines, effects),
       choose: (title, lines, choices) => askWhereTo(app, title, lines, choices),
@@ -131,6 +151,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     stopped = true;
     bg.stop();
     for (const el of bar.splice(0)) el.remove();
+    pausedItem?.remove();
   });
   return bg;
 }

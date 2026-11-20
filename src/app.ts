@@ -458,8 +458,9 @@ export class AppController {
     // An app opened in its own tab has been seen; the background acts only for those, even when they ask for nothing.
     if (!h && !component) {
       const before = this.env.granted(this.appPath);
-      // Under a policy that covers all it asks for, it is seen once; what it was allowed before stays.
-      if (verdict ? verdict.asked.length === 0 && before === undefined : wanted.length === 0 && before?.length !== 0) void this.env.grant(this.appPath, []);
+      // What it was allowed and no longer asks for goes, so asking for it again later asks the person again.
+      const kept = before?.filter((p) => wanted.includes(p));
+      if (before === undefined ? (verdict?.asked ?? wanted).length === 0 : kept!.length !== before.length) void this.env.grant(this.appPath, kept ?? []);
     }
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);

@@ -78,6 +78,10 @@ expect:
 ---
 `;
 
+// Allowed in Obsidian as a plain button, then given a web panel while Obsidian is closed: gizmod finds it paused.
+const PAUSE = "---\napp: Pause\npanels:\n  - view: button\n    label: Did it\n    save: done\n---\n";
+const PAUSE_MORE = `---\napp: Pause\npanels:\n  - view: button\n    label: Did it\n    save: done\n  - view: number\n    title: Pulse\n    source: ${webUrl}/pulse\n    pick: now.v\n---\n`;
+
 const home = join(work, "home");
 const env = { ...process.env, NODE_EXTRA_CA_CERTS: join(work, "cert.pem"), GIZMOD_HOME: home, GIZMOD_PORT: String(gizmodPort), GIZMOD_NTFY_URL: `${stubUrl}/ntfy`, GIZMOD_MAC_NOTICES: "0" };
 const cli = (...args) => {
@@ -112,6 +116,7 @@ try {
     writeFileSync(join(vault, "Apps/Pulse.md"), PULSE);
     writeFileSync(join(vault, "Apps/Pills.md"), rhythmApp("Pills"));
     writeFileSync(join(vault, "Apps/Vitamins.md"), rhythmApp("Vitamins"));
+    writeFileSync(join(vault, "Apps/Pause.md"), PAUSE);
   } });
   const vault = a.vault;
   const ta = await tools(a.page, join(work, "shots"), "obsidian", results);
@@ -120,6 +125,7 @@ try {
     await na.open("Apps/Errands");
     await na.open("Apps/Pills");
     await na.open("Apps/Vitamins");
+    await na.open("Apps/Pause");
     const pack = na.plugin().background.captureIndex().names.get("pack");
     await na.open(pack.path.replace(/\\.md$/, ""));
     const link = na.plugin().linkKey("Apps/Errands.md", "add", true);
@@ -130,6 +136,13 @@ try {
   a.quit();
   a = undefined;
   await sleep(1500);
+  // Edited while Obsidian is closed; gizmod's own record says it has been paused for eleven minutes, as if it ran then.
+  writeFileSync(join(vault, "Apps/Pause.md"), PAUSE_MORE);
+  mkdirSync(home, { recursive: true });
+  writeFileSync(join(home, "devices.json"), JSON.stringify({ [resolve(vault)]: "gzpause1" }));
+  mkdirSync(join(vault, ".obsidian/plugins/gizmo/triggers"), { recursive: true });
+  writeFileSync(join(vault, ".obsidian/plugins/gizmo/triggers/gzpause1.json"),
+    JSON.stringify({ v: 2, fired: { "Apps/Pause.md\npaused:": { paused: Date.now() - 11 * 60_000, reason: "now asks to fetch data" } } }));
 
   daemon = spawn(process.execPath, [join(repo, "gizmod.mjs"), "serve", "--vault", vault], { env });
   let log = "";
@@ -155,6 +168,16 @@ try {
     const logs = existsSync(join(vault, "Apps/Pulse data/log")) ? readdirSync(join(vault, "Apps/Pulse data/log")) : [];
     expect(pushed?.body === "Pulse: Pulse" && fm && /v: 5/.test(fm) && logs.some((f) => f.startsWith("gz")), { pushes, fm, logs, log: log.slice(-600) });
     return `pushed “${pushed.body}”; logs ${logs.join(", ")}`;
+  });
+
+  await check("gizmod: an app allowed in Obsidian that now asks for more is paused, pushed once, and listed in its status", async () => {
+    const pushed = await until(() => pushes.find((p) => p.body.startsWith("Pause")), 15000);
+    const s = cli("status");
+    await sleep(500);
+    const count = pushes.filter((p) => p.body.startsWith("Pause")).length;
+    expect(pushed?.body === "Pause: paused in the background" && count === 1 && s.out.paused?.[0]?.app === "Pause" && /fetch data from 127\.0\.0\.1/.test(s.out.paused[0].reason),
+      { pushes, status: s.out, log: log.slice(-600) });
+    return `pushed “${pushed.body}”; status: ${s.out.paused[0].reason}`;
   });
 
   await check("gizmod: run, get and do from the command line; over HTTP a link key runs its shortcut and no key runs nothing", async () => {

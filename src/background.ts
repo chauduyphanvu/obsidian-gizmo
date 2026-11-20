@@ -1,5 +1,5 @@
 import { metIn, refusal, windowsDue, type Rhythm, type Window } from "./expect.ts";
-import { panelKey } from "./flows.ts";
+import { panelKey, violationText } from "./flows.ts";
 import { rowId as ledgerRowId } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { fillLine, runActions, storeOf, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
@@ -20,7 +20,7 @@ import {
   panelIds, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
 import type { AppSummary } from "./map.ts";
-import { askersOf, permissionsOf } from "./permissions.ts";
+import { askersOf, describePermission, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
 import { clearance, rank, released, type AppliedPolicy, type Label, type Policy } from "./policy.ts";
 import { basename, dataPathOf, devicesFolder, notePath, resolveList, storeTarget } from "./store.ts";
@@ -36,6 +36,12 @@ export const DEFAULT_REFRESH_MS = 10 * 60_000;
 export const MIN_RECORD_MS = 60_000;
 /** Where a rhythm's misses are kept, in the app's data note. */
 export const EXPECT_MISSED = "expect_missed";
+
+/**
+ * How long an app is paused before it is told: two beats, so a component edit that syncs here before
+ * the data.json allowing it doesn't tell of a pause that ends a minute later.
+ */
+export const PAUSE_TELL_MS = 10 * 60_000;
 
 /** A recorded list keeps this many rows, the newest. */
 export const MAX_SAMPLES = 10_000;
@@ -65,11 +71,23 @@ export interface BackgroundSink {
   choose(title: string, lines: string[], choices: string[]): Promise<number | undefined>;
   /** Opens a link that goes out of Obsidian: a link's x-success, x-error or x-cancel. */
   openUrl(url: string): void;
+  /** The apps paused in the background here, for the status bar; empty when none is. */
+  setPaused?(apps: PausedApp[]): void;
   /**
    * An alert that just turned true, for places beyond the notice (gizmod pushes it to a phone):
    * the app and panel, the notice's text, and its label under the data policy when one is applied.
    */
   alert?(notice: AlertNotice): void;
+}
+
+/** An app that was allowed and stopped running in the background: it asks for more, or the policy now refuses it. */
+export interface PausedApp {
+  path: string;
+  name: string;
+  /** Why, as words that follow "it": "now asks to fetch data from …". */
+  reason: string;
+  /** Since when (ms). */
+  since: number;
 }
 
 export interface AlertNotice {
@@ -91,6 +109,8 @@ export interface BackgroundEnv {
    * nothing; under a data policy, `asked` is what the policy doesn't cover (see isAllowedUnder).
    */
   isGranted(path: string, wanted: string[], asked?: string[]): boolean;
+  /** What was allowed under an app's grant key, or undefined when nothing is kept (never allowed, or revoked). */
+  granted(path: string): string[] | undefined;
   /** The data policy applied in Obsidian, if any, with its fingerprint. */
   policy?(): AppliedPolicy | undefined;
   storePath(store: string, fromPath: string): string;
@@ -100,6 +120,8 @@ export interface BackgroundEnv {
   sink: BackgroundSink;
   /** Where the alerts that run a `then` keep what they already ran for, across restarts. */
   triggers?: LogStore;
+  /** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
+  otherTriggers?(): Promise<string[]>;
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined;
   /** What a capture link's key may run without asking: name → `<app path>#<shortcut>`; undefined for a key Gizmo never made. */
@@ -166,7 +188,10 @@ function answers(p: Panel): boolean {
 }
 
 /** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
-type Fired = { on: boolean } | { rows: string[] } | { decided: number };
+type Fired = { on: boolean } | { rows: string[] } | { decided: number } | { paused: number; reason: string; told?: true };
+
+/** Where an app's pause is kept in `fired`: beside its rhythms' `expect:<rule>`, never a panel's key. */
+const pausedKey = (path: string) => `${path}\npaused:`;
 
 /** A rhythm missed while nothing ran (Obsidian closed, no gizmod): told for at most this many of its latest windows. */
 const MAX_CATCH_UP = 3;
@@ -212,6 +237,8 @@ interface AppEntry {
   checking?: Promise<void>;
   /** Asked to evaluate again while an evaluation runs. */
   again?: boolean;
+  /** Set when the app is allowed again after a pause: since when it was paused, until its rhythms decide the gap. */
+  pausedSince?: number;
   stop(): void;
 }
 
@@ -250,6 +277,9 @@ export class Background {
   private runs = new Map<string, number[]>();
   /** A link without its key is waiting for the person's answer. */
   private asking = false;
+  /** Apps paused here, by path; the list last published. */
+  private pausedNow = new Map<string, PausedApp>();
+  private pausedShown = "[]";
 
   /** Alerts true now across the vault, for `view: alerts`. */
   readonly alerts: AlertFeed = {
@@ -351,7 +381,8 @@ export class Background {
   }
 
   private async work(entry: AppEntry): Promise<void> {
-    if (!this.granted(entry)) return this.forget(entry.path);
+    if (!this.granted(entry)) return this.pauseOrForget(entry);
+    await this.resume(entry);
     for (const job of entry.records) await this.sample(entry, job, false).catch(() => {});
     if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.check(entry);
     await this.rhythms(entry).catch(() => {});
@@ -366,7 +397,10 @@ export class Background {
    * run. A rule seen for the first time starts from now; one that can't be read now waits a tick.
    */
   private async rhythms(entry: AppEntry): Promise<void> {
-    if (!this.env.runsBackground()) return;
+    if (!this.env.runsBackground()) {
+      entry.pausedSince = undefined;
+      return;
+    }
     const rules = entry.spec.expect.filter((r): r is Rhythm => r.kind === "rhythm");
     // A tick that comes while the last is still deciding leaves it to that one.
     if (!rules.length || entry.deciding) return;
@@ -395,19 +429,25 @@ export class Background {
       const r = ps && (await this.evaluate(entry.path, ps, true));
       if (!r || !("panel" in r)) continue;
       const rows = rowsOf(r.rows);
-      for (const w of due.slice(-MAX_CATCH_UP)) if (!metIn(rows, rule, w, now)) await this.missed(entry, rule, w);
+      // Every window missed is kept; only the newest few are told, the rest were long ago.
+      const misses = due.filter((w) => !metIn(rows, rule, w, now));
+      for (const [i, w] of misses.entries()) {
+        const whilePaused = entry.pausedSince !== undefined && w.deadline >= entry.pausedSince;
+        await this.missed(entry, rule, w, i >= misses.length - MAX_CATCH_UP, whilePaused);
+      }
       fired[key] = { decided: due.at(-1)!.deadline };
       this.saveFired();
     }
+    entry.pausedSince = undefined;
   }
 
-  private async missed(entry: AppEntry, rule: Rhythm, w: Window): Promise<void> {
+  private async missed(entry: AppEntry, rule: Rhythm, w: Window, tell: boolean, whilePaused: boolean): Promise<void> {
     const seed = `miss\n${entry.path}\n${rule.id}\n${w.start}`;
     const window = stampParts(new Date(w.start)).date;
     const deps = this.env.actionDeps(entry.path, entry.dataPath);
     const { already } = await storeOf(deps).add(EXPECT_MISSED, { rule: rule.id, window, at: stampParts(this.env.now()).at }, { id: ledgerRowId(seed) });
-    if (already) return;
-    const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}`;
+    if (already || !tell) return;
+    const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}${whilePaused ? ` (${window}, missed while paused)` : ""}`;
     this.say(text);
     this.env.sink.alert?.({ app: entry.name, panel: rule.say ?? rule.id, text });
     if (rule.then) await this.runThen(entry.path, rule.then, { rule: rule.id, window }, [], undefined, seed);
@@ -889,7 +929,7 @@ export class Background {
   /** A panel that can't be evaluated now (a failed fetch) keeps what it showed last. */
   private async checkOnce(entry: AppEntry): Promise<void> {
     if (entry.watched.length === 0) return;
-    if (!this.granted(entry)) return this.forget(entry.path);
+    if (!this.granted(entry)) return this.pauseOrForget(entry);
     const now = this.env.now();
     entry.checkedAt = now.getTime();
     for (const { key, ps } of entry.watched) {
@@ -966,8 +1006,90 @@ export class Background {
    * only for what turns true after, never for everything that changed while another device ran them.
    */
   startOver(): void {
-    this.fired = Promise.resolve({});
+    const before = this.firedState();
+    this.fired = (async () => carryOver(await before, await this.otherFired()))();
     this.saveFired();
+  }
+
+  /** What the other devices kept of their alerts and rhythms, in a version this one knows. */
+  private async otherFired(): Promise<Record<string, Fired>[]> {
+    const texts = await this.env.otherTriggers?.().catch(() => []) ?? [];
+    return texts.flatMap((text) => {
+      try {
+        const parsed = JSON.parse(text) as { v?: unknown; fired?: unknown };
+        return parsed.v === FIRED_VERSION && parsed.fired && typeof parsed.fired === "object" && !Array.isArray(parsed.fired) ? [parsed.fired as Record<string, Fired>] : [];
+      } catch {
+        return [];
+      }
+    });
+  }
+
+  // ---- Pause --------------------------------------------------------------------------------
+
+  /**
+   * An app that isn't allowed now. Paused when it was allowed and now asks for more, or the policy
+   * refuses it: it keeps where its rhythms and alerts got to, and the device running background work
+   * tells of it once it has lasted PAUSE_TELL_MS. Otherwise (revoked, never allowed) it is forgotten,
+   * and starts over when allowed.
+   */
+  private async pauseOrForget(entry: AppEntry): Promise<void> {
+    const why = this.pauseReason(entry);
+    if (!why) return this.forget(entry.path);
+    this.hide(entry.path);
+    const fired = await this.firedState();
+    const key = pausedKey(entry.path);
+    const was = fired[key];
+    const now = this.env.now().getTime();
+    const since = was && "paused" in was ? was.paused : now;
+    this.pausedNow.set(entry.path, { path: entry.path, name: entry.name, reason: why.reason, since });
+    this.publishPaused();
+    if (!was || !("paused" in was) || was.reason !== why.reason) {
+      fired[key] = { paused: since, reason: why.reason };
+      this.saveFired();
+      if (now - since < PAUSE_TELL_MS) return;
+    } else if (was.told || now - since < PAUSE_TELL_MS) return;
+    if (!this.env.runsBackground()) return;
+    fired[key] = { paused: since, reason: why.reason, told: true };
+    this.saveFired();
+    const text = `${entry.name} is paused in the background: it ${why.reason}. ${why.next}`;
+    if (!this.env.quietAlerts?.()) this.say(text);
+    this.env.sink.alert?.({ app: entry.name, panel: "paused in the background", text });
+  }
+
+  /** Why an app that was allowed doesn't run now, and what to do; undefined when it was never allowed or was revoked. */
+  private pauseReason(entry: AppEntry): { reason: string; next: string } | undefined {
+    const before = this.env.granted(entry.path);
+    if (before === undefined) return undefined;
+    const verdict = this.verdictNow(entry);
+    if (verdict?.violations.length) return { reason: `breaks your data policy (${violationText(verdict.violations[0])})`, next: "Open it to see why." };
+    const missing = (verdict?.asked ?? entry.wanted).filter((p) => !before.includes(p));
+    if (!missing.length) return undefined;
+    const asks = missing.map((p) => describePermission(p)).map((d) => d.charAt(0).toLowerCase() + d.slice(1));
+    return { reason: `now asks to ${asks.join("; ")}`, next: "Open it to allow it." };
+  }
+
+  /** An app allowed again after a pause: its rhythms decide what they missed meanwhile, on this tick. */
+  private async resume(entry: AppEntry): Promise<void> {
+    if (this.pausedNow.delete(entry.path)) this.publishPaused();
+    const fired = await this.firedState();
+    const was = fired[pausedKey(entry.path)];
+    if (!was || !("paused" in was)) return;
+    delete fired[pausedKey(entry.path)];
+    this.saveFired();
+    entry.pausedSince = was.paused;
+  }
+
+  /** Apps paused here, by name. */
+  paused(): PausedApp[] {
+    return [...this.pausedNow.values()].sort((a, b) => a.name.localeCompare(b.name));
+  }
+
+  private publishPaused(): void {
+    const list = this.paused();
+    const json = JSON.stringify(list.map((p) => [p.path, p.reason]));
+    if (json === this.pausedShown) return;
+    this.pausedShown = json;
+    this.env.sink.setPaused?.(list);
   }
 
   /**
@@ -1000,6 +1122,19 @@ export class Background {
     });
   }
 
+  /** Takes an app's status items and alerts off the screen; what it was doing is kept. */
+  private hide(path: string): void {
+    let dropped = false;
+    for (const map of [this.pins, this.active]) {
+      for (const key of map.keys()) {
+        if (!key.startsWith(`${path}\n`)) continue;
+        map.delete(key);
+        dropped = true;
+      }
+    }
+    if (dropped) this.publish();
+  }
+
   /** Drops an app's status items and alerts (it's gone, or no longer allowed); `keep` are panels it still watches. */
   private forget(path: string, keep: ReadonlySet<string> = new Set()): void {
     let dropped = false;
@@ -1010,6 +1145,7 @@ export class Background {
         dropped = true;
       }
     }
+    if (this.pausedNow.delete(path)) this.publishPaused();
     // An alert's `then` that is dropped starts over, noting what is true when it's back.
     void this.fired?.then((fired) => {
       let gone = false;
@@ -1104,7 +1240,8 @@ export class Background {
     // A panel that is still there keeps its alert's state, so editing the app doesn't tell it again.
     // A rule still there keeps where its rhythm got to, so editing the app doesn't skip a deadline.
     const rhythms = entry?.spec.expect.filter((r) => r.kind === "rhythm").map((r) => `${path}\nexpect:${r.id}`) ?? [];
-    this.forget(path, new Set([...(entry?.watched.map((w) => w.key) ?? []), ...rhythms]));
+    // A pause stays with an app that is still there: what it asks for decides it on the next tick.
+    this.forget(path, new Set([...(entry?.watched.map((w) => w.key) ?? []), ...rhythms, ...(entry ? [pausedKey(path)] : [])]));
     for (const cb of [...this.indexListeners]) cb();
     if (!this.running) return entry;
     this.publishCommands();
@@ -1201,6 +1338,25 @@ function labelOf(p: Panel, fallback: string): string {
 }
 
 /** When a list's last row was saved, from its `at`. */
+/**
+ * What a device taking over background work keeps: alerts start over (they note what is true now and
+ * run their `then` only for what turns true after), while rhythms and pauses carry on. Each rhythm
+ * goes on from the latest point any device decided it to, so a window nobody decided while devices
+ * changed over is still decided, and one already decided elsewhere isn't decided again.
+ */
+export function carryOver(mine: Record<string, Fired>, others: readonly Record<string, Fired>[]): Record<string, Fired> {
+  const out: Record<string, Fired> = {};
+  for (const [key, value] of Object.entries(mine)) if ("paused" in value || "decided" in value) out[key] = value;
+  for (const fired of others) {
+    for (const [key, value] of Object.entries(fired)) {
+      if (!("decided" in value) || typeof value.decided !== "number") continue;
+      const had = out[key];
+      if (!had || !("decided" in had) || had.decided < value.decided) out[key] = { decided: value.decided };
+    }
+  }
+  return out;
+}
+
 function lastSample(list: unknown): number | undefined {
   const last = Array.isArray(list) ? list[list.length - 1] : undefined;
   return last !== null && typeof last === "object" ? toTime((last as Row).at) : undefined;

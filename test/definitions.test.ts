@@ -143,7 +143,8 @@ test("an app counts as seen once it is opened in its own tab, even when it asks 
   assert.equal(isAllowed({}, "A.md", []), true);
   assert.equal(isAllowed({}, "A.md", [], true), false);
   assert.equal(isAllowed({ "A.md": [] }, "A.md", [], true), true);
-  assert.equal(isAllowed({ "A.md": ["net:x"] }, "A.md", [], true), false);
+  // Allowed something it no longer asks for: that takes nothing away.
+  assert.equal(isAllowed({ "A.md": ["net:x"] }, "A.md", [], true), true);
   assert.equal(isAllowed({ "A.md": ["net:x"] }, "A.md", ["net:x"], true), true);
 
   const meds = { app: "Meds", view: "button", label: "Took", save: "doses" };

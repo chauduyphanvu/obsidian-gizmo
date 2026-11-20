@@ -1,0 +1,161 @@
+{
+  "vault:Apps/AAPL.md": [
+    "net:query1.finance.yahoo.com",
+    "send:query1.finance.yahoo.com|picked.holding.symbol"
+  ],
+  "vault:Apps/Appointments.md": [
+    "create:Health",
+    "edit:Health",
+    "read:Health"
+  ],
+  "vault:Apps/Attention.md": [],
+  "vault:Apps/Bank.md": [
+    "read:Finance/bank.csv"
+  ],
+  "vault:Apps/Bets.md": [
+    "create:Bets",
+    "edit:Bets",
+    "read:Bets"
+  ],
+  "vault:Apps/Broken.md": [],
+  "vault:Apps/Calls.md": [
+    "run:Errands#add"
+  ],
+  "vault:Apps/Chores.md": [],
+  "vault:Apps/Currency.md": [
+    "net:api.frankfurter.dev"
+  ],
+  "vault:Apps/Decisions.md": [
+    "create:Decisions",
+    "edit:Decisions",
+    "read:Decisions"
+  ],
+  "vault:Apps/Errands.md": [],
+  "vault:Apps/Focus.md": [
+    "write:Daily.md"
+  ],
+  "vault:Apps/Habits.md": [],
+  "vault:Apps/Library.md": [
+    "create:Books",
+    "edit:Books",
+    "net:openlibrary.org",
+    "read:Books",
+    "send:openlibrary.org|typed.q"
+  ],
+  "vault:Apps/Meds.md": [
+    "write:Daily.md"
+  ],
+  "vault:Apps/Movers.md": [
+    "net:query1.finance.yahoo.com"
+  ],
+  "vault:Apps/Packing.md": [],
+  "vault:Apps/Planet Earth.md": [
+    "net:api.open-meteo.com",
+    "net:earthquake.usgs.gov",
+    "net:services.swpc.noaa.gov"
+  ],
+  "vault:Apps/Portfolio.md": [
+    "net:query1.finance.yahoo.com",
+    "send:query1.finance.yahoo.com|picked.holding.symbol"
+  ],
+  "vault:Apps/Projects.md": [
+    "edit:Projects",
+    "read:Projects"
+  ],
+  "vault:Apps/Reading list.md": [
+    "create:Reading",
+    "edit:Reading",
+    "net:hnrss.org",
+    "net:xkcd.com",
+    "read:Reading"
+  ],
+  "vault:Apps/Renewals.md": [],
+  "vault:Apps/Shelf.md": [
+    "edit:*",
+    "read:*"
+  ],
+  "vault:Apps/Space weather.md": [
+    "net:services.swpc.noaa.gov"
+  ],
+  "vault:Apps/Spending.md": [],
+  "vault:Apps/Tasks.md": [
+    "read:Tasks",
+    "tasks:Tasks"
+  ],
+  "vault:Apps/Weather.md": [
+    "net:api.open-meteo.com",
+    "write:Daily.md"
+  ],
+  "vault:Apps/Week.md": [
+    "read:Calendar/family.ics"
+  ],
+  "vault:Apps/Weight.md": [],
+  "vault:Components/Decision review.md": [
+    "edit:Decisions"
+  ],
+  "vault:Components/Reading progress.md": [
+    "edit:Books"
+  ],
+  "gallery:Apps/Aurora watch.md": [
+    "net:services.swpc.noaa.gov"
+  ],
+  "gallery:Apps/Book finder.md": [
+    "create:Books",
+    "edit:Books",
+    "images",
+    "net:openlibrary.org",
+    "read:Books",
+    "send:openlibrary.org|typed.q"
+  ],
+  "gallery:Apps/Budget.md": [
+    "answer:spent"
+  ],
+  "gallery:Apps/Decision journal.md": [
+    "create:Decisions",
+    "edit:Decisions",
+    "read:Decisions"
+  ],
+  "gallery:Apps/Household chores.md": [],
+  "gallery:Apps/Medication log.md": [
+    "answer:doses-today"
+  ],
+  "gallery:Apps/Project board.md": [
+    "create:Projects",
+    "edit:Projects",
+    "read:Projects"
+  ],
+  "gallery:Apps/Read later.md": [
+    "create:Reading",
+    "edit:Reading",
+    "net:feeds.bbci.co.uk",
+    "net:feeds.npr.org",
+    "read:Reading"
+  ],
+  "gallery:Apps/Sleep.md": [],
+  "gallery:Apps/Task inbox.md": [
+    "read:Tasks",
+    "tasks:Tasks",
+    "write:Tasks/Inbox.md"
+  ],
+  "gallery:Apps/Trip planner.md": [
+    "net:api.frankfurter.dev",
+    "net:api.open-meteo.com",
+    "net:archive-api.open-meteo.com",
+    "read:Trips/Tokyo.ics",
+    "send:api.open-meteo.com|this.lat",
+    "send:api.open-meteo.com|this.lon",
+    "send:archive-api.open-meteo.com|this.lat",
+    "send:archive-api.open-meteo.com|this.lon"
+  ],
+  "gallery:Apps/Watchlist.md": [
+    "net:query1.finance.yahoo.com",
+    "send:query1.finance.yahoo.com|picked.position.symbol"
+  ],
+  "gallery:Apps/Weight.md": [],
+  "gallery:Components/Decision review.md": [
+    "edit:Decisions"
+  ],
+  "gallery:Components/Reading progress.md": [
+    "edit:Books"
+  ]
+}

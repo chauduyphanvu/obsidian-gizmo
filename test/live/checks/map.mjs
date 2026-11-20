@@ -61,6 +61,43 @@ export default async function map(t) {
     return r.notices.join(" | ");
   });
 
+  await check("an allowed app that comes to ask for a new host is paused, not dropped: the status bar and map say so, it is told once, and Allow clears it", async () => {
+    const r = await run(`
+      const path = "Apps/Pausable.md";
+      await na.write(path, "---\\napp: Pausable\\npanels:\\n  - view: button\\n    label: Did it\\n    save: done\\n---\\nA button, then a weather panel added later.\\n");
+      await na.until(() => na.fm(path)?.app, 3000);
+      await na.open("Apps/Pausable");
+      const allowed = !!(await na.until(() => na.plugin().store.grants[path], 3000));
+      await app.fileManager.processFrontMatter(na.file(path), (fm) => {
+        fm.panels.push({ view: "number", title: "Rain", source: "https://api.open-meteo.com/v1/forecast?latitude=51.5&longitude=-0.1&current=rain", pick: "current.rain" });
+      });
+      const bg = na.plugin().background;
+      await na.until(() => bg.spec(path)?.panels.length === 2, 3000);
+      await bg.tick();
+      const shown = await na.until(() => na.status().find((s) => s.startsWith("Gizmo: ")), 3000);
+      app.commands.executeCommandById("gizmo:open-map");
+      const state = await na.until(() => {
+        const c = [...document.querySelectorAll(".workspace-leaf.mod-active .gz-map .gz-map-app")].find((c) => c.querySelector(".gz-title")?.textContent === "Pausable");
+        return c?.querySelector(".gz-map-state")?.textContent;
+      }, 3000);
+      // Paused for eleven minutes as far as what it kept says: the next tick tells it, and the one after doesn't again.
+      const fired = await bg.fired;
+      fired[path + "\\npaused:"].paused -= 11 * 60_000;
+      const mark = na.notices.length;
+      await bg.tick();
+      await bg.tick();
+      const told = (await na.noticesSince(mark, "Pausable")).filter((n) => n.startsWith("Pausable"));
+      const reopened = await na.open("Apps/Pausable");
+      await bg.tick();
+      const cleared = await na.until(() => !na.status().some((s) => s.startsWith("Gizmo: ")), 3000);
+      await na.remove(path);
+      return { allowed, shown, state, told, prompt: reopened.prompt, cleared: !!cleared };`);
+    expect(r.allowed && r.shown === "Gizmo: 1 paused" && r.state === "Paused (asks for more)", r);
+    expect(r.told.length === 1 && r.told[0] === "Pausable is paused in the background: it now asks to fetch data from api.open-meteo.com. Open it to allow it.", r);
+    expect(r.prompt?.includes("Fetch data from api.open-meteo.com") && r.cleared, r);
+    return r.told[0];
+  });
+
   await check("New link key: a link copied before asks before it runs, and its window says what it would change", async () => {
     const r = await run(`
       const id = "Apps/Errands.md#add";

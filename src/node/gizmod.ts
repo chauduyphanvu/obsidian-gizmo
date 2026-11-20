@@ -170,7 +170,10 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       };
       if (req.method === "GET" && parts[0] === "status" && parts.length === 1) {
         if (!trusted) throw new HttpError(403, "status is for this computer's own user");
-        return reply(200, { device: id, vault: vaultPath, runsBackground: env.beat.isRunner(), runner: env.beat.runner?.name, apps: bg.list().length });
+        return reply(200, {
+          device: id, vault: vaultPath, runsBackground: env.beat.isRunner(), runner: env.beat.runner?.name, apps: bg.list().length,
+          paused: bg.paused().map((p) => ({ app: p.name, path: p.path, reason: p.reason, since: new Date(p.since).toISOString() })),
+        });
       }
       if ((req.method === "POST" && parts[0] === "run") || (req.method === "GET" && parts[0] === "get")) {
         if (parts.length !== 3) throw new HttpError(404, `use /${parts[0]}/<app>/<shortcut>`);

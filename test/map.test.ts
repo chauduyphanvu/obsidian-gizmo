@@ -69,7 +69,7 @@ test("the map: state from the grants, asks grouped and marked new, what makes ea
   const map = buildMap(apps, grants, [["Components/Review.md", "Decisions"]], []);
   const by = (name: string) => map.apps.find((a) => a.name === name)!;
   assert.equal(by("Meds").state, "allowed");
-  assert.equal(by("Inbox").state, "asks-again", "it now writes Tasks/Inbox.md, which wasn't allowed");
+  assert.equal(by("Inbox").state, "paused", "it now writes Tasks/Inbox.md, which wasn't allowed");
   assert.deepEqual(by("Inbox").asks.map((a) => [a.group, a.text, a.isNew]), [["Changes", "Add lines to Tasks/Inbox.md", true]]);
   assert.equal(by("Projects").state, "not-opened");
   assert.deepEqual(by("Projects").asks.map((a) => a.isNew), [false, false], "nothing is new before anything was allowed");

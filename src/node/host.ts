@@ -14,8 +14,8 @@ import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../background.t
 import { DataLayer, type Host } from "../datalayer.ts";
 import { ledgerStore } from "../datastore.ts";
 import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, startsOver, type Beat } from "../device.ts";
-import { isAllowed, isAllowedUnder } from "../grants.ts";
-import { POLICY_PATH, clearance, rank, type AppliedPolicy } from "../policy.ts";
+import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
+import { clearance, isPolicyPath, rank, type AppliedPolicy } from "../policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../responses.ts";
 import { isApp, notePath, storeTarget } from "../store.ts";
 import { tickLine } from "../sources/tasks.ts";
@@ -132,7 +132,8 @@ export function gizmodEnv(opts: GizmodOptions) {
   const ledger = data.ledger!;
   const frontmatter = (path: string) => vault.file(path)?.fm;
   const refuse = (path: string) => {
-    if (path === POLICY_PATH) throw new Error(`${path} is your Gizmo policy; apps can't change it`);
+    // Any case: on a disk that ignores case, "gizmo POLICY.md" is the same note.
+    if (isPolicyPath(path)) throw new Error(`${path} is your Gizmo policy; apps can't change it`);
   };
   /** One write to a note at a time. */
   const queues = new Map<string, Promise<unknown>>();
@@ -258,7 +259,8 @@ export function gizmodEnv(opts: GizmodOptions) {
     notes: { resolve: (link, from) => vault.resolve(link, from), frontmatter },
     appPaths: () => vault.notes().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
     // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
-    isGranted: (path, wanted, asked) => (asked ? isAllowedUnder(store().grants, path, wanted, asked, true) : isAllowed(store().grants, path, wanted, true)),
+    isGranted: (path, wanted, asked) => (asked ? isAllowedUnder(store().grants, path, asked, true) : isAllowed(store().grants, path, wanted, true)),
+    granted: (path) => grantedOf(store().grants, path),
     policy: () => store().policy,
     storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? notePath(storeTarget(s)),
     actionDeps(appPath: string, dataPath: string, actor?: Actor): ActionDeps {
@@ -270,6 +272,17 @@ export function gizmodEnv(opts: GizmodOptions) {
     now: () => new Date(now()),
     sink,
     triggers: fileStore(join(pluginDir, "triggers", `${id}.json`)),
+    otherTriggers: async () => {
+      const dir = join(pluginDir, "triggers");
+      if (!existsSync(dir)) return [];
+      const out: string[] = [];
+      for (const f of await fs.readdir(dir)) {
+        if (!f.endsWith(".json") || f === `${id}.json`) continue;
+        const text = await fs.readFile(join(dir, f), "utf8").catch(() => undefined);
+        if (text !== undefined) out.push(text);
+      }
+      return out;
+    },
     // gizmod uses the keys Obsidian made; it never makes one.
     linkKey: (path, shortcut) => store().linkKeys?.[`${path}#${shortcut}`],
     captureKey: (key) => {

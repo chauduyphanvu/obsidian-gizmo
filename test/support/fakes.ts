@@ -1,7 +1,7 @@
 import { noteText, withLine } from "../../src/actions.ts";
 import { ActivityLog, type UndoIO } from "../../src/activity.ts";
 import type { AppEnv } from "../../src/app.ts";
-import { Background } from "../../src/background.ts";
+import { Background, type AlertNotice, type PausedApp } from "../../src/background.ts";
 import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { isAllowed, isAllowedUnder } from "../../src/grants.ts";
@@ -317,7 +317,12 @@ export function fakeBackground(
     /** What a keyed link asked about where it sends word back, and the links opened out of Obsidian. */
     chose: [] as { title: string; lines: string[] }[],
     opened: [] as string[],
+    /** The apps paused here, as the status bar would show them; and the alerts pushed beyond the notice (gizmod's ntfy). */
+    paused: [] as PausedApp[],
+    pushed: [] as AlertNotice[],
   };
+  /** The other devices' `triggers` files, as text, for a device taking over. */
+  const others: string[] = [];
   /** How the person answers a link that asks: Run unless `answer` is false, or whatever `wait` resolves to; `choice` for where word goes back. */
   const ask = { answer: true, wait: undefined as undefined | (() => Promise<boolean>), choice: 1 as number | undefined };
   /** Each shortcut's link key, made in order: k1, k2, … */
@@ -336,7 +341,8 @@ export function fakeBackground(
     notes: t.env.notes,
     appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined).map(([path]) => path),
     isGranted: (path, wanted, asked) => !denied.has(path)
-      && (!opts.seen || (asked ? isAllowedUnder(t.grants, path, wanted, asked, true) : isAllowed(t.grants, path, wanted, true))),
+      && (!opts.seen || (asked ? isAllowedUnder(t.grants, path, asked, true) : isAllowed(t.grants, path, wanted, true))),
+    granted: (path) => (opts.seen && Object.hasOwn(t.grants, path) ? [...t.grants[path]] : undefined),
     policy: () => (policy.rules ? { hash: policyHash(policy.rules), rules: policy.rules } : undefined),
     storePath: t.env.storePath,
     actionDeps: (appPath, dataPath, actor) => ({
@@ -352,6 +358,7 @@ export function fakeBackground(
     }),
     now,
     triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },
+    otherTriggers: async () => [...others],
     linkKey: (path, shortcut, create) => {
       const id = `${path}#${shortcut}`;
       if (!linkKeys.has(id) && create) linkKeys.set(id, `k${linkKeys.size + 1}`);
@@ -379,6 +386,8 @@ export function fakeBackground(
         return ask.choice;
       },
       openUrl: (url) => { out.opened.push(url); },
+      setPaused: (apps) => { out.paused = apps; },
+      alert: (notice) => { out.pushed.push(notice); },
     },
   });
   return {
@@ -392,6 +401,7 @@ export function fakeBackground(
     device,
     policy,
     triggers,
+    others,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },
   };
 }

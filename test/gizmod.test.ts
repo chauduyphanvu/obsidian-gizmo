@@ -1,8 +1,8 @@
 import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
-import type { IncomingMessage, ServerResponse } from "node:http";
+import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { stringify } from "yaml";
 import { adminToken, plist, runScript, serve } from "../src/node/gizmod.ts";
@@ -131,6 +131,47 @@ async function served(settings: Record<string, unknown> = {}) {
   const rows = async () => (await s.env.data.ledger!.state("Apps/Inbox data.md")).lists.get("todo")?.rows.map((r) => r.task) ?? [];
   return { s, root, home, token, ask, rows, lines };
 }
+
+test("gizmod refuses every write to the policy note, whatever case its path is written in", async () => {
+  const t = await served();
+  try {
+    for (const path of ["Gizmo policy.md", "gizmo POLICY.md"]) {
+      await assert.rejects(async () => t.s.env.io.appendLine(path, "- x"), /your Gizmo policy/, path);
+      await assert.rejects(async () => t.s.env.io.writeFrontmatter(path, (fm) => { fm.labels = []; }), /your Gizmo policy/, path);
+    }
+  } finally {
+    await t.s.close();
+  }
+});
+
+test("gizmod pushes an app paused since before it started, once its pause has lasted ten minutes, and lists it in its status", async () => {
+  const pushes: string[] = [];
+  const stub = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => { pushes.push(body); res.end("ok"); });
+  });
+  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
+  const root = vaultDir({
+    "Apps/Pause.md": { fm: { app: "Pause", panels: [{ view: "button", label: "Did it", save: "done" }, { view: "number", title: "P", source: "https://example.com/x", pick: "v" }] } },
+    // Allowed in Obsidian when it asked for nothing; its weather panel came later.
+    ".obsidian/plugins/gizmo/data.json": JSON.stringify({ grants: { "Apps/Pause.md": [] } }),
+    ".obsidian/plugins/gizmo/triggers/gzpause1.json": JSON.stringify({ v: 2, fired: { "Apps/Pause.md\npaused:": { paused: Date.now() - 11 * 60_000, reason: "now asks to fetch data from example.com" } } }),
+  });
+  const home = mkdtempSync(join(tmpdir(), "gizmod-home-"));
+  made.push(home);
+  writeFileSync(join(home, "devices.json"), JSON.stringify({ [resolve(root)]: "gzpause1" }));
+  const s = await serve({ vault: root, home, listen: false, log: () => {}, ntfyUrl: `http://127.0.0.1:${(stub.address() as { port: number }).port}/ntfy` });
+  try {
+    for (let i = 0; i < 20 && !pushes.length; i++) await new Promise((r) => setTimeout(r, 50));
+    await s.bg.tick();
+    assert.deepEqual(pushes, ["Pause: paused in the background"]);
+    assert.deepEqual(s.bg.paused().map((p) => [p.name, p.reason]), [["Pause", "now asks to fetch data from example.com"]]);
+  } finally {
+    await s.close();
+    stub.close();
+  }
+});
 
 test("over HTTP a shortcut runs only with its link key; a request without a key, or with another, writes nothing", async () => {
   const t = await served();

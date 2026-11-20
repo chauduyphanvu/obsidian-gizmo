@@ -12,7 +12,7 @@ import { basename } from "./store.ts";
 
 export const MAP_VIEW = "gizmo-map";
 
-const STATE_WORDS: Record<MapApp["state"], string> = { "allowed": "Allowed", "not-opened": "Never opened", "asks-again": "Asks again", "blocked": "Blocked by your policy" };
+const STATE_WORDS: Record<MapApp["state"], string> = { "allowed": "Allowed", "not-opened": "Never opened", "paused": "Paused (asks for more)", "blocked": "Blocked by your policy" };
 
 /**
  * Every app in the vault on one page: what each may do, what makes it act and when it last
@@ -88,7 +88,7 @@ export class MapView extends ItemView {
     head.createEl("button", { text: "Save as canvas" }).addEventListener("click", () => void saveMapCanvas(plugin));
     this.drawPolicy(box, map);
     if (this.note) this.drawWriters(box, this.note, apps, activity);
-    const counts = (["allowed", "blocked", "not-opened", "asks-again"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
+    const counts = (["allowed", "blocked", "not-opened", "paused"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
     box.createDiv({
       cls: "gz-muted gz-map-summary",
       text: `${map.apps.length} ${map.apps.length === 1 ? "app" : "apps"}: ${counts.filter(([, n]) => n).map(([s, n]) => `${n} ${STATE_WORDS[s].toLowerCase()}`).join(", ") || "none yet"}`,

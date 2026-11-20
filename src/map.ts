@@ -25,7 +25,7 @@ export interface AppSummary {
   writesSelf: boolean;
 }
 
-export type AppState = "allowed" | "not-opened" | "asks-again" | "blocked";
+export type AppState = "allowed" | "not-opened" | "paused" | "blocked";
 export type AskGroup = "Reads" | "Fetches" | "Sends" | "Changes" | "Runs";
 export const ASK_GROUPS: readonly AskGroup[] = ["Reads", "Fetches", "Sends", "Changes", "Runs"];
 
@@ -99,8 +99,8 @@ export function everyWords(ms: number): string {
 
 function stateOf(grants: Record<string, string[]>, key: string, wanted: string[], verdict?: Verdict): AppState {
   if (verdict?.violations.length) return "blocked";
-  if (verdict ? isAllowedUnder(grants, key, wanted, verdict.asked, true) : isAllowed(grants, key, wanted, true)) return "allowed";
-  return grantedOf(grants, key) === undefined ? "not-opened" : "asks-again";
+  if (verdict ? isAllowedUnder(grants, key, verdict.asked, true) : isAllowed(grants, key, wanted, true)) return "allowed";
+  return grantedOf(grants, key) === undefined ? "not-opened" : "paused";
 }
 
 /**

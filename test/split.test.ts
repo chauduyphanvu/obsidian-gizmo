@@ -4,7 +4,7 @@ import { logFile } from "../src/ledger.ts";
 import { Ledger } from "../src/ledger-store.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
-import { dropSplitGrants } from "../src/grants.ts";
+import { isAllowed } from "../src/grants.ts";
 import { fakeBackground, listsIn } from "./support/fakes.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -18,15 +18,14 @@ const CHORES = {
   ],
 };
 
-test("devices: split is still read, asks for nothing, and what was allowed for it goes", () => {
+test("devices: split is still read, asks for nothing, and what was allowed for it stays harmless", () => {
   const old = readSpec({ ...CHORES, devices: "split" }, { path: "Apps/Chores.md" })!;
   assert.deepEqual(old.errors, []);
   assert.deepEqual(permissionsOf(old.spec!, "Apps/Chores.md"), []);
   assert.deepEqual(readSpec({ ...CHORES, devices: "yes" }, { path: "Apps/Chores.md" })!.errors, ["devices must be split, e.g. devices: split"]);
-  const grants = { "Apps/Chores.md": ["split:Apps/Chores data", "net:x.example"], "Apps/Other.md": [] as string[] };
-  assert.equal(dropSplitGrants(grants), true);
-  assert.deepEqual(grants, { "Apps/Chores.md": ["net:x.example"], "Apps/Other.md": [] });
-  assert.equal(dropSplitGrants(grants), false);
+  // A grant from when it asked for split: still allows it: what an app no longer asks for takes nothing away.
+  const grants = { "Apps/Chores.md": ["split:Apps/Chores data"] };
+  assert.equal(isAllowed(grants, "Apps/Chores.md", permissionsOf(old.spec!, "Apps/Chores.md"), true), true);
 });
 
 test("the rows each device kept in its own note under devices: split are read in, in the order saved, and kept by the first snapshot", async () => {

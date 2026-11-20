@@ -34,17 +34,16 @@ const MEDS = {
 };
 const WEATHER = { app: "w", view: "number", title: "Rain", source: "https://api.open-meteo.com/v1/forecast?lat=1&lon=2", pick: "rain", pin: "status" };
 
-test("under a policy an app is allowed when what it still asks for was allowed, and nothing allowed is beyond what it wants", () => {
-  const wanted = ["edit:Books", "net:openlibrary.org", "read:Books"];
+test("under a policy an app is allowed when what it still asks for was allowed; what it no longer wants takes nothing away", () => {
   const asked = ["edit:Books"];
-  assert.equal(isAllowedUnder({ a: wanted }, "a", wanted, asked), true, "a grant from before the policy still holds");
-  assert.equal(isAllowedUnder({ a: ["edit:Books"] }, "a", wanted, asked), true);
-  assert.equal(isAllowedUnder({ a: ["net:openlibrary.org"] }, "a", wanted, asked), false, "what it still asks for wasn't allowed");
-  assert.equal(isAllowedUnder({ a: ["edit:Books", "write:Daily"] }, "a", wanted, asked), false, "allowed something it no longer wants");
-  assert.equal(isAllowedUnder({}, "a", wanted, []), true, "covered entirely, it needs no OK in a tab");
-  assert.equal(isAllowedUnder({}, "a", wanted, [], true), false, "but the background acts only for an app opened once");
-  assert.equal(isAllowedUnder({ a: [] }, "a", wanted, [], true), true);
-  assert.equal(isAllowedUnder({ constructor: [] } as Record<string, string[]>, "toString", wanted, [], true), false);
+  assert.equal(isAllowedUnder({ a: ["edit:Books", "net:openlibrary.org", "read:Books"] }, "a", asked), true, "a grant from before the policy still holds");
+  assert.equal(isAllowedUnder({ a: ["edit:Books"] }, "a", asked), true);
+  assert.equal(isAllowedUnder({ a: ["net:openlibrary.org"] }, "a", asked), false, "what it still asks for wasn't allowed");
+  assert.equal(isAllowedUnder({ a: ["edit:Books", "write:Daily"] }, "a", asked), true, "allowed something it no longer wants: still allowed");
+  assert.equal(isAllowedUnder({}, "a", []), true, "covered entirely, it needs no OK in a tab");
+  assert.equal(isAllowedUnder({}, "a", [], true), false, "but the background acts only for an app opened once");
+  assert.equal(isAllowedUnder({ a: [] }, "a", [], true), true);
+  assert.equal(isAllowedUnder({ constructor: [] } as Record<string, string[]>, "toString", [], true), false);
 });
 
 test("the background runs nothing for an app the policy blocks, and starts or stops it when the policy changes", async () => {
@@ -86,7 +85,7 @@ test("in Obsidian, an app the policy covers entirely runs in the background once
 /** An app opened in its own tab under a policy: its grants are kept, and checked as Obsidian checks them. */
 function underPolicy(notes: Parameters<typeof fakeEnv>[0], path: string, policy: Policy | undefined = POLICY) {
   const t = fakeEnv(notes);
-  t.env.isGranted = (p, wanted, asked) => isAllowedUnder(t.grants, p, wanted, asked ?? wanted);
+  t.env.isGranted = (p, wanted, asked) => isAllowedUnder(t.grants, p, asked ?? wanted);
   t.env.verdict = (spec, wanted, where) => (policy ? checkFlows(spec, wanted, flowContext(policy, where, t.env.notes, t.env.storePath, () => [])) : undefined);
   const root = document.createElement("div");
   document.body.appendChild(root);
