@@ -2,7 +2,7 @@ import { noteText, withLine } from "../../src/actions.ts";
 import { ActivityLog, type UndoIO } from "../../src/activity.ts";
 import type { AppEnv } from "../../src/app.ts";
 import { Background } from "../../src/background.ts";
-import { DiskCache, type CacheAdapter } from "../../src/cache.ts";
+import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { isAllowed, isAllowedUnder } from "../../src/grants.ts";
 import { ledgerStore, type DataStore } from "../../src/datastore.ts";
@@ -25,17 +25,18 @@ export const raw = (text: string, contentType: string) => new Raw(text, contentT
 /** A file in the fake vault: a note (frontmatter, tags, body) or any other file (its text in `raw`). */
 type Notes = Record<string, { fm?: Record<string, unknown>; tags?: string[]; body?: string; raw?: string }>;
 
-/** An in-memory folder for the disk cache; files get the fake clock's time as written. */
+/** An in-memory folder for kept web responses; files get the fake clock's time as written. */
 export function memoryAdapter(now: () => number = () => 0) {
   const files = new Map<string, { text: string; mtime: number }>();
   const folders = new Set<string>();
-  const adapter: CacheAdapter = {
+  /** What's directly in `path`: files, and folders made or holding files. */
+  const under = (path: string, paths: Iterable<string>) => [...new Set([...paths].filter((p) => p.startsWith(`${path}/`)).map((p) => `${path}/${p.slice(path.length + 1).split("/")[0]}`))];
+  const adapter: FolderAdapter = {
     exists: async (path) => folders.has(path) || files.has(path),
     mkdir: async (path) => { folders.add(path); },
-    list: async (path) => ({ files: [...files.keys()].filter((p) => p.startsWith(`${path}/`)), folders: [] }),
-    stat: async (path) => {
-      const file = files.get(path);
-      return file ? { mtime: file.mtime, size: file.text.length } : null;
+    list: async (path) => {
+      const direct = under(path, [...files.keys(), ...folders]);
+      return { files: direct.filter((p) => files.has(p)), folders: direct.filter((p) => !files.has(p)) };
     },
     read: async (path) => {
       const file = files.get(path);
@@ -43,6 +44,7 @@ export function memoryAdapter(now: () => number = () => 0) {
       return file.text;
     },
     write: async (path, text) => { files.set(path, { text, mtime: now() }); },
+    append: async (path, text) => { files.set(path, { text: (files.get(path)?.text ?? "") + text, mtime: now() }); },
     remove: async (path) => { files.delete(path); },
   };
   return { adapter, files, folders };
@@ -62,7 +64,7 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
   let queued: (() => void)[] = [];
   let clock = 1_000_000;
   const kept = disk ?? memoryAdapter(() => clock);
-  const cache = new DiskCache(kept.adapter, "plugin/cache");
+  const responses = new ResponseHistory(kept.adapter, "plugin/responses", () => "d1mac000", () => clock);
   const secrets: Record<string, string> = { demo: "s3cret" };
   const isNote = (path: string) => path.endsWith(".md");
   const info = (path: string): FileInfo => ({ path, basename: path.split("/").pop()!.replace(/\.md$/, ""), mtime: 0, ctime: 0 });
@@ -91,8 +93,7 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
     },
     resolveFile: (link) => [...files.keys(), ...others.keys()].find((p) => p === link || p.endsWith(`/${link}`) || p === `${link}.md`),
     parseYaml,
-    cacheRead: (key) => cache.read(key),
-    cacheWrite: (key, entry) => cache.write(key, entry),
+    responses,
     // Files that aren't notes (an app's ledger) are kept as text in `others`.
     filesIn: (folder) => [...files.keys(), ...others.keys()].filter((p) => p.startsWith(`${folder}/`) && !p.slice(folder.length + 1).includes("/")),
     append: async (path, text) => {
@@ -115,6 +116,15 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
     requests,
     calls,
     disk: kept,
+    responses,
+    /** Keeps an answer as if it had been fetched at `at`. */
+    keep: (key: string, text: string, at: number, contentType = "application/json") => {
+      const was = clock;
+      clock = at;
+      const done = responses.record(key, text, contentType);
+      clock = was;
+      return done;
+    },
     advance: (ms: number) => { clock += ms; },
     flush: () => { const q = queued; queued = []; q.forEach((cb) => cb()); return q.length; },
   };

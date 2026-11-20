@@ -146,9 +146,11 @@ test("a response fetched with a secret or a body is never kept on disk, so a tok
   await dl.fetch("https://api.example.com/search", undefined, 60_000, false, { q: "x" });
   await dl.fetch(WEATHER, undefined, 60_000);
   await flushDisk();
-  const kept = [...f.disk.files.values()].map((file) => file.text);
-  assert.equal(kept.length, 1);
-  assert.ok(kept[0].includes("api.example.com/forecast"));
+  // The weather's answer, its line and its newest copy: nothing of the others.
+  const kept = [...f.disk.files.values()].map((file) => file.text).join("\n");
+  assert.equal(f.disk.files.size, 3);
+  assert.ok(kept.includes("api.example.com/forecast"));
+  assert.ok(!kept.includes("bank.example") && !kept.includes("api.example.com/key") && !kept.includes("api.example.com/search"));
   assert.equal(await dl.cached("https://bank.example/balance", authorized), undefined);
   assert.ok(await dl.cached(WEATHER, undefined));
 });

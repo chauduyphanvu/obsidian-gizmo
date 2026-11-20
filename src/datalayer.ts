@@ -1,5 +1,5 @@
 import { Ledger } from "./ledger-store.ts";
-import type { CacheEntry } from "./cache.ts";
+import type { ResponseHistory } from "./responses.ts";
 import { parseBody, stampParts, type Row } from "./data.ts";
 import { fileDep, folderDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
 import { compilePipeline } from "./pipeline.ts";
@@ -33,10 +33,8 @@ export interface Host {
   resolveFile(link: string, from: string): string | undefined;
   /** YAML text as data; throws when it isn't YAML. */
   parseYaml(text: string): unknown;
-  /** The disk copy of a web response, by its cache key (which holds secret placeholders, never secrets). */
-  cacheRead?(key: string): Promise<CacheEntry | undefined>;
-  /** Keeps a web response on disk; never rejects. */
-  cacheWrite?(key: string, entry: CacheEntry): Promise<void>;
+  /** Web responses as they came, kept on this device: the newest for a restart or no network, and the past for replay. */
+  responses?: Pick<ResponseHistory, "latest" | "record" | "at" | "times">;
   /** The files directly in a folder, of any kind: with append and writeFile, what an app's ledger is kept in. */
   filesIn?(folder: string): string[];
   /** Adds text at the end of a file, making it and its folders when there's none. */
@@ -265,7 +263,7 @@ export class DataLayer {
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
       if (res.text.length > MAX_RESPONSE_CHARS) throw new Error(`${hostOf(source)} sent more than 10 MB`);
       const data = parseBody(res.text, res.contentType, new Date(this.host.now()));
-      if (keptOnDisk(source, headers, body)) void this.host.cacheWrite?.(key, { at: this.host.now(), text: res.text, contentType: res.contentType });
+      if (keptOnDisk(source, headers, body)) void this.host.responses?.record(key, res.text, res.contentType);
       return data;
     })();
     this.http.set(key, { at: this.host.now(), promise });
@@ -284,7 +282,7 @@ export class DataLayer {
   /** The disk copy of one web request, parsed as a fresh response is; undefined when there is none. */
   async cached(source: string, headers: Record<string, string> | undefined, body?: string | Record<string, unknown>): Promise<{ data: unknown; at: number } | undefined> {
     if (!keptOnDisk(source, headers, body)) return undefined;
-    const entry = await this.host.cacheRead?.(cacheKey(source, headers, body));
+    const entry = await this.host.responses?.latest(cacheKey(source, headers, body));
     if (!entry) return undefined;
     try {
       return { data: parseBody(entry.text, entry.contentType, new Date(this.host.now())), at: entry.at };

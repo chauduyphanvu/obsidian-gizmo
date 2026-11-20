@@ -5,7 +5,7 @@ import type { NewEntry } from "./activity.ts";
 import { editWords, renderBlocked, renderEmpty, renderErrors, renderHandEdit, renderOpenOnce, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
-import { asOfText } from "./cache.ts";
+import { asOfText } from "./responses.ts";
 import { stampParts, type Row } from "./data.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";

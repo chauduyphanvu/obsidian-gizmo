@@ -6,7 +6,7 @@ import {
 import { bodyOf, noteText, withLine } from "./actions.ts";
 import type { LogStore, UndoIO } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
-import { DiskCache } from "./cache.ts";
+import { ResponseHistory } from "./responses.ts";
 import type { FileInfo, Host } from "./datalayer.ts";
 import type { NoteReader } from "./expand.ts";
 import type GizmoPlugin from "./main.ts";
@@ -67,10 +67,15 @@ function info(f: TFile): FileInfo {
   return { path: f.path, basename: f.basename, mtime: f.stat.mtime, ctime: f.stat.ctime };
 }
 
-/** `pluginDir` (the plugin's folder) turns on the disk copy of web responses, in its `cache` folder. */
+/** `pluginDir` (the plugin's folder) turns on keeping web responses, in its `responses` folder. */
 export function obsidianHost(app: App, pluginDir?: string, device?: () => string): Host {
   const file = (path: string) => app.vault.getFileByPath(path);
-  const disk = pluginDir ? new DiskCache(app.vault.adapter, normalizePath(`${pluginDir}/cache`)) : undefined;
+  const responses = pluginDir ? new ResponseHistory(app.vault.adapter, normalizePath(`${pluginDir}/responses`), device ?? (() => "device"), () => Date.now()) : undefined;
+  // The disk copies kept before the history: a cache, so it simply goes.
+  if (pluginDir) {
+    const old = normalizePath(`${pluginDir}/cache`);
+    void app.vault.adapter.exists(old).then(async (there) => { if (there) await app.vault.adapter.rmdir(old, true); }).catch(() => {});
+  }
   return {
     async fetch(url, headers, init) {
       // requestUrl takes the content type apart from the other headers.
@@ -106,8 +111,7 @@ export function obsidianHost(app: App, pluginDir?: string, device?: () => string
     },
     resolveFile: (link, from) => (file(normalizePath(link)) ?? app.metadataCache.getFirstLinkpathDest(link, from))?.path,
     parseYaml: (text) => parseYaml(text) as unknown,
-    cacheRead: async (key) => disk?.read(key),
-    cacheWrite: async (key, entry) => disk?.write(key, entry),
+    responses,
     filesIn: (folder) => (app.vault.getFolderByPath(normalizePath(folder))?.children ?? []).filter((c): c is TFile => c instanceof TFile).map((f) => f.path),
     append: (path, text) => queued(normalizePath(path), async () => {
       const f = file(normalizePath(path));

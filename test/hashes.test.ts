@@ -2,12 +2,11 @@ import "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { textHash } from "../src/activity.ts";
-import { cacheHash } from "../src/cache.ts";
 import { stableJson } from "../src/hash.ts";
 import { blockKey } from "../src/hosted.ts";
 import { panelIds } from "../src/spec.ts";
 
-// Each of these is kept on disk (triggers.json, data.json, the cache's file names, activity.json),
+// Each of these is kept on disk (triggers.json, data.json, activity.json),
 // so the same input must give the same text in every version.
 
 test("a panel's identity is the same text in every version", () => {
@@ -18,11 +17,6 @@ test("a panel's identity is the same text in every version", () => {
 test("a block's grant key is the same text in every version", () => {
   assert.equal(blockKey("Daily.md", "view: countdown\nto: 2027-01-01\n"), "Daily.md#1t1nnlv");
   assert.equal(blockKey("Notes/Ünï.md", 'app: "[[Meds]]"'), "Notes/Ünï.md#1dmy52n");
-});
-
-test("a cached response's file name is the same in every version", () => {
-  assert.equal(cacheHash("https://api.example.com/x|{}"), "1b70c62efe07a248");
-  assert.equal(cacheHash(""), "811c9dc5050c5d1f");
 });
 
 test("a note's fingerprint in the activity log is the same in every version", () => {
