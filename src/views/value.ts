@@ -36,7 +36,8 @@ function checkCompare(p: Panel): string[] {
   if (p.compare === undefined) return [];
   if (p.compare !== "previous") return ["compare must be previous"];
   if (p.agg === "streak") return ["compare doesn't work with streak"];
-  const now = new Date();
+  // Whether a where is a date window is in its words, not in when it's read.
+  const now = new Date(0);
   if (compareWindows(p.where, now)) return [];
   // Only the panel's own where is opened up to the window before, so one in a block above can't be compared.
   return (p.upstream ?? []).some((stage) => compareWindows(stage.where, now))

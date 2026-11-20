@@ -5,6 +5,9 @@ import {
 } from "../src/data.ts";
 import { compilePipeline } from "../src/pipeline.ts";
 
+/** valueOf and parseBody take the time they read at; these read at a fixed one. */
+const TEST_NOW = new Date(2026, 10, 18, 12, 0);
+
 const NOW = new Date(2026, 10, 18, 14, 30); // Wed 18 Nov 2026, local time
 
 test("getPath walks objects and array indexes", () => {
@@ -68,10 +71,10 @@ test("filter, sort, aggregate", () => {
 });
 
 test("valueOf picks the right single value", () => {
-  assert.equal(valueOf({ view: "number", source: "x" }, [1, 2, 3]), 3); // count
-  assert.equal(valueOf({ view: "number", source: "x", field: "w" }, [{ w: 1 }, { w: 2 }]), 2); // last
-  assert.equal(valueOf({ view: "number", source: "x", field: "temperature_2m" }, { temperature_2m: 7.5 }), 7.5);
-  assert.equal(valueOf({ view: "number", source: "x" }, 42), 42);
+  assert.equal(valueOf({ view: "number", source: "x" }, [1, 2, 3], TEST_NOW), 3); // count
+  assert.equal(valueOf({ view: "number", source: "x", field: "w" }, [{ w: 1 }, { w: 2 }], TEST_NOW), 2); // last
+  assert.equal(valueOf({ view: "number", source: "x", field: "temperature_2m" }, { temperature_2m: 7.5 }, TEST_NOW), 7.5);
+  assert.equal(valueOf({ view: "number", source: "x" }, 42, TEST_NOW), 42);
 });
 
 test("templates", () => {
@@ -90,8 +93,8 @@ test("CSV and JSON bodies", () => {
     { Date: "2026-11-17", Close: 1001.5 },
     { Date: "2026-11-18", Close: 1002 },
   ]);
-  assert.deepEqual(parseBody('{"a":1}', "text/plain"), { a: 1 });
-  assert.equal(parseBody("hello", "text/plain"), "hello");
+  assert.deepEqual(parseBody('{"a":1}', "text/plain", TEST_NOW), { a: 1 });
+  assert.equal(parseBody("hello", "text/plain", TEST_NOW), "hello");
 });
 
 test("min and max work on arrays too long to spread", () => {

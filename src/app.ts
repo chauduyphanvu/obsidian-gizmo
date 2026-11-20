@@ -1,3 +1,4 @@
+import { pastText, shownAsNow } from "./replay.ts";
 import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
@@ -266,7 +267,7 @@ export class AppController {
     this.definition = "";
     this.reconcile();
     this.timers.resume();
-    this.env.opened?.(this.appPath);
+    if (this.env.data.at === undefined) this.env.opened?.(this.appPath);
   }
 
   /** Looks again at what may have changed without a note changing: whether the app is allowed now. */
@@ -417,6 +418,11 @@ export class AppController {
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
     const header = createDivIn(this.shell, "gz-header");
     this.shell.prepend(header);
+    const past = this.env.data.at;
+    if (past !== undefined && this.spec) {
+      const now = shownAsNow(this.spec);
+      header.createDiv({ cls: "gz-card gz-past", text: `As of ${pastText(past)}: read only.${now.length ? ` Shown as they are now, since their notes keep no history: ${now.join(", ")}.` : ""}` });
+    }
 
     if (!result) {
       // A lens whose note no longer fills its params shows nothing until it is taken away.
@@ -675,7 +681,8 @@ export class AppController {
 
   private setRefresh(spec: AppSpec): void {
     if (this.refreshHandle) clearInterval(this.refreshHandle);
-    this.refreshHandle = spec.refreshMs ? setInterval(() => this.reload(), spec.refreshMs) : undefined;
+    // The past doesn't change: nothing to fetch again.
+    this.refreshHandle = spec.refreshMs && this.env.data.at === undefined ? setInterval(() => this.reload(), spec.refreshMs) : undefined;
   }
 
   // ---- Panels -------------------------------------------------------------------------------

@@ -3,7 +3,7 @@ import { DEFINITION_KEYS } from "./store.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import type { Row } from "./data.ts";
 import {
-  Clock, Folder, baseIds, compareEvents, eventId, eventLine, fold, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp, undoneEvents,
+  Clock, Folder, baseIds, compareEvents, eventId, eventLine, eventsAt, fold, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp, undoneEvents,
   type Conflict, type FoldBase, type LedgerEvent, type Op,
 } from "./ledger.ts";
 
@@ -23,6 +23,9 @@ export interface LedgerIO {
 export const SNAPSHOT_KEY = "gizmo-snapshot";
 export const IDS_KEY = "gizmo-ids";
 const HASH_KEY = "gizmo-hash";
+/** Why a write is refused in the app as it was at a past time. */
+export const PAST = "This is the app as it was; nothing can be changed here";
+
 /** Cells two devices set at once, kept with the snapshot so a fold that starts there still offers both. */
 const CONFLICTS_KEY = "gizmo-conflicts";
 /** Rows deleted (or added by an undone add), kept with the snapshot so a late copy of their add stays out after it. */
@@ -164,10 +167,17 @@ export class Ledger {
   private versions = new Map<string, number>();
   private noteLists = new Map<string, NoteLists>();
 
-  constructor(io: LedgerIO, device: () => string, now: () => number) {
+  /**
+   * The lists as they were at this time (ms): only events up to it are folded, from the base kept
+   * before the first snapshot (a snapshot may hold later ones), and nothing is written.
+   */
+  until: number | undefined;
+
+  constructor(io: LedgerIO, device: () => string, now: () => number, until?: number) {
     this.io = io;
     this.device = device;
     this.now = now;
+    this.until = until;
   }
 
   private log(dataPath: string): NoteLog {
@@ -273,10 +283,11 @@ export class Ledger {
     const handEdited = snapshot !== undefined && note.hash !== fm?.[HASH_KEY];
     const caps = n.caps;
     // The note's version stands for its lists: a note not snapshotted yet needn't be hashed at all.
-    const from = `${note.id}\n${JSON.stringify(snapshot ?? null)}\n${listsHash(appFm)}\n${devices.map(listsHash).join(",")}`;
+    const from = `${this.until ?? ""}\n${note.id}\n${JSON.stringify(snapshot ?? null)}\n${listsHash(appFm)}\n${devices.map(listsHash).join(",")}`;
     if (n.foldedFrom !== from) n.reset = true;
     if (!n.reset && n.state) return n.state;
-    const all = [...n.files.values()].flatMap((f) => f.events);
+    const kept = [...n.files.values()].flatMap((f) => f.events);
+    const all = this.until === undefined ? kept : eventsAt(kept, this.until);
     if (!n.reset && n.folder) {
       // Events a save or a sync added since: applied on top when they come after all the rest and undo nothing.
       const fresh = [...new Map(all.filter((e) => !n.seen.has(eventId(e))).map((e) => [eventId(e), e])).values()].sort(compareEvents);
@@ -292,7 +303,7 @@ export class Ledger {
     if (n.reset || !n.folder) {
       n.foldedFrom = from;
       for (const e of all) this.clock.seen(e.t);
-      const fromSnapshot = snapshot && !handEdited ? this.tail(n, snapshot, fm!) : undefined;
+      const fromSnapshot = snapshot && !handEdited && this.until === undefined ? this.tail(n, snapshot, fm!) : undefined;
       n.folder = (fromSnapshot
         ? fold(fromSnapshot.events, withApp(fromSnapshot.base, appFm), caps)
         : fold(all, withApp(snapshot ? await this.base(dataPath) : withDevices(note.lists, devices), appFm), caps)).folder;
@@ -323,7 +334,7 @@ export class Ledger {
       });
     }
     // From every event, not only those the fold started past: an undo kept in a snapshot still counts.
-    n.state = { lists, ticked: new Map(n.folder.ticked), undone: undoneEvents([...n.files.values()].flatMap((f) => f.events)), handEdited };
+    n.state = { lists, ticked: new Map(n.folder.ticked), undone: undoneEvents(all), handEdited: handEdited && this.until === undefined };
     return n.state;
   }
 
@@ -375,6 +386,7 @@ export class Ledger {
 
   /** Appends events this device makes; returns their ids. */
   async write(dataPath: string, ops: Op[]): Promise<string[]> {
+    if (this.until !== undefined) throw new Error(PAST);
     if (!ops.length) return [];
     const n = await this.refresh(dataPath);
     const now = this.now();

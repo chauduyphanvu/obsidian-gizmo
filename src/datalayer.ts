@@ -34,7 +34,7 @@ export interface Host {
   /** YAML text as data; throws when it isn't YAML. */
   parseYaml(text: string): unknown;
   /** Web responses as they came, kept on this device: the newest for a restart or no network, and the past for replay. */
-  responses?: Pick<ResponseHistory, "latest" | "record" | "at" | "times">;
+  responses?: Pick<ResponseHistory, "latest" | "record" | "at" | "times" | "changed">;
   /** The files directly in a folder, of any kind: with append and writeFile, what an app's ledger is kept in. */
   filesIn?(folder: string): string[];
   /** Adds text at the end of a file, making it and its folders when there's none. */
@@ -115,8 +115,15 @@ export class DataLayer {
   private appOf = new Map<string, { appPath: string; devices?: string }>();
   private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
 
-  constructor(host: Host) {
+  /**
+   * The vault as it was at this time (ms), for replay: lists from the ledger's events up to it, web
+   * answers from the response history at or before it, and no note made after it. Nothing is written.
+   */
+  readonly at: number | undefined;
+
+  constructor(host: Host, opts: { at?: number } = {}) {
     this.host = host;
+    this.at = opts.at;
     const { filesIn, append, writeFile } = host;
     if (filesIn && append && writeFile) {
       this.ledger = new Ledger({
@@ -125,7 +132,7 @@ export class DataLayer {
         append: (path, text) => append.call(host, path, text),
         writeFile: (path, text) => writeFile.call(host, path, text),
         frontmatter: (path) => host.frontmatter(path),
-      }, () => host.device?.() ?? "device", () => host.now());
+      }, () => host.device?.() ?? "device", () => host.now(), opts.at);
       this.ledger.onWrite = (path) => this.fileChanged(path);
     }
   }
@@ -219,7 +226,8 @@ export class DataLayer {
    * when the oldest of them was fetched. Undefined when it reads none, or one has no copy.
    */
   async cachedPanelData(source: string | undefined, p: Panel, files: AppFiles, now: Date): Promise<{ data: unknown; at: number } | undefined> {
-    if (!source) return undefined;
+    // The past has no newer copy to paint first.
+    if (!source || this.at !== undefined) return undefined;
     let at: number | undefined;
     // The source loads as usual, with each web request answered from disk.
     const offline = Object.create(this) as DataLayer;
@@ -249,10 +257,11 @@ export class DataLayer {
    */
   fetch(
     source: string, headers: Record<string, string> | undefined, ttlMs: number, force = false,
-    body?: string | Record<string, unknown>, secrets: readonly string[] = [],
+    body?: string | Record<string, unknown>, secrets: readonly string[] = [], now?: Date,
   ): Promise<unknown> {
     const refused = this.refused(source, headers, body, secrets);
     if (refused) return Promise.reject(refused);
+    if (this.at !== undefined) return this.answerAt(source, headers, body, this.at);
     const key = cacheKey(source, headers, body);
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
@@ -262,7 +271,8 @@ export class DataLayer {
       const res = await this.host.fetch(this.withSecrets(source), filled, init);
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
       if (res.text.length > MAX_RESPONSE_CHARS) throw new Error(`${hostOf(source)} sent more than 10 MB`);
-      const data = parseBody(res.text, res.contentType, new Date(this.host.now()));
+      // Read at the panel's time, which a replay sets; the request itself is made now.
+      const data = parseBody(res.text, res.contentType, now ?? new Date(this.host.now()));
       if (keptOnDisk(source, headers, body)) void this.host.responses?.record(key, res.text, res.contentType);
       return data;
     })();
@@ -277,6 +287,14 @@ export class DataLayer {
     if (typeof body === "string") return { method: "POST", body: this.withSecrets(body) };
     if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["content-type"] = "application/json";
     return { method: "POST", body: JSON.stringify(body, (_, v) => (typeof v === "string" ? this.withSecrets(v) : v)) };
+  }
+
+  /** What a request answered at a past time, as kept; never the network. */
+  private async answerAt(source: string, headers: Record<string, string> | undefined, body: string | Record<string, unknown> | undefined, at: number): Promise<unknown> {
+    if (!keptOnDisk(source, headers, body)) throw new Error(`${hostOf(source)}'s answers aren't kept: the request uses a secret or sends a body`);
+    const r = await this.host.responses?.at(cacheKey(source, headers, body), at);
+    if (!r) throw new Error(`nothing kept from ${hostOf(source)} by then`);
+    return parseBody(r.text, r.contentType, new Date(at));
   }
 
   /** The disk copy of one web request, parsed as a fresh response is; undefined when there is none. */
@@ -379,7 +397,8 @@ export class DataLayer {
   private rows(): Map<string, Row> {
     if (!this.index) {
       this.index = new Map();
-      for (const f of this.host.markdownFiles()) this.index.set(f.path, this.row(f));
+      // A note made after the time being shown wasn't there yet.
+      for (const f of this.host.markdownFiles()) if (this.at === undefined || f.ctime <= this.at) this.index.set(f.path, this.row(f));
     }
     return this.index;
   }

@@ -36,5 +36,5 @@ export const url: SourceDef = {
   },
   deps: (p) => [urlDep(p.source!)],
   // Only the secrets typed in the panel's own keys may be filled, whatever its values make of the text.
-  load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force, p.body, p.secrets ?? []),
+  load: (p, _files, layer, opts) => layer.fetch(p.source!, p.headers, opts.ttlMs, opts.force, p.body, p.secrets ?? [], opts.now),
 };

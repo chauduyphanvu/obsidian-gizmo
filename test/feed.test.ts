@@ -5,6 +5,9 @@ import { test } from "node:test";
 import { parseBody } from "../src/data.ts";
 import { parseFeed } from "../src/sources/feed.ts";
 
+/** valueOf and parseBody take the time they read at; these read at a fixed one. */
+const TEST_NOW = new Date(2026, 10, 18, 12, 0);
+
 const LONG = `${"Word ".repeat(120)}end`;
 
 const RSS = `<?xml version="1.0" encoding="UTF-8"?>
@@ -146,18 +149,18 @@ test("RSS 1.0 (RDF): items sit beside the channel, and rdf:about names them", ()
 });
 
 test("parseBody takes a feed by what the body starts with, past a declaration, comments and a stylesheet", () => {
-  assert.equal((parseBody(RSS, "application/rss+xml") as unknown[]).length, 4);
-  assert.equal((parseBody(ATOM, "") as unknown[]).length, 3);
-  assert.equal((parseBody(`﻿\n${ATOM}`, "text/xml") as unknown[]).length, 3);
-  assert.equal((parseBody("<feed><entry><title>t</title></entry></feed>", "") as unknown[]).length, 1);
-  assert.equal((parseBody('<rdf:RDF xmlns:rdf="x"><item><title>t</title></item></rdf:RDF>', "") as unknown[]).length, 1);
+  assert.equal((parseBody(RSS, "application/rss+xml", TEST_NOW) as unknown[]).length, 4);
+  assert.equal((parseBody(ATOM, "", TEST_NOW) as unknown[]).length, 3);
+  assert.equal((parseBody(`﻿\n${ATOM}`, "text/xml", TEST_NOW) as unknown[]).length, 3);
+  assert.equal((parseBody("<feed><entry><title>t</title></entry></feed>", "", TEST_NOW) as unknown[]).length, 1);
+  assert.equal((parseBody('<rdf:RDF xmlns:rdf="x"><item><title>t</title></item></rdf:RDF>', "", TEST_NOW) as unknown[]).length, 1);
 });
 
 test("parseBody leaves other bodies to the JSON, CSV and text rules", () => {
-  assert.equal(parseBody("<html><body>Hi</body></html>", "text/html"), "<html><body>Hi</body></html>");
-  assert.equal(parseBody("<rssfeed/>", ""), "<rssfeed/>");
-  assert.deepEqual(parseBody('{"a":1}', "application/json"), { a: 1 });
-  assert.deepEqual(parseBody("a,b\n1,2\n", "text/csv"), [{ a: 1, b: 2 }]);
+  assert.equal(parseBody("<html><body>Hi</body></html>", "text/html", TEST_NOW), "<html><body>Hi</body></html>");
+  assert.equal(parseBody("<rssfeed/>", "", TEST_NOW), "<rssfeed/>");
+  assert.deepEqual(parseBody('{"a":1}', "application/json", TEST_NOW), { a: 1 });
+  assert.deepEqual(parseBody("a,b\n1,2\n", "text/csv", TEST_NOW), [{ a: 1, b: 2 }]);
 });
 
 test("a summary drops the text of script and style elements, not just their tags", () => {

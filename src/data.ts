@@ -299,7 +299,7 @@ export function extent(nums: number[]): [number, number] {
 }
 
 /** The single value a number or progress panel shows. */
-export function valueOf(p: Panel, data: unknown, now = new Date()): unknown {
+export function valueOf(p: Panel, data: unknown, now: Date): unknown {
   if (Array.isArray(data)) return aggregate(data, p.field, p.agg ?? (p.field ? "last" : "count"), p.of && compileWhere(p.of, now));
   if (data !== null && typeof data === "object") return p.field ? getPath(data, p.field) : undefined;
   return data;
@@ -422,7 +422,7 @@ function firstLineHasComma(text: string): boolean {
  * Parses an API response body: a calendar or a feed into rows, else JSON, then CSV, else the raw
  * text. `now` is the moment a calendar's repeating events are expanded around.
  */
-export function parseBody(text: string, contentType: string, now: Date = new Date()): unknown {
+export function parseBody(text: string, contentType: string, now: Date): unknown {
   const trimmed = text.trimStart();
   if (trimmed.startsWith("BEGIN:VCALENDAR") || (contentType.includes("calendar") && !contentType.includes("json"))) {
     return parseICS(text, now);
