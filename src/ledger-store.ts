@@ -118,8 +118,10 @@ const nameOf = (path: string) => path.slice(path.lastIndexOf("/") + 1);
  */
 interface Checkpoint {
   v: 1;
-  /** What it was folded from: base.json, lists typed in the app note, caps. */
+  /** What it was folded from: base.json and lists typed in the app note. */
   from: string;
+  /** The caps its recorded lists were cut to. */
+  caps: Record<string, number>;
   settled: number;
   files: Record<string, { n: number; bytes: number; newest: number }>;
   /** What the settled undos and redos left undone. */
@@ -158,6 +160,8 @@ class NoteLists {
 
 interface NoteLog {
   files: Map<string, LogFile>;
+  /** Reads under way, shared by readers that ask at once. */
+  reading: Map<string, Promise<void>>;
   /** Files left unread: the checkpoint folded from holds all they did. */
   skipped: Set<string>;
   /** The checkpoint the fold started from, if any. */
@@ -212,8 +216,8 @@ export class Ledger {
   /** How many times each note changed, as told; a note's lists are read again only when it did. */
   private versions = new Map<string, number>();
   private noteLists = new Map<string, NoteLists>();
-  /** base.json and checkpoints as last read, by path, with the version they were read at. */
-  private readCache = new Map<string, { version: number; text: string; parsed?: unknown }>();
+  /** base.json and checkpoints as last read (or being read), by path, with the version they were read at. */
+  private readCache = new Map<string, { version: number; entry?: { text: string; parsed?: unknown }; read?: Promise<{ text: string; parsed?: unknown }> }>();
 
   /**
    * The lists as they were at this time (ms): only events up to it are folded, from the base kept
@@ -231,7 +235,7 @@ export class Ledger {
   private log(dataPath: string): NoteLog {
     let n = this.notes.get(dataPath);
     if (!n) {
-      n = { files: new Map(), skipped: new Set(), dirty: new Set(), seen: new Set(), reset: true, version: 0, caps: {}, out: new Map() };
+      n = { files: new Map(), reading: new Map(), skipped: new Set(), dirty: new Set(), seen: new Set(), reset: true, version: 0, caps: {}, out: new Map() };
       this.notes.set(dataPath, n);
     }
     return n;
@@ -288,7 +292,15 @@ export class Ledger {
     return !!mark && mark.newest <= n.checkpoint!.settled && this.io.size?.(path) === mark.bytes;
   }
 
-  private async read(n: NoteLog, p: string): Promise<void> {
+  private read(n: NoteLog, p: string): Promise<void> {
+    const going = n.reading.get(p);
+    if (going) return going;
+    const run = this.readNow(n, p).finally(() => n.reading.delete(p));
+    n.reading.set(p, run);
+    return run;
+  }
+
+  private async readNow(n: NoteLog, p: string): Promise<void> {
     const text = await this.io.readFile(p).catch(() => "");
     const had = n.files.get(p);
     // Only complete lines: a line still being written is read when it ends.
@@ -319,15 +331,19 @@ export class Ledger {
     return [...n.files.values()].flatMap((f) => f.events);
   }
 
-  /** A small file beside the logs (base.json, a checkpoint), read again only when it changed. */
+  /** A small file beside the logs (base.json, a checkpoint), read again only when it changed; readers asking at once share one read. */
   private async cached(path: string): Promise<{ text: string; parsed?: unknown }> {
     const version = this.versions.get(path) ?? 0;
     const had = this.readCache.get(path);
-    if (had && had.version === version) return had;
-    const text = await this.io.readFile(path).catch(() => "");
-    const entry = { version, text };
-    this.readCache.set(path, entry);
-    return entry;
+    if (had && had.version === version) return had.entry ?? (await had.read!);
+    const read = this.io.readFile(path).catch(() => "").then((text) => {
+      const entry = { text };
+      const now = this.readCache.get(path);
+      if (now?.version === version) now.entry = entry;
+      return entry;
+    });
+    this.readCache.set(path, { version, read });
+    return read;
   }
 
   /** Writes a small file beside the logs, keeping what was written as read. */
@@ -335,7 +351,7 @@ export class Ledger {
     await this.io.writeFile(path, text);
     const version = (this.versions.get(path) ?? 0) + 1;
     this.versions.set(path, version);
-    this.readCache.set(path, { version, text, parsed });
+    this.readCache.set(path, { version, entry: { text, parsed } });
   }
 
   /** Keeps the same newest rows of recorded lists as another ledger does: a replay folds as the live one. */
@@ -473,11 +489,14 @@ export class Ledger {
    * folding everything would: a late event from before it, a log cut short, an undo of an event in it.
    */
   private async foldMarked(dataPath: string, n: NoteLog, appFm: Record<string, unknown>): Promise<Folder | undefined> {
-    const from = await this.checkpointFrom(dataPath, appFm, n.caps);
+    const from = await this.checkpointFrom(dataPath, appFm);
+    // One whose recorded lists were cut to fewer rows than are kept now can't give them all; one cut to
+    // caps not known yet (an app just opened, before its blocks are read) gives what they will.
+    const fits = (cp: Checkpoint) => Object.entries(n.caps).every(([list, cap]) => cp.caps[list] === undefined || cp.caps[list] >= cap);
     let best: Checkpoint | undefined;
     for (const p of this.io.filesIn(logFolder(dataPath)).filter((x) => CHECKPOINT.test(x))) {
       const cp = await this.checkpointAt(p);
-      if (cp && cp.from === from && (!best || cp.settled > best.settled)) best = cp;
+      if (cp && cp.from === from && fits(cp) && (!best || cp.settled > best.settled)) best = cp;
     }
     if (!best) return undefined;
     n.checkpoint = best;
@@ -507,9 +526,9 @@ export class Ledger {
   }
 
   /** What a checkpoint must have been folded from to be folded on from now. */
-  private async checkpointFrom(dataPath: string, appFm: Record<string, unknown>, caps: Record<string, number>): Promise<string> {
+  private async checkpointFrom(dataPath: string, appFm: Record<string, unknown>): Promise<string> {
     const base = await this.cached(`${logFolder(dataPath)}/base.json`);
-    return fnv1a(`${base.text}\n${listsHash(appLists(appFm))}\n${stableJson(caps)}`).toString(36);
+    return fnv1a(`${base.text}\n${listsHash(appLists(appFm))}`).toString(36);
   }
 
   private async checkpointAt(path: string): Promise<Checkpoint | undefined> {
@@ -517,7 +536,7 @@ export class Ledger {
     if (entry.parsed === undefined) {
       try {
         const cp = JSON.parse(entry.text) as Checkpoint;
-        entry.parsed = cp?.v === 1 && typeof cp.from === "string" && typeof cp.settled === "number" && isRecord(cp.files) && Array.isArray(cp.undone) && Array.isArray(cp.accounted) && isRecord(cp.folder) ? cp : null;
+        entry.parsed = cp?.v === 1 && typeof cp.from === "string" && isRecord(cp.caps) && typeof cp.settled === "number" && isRecord(cp.files) && Array.isArray(cp.undone) && Array.isArray(cp.accounted) && isRecord(cp.folder) ? cp : null;
       } catch {
         entry.parsed = null;
       }
@@ -535,10 +554,10 @@ export class Ledger {
     const newest = this.events(n).reduce((m, e) => Math.max(m, wallOf(e)), 0);
     if (!newest) return;
     const settled = Math.min(newest, this.now()) - SETTLE_MS;
-    const from = await this.checkpointFrom(dataPath, appFm, n.caps);
+    const from = await this.checkpointFrom(dataPath, appFm);
     const path = `${logFolder(dataPath)}/checkpoint-${this.device()}.json`;
     const mine = await this.checkpointAt(path);
-    if (mine && mine.from === from && n.checkpoint && settled - mine.settled < DAY) return;
+    if (mine && mine.from === from && stableJson(mine.caps) === stableJson(n.caps) && n.checkpoint && settled - mine.settled < DAY) return;
     await this.refresh(dataPath, true);
     const events = this.events(n);
     const upTo = events.filter((e) => wallOf(e) <= settled);
@@ -549,7 +568,7 @@ export class Ledger {
     const folder = fold([...upTo, ...accounted], withApp(await this.base(dataPath), appFm), n.caps).folder;
     const files: Checkpoint["files"] = {};
     for (const [p, f] of n.files) files[nameOf(p)] = { n: f.events.length, bytes: f.bytes, newest: f.newest };
-    const cp: Checkpoint = { v: 1, from, settled, files, undone: [...undoneEvents(upTo)], accounted: accounted.map(eventId), folder: folder.save(MAX_GONE) };
+    const cp: Checkpoint = { v: 1, from, caps: { ...n.caps }, settled, files, undone: [...undoneEvents(upTo)], accounted: accounted.map(eventId), folder: folder.save(MAX_GONE) };
     await this.writeKept(path, JSON.stringify(cp), cp);
     n.checkpoint = cp;
     for (const [p, f] of [...n.files]) if (f.newest <= settled && this.io.size?.(p) === f.bytes) {

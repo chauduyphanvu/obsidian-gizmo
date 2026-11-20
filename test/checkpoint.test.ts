@@ -254,3 +254,39 @@ test("a data note with recorded lists is snapshotted a moment after a change, th
   assert.equal(wrote.length, 5, "each a moment after its save");
   data.dispose();
 });
+
+test("a device that doesn't know a list's cap yet (an app just opened) still folds on from the checkpoint; two readers at once read each log once", async () => {
+  const v = vault();
+  const a = await history(v);
+  v.reads.length = 0;
+  const b = device(v, "b", { now: a.clock.now });
+  const [one, two] = await Promise.all([b.ledger.state(DATA), b.ledger.state(DATA)]);
+  assert.deepEqual(logsRead(v), [logFolder(DATA) + "/a-2026-10.jsonl"], "only the last week's log, once");
+  assert.equal(v.reads.filter((p) => p.includes("/checkpoint-")).length, 1, "the checkpoint once");
+  assert.deepEqual(seen(one), seen(two));
+  assert.deepEqual(seen(one), await truth(v, a.clock.now, { kp: 10_080 }));
+  // Its cap known, it folds again from the checkpoint, reading nothing more.
+  v.reads.length = 0;
+  b.ledger.setCaps(DATA, { kp: 10_080 });
+  const known = seen(await b.ledger.state(DATA));
+  assert.deepEqual(v.reads, [], "nothing read again");
+  assert.deepEqual(known, await truth(v, a.clock.now, { kp: 10_080 }));
+});
+
+test("a checkpoint cut to fewer rows than a list now keeps isn't used, and the next snapshot writes one that is", async () => {
+  const v = vault();
+  const a = await history(v, { kp: 100 });
+  v.reads.length = 0;
+  const b = device(v, "b", { now: a.clock.now });
+  b.ledger.setCaps(DATA, { kp: 10_080 });
+  const st = await b.ledger.state(DATA);
+  assert.equal(st.lists.get("kp")!.rows.length, 360, "all of them, from every log");
+  assert.equal(logsRead(v).length, 3);
+  a.ledger.setCaps(DATA, { kp: 10_080 });
+  await a.ledger.snapshot(DATA, {}, v.writeNote);
+  v.reads.length = 0;
+  const c = device(v, "c", { now: a.clock.now });
+  c.ledger.setCaps(DATA, { kp: 10_080 });
+  assert.equal((await c.ledger.state(DATA)).lists.get("kp")!.rows.length, 360);
+  assert.equal(logsRead(v).length, 1);
+});
