@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { describeActor } from "../src/activity.ts";
 import { AppController } from "../src/app.ts";
-import { MAX_RUNS_PER_HOUR } from "../src/background.ts";
+import { MAX_RUNS_PER_HOUR } from "../src/background-shortcuts.ts";
 import { readSpec } from "../src/spec.ts";
 import { describePermission, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, savedAt } from "./support/fakes.ts";

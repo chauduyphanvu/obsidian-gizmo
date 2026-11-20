@@ -1,6 +1,6 @@
 import { PolicyModal } from "./policy-command.ts";
 import { ItemView, MarkdownView, Modal, Notice, parseYaml, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
-import { dryLines } from "./background.ts";
+import { dryLines } from "./background-shortcuts.ts";
 import { openActivity, when } from "./activity-view.ts";
 import { blockKey, parseHosted } from "./hosted.ts";
 import { copyShortcutLink } from "./link-command.ts";

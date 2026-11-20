@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dryLines } from "../src/background.ts";
+import { dryLines } from "../src/background-shortcuts.ts";
 import { Overlay } from "../src/dryrun.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
@@ -63,7 +63,7 @@ test("a dry run stops a then loop where a real run would, and never counts towar
   for (let i = 0; i < 30; i++) await t.bg.dryRun("Apps/A.md", "go");
   const steps = await t.bg.dryRun("Apps/A.md", "go");
   assert.deepEqual(dryLines(steps), ["Save a row to a in A data", "B: Save a row to b in B data", "Tell you: B: stopped a loop: A → B → A"]);
-  assert.equal((t.bg as unknown as { runs: Map<string, number[]> }).runs.size, 0, "no run was counted");
+  assert.equal((t.bg as unknown as { shortcuts: { runs: Map<string, number[]> } }).shortcuts.runs.size, 0, "no run was counted");
   assert.deepEqual(t.notices, []);
   // A real run still runs, as the dry runs used up nothing.
   await t.bg.runCommand("Apps/A.md:go");

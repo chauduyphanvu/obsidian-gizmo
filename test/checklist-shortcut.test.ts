@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { dryLines } from "../src/background.ts";
+import { dryLines } from "../src/background-shortcuts.ts";
 import { linkNotice } from "../src/links.ts";
 import { readSpec } from "../src/spec.ts";
 import { fakeBackground } from "./support/fakes.ts";
