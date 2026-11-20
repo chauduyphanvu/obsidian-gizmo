@@ -1,7 +1,11 @@
 import { editableSource } from "./edit.ts";
+import { typedName } from "./expand.ts";
+import { isPlainObject } from "./keys.ts";
 import { sourceDef } from "./sources/registry.ts";
+import { urlHost } from "./sources/url.ts";
 import type { AppSpec, Panel, PanelSpec } from "./spec.ts";
 import { notePath, storeTarget } from "./store.ts";
+import { InputRef, InputText, THIS } from "./template.ts";
 
 /** A panel's permissions, each with the key that asks for it. */
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
@@ -39,6 +43,36 @@ export function controlKey(p: Panel, selfPath: string): keyof Panel | undefined 
 }
 
 /**
+ * What a web request carries that comes from someone rather than the app's keys, as
+ * `send:<host>|<what>`: a note's property (`this.<path>`), a picked row (`picked.<name>[.<path>]`)
+ * or typed text (`typed.<name>`), wherever it goes in the address, the headers or the body. A
+ * dropdown's or date bar's value is one the app's author typed or a date, and isn't named.
+ */
+function sendPermissions(ps: PanelSpec, spec: Pick<AppSpec, "inputs" | "selections">): string[] {
+  const source = ps.panel.source;
+  if (!source || sourceDef(source).id !== "url") return [];
+  const host = urlHost(source);
+  const typed = new Set(spec.inputs.filter((d) => d.kind === "text").map((d) => d.name));
+  const picked = new Set(spec.selections);
+  const out = new Set<string>();
+  const walk = (v: unknown): void => {
+    if (v instanceof InputRef) {
+      const path = v.path ? `.${v.path}` : "";
+      const what = v.input === THIS ? `this${path}` : picked.has(v.input) ? `picked.${typedName(v.input)}${path}` : typed.has(v.input) ? `typed.${v.input}` : undefined;
+      if (what) out.add(`send:${host}|${what}`);
+    } else if (v instanceof InputText) {
+      v.parts.forEach(walk);
+    } else if (Array.isArray(v)) {
+      v.forEach(walk);
+    } else if (isPlainObject(v) && !(v instanceof Date)) {
+      Object.values(v).forEach(walk);
+    }
+  };
+  for (const key of ["source", "headers", "body"]) walk(ps.template[key]);
+  return [...out];
+}
+
+/**
  * Everything that runs for an app: its panels, and its recorded blocks, which are fetched even when
  * no panel shows them. What it may do is asked from exactly these.
  */
@@ -49,7 +83,10 @@ function running(spec: AppSpec): PanelSpec[] {
 /** What an app is allowed to do, as stable strings. Writes to the note itself need no grant. */
 export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
   const out = new Set<string>();
-  for (const { panel } of running(spec)) for (const [perm] of panelPermissions(panel, selfPath)) out.add(perm);
+  for (const ps of running(spec)) {
+    for (const [perm] of panelPermissions(ps.panel, selfPath)) out.add(perm);
+    for (const perm of sendPermissions(ps, spec)) out.add(perm);
+  }
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
   return [...out].sort();
 }
@@ -63,9 +100,13 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
   };
   for (const ps of spec.panels) {
     for (const [perm, key] of panelPermissions(ps.panel, selfPath)) add(perm, ps.writtenIn[key] ?? selfPath);
+    for (const perm of sendPermissions(ps, spec)) add(perm, ps.writtenIn.source ?? selfPath);
   }
   // Blocks that record are the app's own.
-  for (const ps of Object.values(spec.recorded)) for (const [perm] of panelPermissions(ps.panel, selfPath)) add(perm, selfPath);
+  for (const ps of Object.values(spec.recorded)) {
+    for (const [perm] of panelPermissions(ps.panel, selfPath)) add(perm, selfPath);
+    for (const perm of sendPermissions(ps, spec)) add(perm, selfPath);
+  }
   if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
   return out;
 }
@@ -87,6 +128,14 @@ export function describePermission(perm: string): string {
   const [kind, ...rest] = perm.split(":");
   const what = rest.join(":");
   switch (kind) {
+    case "send": {
+      const cut = what.lastIndexOf("|");
+      const [from, ...path] = what.slice(cut + 1).split(".");
+      const to = what.slice(0, cut);
+      if (from === "typed") return `Send what you type in ${path.join(".")} to ${to}`;
+      if (from === "picked") return `Send the picked ${path[0]}${path.length > 1 ? `'s ${path.slice(1).join(".")}` : ""} to ${to}`;
+      return `Send the note's ${path.length ? path.join(".") : "properties"} to ${to}`;
+    }
     case "net": return `Fetch data from ${what}`;
     case "post": return `Send a request body to ${what}`;
     case "secret": return `Use your saved secret "${what}"`;

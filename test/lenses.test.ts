@@ -247,3 +247,30 @@ test("a lens in a #tag scope asks to change the notes with that tag", () => {
   assert.deepEqual(r.errors, []);
   assert.deepEqual(permissionsOf(r.spec!, "Components/T.md"), ["edit:#book"]);
 });
+
+const MOOD = {
+  component: "Weather that matches your mood",
+  for: "Journal",
+  params: { mood: null },
+  panels: [{ view: "text", title: "Weather", source: "https://mood-weather.example/api?m=$mood", text: "{summary}" }],
+};
+
+test("a lens that puts a note's property in a request says it sends it, and that it shows on every note in its scope", async () => {
+  const { stack } = lenses({
+    "Components/Mood weather.md": { fm: MOOD },
+    "Journal/2026-11-19.md": { fm: { mood: "anxious about the biopsy result" } },
+  });
+  const day = stack("Journal/2026-11-19.md");
+  await settle();
+  assert.deepEqual([...day.el.querySelectorAll(".gz-card li")].map(text), [
+    "Fetch data from mood-weather.example",
+    "Send the note's mood to mood-weather.example",
+  ]);
+  assert.equal(text(day.el.querySelector(".gz-card .gz-scope")), "It shows on every note in Journal; this OK covers all of them.");
+  // Shared as a component, the install preview names the same.
+  const preview = readComponentPreview(MOOD, { path: "Components/Mood weather.md", notes: reading({ "Components/Mood weather.md": MOOD }) });
+  assert.deepEqual(permissionsOf(preview.result.spec!, "Components/Mood weather.md").map(describePermission), [
+    "Fetch data from mood-weather.example",
+    "Send the note's mood to mood-weather.example",
+  ]);
+});

@@ -731,11 +731,12 @@ export function readComponentPreview(fm: Record<string, unknown>, opts: { now?: 
   const self = opts.path.replace(/\.md$/i, "");
   const lens = fm.for === undefined || fm.for === null ? undefined : readFor(fm.for);
   const scope = lens && "scope" in lens ? lens.scope : undefined;
-  // A lens is checked as it runs: sitting in a note of its scope.
+  // A lens is checked as it runs: sitting in a note of its scope, each param read from the note's
+  // property of that name, so what it asks for (a property it sends, say) is what it will ask.
   const result = readSpec({
     app: fm.component === true ? "" : String(fm.component),
     use: `[[${self}]]`,
-    with: Object.fromEntries(missing.map((n) => [n, n])),
+    with: Object.fromEntries(scope ? [...params.keys()].map((n) => [n, `$this.${n}`]) : missing.map((n) => [n, n])),
   }, scope ? { ...opts, host: { scope } } : opts)!;
   const values = [...params].map(([k, v]) => `${k}: ${v === undefined ? "…" : typeof v === "string" ? v : JSON.stringify(v)}`);
   const usage = `panels:\n  - use: "[[${basename(opts.path)}]]"${values.length ? `\n    with: {${values.join(", ")}}` : ""}`;

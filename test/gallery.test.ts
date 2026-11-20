@@ -66,7 +66,7 @@ const reader: NoteReader = (() => {
 /** What each app asks the person to allow; a change to a note that changes this has to say so here. */
 const APPS: Record<string, string[]> = {
   "Apps/Aurora watch.md": ["net:services.swpc.noaa.gov"],
-  "Apps/Book finder.md": ["create:Books", "edit:Books", "images", "net:openlibrary.org", "read:Books"],
+  "Apps/Book finder.md": ["create:Books", "edit:Books", "images", "net:openlibrary.org", "read:Books", "send:openlibrary.org|typed.q"],
   "Apps/Budget.md": [],
   "Apps/Decision journal.md": ["create:Decisions", "edit:Decisions", "read:Decisions"],
   "Apps/Medication log.md": [],
@@ -74,8 +74,9 @@ const APPS: Record<string, string[]> = {
   "Apps/Read later.md": ["create:Reading", "edit:Reading", "net:feeds.bbci.co.uk", "net:feeds.npr.org", "read:Reading"],
   "Apps/Task inbox.md": ["read:Tasks", "tasks:Tasks", "write:Tasks/Inbox.md"],
   "Apps/Sleep.md": [],
-  "Apps/Trip planner.md": ["net:api.frankfurter.dev", "net:api.open-meteo.com", "net:archive-api.open-meteo.com", "read:Trips/Tokyo.ics"],
-  "Apps/Watchlist.md": ["net:query1.finance.yahoo.com"],
+  "Apps/Trip planner.md": ["net:api.frankfurter.dev", "net:api.open-meteo.com", "net:archive-api.open-meteo.com", "read:Trips/Tokyo.ics",
+    "send:api.open-meteo.com|this.lat", "send:api.open-meteo.com|this.lon", "send:archive-api.open-meteo.com|this.lat", "send:archive-api.open-meteo.com|this.lon"],
+  "Apps/Watchlist.md": ["net:query1.finance.yahoo.com", "send:query1.finance.yahoo.com|picked.position.symbol"],
   "Apps/Weight.md": [],
 };
 const COMPONENTS: Record<string, string[]> = {

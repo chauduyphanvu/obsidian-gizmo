@@ -111,7 +111,7 @@ export default async function apps(t) {
   }, { net: NET.Weather });
 
   await check("Portfolio: asks only for Yahoo; picking a stock and a range redraws the Ticker; a buy recorded is held and worth something", async () => {
-    expect(JSON.stringify(prompts.Portfolio) === JSON.stringify(["Fetch data from query1.finance.yahoo.com — for [[Ticker]]"]), prompts.Portfolio);
+    expect(JSON.stringify(prompts.Portfolio) === JSON.stringify(["Fetch data from query1.finance.yahoo.com — for [[Ticker]]", "Send the picked holding's symbol to query1.finance.yahoo.com — for [[Ticker]]"]), prompts.Portfolio);
     const r = await run(`
       await na.open("Apps/Portfolio");
       const el = na.view().contentEl;
@@ -266,7 +266,7 @@ export default async function apps(t) {
       return { description: el.querySelector(".gz-description")?.textContent, title: el.querySelector(".gz-view-number .gz-title")?.textContent,
         form: el.querySelector(".gz-view-form .gz-title")?.textContent, pinned, errors: na.errors() };`);
     expect(r.description === "Follow one stock, record what I buy of it, and see what my shares are worth" && r.title === "AAPL" && r.form === "Record a buy of AAPL" && r.pinned && !r.errors, r);
-    expect(JSON.stringify(prompts.AAPL) === JSON.stringify(["Fetch data from query1.finance.yahoo.com — for [[Ticker]]"]), prompts.AAPL);
+    expect(JSON.stringify(prompts.AAPL) === JSON.stringify(["Fetch data from query1.finance.yahoo.com — for [[Ticker]]", "Send the picked holding's symbol to query1.finance.yahoo.com — for [[Ticker]]"]), prompts.AAPL);
     return `description and panels from [[Ticker]]; status ${r.pinned}`;
   }, { net: NET.AAPL });
 

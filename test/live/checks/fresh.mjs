@@ -36,7 +36,7 @@ export default async function fresh(t) {
 
   await check("first-open prompts list what each app asks for", async () => {
     const want = {
-      Library: ["Fetch data from openlibrary.org", "Read notes in Books", "Create notes in Books", "Change properties of notes in Books"],
+      Library: ["Fetch data from openlibrary.org", "Send what you type in q to openlibrary.org", "Read notes in Books", "Create notes in Books", "Change properties of notes in Books"],
       Tasks: ["Read notes in Tasks", "Tick tasks in notes in Tasks"],
       Shelf: ["Read any note in the vault", "Change properties of notes anywhere in the vault"],
       Projects: ["Change properties of notes in Projects", "Read notes in Projects"],

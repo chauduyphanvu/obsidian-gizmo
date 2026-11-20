@@ -4,6 +4,15 @@ import type { SourceDef } from "./types.ts";
 
 const secretsIn = (text: string | undefined) => secretIds(text ?? "");
 
+/** The host a web address asks for, as its permission names it; the address as typed when it isn't one. */
+export function urlHost(source: string): string {
+  try {
+    return new URL(source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host;
+  } catch {
+    return source;
+  }
+}
+
 /** A web address, fetched through the data layer's shared cache. */
 export const url: SourceDef = {
   id: "url",
@@ -15,12 +24,7 @@ export const url: SourceDef = {
   permissions(p) {
     const source = p.source!;
     const out: [string, "source" | "headers" | "body"][] = [];
-    let host = source;
-    try {
-      host = new URL(source.replace(/\{secret:[a-z0-9-]+\}/g, "x")).host;
-    } catch {
-      // Not a URL at all: the address as typed is what's asked about.
-    }
+    const host = urlHost(source);
     out.push([`net:${host}`, "source"]);
     for (const id of secretsIn(source)) out.push([`secret:${id}`, "source"]);
     for (const id of Object.values(p.headers ?? {}).flatMap(secretsIn)) out.push([`secret:${id}`, "headers"]);

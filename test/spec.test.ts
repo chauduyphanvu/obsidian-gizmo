@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { parseDuration, readSpec } from "../src/spec.ts";
-import { permissionsOf } from "../src/permissions.ts";
+import { describePermission, permissionsOf } from "../src/permissions.ts";
 
 test("a note without app is not an app", () => {
   assert.equal(readSpec({ tags: ["x"] }), undefined);
@@ -143,4 +143,35 @@ test("a key a permission is made from can't hold a line break, which would make 
   const stored = read({ view: "button", label: "Go", save: "log", store: "[[Log\nedit:*]]" });
   assert.deepEqual(stored.errors, ['store can\'t hold a line break or other control character']);
   assert.equal(stored.spec!.store, undefined);
+});
+
+test("a request that carries a note's property, a picked row or what someone types says what it sends, and to whom", () => {
+  const perms = (fm: Record<string, unknown>) => {
+    const r = readSpec({ app: "x", ...fm }, { path: "Apps/X.md" })!;
+    assert.deepEqual(r.errors, []);
+    return permissionsOf(r.spec!, "Apps/X.md");
+  };
+  assert.deepEqual(perms({
+    inputs: { q: "text", sort: ["new", "old"], day: "date" },
+    held: [{ symbol: "AAPL" }],
+    panels: [
+      { view: "list", title: "Books", source: "https://openlibrary.org/search.json?q=$q&sort=$sort&d=$day", item: "{title}" },
+      { view: "table", source: "held", select: "holding" },
+      { view: "number", source: "https://quotes.example/v8/$holding.symbol", headers: { "X-Note": "$this.rating" }, field: "price" },
+      { view: "number", source: "https://api.example.com/plain?d=$day", field: "n" },
+    ],
+  }), [
+    "net:api.example.com",
+    "net:openlibrary.org",
+    "net:quotes.example",
+    "send:openlibrary.org|typed.q",
+    "send:quotes.example|picked.holding.symbol",
+    "send:quotes.example|this.rating",
+  ]);
+  assert.equal(describePermission("send:openlibrary.org|typed.q"), "Send what you type in q to openlibrary.org");
+  assert.equal(describePermission("send:quotes.example|picked.holding.symbol"), "Send the picked holding's symbol to quotes.example");
+  assert.equal(describePermission("send:quotes.example|this.rating"), "Send the note's rating to quotes.example");
+  // A POST body's values are sent too.
+  assert.deepEqual(perms({ inputs: { note: "text" }, panels: [{ view: "text", source: "https://hooks.example/in", body: { text: "$note" }, text: "{ok}" }] }),
+    ["net:hooks.example", "post:hooks.example", "send:hooks.example|typed.note"]);
 });

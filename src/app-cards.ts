@@ -12,6 +12,8 @@ export interface CardApp {
   grantKey: string;
   /** In an embed or a lens: not an app note opened on its own. */
   hosted: boolean;
+  /** A lens's `for` scope: its grant covers every note there. */
+  scope?: string;
   /** Draws the app from scratch, as once it is allowed. */
   load(): void;
 }
@@ -29,6 +31,7 @@ export function renderPermissionPrompt(header: HTMLElement, wanted: string[], as
     const names = [...(others.length && who.includes(app.appPath) ? ["this note"] : []), ...others];
     li.createSpan({ text: describePermission(p) + (others.length ? ` — for ${names.join(", ")}` : "") });
   }
+  if (app.scope) card.createDiv({ cls: "gz-label gz-scope", text: `It shows on every note in ${app.scope}; this OK covers all of them.` });
   const row = card.createDiv({ cls: "gz-actions" });
   row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
     await app.env.grant(app.grantKey, wanted);

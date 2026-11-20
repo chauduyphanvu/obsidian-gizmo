@@ -213,7 +213,7 @@ export class AppController {
       runActions: (p, row) => this.writes.runActions(p, row),
       redraw: (key) => this.redraw(key),
     });
-    this.cards = { env, appPath, hostPath: this.hostPath, grantKey: this.grantKey, hosted: !!hosting, load: () => this.load() };
+    this.cards = { env, appPath, hostPath: this.hostPath, grantKey: this.grantKey, hosted: !!hosting, scope: hosting?.kind === "lens" ? hosting.scope : undefined, load: () => this.load() };
     this.readHost();
     this.shell = root.createDiv({ cls: "gizmo" });
     const self = this;

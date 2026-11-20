@@ -65,7 +65,7 @@ function openApp(path: string, notes: Parameters<typeof fakeEnv>[0], responses: 
 test("Library: search Open Library, read about a pick, add it to Books, set its status, finish it toward the year's goal", async () => {
   const spec = readSpec(vaultNote("Apps/Library.md").fm, { path: "Apps/Library.md" })!;
   assert.deepEqual(spec.errors, []);
-  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Library.md"), ["create:Books", "edit:Books", "net:openlibrary.org", "read:Books"]);
+  assert.deepEqual(permissionsOf(spec.spec!, "Apps/Library.md"), ["create:Books", "edit:Books", "net:openlibrary.org", "read:Books", "send:openlibrary.org|typed.q"]);
 
   const { root, f, notices } = openApp("Apps/Library.md", books(), { [SEARCH]: DOCS });
   await settle();
@@ -576,7 +576,7 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
   const path = "Apps/Portfolio.md";
   const spec = readSpec(vaultNote(path).fm, { path, notes: fakeEnv(TICKER).env.notes })!;
   assert.deepEqual(spec.errors, []);
-  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:query1.finance.yahoo.com"]);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:query1.finance.yahoo.com", "send:query1.finance.yahoo.com|picked.holding.symbol"]);
 
   const responses = { [`${YAHOO}SPY`]: yahoo("SPY", [523, 523.88, 517.99, 506.24, 508.29]), [`${YAHOO}AAPL`]: yahoo("AAPL", [200, 205, 210]) };
   const { root, f } = openApp(path, TICKER, responses);
@@ -644,7 +644,7 @@ test("AAPL: the whole note is the Ticker; its price is in the status bar, a 3% f
   const spec = readSpec(vaultNote(path).fm, { path, notes: fakeEnv(TICKER).env.notes })!;
   assert.deepEqual(spec.errors, []);
   assert.equal(spec.spec!.description, "Follow one stock, record what I buy of it, and see what my shares are worth");
-  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:query1.finance.yahoo.com"]);
+  assert.deepEqual(permissionsOf(spec.spec!, path), ["net:query1.finance.yahoo.com", "send:query1.finance.yahoo.com|picked.holding.symbol"]);
 
   // Closed: down from 205 to 198 in the last session.
   const t = fakeBackground({ [path]: { fm: vaultNote(path).fm }, ...TICKER }, { [YAHOO]: yahoo("AAPL", [200, 205, 198]) });

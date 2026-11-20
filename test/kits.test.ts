@@ -162,7 +162,7 @@ test("a run-time value may still fill a URL's path or query, encoded, and is che
   };
   const r = read({ inputs: { t: "text" }, use: "[[Q]]", with: { term: "$t", host: "books.example.com" } }, notes);
   assert.deepEqual(r.errors, []);
-  assert.deepEqual(permissionsOf(r.spec!, APP), ["net:books.example.com"]);
+  assert.deepEqual(permissionsOf(r.spec!, APP), ["net:books.example.com", "send:books.example.com|typed.t"]);
   const ps = r.spec!.panels[0];
   assert.equal(resolvePanel(ps, { t: "a b/c" }).panel!.source, "https://books.example.com/search?q=a%20b%2Fc");
   assert.deepEqual(resolvePanel(ps, { t: "x\ny" }).errors, ["$t can't hold a secret or a line break"]);
