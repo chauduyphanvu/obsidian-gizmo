@@ -247,3 +247,26 @@ test("10,000 rows × 3 formulas in well under 100 ms", () => {
   assert.equal(typeof out[1].change, "number");
   assert.ok(ms < 100, `${ms.toFixed(1)} ms`);
 });
+
+test("text a formula makes is at most 100,000 characters: past that it is missing, at once, so a few formulas can't exhaust memory", () => {
+  const nested = compileCompute({
+    a: "replace(w, 'a', w)",
+    b: "replace(a, 'a', a)",
+    c: "replace(b, 'a', b)",
+  }, {}, new Date());
+  const t0 = performance.now();
+  const [row] = nested([{ w: "aaaaaaaaaa" }]) as Record<string, unknown>[];
+  assert.equal((row.b as string).length, 10_000);
+  assert.equal(row.c, null);
+  const doubling: Record<string, string> = { c0: "w + w" };
+  for (let i = 1; i < 30; i++) doubling[`c${i}`] = `c${i - 1} + c${i - 1}`;
+  const [d] = compileCompute(doubling, {}, new Date())([{ w: "ab" }]) as Record<string, unknown>[];
+  // c0 is 4 characters and each column doubles it: c14 is 65,536, c15 would be 131,072.
+  assert.equal((d.c14 as string).length, 2 ** 16);
+  assert.equal(d.c15, null);
+  assert.equal(d.c29, null);
+  assert.ok(performance.now() - t0 < 250, `took ${performance.now() - t0} ms`);
+  // Ordinary text is untouched.
+  const [ok] = compileCompute({ s: "replace(t, '-', ' ') + '!'", u: "upper(s)" }, {}, new Date())([{ t: "a-b-c" }]) as Record<string, unknown>[];
+  assert.deepEqual([ok.s, ok.u], ["a b c!", "A B C!"]);
+});

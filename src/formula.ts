@@ -29,6 +29,11 @@ export const FORMULA_FUNCTIONS: Readonly<Record<string, readonly [number, number
 /** Hand-typed formulas are short; these bounds keep a pathological one from hanging or overflowing. */
 const MAX_LENGTH = 2000;
 const MAX_NESTING = 32;
+/**
+ * The longest text a formula makes. Chained `replace` or `+` grow text exponentially (three
+ * replaces of ten letters make 100 million characters), so longer text is missing instead.
+ */
+export const MAX_TEXT = 100_000;
 
 // ---- Tokens ----------------------------------------------------------------------------------
 
@@ -276,9 +281,12 @@ const ordered = (test: (c: number) => boolean) => (a: unknown, b: unknown) => {
 };
 
 const BINARY: Record<string, (a: unknown, b: unknown) => unknown> = {
-  "+": (a, b) => (typeof a === "string" || typeof b === "string"
-    ? (missing(a) || missing(b) ? null : str(a) + str(b))
-    : arithmetic((x, y) => x + y)(a, b)),
+  "+": (a, b) => {
+    if (typeof a !== "string" && typeof b !== "string") return arithmetic((x, y) => x + y)(a, b);
+    if (missing(a) || missing(b)) return null;
+    const x = str(a), y = str(b);
+    return x.length + y.length > MAX_TEXT ? null : x + y;
+  },
   "-": arithmetic((x, y) => x - y),
   "*": arithmetic((x, y) => x * y),
   "/": arithmetic((x, y) => x / y),
@@ -346,7 +354,12 @@ const FUNCTIONS: Record<string, (args: unknown[]) => unknown> = {
   },
   startswith: onText((s, part) => s.startsWith(part)),
   endswith: onText((s, part) => s.endsWith(part)),
-  replace: onText((s, from, to) => (from === "" ? s : s.split(from).join(to))),
+  replace: onText((s, from, to) => {
+    if (from === "") return s;
+    const parts = s.split(from);
+    // Known before the text is made, so it is never made when it would be too long.
+    return s.length + (parts.length - 1) * (to.length - from.length) > MAX_TEXT ? null : parts.join(to);
+  }),
   date: onTime((d) => stampParts(d).date),
   year: onTime((d) => d.getFullYear()),
   month: onTime((d) => d.getMonth() + 1),
@@ -413,9 +426,10 @@ function compileCall(fn: string, args: Formula[]): Formula {
   return (row, env) => f(args.map((a) => a(row, env)));
 }
 
-/** What a run gives back: null for missing and non-finite values. */
+/** What a run gives back: null for missing and non-finite values, and for text longer than MAX_TEXT. */
 function settle(v: unknown): unknown {
   if (v === undefined || (typeof v === "number" && !Number.isFinite(v))) return null;
+  if (typeof v === "string" && v.length > MAX_TEXT) return null;
   return v;
 }
 
