@@ -133,3 +133,39 @@ test("an edit to a row another device saved changes that device's note, and Undo
   assert.equal((await undoEntry(entry, io)).refusal, undefined);
   assert.equal((t.f.files.get(PHONE)!.fm!.done as { who: string }[])[0].who, "Bo");
 });
+
+test("a devices list or table from before the key existed stays data, and an app name with a comma still reads every device", async () => {
+  const listed = readSpec({ app: "Gear", devices: [{ name: "iPhone" }], view: "table", source: "devices" }, { path: "Apps/Gear.md" })!;
+  assert.deepEqual(listed.errors, []);
+  assert.equal(listed.spec!.split, undefined);
+
+  const fm = { ...CHORES, app: "Food, drinks" };
+  const phone = "Apps/Food, drinks data/iPhone-77aa.md";
+  const t = fakeBackground({
+    "Apps/Food, drinks.md": { fm },
+    [phone]: { fm: { device: "77aa0000", done: [{ chore: "tea", at: "2026-11-18T08:00" }] } },
+    // A real "drinks data" folder elsewhere isn't read as part of it.
+    "drinks data/x.md": { fm: { device: "zz", done: [{ chore: "nope", at: "2026-11-18T08:30" }] } },
+  });
+  await t.bg.start();
+  const spec = t.bg.spec("Apps/Food, drinks.md")!;
+  const count = await t.bg.evaluate("Apps/Food, drinks.md", spec.panels[1]);
+  assert.equal("value" in count && count.value, 1);
+  t.f.files.set("Apps/Food, drinks data/iPad-88bb.md", { fm: { device: "88bb0000", done: [{ chore: "soup", at: "2026-11-18T09:00" }] } });
+  t.changed("Apps/Food, drinks data/iPad-88bb.md");
+  const again = await t.bg.evaluate("Apps/Food, drinks.md", spec.panels[1]);
+  assert.equal("value" in again && again.value, 2);
+});
+
+test("a dry run of a split app stamps this device's note as a real run does, and the map names the app as its writer", async () => {
+  const t = fakeBackground({ "Apps/Chores.md": { fm: CHORES } });
+  await t.bg.start();
+  const steps = await t.bg.dryRun("Apps/Chores.md", "did", { chore: "bins", who: "Ann" });
+  const change = steps[0].changes[0] as { path: string };
+  assert.equal(change.path, MINE);
+  assert.equal(t.f.files.get(MINE), undefined, "a dry run writes nothing");
+  const { writersOf } = await import("../src/map.ts");
+  const apps = t.bg.list();
+  assert.deepEqual(writersOf(MINE, apps, [], () => false).map((w) => [w.name, w.reason]), [["Chores", "Keep a note of its own for each device in Apps/Chores data"]]);
+  assert.deepEqual(writersOf("Apps/Chores data.md", apps, [], () => false).map((w) => w.name), ["Chores"]);
+});

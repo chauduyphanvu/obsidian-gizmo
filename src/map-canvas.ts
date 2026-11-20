@@ -51,6 +51,7 @@ function targetOf(perm: string): { side: "in" | "out"; key: string; label: strin
       : { side: "in", key: `notes:${what}`, label: "reads", text: `Notes in ${what}` };
     case "write": return { side: "out", key: `file:${notePath(what)}`, label: "adds lines", file: notePath(what), text: notePath(what) };
     case "store": return { side: "out", key: `file:${what}`, label: "saves data", file: what, text: what };
+    case "split": return { side: "out", key: `notes:${what}`, label: "saves data", text: `A note per device in ${what}` };
     case "create": return { side: "out", key: `notes:${what}`, label: "creates notes", text: `Notes in ${what}` };
     case "edit": return { side: "out", key: `notes:${what}`, label: "changes", text: what === "*" ? "Every note" : `Notes in ${what}` };
     case "tasks": return { side: "out", key: `notes:${what}`, label: "ticks tasks", text: `Notes in ${what}` };

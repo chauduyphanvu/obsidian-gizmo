@@ -1,6 +1,6 @@
 import type { CacheEntry } from "./cache.ts";
 import { parseBody, stampParts, type Row } from "./data.ts";
-import { fileDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
+import { fileDep, folderDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
 import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
@@ -259,6 +259,12 @@ export class DataLayer {
     return [...this.rows().values()];
   }
 
+  /** The paths of the notes directly in a folder, by path alone. */
+  notesIn(folder: string): string[] {
+    const prefix = `${folder}/`;
+    return [...this.rows().keys()].filter((p) => p.startsWith(prefix) && !p.slice(prefix.length).includes("/"));
+  }
+
   /**
    * What `parse` makes of a note's text. Each note is read and parsed once and kept until it
    * changes, so a scope of many notes re-reads only the ones that changed.
@@ -336,6 +342,7 @@ export class DataLayer {
     // A scope nobody has queried yet still matters to listeners waiting on it.
     for (const l of this.listeners) {
       for (const dep of l.deps) {
+        if (dep.startsWith("folder:") && path.startsWith(dep.slice(7))) this.pending.add(dep);
         const scope = scopeOfDep(dep);
         if (scope === undefined || this.pending.has(dep)) continue;
         const scopes = splitScopes(scope);

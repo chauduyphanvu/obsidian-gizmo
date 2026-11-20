@@ -653,8 +653,9 @@ export function readSpec(
     errors.push(`store can't be an app or a component note; name a note that only holds data, e.g. store: "[[Weight log]]"`);
     store = undefined;
   }
+  // Only text is the setting: a list or table called devices, from before the key existed, stays data.
   let split: boolean | undefined;
-  if (fm.devices !== undefined && fm.devices !== null) {
+  if (typeof fm.devices === "string") {
     if (fm.devices === "split") split = true;
     else errors.push("devices must be split, e.g. devices: split");
   }

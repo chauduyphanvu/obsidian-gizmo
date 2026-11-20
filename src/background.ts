@@ -137,8 +137,8 @@ interface AppEntry {
   definition: string;
   spec: AppSpec;
   dataPath: string;
-  /** With `devices: split`: where this device's rows go. */
-  split?: Split;
+  /** With `devices: split`, worked out when it is used: renaming this device changes its note. */
+  split?: () => Split;
   /** What the app needs allowed; it acts only while exactly this is granted. */
   wanted: string[];
   records: RecordJob[];
@@ -312,7 +312,7 @@ export class Background {
     const p = r.panel;
     const source = sourceOf(p);
     try {
-      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath, split: entry.split }, { ttlMs: entry.refreshMs, now, force });
+      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath, split: entry.split?.() }, { ttlMs: entry.refreshMs, now, force });
       const rows = splitByWindow(p, loaded, now).current;
       const { value, text, unit } = panelValue(p, rows, now);
       return { value, shown: unit ? `${text} ${unit}` : text, rows, panel: p };
@@ -425,9 +425,10 @@ export class Background {
       told = true;
       say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
     };
+    const split = entry.split?.();
     const base: ActionDeps = {
-      ...this.env.actionDeps(entry.path, entry.split?.mine ?? entry.dataPath, dry ? undefined : actor),
-      stamp: entry.split && { device: entry.split.id },
+      ...this.env.actionDeps(entry.path, split?.mine ?? entry.dataPath, dry ? undefined : actor),
+      stamp: split && { device: split.id },
     };
     const deps: ActionDeps = {
       ...(dry ? recordingDeps(dry.overlay, base, step) : base),
@@ -765,7 +766,8 @@ export class Background {
     try {
       const now = this.env.now();
       // With devices: split, the newest sample any device took counts, whichever device took it.
-      const devices = entry.split ? deviceNotes(this.env.data, entry.split.folder) : [];
+      const split = entry.split?.();
+      const devices = split ? deviceNotes(this.env.data, split.folder) : [];
       const last = Math.max(
         lastSample(resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {})) ?? -Infinity,
         ...devices.map((path) => lastSample(this.env.frontmatter(path)?.[job.list]) ?? -Infinity),
@@ -778,9 +780,9 @@ export class Background {
       const at = stampParts(now).at;
       const sample: Row = { at, ...row };
       sample.at = at;
-      const into = entry.split?.mine ?? entry.dataPath;
+      const into = split?.mine ?? entry.dataPath;
       await this.env.actionDeps(entry.path, into).writeFrontmatter(into, (fm) => {
-        if (entry.split) fm.device = entry.split.id;
+        if (split) fm.device = split.id;
         const list = Array.isArray(fm[job.list]) ? fm[job.list] as unknown[] : [];
         fm[job.list] = [...list, sample].slice(-MAX_SAMPLES);
       });
@@ -835,7 +837,7 @@ export class Background {
       definition,
       spec,
       dataPath,
-      split: spec.split ? splitOf(dataPath, this.env.device(), deviceNoteName) : undefined,
+      split: spec.split ? () => splitOf(dataPath, this.env.device(), deviceNoteName) : undefined,
       wanted: permissionsOf(spec, path),
       records: recordJobs(spec),
       shortcuts,
@@ -844,7 +846,7 @@ export class Background {
       stop: () => {},
     };
     const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
-    const files = { appPath: path, dataPath: entry.dataPath, split: entry.split };
+    const files = { appPath: path, dataPath: entry.dataPath, split: entry.split?.() };
     const start = this.valuesOf(path, spec, this.env.now());
     const dataDeps = entry.watched.flatMap(({ ps }) => {
       const p = resolvePanel(ps, start).panel;

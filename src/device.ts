@@ -54,14 +54,15 @@ export function newDeviceId(): string {
 
 /**
  * This device, made and kept the first time: named for what it is, and running background work
- * unless it is a phone or tablet, where Obsidian is rarely open long enough for it.
+ * unless it is a phone or tablet, where Obsidian is rarely open long enough for it, and another
+ * device already runs it. A phone that is the only device, or the first to update, keeps it on.
  */
-export function thisDevice(store: DeviceStore, platform: PlatformInfo, newId: () => string = newDeviceId): Device {
+export function thisDevice(store: DeviceStore, platform: PlatformInfo, othersRun: boolean, newId: () => string = newDeviceId): Device {
   const kept = store.load(KEY) as Partial<Device> | null;
   if (kept && typeof kept.id === "string" && typeof kept.name === "string" && typeof kept.background === "boolean") {
     return { id: kept.id, name: kept.name, background: kept.background };
   }
-  const device = { id: newId(), name: defaultName(platform), background: !platform.isMobile };
+  const device = { id: newId(), name: defaultName(platform), background: !platform.isMobile || !othersRun };
   store.save(KEY, device);
   return device;
 }
@@ -77,6 +78,7 @@ export function otherRunners(seen: Seen[], me: string, now: number): Seen[] {
 
 /** A device's own note in a folder of per-device data notes: its name, and its id so two of the same name never share one. */
 export function deviceNoteName(device: Pick<Device, "id" | "name">): string {
-  const name = device.name.replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/\s+/g, " ").trim() || "Device";
+  // A leading dot would hide the note from Obsidian, so its rows would never be read.
+  const name = device.name.replace(/[\\/:*?"<>|#^[\]]/g, " ").replace(/^[\s.]+/, "").replace(/\s+/g, " ").trim() || "Device";
   return `${name}-${device.id.slice(0, 4)}`;
 }

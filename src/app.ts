@@ -167,8 +167,10 @@ export class AppController {
   private spec: AppSpec | undefined;
   private definition = "";
   private dataPath = "";
-  /** With `devices: split`: where this device's rows go, beside the data note. */
-  private split: Split | undefined;
+  /** With `devices: split`: where this device's rows go, beside the data note; renaming the device moves its note. */
+  private get split(): Split | undefined {
+    return this.spec?.split && this.env.device ? splitOf(this.dataPath, this.env.device, deviceNoteName) : undefined;
+  }
   private unsubscribe: (() => void) | undefined;
   private hosting: Hosting | undefined;
   private grantKey: string;
@@ -400,7 +402,6 @@ export class AppController {
     this.links = result?.spec?.links ?? [];
     this.spec = picked?.spec ?? result?.spec;
     this.dataPath = h?.dataPath ?? dataPathOf(this.spec?.store, this.appPath, (store, from) => this.env.storePath(store, from));
-    this.split = this.spec?.split && this.env.device ? splitOf(this.dataPath, this.env.device, deviceNoteName) : undefined;
 
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
     const header = createDivIn(this.shell, "gz-header");

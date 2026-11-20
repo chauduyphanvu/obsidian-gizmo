@@ -17,7 +17,7 @@ import type { LensIndex } from "./lenses.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
 import { newLinkKey } from "./links.ts";
-import { DeviceBeat, GizmoSettings, adoptOldLog, otherLogs } from "./settings.ts";
+import { DeviceBeat, GizmoSettings, adoptOldLog, devicesSeen, otherLogs } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
 import { permissionsOf } from "./permissions.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
@@ -58,7 +58,7 @@ export default class GizmoPlugin extends Plugin {
     this.store = { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir));
     this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
-    this.device = thisDevice(this.deviceStore, Platform);
+    this.device = thisDevice(this.deviceStore, Platform, (await devicesSeen(this).catch(() => [])).some((s) => s.background));
     // Each device writes only its own log, which a sync never has to merge; it reads the others'.
     await adoptOldLog(this).catch(() => {});
     this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
@@ -146,9 +146,13 @@ export default class GizmoPlugin extends Plugin {
     const data = vault.getFileByPath(defaultDataPath(oldPath));
     const target = defaultDataPath(app.path);
     if (data && data !== app && !vault.getAbstractFileByPath(target)) await this.app.fileManager.renameFile(data, target);
+    // Only a split app's own folder of device notes: a folder of the same name may be the person's.
+    const fm = this.app.metadataCache.getFileCache(app)?.frontmatter;
+    if (fm?.devices !== "split" || fm.store) return;
     const folder = vault.getFolderByPath(defaultDataPath(oldPath).replace(/\.md$/i, ""));
     const folderTarget = target.replace(/\.md$/i, "");
-    if (folder && !vault.getAbstractFileByPath(folderTarget)) await this.app.fileManager.renameFile(folder, folderTarget);
+    const holdsDevices = folder?.children.some((c) => c instanceof TFile && typeof this.app.metadataCache.getFileCache(c)?.frontmatter?.device === "string");
+    if (folder && holdsDevices && !vault.getAbstractFileByPath(folderTarget)) await this.app.fileManager.renameFile(folder, folderTarget);
   }
 
   /** Notes that open as apps: apps, and components (which show how to use them). */

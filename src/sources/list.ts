@@ -1,6 +1,6 @@
 import type { Row } from "../data.ts";
 import type { DataLayer } from "../datalayer.ts";
-import { fileDep, notesDep } from "../deps.ts";
+import { fileDep, folderDep } from "../deps.ts";
 import { RESERVED, resolveList } from "../store.ts";
 import type { SourceDef } from "./types.ts";
 
@@ -25,10 +25,7 @@ function placed(list: unknown[], source?: string): unknown[] {
 
 /** The device notes directly in a split app's folder: the notes there that say which device they are. */
 export function deviceNotes(layer: DataLayer, folder: string): string[] {
-  return layer.notes(folder)
-    .filter((r) => typeof r.path === "string" && !r.path.slice(folder.length + 1).includes("/") && typeof r.device === "string")
-    .map((r) => r.path as string)
-    .sort();
+  return layer.notesIn(folder).filter((path) => typeof layer.host.frontmatter(path)?.device === "string").sort();
 }
 
 /** When a row was saved, as its text sorts: `YYYY-MM-DDTHH:MM`; a row without one sorts first. */
@@ -40,7 +37,7 @@ export const list: SourceDef = {
   matches: () => true,
   validate: (p) => (RESERVED.includes(p.source!) ? [`source can't use "${p.source}", which names part of the app`] : []),
   permissions: () => [],
-  deps: (_p, files) => [fileDep(files.dataPath), fileDep(files.appPath), ...(files.split ? [notesDep(files.split.folder)] : [])],
+  deps: (_p, files) => [fileDep(files.dataPath), fileDep(files.appPath), ...(files.split ? [folderDep(files.split.folder)] : [])],
   // One copy per version of the notes, shared by every panel and the background: nothing
   // downstream changes a loaded row or list in place.
   load: (p, files, layer) => {

@@ -13,12 +13,14 @@ function memoryStore() {
   return { kept, load: (k: string) => kept.get(k) ?? null, save: (k: string, v: unknown) => void kept.set(k, structuredClone(v)) };
 }
 
-test("a device is made once and kept on it: named for what it is, running background work unless it's a phone", () => {
+test("a device is made once and kept on it: named for what it is, running background work unless it's a phone and another device does", () => {
   const store = memoryStore();
-  const mac = thisDevice(store, DESKTOP, () => "abc12345");
+  const mac = thisDevice(store, DESKTOP, true, () => "abc12345");
   assert.deepEqual(mac, { id: "abc12345", name: "Mac", background: true });
-  assert.deepEqual(thisDevice(store, DESKTOP, () => "other"), mac, "read back, not made again");
-  assert.deepEqual(thisDevice(memoryStore(), PHONE, () => "p"), { id: "p", name: "iPhone", background: false });
+  assert.deepEqual(thisDevice(store, DESKTOP, false, () => "other"), mac, "read back, not made again");
+  assert.deepEqual(thisDevice(memoryStore(), PHONE, true, () => "p"), { id: "p", name: "iPhone", background: false });
+  // A phone that is the only device (or the first to update) keeps what it ran before.
+  assert.deepEqual(thisDevice(memoryStore(), PHONE, false, () => "p"), { id: "p", name: "iPhone", background: true });
   assert.equal(defaultName({ ...PHONE, isTablet: true }), "iPad");
   assert.equal(defaultName({ ...DESKTOP, isMacOS: false, isWin: true }), "Windows PC");
 });
@@ -38,6 +40,7 @@ test("a device's data note is named for it and carries its id, so two Macs never
   assert.equal(deviceNoteName({ id: "3f9a71bc", name: "Mac" }), "Mac-3f9a");
   assert.equal(deviceNoteName({ id: "77aa0000", name: "Kim's: phone/2" }), "Kim's phone 2-77aa");
   assert.equal(deviceNoteName({ id: "77aa0000", name: "  " }), "Device-77aa");
+  assert.equal(deviceNoteName({ id: "77aa0000", name: ". work" }), "work-77aa", "a leading dot would hide the note");
 });
 
 test("with background work off, records and alerts' thens don't run here; turned on, alerts start from what is true now", async () => {
