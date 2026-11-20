@@ -2,7 +2,7 @@
 
 **Type a few properties. Your note becomes an app.**
 
-Gizmo is a plugin for Obsidian. It changes a note into a small app that you can use each day. You write some keys in the properties of the note. Gizmo reads them and makes buttons, forms, charts, boards and calendars. The app saves your data into a note beside it, in your vault. You do not write code.
+Gizmo is a plugin for Obsidian. It changes a note into a small app with buttons, forms, charts, boards and calendars. Your data stays in your vault, in notes that you can read. You do not write code.
 
 ```yaml
 ---
@@ -12,542 +12,122 @@ with: {what: weight, unit: kg, goal: 75}
 ---
 ```
 
-These three lines make a full weight app. It has a form, an average for the week, a chart with your goal line and a table that you can edit.
+These three lines make this app:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="docs/images/weight-dark.webp">
+  <img src="docs/images/weight-light.webp" alt="The Weight app: a form, the average for this week, a chart of values against a goal line and a table of entries">
+</picture>
 
 ## Why Gizmo
 
-- **One plugin. Many apps.** Each new app is a note, not a new plugin. A medication log, a budget, a project board and a trip planner all use the same plugin.
-- **No code.** You type each key by hand, and each key has one clear function. Gizmo examines your keys and shows each problem in clear words.
-- **Your data stays in your vault.** Gizmo keeps your data in Markdown notes with properties. You can read them, search them and use them in Bases or Dataview. There is no hidden database.
-- **You give permission first.** An app tells you what it will read, download, send and change. It does not start until you select **Allow**. If the app asks for more later, Gizmo asks you again.
-- **Save from anywhere.** A hotkey, a line of text, a phone shortcut or a link can save data into an app. You do not have to open the app first.
-- **Undo for your vault.** Gizmo keeps a log of each change that an app makes. You can see what made the app act, and you can undo the change.
-- **One vault, many devices.** Gizmo operates on desktop and on mobile. Each device writes to a log that only it uses, so no device deletes the rows of another device.
+- **One plugin, many apps.** Each new app is a note, not a new plugin.
+- **No code.** You type each key by hand. Gizmo examines the keys and shows each problem in clear words.
+- **Your data stays in your vault.** Gizmo keeps it in Markdown notes that Bases and Dataview can read. There is no hidden database.
+- **You give permission first.** An app tells you what it will read, download, send and change. It does not start until you select **Allow**.
+- **Save from anywhere.** A hotkey, a line of text, a phone shortcut or a link can save data. The app does not have to be open.
+- **Undo for your vault.** Gizmo keeps a log of each change that an app makes, and you can undo each one.
 
 ## What you can make
 
-The gallery has apps that are ready to use. Each one does a complete task. Run **Gizmo: New app from the gallery** to copy an app into your vault.
+The gallery has apps that are ready to use. Run **Gizmo: New app from the gallery** to copy one into your vault.
 
-| App | What it does |
-| --- | --- |
-| Medication log | Save each dose with one button. See the count for today, your streak and a calendar of the year. Gizmo tells you if you save no dose by 10:00. |
-| Weight and Sleep | Save a value each time that you measure. Compare this week with the last week, and see a chart of your values against your goal. |
-| Budget | Save each amount that you spend, with its category. See the month total against your limit. Gizmo tells you when the total reaches the limit. |
-| Household chores | Each person saves chores on their phone. See who did which chore this week. Two people can save at the same time, and Gizmo keeps all rows. |
-| Book finder | Search Open Library. Add a book to your shelf as a note, then set its status on its card. |
-| Project board | Move each project from idea to done on a board. See the dates of all projects on a timeline. |
-| Task inbox | Add a task from anywhere. Set a task to done in the table, and Gizmo changes the checkbox in the note of that task. |
-| Decision journal | Write a decision before you see the result. Give it a score later, and see the percentage of correct decisions. |
-| Trip planner | Prepare one trip: the days until you go, a list of items to pack, the itinerary, the weather and the money that you spend. |
-| Watchlist | Monitor a stock price. Save the shares that you buy, and see their value. |
-| Aurora watch | Gizmo tells you when the Kp index is 5 or more, now or in the forecast. It also keeps a record of the Kp index each hour. |
-| Read later | Save articles from RSS feeds as notes. Set each article to read when you complete it. |
-| Today | A note that is not an app. Its text has two small apps in it: the medication button and a water counter. |
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/medication-dark.webp">
+        <img src="docs/images/medication-light.webp" alt="Medication log: a button, the doses today, a streak and a calendar of the year">
+      </picture>
+      <b>Medication log.</b> One button for each dose, a streak and a calendar of the year.
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/budget-dark.webp">
+        <img src="docs/images/budget-light.webp" alt="Budget: a form, the month total against a limit and a chart of each week by category">
+      </picture>
+      <b>Budget.</b> The month total against your limit, and each week by category.
+    </td>
+  </tr>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
+        <img src="docs/images/board-light.webp" alt="Project board: a form, projects in columns by status and a timeline of their dates">
+      </picture>
+      <b>Project board.</b> Projects in columns by status, and their dates on a timeline.
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/decisions-dark.webp">
+        <img src="docs/images/decisions-light.webp" alt="Decision journal: a form, the decisions ready to score and the percentage of correct decisions">
+      </picture>
+      <b>Decision journal.</b> Write a decision now, give it a score later, and see how many were correct.
+    </td>
+  </tr>
+</table>
 
-The gallery also has components that many apps can use:
-
-| Component | What it does |
-| --- | --- |
-| Tracker kit | A full tracker app in one component. Give it a name, a unit and a goal. Weight and Sleep are three lines each on this kit. |
-| Destination weather | The weather in a city now, for the next week and for an average year. |
-| Reading progress | Your progress in a book, on the note of that book. |
-| Decision review | Give a decision a score on its note, next to the text that you wrote about it. |
-
-## How it works
-
-1. **Write.** Give a note an `app` property with one sentence about the app. Add panels below it.
-2. **Open.** Gizmo shows the note as an app.
-3. **Allow.** Gizmo shows what the app asks for. Select **Allow**, and the app starts.
-
-Each app is a set of panels. A panel has a view and a source of data. A view can be a button, a form, a chart, a table, a board or a calendar. Panels can save rows, add lines to notes, make notes, tell you about changes and start other apps.
-
-A Gizmo app does more than show data. It takes input, keeps state and writes to your vault.
+The gallery also has Weight, Sleep, Household chores, Book finder, Task inbox, Trip planner, Watchlist, Aurora watch and Read later.
 
 ## Use it everywhere
 
-- **As a full page.** Open the note, and Gizmo shows its app.
-- **Inside a note.** A `gizmo` code block puts panels into the text of a note.
-- **In a base.** Add a Gizmo view to an Obsidian base: a board, a calendar, a timeline, a chart or a number. An app note is not necessary.
-- **In the status bar.** A pinned value stays in view on desktop.
-- **From the command palette.** **Gizmo: Do…** saves a line of text, for example `spend 14.5 food lunch`.
-- **From your phone.** A shortcut link saves data. An answer link sends a value to Apple Shortcuts.
-- **With Obsidian closed.** `gizmod` does background work on your computer and sends alerts to your phone.
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/today-dark.webp">
+        <img src="docs/images/today-light.webp" alt="A note with a medication button and a water counter inside its text">
+      </picture>
+      <b>Inside a note.</b> A <code>gizmo</code> code block puts panels into the text of a note.
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/capture-dark.webp">
+        <img src="docs/images/capture-light.webp" alt="The Do… window with the line spend 14.5 food lunch and a preview of the row that it will save">
+      </picture>
+      <b>From one line.</b> <b>Gizmo: Do…</b> saves <code>spend 14.5 food lunch</code> and shows the result first.
+    </td>
+  </tr>
+</table>
+
+Gizmo also adds board, calendar, timeline, chart and number views to Obsidian Bases. A value can stay in the status bar. A phone shortcut or a link can run an app, and `gizmod` does background work when Obsidian is closed.
 
 ## You stay in control
 
-- **Permissions come from the keys.** Gizmo finds what an app can do from its keys, before the app starts. The permission card shows each site, note, secret and app that the app uses.
-- **Try before you allow.** **Try it first** operates the app on copies of its notes. Gizmo does not keep the changes.
-- **One policy for the vault.** Write one `Gizmo policy` note. It tells which notes are private and where their data can go. Gizmo then stops each app that sends data to a site that the policy does not permit.
-- **A map of all automation.** The automation map shows each app, what it reads and changes, and what makes it act. Select **Revoke** to stop an app.
-- **Undo and history.** The activity log shows each change and what caused it: you, a shortcut, a link or another app. Select **Undo** to remove the change.
-- **See the past.** Open an app **As of…** a past time. Run a backtest to see the alerts that a changed rule gives for past data.
-- **Shared apps are text.** **Share this app** makes Markdown that you can read before you send it. Your data stays in your vault. Install shows a preview, and it asks before it makes a note.
+<table>
+  <tr>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/permission-dark.webp">
+        <img src="docs/images/permission-light.webp" alt="A permission card that lists what the Book finder app asks for, with Allow, Try it first and Edit source">
+      </picture>
+      <b>Permission first.</b> Each app asks before it starts. <b>Try it first</b> operates it on copies of your notes.
+    </td>
+    <td width="50%">
+      <picture>
+        <source media="(prefers-color-scheme: dark)" srcset="docs/images/map-dark.webp">
+        <img src="docs/images/map-light.webp" alt="The automation map: each app with what it reads, downloads, sends and changes">
+      </picture>
+      <b>One map.</b> See what each app reads, downloads, sends and changes. Remove a permission with one click.
+    </td>
+  </tr>
+</table>
 
-## First steps
+A `Gizmo policy` note tells which notes are private and where their data can go. The activity log can undo each change, and **As of…** shows an app at a past time.
 
-### Install Gizmo
+## Install
 
 Gizmo 0.1.0 operates with Obsidian 1.11.4 or later, on desktop and on mobile.
 
 1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/chauduyphanvu/obsidian-gizmo/releases/latest).
-2. In your vault, make the folder `.obsidian/plugins/gizmo`.
-3. Put the three files into that folder.
-4. In Obsidian, open **Settings → Community plugins**.
-5. If Obsidian shows **Turn on community plugins**, select it.
-6. Set the **Gizmo** toggle to on.
+2. Put the three files in the folder `.obsidian/plugins/gizmo` of your vault.
+3. In **Settings → Community plugins**, set the **Gizmo** toggle to on.
+4. Run **Gizmo: New app from the gallery**.
 
-### Open your first app
+## Learn more
 
-1. Open the command palette.
-2. Run **Gizmo: New app from the gallery**.
-3. Select **Medication log**.
-4. Open the new note. Gizmo shows it as an app.
-5. If Gizmo shows a permission card, select **Allow**.
-6. Select **Took meds**. The count for today changes to 1.
-
-### Write an app
-
-1. Make a new note with the name `Water`.
-2. Open the note in **Source mode**.
-3. Type these properties at the top of the note:
-
-   ```yaml
-   ---
-   app: Count the glasses of water I drink each day
-   panels:
-     - view: button
-       label: Drank a glass
-       save: water
-     - view: progress
-       title: Today
-       source: water
-       where: {at: today}
-       max: 8
-       unit: glasses
-   ---
-   ```
-
-4. Run **Gizmo: Open this note as an app**.
-5. Select **Drank a glass**. The progress bar moves.
-
-The button saves a row with the time into the list `water`. The progress panel counts the rows for today. Gizmo keeps the list in the note `Water data`, beside the app.
-
-To add a panel quickly, run **Gizmo: Insert panel**. Then select a view. Gizmo also shows possible keys while you type.
-
----
-
-## Reference
-
-This part gives the technical details. All keys are YAML in the properties of a note, and you type them by hand. Gizmo does not write into an app note.
-
-### Top-level keys
-
-| Key | What it does |
-| --- | --- |
-| `app` | One sentence about the app. This key makes the note an app. |
-| `panels` | The list of panels. Each panel has a `view`. |
-| `tabs` | Panels in tabs: a map from each tab name to a list of panels. |
-| `data` | Named blocks of data. Panels use a block by its name in `source`. |
-| `inputs` | Controls at the top of the app: a text field, a dropdown or a date. Panels read their values as `$name`. |
-| `refresh` | The interval for new web data, for example `15m`. |
-| `store` | The note that keeps the saved rows, if it is not `<App> data`. |
-| `expect` | Rules for your data. Refer to [Expectations](#expectations). |
-| `use`, `with` | Use a component for the full app, with values for its parameters. |
-| `spec` | The version of the key language. The version now is `1`. |
-
-### Views
-
-The `view` key sets the view of a panel. Each panel also accepts `title`, `tab` and `span` (1 to 4 columns).
-
-| View | What it shows |
-| --- | --- |
-| `number` | One value. It can compare the value with the previous period. |
-| `text` | A line of text from your data. |
-| `progress` | A value against a maximum. |
-| `countdown` | The time until a date. |
-| `line`, `bar` | A chart over time or by group. It can show more than one series, stacks and a goal line. |
-| `pie` | Parts of a whole, as a ring of up to six parts. |
-| `scatter` | One point for each row, from two values. |
-| `table` | Rows and columns. Cells can be inputs, links, images or checkboxes. `layout: cards` shows the rows as cards. |
-| `list` | One line for each row. It can have a button on each row. |
-| `calendar` | A month grid. `layout: year` shows a heatmap of the year. |
-| `board` | Cards in columns. Drag a card to a different column to change its field. |
-| `timeline` | One bar for each row, from a start date to an end date. |
-| `button` | One button that does an action. |
-| `form` | Fields and a button that saves their values. |
-| `checklist` | Items that you can select as done. |
-| `timer` | A timer for a number of minutes. |
-| `alerts` | The alerts of all apps that are true now. |
-
-### Sources
-
-The `source` key tells a panel where its rows come from.
-
-| `source` | The rows |
-| --- | --- |
-| `https://…` | The answer of a web address. Gizmo reads JSON, CSV, RSS and Atom feeds, and ICS calendars. |
-| A name, for example `doses` | A block in `data`, or a list that the app saves in its data note. |
-| `notes`, with `from` | One row for each note in a folder or with a tag, for example `from: Books` or `from: "#book"`. |
-| `tasks`, with `from` | One row for each checkbox line in those notes. |
-| `this` | The properties of the note that shows the panel. |
-| A base, for example `Books.base` | The notes that the Obsidian base finds. |
-| A vault file: `.csv`, `.json` or `.ics` | The rows of that file. |
-| `expect` | The results of the `expect` rules of the app. |
-
-A web source can also have `headers` and a `body`. A source with a `body` sends a POST request.
-
-### Shape the data
-
-| Key | What it does |
-| --- | --- |
-| `pick` | Selects the rows inside a web answer, for example `chart.result.0`. |
-| `where` | Keeps only the rows that match, for example `{at: this week}` or `{kp: ">= 5"}`. |
-| `sort` | Puts the rows in order. `-at` puts the newest row first. |
-| `limit` | Keeps only the first rows. |
-| `compute` | Adds columns from formulas, for example `cost: shares * price`. |
-| `group`, `per` | Makes one row for each group, or for each `day`, `week`, `month` or `year`. |
-| `field`, `agg` | Makes one value: `count`, `sum`, `avg`, `min`, `max`, `first`, `last`, `streak` or `share`. |
-
-Gizmo writes the time into the `at` field of each saved row. Dates in `where` can be words: `today`, `this week`, `this month`, `this year`, `last 30 days`, `last 6 months` or `past`.
-
-Formulas use a fixed list of functions, for example `if`, `round` and `prev`. They have no variables and no loops.
-
-To change how Gizmo shows values, use `unit`, `decimals`, `format`, `labels` and `values`. A format can be a pattern, for example `"$0,0.00"`, or a word: `date`, `time` or `relative`. A chart can also have `compare: previous`, `goal` and `stack: true`.
-
-### Forms and fields
-
-A `fields` map gives each field a type. A form uses all fields, or a list of field names.
-
-```yaml
-fields:
-  amount: {type: number, label: Spent, format: "$0,0.00"}
-  category: [food, home, transport, fun, other]
-  note: text
-  due: {type: date, default: today}
-```
-
-A field type can be `text`, `number`, `date`, `checkbox` or a list of choices. A field can also have a `label`, a `format` and a `default`. Put `fields` in a `data` block, and all panels that use the block use the same fields. A table with `edit: true` then lets you edit those fields in its cells.
-
-### Actions
-
-| Key | What it does |
-| --- | --- |
-| `save: <list>` | Saves a row into a list in the data note. |
-| `save: <notes block>`, `name` | Makes a note in the folder of that block. `template` gives its first text. |
-| `save: this` | Writes the form values into the properties of the note that shows the form. |
-| `row` | Sets the values that a save writes, for example `title: "{title}"`. |
-| `append`, `line` | Adds a line to the end of a note, for example `line: "- [ ] {task}"`. |
-| `notify` | Shows a notice. |
-| `open` | Opens a note. |
-| `action` | Puts a button with this label on each row of a list or a table. |
-| `edit` | Lets you edit table cells: `true` for all fields, or a list of fields. |
-| `then` | Runs a shortcut of a different app. Refer to [Apps that start apps](#apps-that-start-apps). |
-
-Text in braces takes a value from the row, for example `{title}` or `{author_name.0}`.
-
-### Inputs and names
-
-An app can have `inputs`, and a component can have `params`. Panels use their values with a dollar sign: `$symbol`, `$q`, `$what`.
-
-```yaml
-inputs:
-  symbol: [SPY, QQQ, VTI]
-  range: [3mo, 6mo, 1y]
-data:
-  chart:
-    source: https://query1.finance.yahoo.com/v8/finance/chart/$symbol?range=$range&interval=1d
-```
-
-A panel with `select` also gives a value to other panels. A calendar with `select: day` gives `$day`, and a table can give its selected row. `$this` is the note that shows the panel.
-
-Gizmo replaces only the names in the `inputs` or `params` of that note. A name cannot go into a host, a secret, `from`, `append`, `store` or a save target. This rule keeps the permissions of an app the same when an input changes.
-
-### Components, kits and lenses
-
-A component is a note with `component`, `params` and `panels`. An app uses it with `use` and `with`, for one panel or for the full app. Keys beside `use` replace the keys of the component, one key at a time.
-
-```yaml
-panels:
-  - use: "[[Destination weather]]"
-    with: {name: Tokyo, lat: 35.68, lon: 139.69}
-```
-
-A **kit** is a full app in one component. Weight and Sleep are three lines each on the Tracker kit.
-
-A **lens** is a component with `for`. It shows on each note that matches, and it reads that note as `this`:
-
-```yaml
-component: Track where I am in a book, on the book's own note
-for: Books/
-panels:
-  - view: progress
-    source: this
-    field: page
-    max: $this.pages
-```
-
-### Embeds
-
-A `gizmo` code block puts panels into the text of a note. It can show panels of an app by their titles:
-
-````markdown
-```gizmo
-app: "[[Medication log]]"
-panels: [Took meds, Doses today]
-```
-````
-
-The block can also have its panels inside it, with the same keys as an app.
-
-### Gizmo views in Bases
-
-Gizmo adds five views to Obsidian Bases: board, calendar (or year heatmap), timeline, chart and number. An app note is not necessary.
-
-1. Open a base.
-2. Add a view.
-3. Select a view name that starts with Gizmo.
-
-Gizmo keeps a log of each move on a board, and you can undo it.
-
-### Background work
-
-Some keys operate when the app is not open:
-
-| Key | What it does |
-| --- | --- |
-| `record: 1h` | On a `data` block, saves a sample of its web data at this interval. |
-| `alert: ">= 5"` | Shows a notice when the value matches. On a list, `alert: {kp: ">= 5"}` tells you about each new row that matches. |
-| `pin: status` | Shows the value in the status bar, on desktop. |
-
-Background work operates only for apps that you opened one time and gave permission. It operates while Obsidian is open, or with `gizmod`. Only one device does background work at a time. In **Settings → Gizmo**, set **Background work** on or off for each device. A phone does background work only when no other device does it.
-
-### Expectations
-
-`expect` has rules for your data:
-
-```yaml
-expect:
-  - id: morning-dose
-    every: day
-    by: "10:00"
-    source: doses
-    say: no dose logged by 10:00
-```
-
-- **Rhythm** (`every`, `by`): A row must come before the time in each day, week or month. If no row comes, Gizmo tells you.
-- **Value rule** (`check`): Each new row must match. If a row does not match, Gizmo does not save it.
-- **State rule** (`none`): A row must not match. If a row matches, Gizmo tells you.
-
-`source: expect` shows the results, for example a streak of days on time. A rhythm uses the time zone of the device that you used last. After a gap, Gizmo tells you about no more than the last three periods without a row.
-
-### Shortcuts and links
-
-Add `shortcut: <name>` to a button, a form, a number or a progress panel. Gizmo then adds:
-
-- A command, `<App>: <label>`. You can give it a hotkey.
-- A link: `obsidian://gizmo?app=<app>&do=<shortcut>&key=<key>`. Add field values at the end, for example `&task=Call%20the%20bank`.
-- A name for the capture line.
-
-Run **Gizmo: Copy link to an app shortcut** to copy a link. The app tab menu also has this item. A copied link has a key, and it runs immediately. A link without the key first shows a **Run** or **Cancel** window with its values. Each shortcut accepts 20 link runs in each hour.
-
-**Answer links.** A shortcut on a `number` or a `progress` panel sends its value to `x-success`. The destination can be `shortcuts`, `raycast`, `alfred`, `kmtrigger`, `drafts` or `https`. For each new destination, Gizmo asks you first: **Once** or **Always**. An action link sends `result=done`.
-
-### The capture line
-
-Run **Gizmo: Do…**, then type one line. The first word is the `alias` or the `shortcut` of a panel. The other words fill the form fields in their order:
-
-```text
-spend 14.5 food lunch
-weight 81.2
-meds
-task call the bank
-```
-
-Dates can be words: `today`, `yday`, `fri` or `last mon`. Before you push Enter, Gizmo shows what the line will do. A line that starts with `;;` in a note does the same, and Gizmo writes a receipt in its place. **Gizmo: Copy capture link** gives the same line to a phone shortcut or a launcher.
-
-### Apps that start apps
-
-`then` runs a shortcut of a different app after a form, a button or an alert:
-
-```yaml
-then: {app: "[[Errands]]", do: add, fill: {errand: "Call {who} back by {back}"}}
-```
-
-The two apps must both have permission. An alert runs its `then` one time for each new row that matches. Gizmo stops a chain at a repeat, after four apps in a row, or after 20 runs of one `then` in an hour.
-
-### Permissions
-
-The permission card comes from the keys. It shows each item that the app asks for:
-
-- the sites that it downloads from,
-- the notes that it reads, makes or changes,
-- the secrets that it uses,
-- the data that it sends to a site,
-- the other apps that it starts.
-
-You select **Allow** one time for each note. When the keys ask for more, Gizmo asks again. If an app asks for more than you permitted, Gizmo pauses the app and tells you. An app can write to its data note without permission.
-
-### Data policy
-
-Write a note with the name `Gizmo policy` at the root of your vault:
-
-```yaml
----
-labels:
-  "Health/**": private
-  "#finance": private
-sinks:
-  api.open-meteo.com: public
-release:
-  - app: Apps/Meds
-    panel: Doses today
-    to: [pin]
----
-```
-
-- `labels` tells how private each folder, note or tag is.
-- `sinks` tells where data can go, and how private the data can be there. Notices and the status bar accept personal data unless you change them.
-- `release` lets the value of one panel go to a sink.
-
-Then run **Gizmo: Review and apply data policy**. Gizmo stops each app that sends data to a sink that does not permit it, and it tells you why. An app that only reads notes and downloads from the sites in `sinks` opens without a permission card.
-
-### The automation map
-
-Run **Gizmo: Open the automation map**. The map shows each app with what it reads, downloads, sends and changes, and what makes it act. From the map, you can:
-
-- remove the permission of an app (**Revoke**),
-- make a new link key for a shortcut,
-- do a dry run, which shows what a run will change without a change to your notes,
-- apply the data policy.
-
-**Gizmo: Which apps can change this note?** opens the map for the note that is open. **Gizmo: Save the automation map as a canvas** saves the map as an Obsidian canvas.
-
-### Activity, history and replay
-
-- **Gizmo: Show app activity** shows each change, with **Undo**. Undo operates only while the vault still has what the app wrote. Gizmo moves a note that an app made to the trash only if the note is unchanged.
-- **See it then** on a change shows the app at that time.
-- **As of…** in the app header shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels.
-- **Gizmo: Backtest this app** applies the alerts and `expect` rules of the app, as they are now, to its past data.
-
-### Share and install
-
-**Gizmo: Share this app** makes one Markdown text with the app, its components and its templates. Your data is not in it.
-
-**Gizmo: Install an app from a link or text** accepts that text, an `https` link, a gist or an `obsidian://gizmo?install=` link. It shows a preview of the notes that it will make and the permissions that the app will ask for. It does not replace a note with the same name, and it gives no permissions. Select **Try it** to operate the app on copies first.
-
-### Devices and sync
-
-Gizmo operates with iCloud, Syncthing and other sync services:
-
-- Each device writes its events to a log that only it uses, in the plugin folder.
-- The data note shows the rows of all devices together.
-- If two devices edit the same row at the same time, Gizmo keeps the two values. The cell shows the other value as an option.
-- If you edit a data note by hand, the app shows a card with **Import** and **Discard**.
-- Each saved time has its zone offset, for example `2026-11-19T08:14-08:00`.
-- If Obsidian closes on the device that does background work, a different device starts the work immediately.
-
-In **Settings → Gizmo**, give the device a name. You can also set its background work there. The settings also show the other devices. Gizmo shows a warning when two devices both do background work.
-
-A list from `record` keeps its newest 500 rows in the data note. Gizmo keeps the older rows in checkpoints in the plugin folder.
-
-### gizmod: Gizmo without Obsidian
-
-`gizmod.mjs` is in each release. It is a Node.js script (Node 20 or later) that does background work when Obsidian is closed. It saves records, gives alerts, applies `expect` rules and runs `then`. It sends alerts to your phone through [ntfy](https://ntfy.sh) and answers shortcuts over HTTP.
+The [reference](docs/reference.md) has the full details: how to write an app, all keys, views and sources, permissions, links, devices, `gizmod` and development.
 
 ```sh
-node gizmod.mjs serve --vault ~/Notes                  # start it on port 7468
-node gizmod.mjs run "Medication log" took-meds         # run a shortcut
-node gizmod.mjs get "Medication log" doses-today       # read the value of a shortcut
-node gizmod.mjs do "spend 14.5 food lunch"             # run a capture line
-node gizmod.mjs dry "Task inbox" add task="Call the bank"  # show what a run will do
-node gizmod.mjs status                                 # show the device and the paused apps
-node gizmod.mjs install --vault ~/Notes                # start it at each login (macOS)
-node gizmod.mjs uninstall
+npm install && npm run build && npm test
 ```
-
-| Variable | What it does |
-| --- | --- |
-| `GIZMOD_NTFY_URL` | The ntfy topic address for alerts to your phone. |
-| `GIZMOD_PORT` | The port. The default is `7468`. |
-| `GIZMOD_HOME` | The state folder. The default is `~/.config/gizmod`. |
-| `GIZMOD_MAC_NOTICES` | Set to `0` to stop macOS notices. |
-| `GIZMO_SECRET_<ID>` | The value of `{secret:<id>}`, with dashes as underscores. |
-
-gizmod listens on this computer and on its Tailscale address. It reads the permissions in `data.json`, but it does not write them. Because of this, an app that you move while Obsidian is closed waits for a new **Allow**.
-
-`install` makes a launchd agent. For secrets under launchd, put the token of a 1Password service account in the Keychain, with the name `gizmod-op`. Then put a `.env` file of `op://` references in `GIZMOD_HOME`. The agent then starts gizmod through `op run`, and no secret goes to disk.
-
-### Secrets
-
-Put `{secret:<id>}` in a web address or a header:
-
-```yaml
-source: https://api.example.com/data?key={secret:example}
-headers: {authorization: "Bearer {secret:example}"}
-```
-
-Obsidian keeps the value in its secret storage, not in a note. The permission card shows each secret. Gizmo does not keep a disk copy of an answer that used a secret or a body.
-
-### Commands
-
-| Command | What it does |
-| --- | --- |
-| Open this note as an app | Shows the note that is open as an app. |
-| New app from the gallery | Copies a gallery app and its components into your vault. |
-| Insert panel | Adds a starter panel for a view to the app that is open. |
-| Do… | Runs a capture line. |
-| Copy capture link | Copies a link that runs a capture line. |
-| Copy link to an app shortcut | Copies the link of a shortcut, with its key. |
-| Share this app | Makes the app into Markdown that you can send. |
-| Install an app from a link or text | Shows a preview, then installs an app. |
-| Review and apply data policy | Applies the `Gizmo policy` note. |
-| Show app activity | Shows the changes of the app that is open, or of all apps. |
-| Backtest this app | Applies the rules of the app to its past data. |
-| Open the automation map | Shows all apps and what they can do. |
-| Save the automation map as a canvas | Saves the map as a canvas. |
-| Which apps can change this note? | Opens the map for the note that is open. |
-| `<App>: <label>` | Runs a shortcut. Gizmo adds one command for each shortcut. |
-
-### Where Gizmo keeps your data
-
-| What | Where |
-| --- | --- |
-| Rows that apps save | `<App> data.md` beside the app, as lists in its properties. Or the note in `store`. |
-| Notes that forms make | The folder of the `notes` block. |
-| Event logs, checkpoints and activity | The plugin folder. Each device has separate files. |
-| Permissions, link keys and settings | `data.json` in the plugin folder. |
-
-### What Gizmo does not do
-
-- It does not run scripts. Formulas have a fixed list of functions.
-- It does not load components from the web. You install an app, and Gizmo copies its notes into your vault first.
-- It does not use AI. You type each key.
-- It does not run Obsidian commands.
-- It does not join two sources.
-
----
-
-## Development
-
-```sh
-npm install
-npm run build                          # type check, then bundle main.js and gizmod.mjs
-npm test                               # unit and DOM tests
-npm run test:tz                        # the same tests in two more time zones
-node test/live/smoke.mjs <empty-dir>   # live checks in an isolated Obsidian
-```
-
-Gizmo has no runtime dependencies. `npm run build` puts the gallery into `main.js`. The live checks start Obsidian with copies of `test/vault` and the gallery, so Obsidian must be on the computer. Run `npm run build` before the live checks.
-
-| Folder | What it has |
-| --- | --- |
-| `src/` | The plugin. |
-| `src/views/` | One file for each view: its keys, its checks, its examples and the code that draws it. |
-| `src/sources/` | One file for each kind of source. |
-| `src/node/` | gizmod. |
-| `gallery/` | The gallery apps and components. |
-| `test/` | Unit and DOM tests. |
-| `test/vault/` | A test vault with more example apps. |
-| `test/live/` | Live checks that operate Obsidian. |
-
-Gizmo 0.1.0 is the first release. The key language is version 1.
