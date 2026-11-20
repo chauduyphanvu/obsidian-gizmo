@@ -374,6 +374,24 @@ export function describeChange(c: Change): string {
   }
 }
 
+/** A change a run would make, worded as what it is about to do (a dry run's list). */
+export function describeAhead(c: Change): string {
+  const note = basename(c.path);
+  switch (c.kind) {
+    case "row-added": {
+      const words = rowWords(c.row);
+      return `Save ${words ? `${words} ` : "a row "}to ${c.list} in ${note}`;
+    }
+    case "row-edited": return `Change ${c.field} from ${shown(c.from)} to ${shown(c.to)} in ${c.list} in ${note}`;
+    case "checklist": return `${c.checked ? "Tick" : "Untick"} “${c.item}”`;
+    case "cleared": return `Clear ${c.items.length} ticked ${c.items.length === 1 ? "item" : "items"}`;
+    case "property": return `Set ${c.field} of ${note} to ${shown(c.to)}${c.had ? ` (now ${shown(c.from)})` : ""}`;
+    case "line-added": return c.created ? `Create ${note} with the line “${c.line}”` : `Add the line “${c.line}” to ${note}`;
+    case "note-created": return `Create the note ${note}`;
+    case "task": return `${c.done ? "Tick" : "Untick"} “${c.text}” in ${note}`;
+  }
+}
+
 /** A value an app sent out, answering a link. */
 export function describeSent(what: string, sent: { to: string; shown: string }): string {
   return `Sent “${what}” (${sent.shown}) to ${sent.to}`;

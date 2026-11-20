@@ -39,10 +39,10 @@ test("a dry run shows exactly what the real run then does, across a then, and wr
     ["Errands", "Add", ["row-added"], []],
   ]);
   assert.deepEqual(dryLines(steps), [
-    "Added to Daily the line “- Called Sam”",
-    "Saved who Sam, back 2026-12-01 to calls in Calls data",
-    "Logged Sam",
-    "Errands: Saved errand Call Sam back by 2026-12-01 to errands in Errands data",
+    "Add the line “- Called Sam” to Daily",
+    "Save who Sam, back 2026-12-01 to calls in Calls data",
+    "Tell you: Logged Sam",
+    "Errands: Save errand Call Sam back by 2026-12-01 to errands in Errands data",
   ]);
 
   // The real run, through a keyed link, logs the same changes, field by field.
@@ -61,7 +61,7 @@ test("a dry run stops a then loop where a real run would, and never counts towar
   await t.bg.start();
   for (let i = 0; i < 30; i++) await t.bg.dryRun("Apps/A.md", "go");
   const steps = await t.bg.dryRun("Apps/A.md", "go");
-  assert.deepEqual(dryLines(steps), ["Saved a row to a in A data", "B: Saved a row to b in B data", "B: stopped a loop: A → B → A"]);
+  assert.deepEqual(dryLines(steps), ["Save a row to a in A data", "B: Save a row to b in B data", "Tell you: B: stopped a loop: A → B → A"]);
   assert.equal((t.bg as unknown as { runs: Map<string, number[]> }).runs.size, 0, "no run was counted");
   assert.deepEqual(t.notices, []);
   // A real run still runs, as the dry runs used up nothing.
@@ -73,11 +73,11 @@ test("a dry run says why a run wouldn't go ahead, as the run would", async () =>
   const t = fakeBackground(notes());
   await t.bg.start();
   t.denied.add("Apps/Calls.md");
-  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "log", { who: "Sam" })), ["Open Calls once to allow it"]);
+  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "log", { who: "Sam" })), ["Tell you: Open Calls once to allow it"]);
   t.denied.clear();
-  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "log", { who: "Sam", back: "soon" })), ["Calls: back must be a date like 2026-11-18"]);
-  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "nope")), ["Calls has no shortcut “nope”"]);
-  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "log")), ["It would open Calls to be filled in", "Calls: fill in the form"]);
+  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "log", { who: "Sam", back: "soon" })), ["Tell you: Calls: back must be a date like 2026-11-18"]);
+  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "nope")), ["Tell you: Calls has no shortcut “nope”"]);
+  assert.deepEqual(dryLines(await t.bg.dryRun("Apps/Calls.md", "log")), ["Open Calls for you to fill in", "Tell you: Calls: fill in the form"]);
   assert.deepEqual(t.out.apps, []);
 });
 
@@ -103,4 +103,16 @@ test("the overlay: copies made on first touch, notes made and refused as the vau
   assert.equal(await overlay.setTaskDone("Daily.md", 3, "Water the plants", true), true);
   assert.match((await overlay.text("Daily.md"))!, /- \[x\] Water the plants/);
   assert.deepEqual(overlay.touched, ["Daily.md", "Log.md", "Books/Dune.md"]);
+});
+
+test("a dry run starts a form from the values a link that names no field would save, with each field's type", async () => {
+  const t = fakeBackground({
+    "Apps/Log.md": { fm: { app: "Log", panels: [{ view: "form", fields: { chore: ["dishes", "bins"], who: "text", n: "number", done: "checkbox", on: "date" }, save: "x", shortcut: "log" }] } },
+  });
+  await t.bg.start();
+  assert.deepEqual(t.bg.formStart("Apps/Log.md", "log"), {
+    fields: { chore: ["dishes", "bins"], who: "text", n: "number", done: "checkbox", on: "date" },
+    row: { chore: "dishes", who: "", n: null, done: false, on: "2026-11-18" },
+  });
+  assert.equal(t.bg.formStart("Apps/Log.md", "nope"), undefined);
 });

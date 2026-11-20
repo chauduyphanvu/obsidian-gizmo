@@ -113,7 +113,10 @@ export interface DryStep {
   app: string;
   what: string;
   changes: Change[];
+  /** What the run would tell, word for word. */
   notices: string[];
+  /** What the run would do besides changing notes (open a note or an app), in a dry run's own words. */
+  remarks: string[];
 }
 
 /**
@@ -131,7 +134,7 @@ export function recordingDeps(overlay: Overlay, base: Pick<ActionDeps, "now" | "
     appendLine: (path, line) => overlay.appendLine(path, line),
     createNote: async (path, fm, body) => overlay.createNote(path, fm, body),
     notify: (message) => { step.notices.push(message); },
-    openNote: (path) => { step.notices.push(`It would open ${path}`); },
+    openNote: (path) => { step.remarks.push(`Open ${path}`); },
     log: (what, changes) => {
       step.what = what;
       step.changes.push(...changes);

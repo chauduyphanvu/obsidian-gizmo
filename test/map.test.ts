@@ -173,3 +173,18 @@ test("the map as a canvas: reads on the left, apps in the middle, writes on the 
   assert.equal(new Set(canvas.nodes.map((n) => n.id)).size, canvas.nodes.length, "ids are unique");
   assert.deepEqual(mapCanvas(apps, exists), canvas, "the same apps make the same canvas");
 });
+
+test("a note that can be both made and changed by an app is said to be changed by it, since it is there", async () => {
+  const t = fakeBackground({
+    "Apps/Visits.md": { fm: { app: "Visits", panels: [
+      { view: "form", fields: { title: "text" }, save: "Health/" },
+      { view: "table", source: "notes", from: "Health", edit: ["done"], columns: ["name", "done"] },
+    ] } },
+    "Health/Dentist.md": { fm: { done: false } },
+  });
+  await t.bg.start();
+  const app = t.bg.list().find((a) => a.path === "Apps/Visits.md")!;
+  assert.deepEqual(app.wanted, ["create:Health", "edit:Health", "read:Health"]);
+  const reasons = writersOf("Health/Dentist.md", t.bg.list(), [], (scope, path) => t.data.inScope(scope, path)).map((w) => w.reason);
+  assert.deepEqual(reasons, ["Change properties of notes in Health"]);
+});

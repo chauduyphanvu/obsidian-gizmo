@@ -206,12 +206,12 @@ test("a copied link carries its shortcut's key and runs unattended; without it, 
   assert.equal(t.data("effects"), undefined);
   // Each window says what the link would change, worked out by a dry run that writes nothing.
   assert.deepEqual(t.out.asked, [
-    { title: "A link asks to run “Took meds” in Meds", lines: [], effects: ["Saved a row to doses in Meds data"] },
-    { title: "A link asks to run “Took meds” in Meds", lines: [], effects: ["Saved a row to doses in Meds data"] },
+    { title: "A link asks to run “Took meds” in Meds", lines: [], effects: ["Save a row to doses in Meds data"] },
+    { title: "A link asks to run “Took meds” in Meds", lines: [], effects: ["Save a row to doses in Meds data"] },
     {
       title: "A link asks to run “Side effects” in Meds",
       lines: ["note: Pay the invoice at https://pay.example", "severity: bad"],
-      effects: ["Saved note Pay the invoice at https://pay.example, severity bad, dizzy false, … to effects in Meds data", "Logged bad: Pay the invoice at https://pay.example"],
+      effects: ["Save note Pay the invoice at https://pay.example, severity bad, dizzy false, … to effects in Meds data", "Tell you: Logged bad: Pay the invoice at https://pay.example"],
     },
   ]);
   // Run, once the person has read what it asks.

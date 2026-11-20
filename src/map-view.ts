@@ -82,6 +82,7 @@ export class MapView extends ItemView {
     filter.addEventListener("input", () => {
       this.query = filter.value;
       this.drawApps(list, map);
+      this.drawInNotes(inNotes, map);
     });
     head.createEl("button", { text: "Save as canvas" }).addEventListener("click", () => void saveMapCanvas(plugin));
     if (this.note) this.drawWriters(box, this.note, apps, activity);
@@ -92,13 +93,28 @@ export class MapView extends ItemView {
     });
     const list = box.createDiv({ cls: "gz-map-apps" });
     this.drawApps(list, map);
-    if (map.embeds.length) {
-      box.createEl("h4", { text: "Apps inside notes" });
-      for (const embed of map.embeds) void this.drawEmbed(box.createDiv({ cls: "gz-card gz-map-app" }), embed);
+    const inNotes = box.createDiv();
+    this.drawInNotes(inNotes, map);
+  }
+
+  /** The filter's words, if any, in what is shown for an app. */
+  private matches(...text: string[]): boolean {
+    const q = this.query.trim().toLowerCase();
+    return !q || text.join(" ").toLowerCase().includes(q);
+  }
+
+  /** Embeds and lenses, as far as the filter leaves them. */
+  private drawInNotes(el: HTMLElement, map: VaultMap): void {
+    el.empty();
+    const embeds = map.embeds.filter((e) => this.matches(e.hostPath));
+    if (embeds.length) {
+      el.createEl("h4", { text: "Apps inside notes" });
+      for (const embed of embeds) void this.drawEmbed(el.createDiv({ cls: "gz-card gz-map-app" }), embed);
     }
-    if (map.lenses.length) {
-      box.createEl("h4", { text: "Lenses" });
-      for (const lens of map.lenses) this.drawLens(box.createDiv({ cls: "gz-card gz-map-app" }), lens);
+    const lenses = map.lenses.filter((l) => this.matches(l.name, l.scope, l.path));
+    if (lenses.length) {
+      el.createEl("h4", { text: "Lenses" });
+      for (const lens of lenses) this.drawLens(el.createDiv({ cls: "gz-card gz-map-app" }), lens);
     }
   }
 
@@ -126,8 +142,7 @@ export class MapView extends ItemView {
 
   private drawApps(list: HTMLElement, map: VaultMap): void {
     list.empty();
-    const q = this.query.trim().toLowerCase();
-    const shown = map.apps.filter((a) => !q || `${a.name} ${a.description} ${a.path}`.toLowerCase().includes(q));
+    const shown = map.apps.filter((a) => this.matches(a.name, a.description, a.path));
     if (!shown.length) list.createDiv({ cls: "gz-muted", text: map.apps.length ? "No app matches." : "No apps yet: a note whose properties start with app: is one." });
     for (const a of shown) this.drawApp(list.createDiv({ cls: "gz-card gz-map-app" }), a);
   }
@@ -272,17 +287,35 @@ class DryRunModal extends Modal {
   onOpen(): void {
     this.titleEl.setText(`If “${this.shortcut.label}” in ${this.name} ran now`);
     const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-dry" });
-    if (this.shortcut.fields.length) {
+    // Each field as the form draws it, holding what a link that left it out would save.
+    const start = this.plugin.background?.formStart(this.path, this.shortcut.id);
+    if (start) {
       const form = el.createDiv({ cls: "gz-dry-fields" });
-      for (const field of this.shortcut.fields) {
+      // An empty number is saved empty, as the form saves it; a link can't say empty, so it is left out.
+      const changed = (field: string, value: string) => {
+        if (value === "" && start.fields[field] === "number") delete this.values[field];
+        else this.values[field] = value;
+        window.clearTimeout(this.timer);
+        this.timer = window.setTimeout(() => void this.show(list), 250);
+      };
+      for (const [field, type] of Object.entries(start.fields)) {
         const label = form.createEl("label", { cls: "gz-input" });
         label.createSpan({ cls: "gz-input-name", text: field });
-        const input = label.createEl("input", { type: "text" });
-        input.addEventListener("input", () => {
-          this.values[field] = input.value;
-          window.clearTimeout(this.timer);
-          this.timer = window.setTimeout(() => void this.show(list), 250);
-        });
+        const value = start.row[field];
+        if (value !== null && value !== undefined) this.values[field] = String(value);
+        if (Array.isArray(type)) {
+          const select = label.createEl("select", { cls: "dropdown" });
+          for (const option of type) select.createEl("option", { text: String(option), value: String(option) });
+          select.value = this.values[field] ?? "";
+          select.addEventListener("change", () => changed(field, select.value));
+        } else if (type === "checkbox") {
+          const box = label.createEl("input", { type: "checkbox" });
+          box.checked = value === true;
+          box.addEventListener("change", () => changed(field, String(box.checked)));
+        } else {
+          const input = label.createEl("input", { type: ["number", "date", "time"].includes(type) ? type : "text", value: this.values[field] ?? "" });
+          input.addEventListener("input", () => changed(field, input.value));
+        }
       }
     }
     el.createEl("h4", { text: "It would:" });

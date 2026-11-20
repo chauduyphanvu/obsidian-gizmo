@@ -162,16 +162,19 @@ export function buildMap(apps: AppSummary[], grants: Record<string, string[]>, l
 function writeReason(a: AppSummary, path: string, inScope: (scope: string, path: string) => boolean): string | undefined {
   if (a.dataPath === path) return "keeps its data here";
   if (a.writesSelf && a.path === path) return "changes its own note";
-  for (const perm of a.wanted) {
+  const reasons = a.wanted.flatMap((perm) => {
     const [kind, ...rest] = perm.split(":");
     const what = rest.join(":");
-    if (kind === "write" && notePath(what) === path) return describePermission(perm);
-    if (kind === "store" && what === path) return describePermission(perm);
-    if (kind === "split" && path.startsWith(`${what}/`)) return describePermission(perm);
-    if (kind === "create" && path.startsWith(`${what.replace(/\/+$/, "")}/`)) return describePermission(perm);
-    if ((kind === "edit" || kind === "tasks") && (what === "*" || inScope(what, path))) return describePermission(perm);
-  }
-  return undefined;
+    if (kind === "write" && notePath(what) === path) return [perm];
+    if (kind === "store" && what === path) return [perm];
+    if (kind === "split" && path.startsWith(`${what}/`)) return [perm];
+    if (kind === "create" && path.startsWith(`${what.replace(/\/+$/, "")}/`)) return [perm];
+    if ((kind === "edit" || kind === "tasks") && (what === "*" || inScope(what, path))) return [perm];
+    return [];
+  });
+  // The note is there already, so what changes it says more than what could have made it.
+  const best = reasons.find((perm) => !perm.startsWith("create:")) ?? reasons[0];
+  return best && describePermission(best);
 }
 
 export interface Writer {

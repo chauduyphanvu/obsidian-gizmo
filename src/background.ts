@@ -1,5 +1,5 @@
 import { fillLine, runActions, type ActionDeps } from "./actions.ts";
-import { describeChange, type Actor, type LogStore, type NewEntry } from "./activity.ts";
+import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activity.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type Row } from "./data.ts";
@@ -100,10 +100,15 @@ interface DryRun {
 
 /** A dry run as lines to read: each change, the apps a `then` reaches named, and what each would tell. */
 export function dryLines(steps: DryStep[]): string[] {
-  const lines = steps.flatMap((step, i) => [
-    ...step.changes.map((c) => `${i > 0 ? `${step.app}: ` : ""}${describeChange(c)}`),
-    ...step.notices.map((n) => (i > 0 && !n.startsWith(`${step.app}:`) ? `${step.app}: ${n}` : n)),
-  ]);
+  const lines = steps.flatMap((step, i) => {
+    const of = i > 0 ? `${step.app}: ` : "";
+    return [
+      ...step.changes.map((c) => `${of}${describeAhead(c)}`),
+      ...step.remarks.map((r) => `${of}${r}`),
+      // A notice is said to be one, so one that refuses isn't read as something the run does.
+      ...step.notices.map((n) => `Tell you: ${i > 0 && !n.startsWith(`${step.app}:`) ? `${step.app}: ${n}` : n}`),
+    ];
+  });
   return lines.length ? lines : ["Nothing would change"];
 }
 
@@ -375,10 +380,10 @@ export class Background {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     // In a dry run, what it would tell is kept with what it would change, and nothing is shown or opened.
-    const step: DryStep = { app: entry?.name ?? basename(appPath), what: shortcut, changes: [], notices: [] };
+    const step: DryStep = { app: entry?.name ?? basename(appPath), what: shortcut, changes: [], notices: [], remarks: [] };
     dry?.steps.push(step);
     const say = (message: string) => (dry ? void step.notices.push(message) : this.say(message));
-    const openApp = (path: string) => (dry ? say(`It would open ${basename(path)} to be filled in`) : this.env.sink.openApp(path));
+    const openApp = (path: string) => (dry ? void step.remarks.push(`Open ${basename(path)} for you to fill in`) : this.env.sink.openApp(path));
     if (!entry || !ps) return say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
     if (!this.granted(entry)) return say(`Open ${entry.name} once to allow it`);
     const now = this.env.now();
@@ -389,7 +394,7 @@ export class Background {
     const p = r.panel;
     const label = labelOf(p, shortcut);
     step.what = label;
-    if (answers(p)) return dry ? say(`“${label}” answers with its value; it changes nothing`) : this.answer(entry, ps, p, shortcut, actor, link);
+    if (answers(p)) return dry ? void step.remarks.push(`Answer with the value of “${label}”, changing nothing`) : this.answer(entry, ps, p, shortcut, actor, link);
     let input: Row = {};
     if (triggered && p.view !== "form" && params && Object.keys(params).length) {
       return say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
@@ -443,6 +448,22 @@ export class Background {
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
     if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: `“${label}” didn't run` }));
+  }
+
+  /**
+   * A form shortcut's fields, with their types and the values a link that names none of them would
+   * save, for a dry run to show and start from; undefined for a button or a shortcut that isn't there.
+   */
+  formStart(appPath: string, shortcut: string): { fields: Record<string, string | string[]>; row: Row } | undefined {
+    const entry = this.apps.get(appPath);
+    const ps = entry?.shortcuts.get(shortcut);
+    if (!entry || !ps) return undefined;
+    const now = this.env.now();
+    const p = resolvePanel(ps, this.valuesOf(entry.path, entry.spec, now)).panel;
+    if (p?.view !== "form") return undefined;
+    const fields = p.fields ?? p.schema ?? {};
+    const filled = formRow(fields, p.fieldInfo, {}, now);
+    return "row" in filled ? { fields, row: filled.row } : undefined;
   }
 
   /**
