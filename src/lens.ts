@@ -10,7 +10,7 @@ import type GizmoPlugin from "./main.ts";
  * preview inside the view's content, so the note's text and the editor's document are untouched and
  * switching modes keeps it. Kept in line with the open notes, their properties and the components.
  */
-export function registerLenses(plugin: GizmoPlugin): void {
+export function registerLenses(plugin: GizmoPlugin): LensIndex {
   const app = plugin.app;
   const index = new LensIndex(plugin.dataLayer);
   const stacks = new Map<MarkdownView, LensStack>();
@@ -73,5 +73,7 @@ export function registerLenses(plugin: GizmoPlugin): void {
     sync();
   }));
   plugin.registerEvent(app.workspace.on("resize", () => { for (const stack of stacks.values()) stack.resize(); }));
+  plugin.register(plugin.onGrantsChange(() => { for (const stack of stacks.values()) stack.recheck(); }));
   plugin.register(() => { for (const [view, stack] of stacks) drop(view, stack); });
+  return index;
 }

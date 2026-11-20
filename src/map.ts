@@ -199,3 +199,28 @@ export function writersOf(
   }
   return [...out.values()].sort((x, y) => x.name.localeCompare(y.name) || x.path.localeCompare(y.path));
 }
+
+/** The text of each ```gizmo block in a note, as Obsidian hands it to the block's processor. */
+export function gizmoBlocks(text: string): string[] {
+  const out: string[] = [];
+  let fence: string | undefined;
+  let lines: string[] = [];
+  for (const line of text.split(/\r?\n/)) {
+    if (fence === undefined) {
+      const open = /^ {0,3}(`{3,}|~{3,})\s*gizmo\s*$/.exec(line);
+      if (open) {
+        fence = open[1];
+        lines = [];
+      }
+      continue;
+    }
+    const close = /^ {0,3}(`{3,}|~{3,})\s*$/.exec(line);
+    if (close && close[1][0] === fence[0] && close[1].length >= fence.length) {
+      out.push(lines.join("\n"));
+      fence = undefined;
+    } else {
+      lines.push(line);
+    }
+  }
+  return out;
+}

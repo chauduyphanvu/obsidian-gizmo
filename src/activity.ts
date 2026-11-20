@@ -63,6 +63,7 @@ export class ActivityLog {
   private saving: Promise<void> = Promise.resolve();
   private counter = 0;
   private now: () => number;
+  private listeners = new Set<() => void>();
 
   constructor(store: LogStore, now: () => number = Date.now) {
     this.store = store;
@@ -81,6 +82,12 @@ export class ActivityLog {
       }
     })();
     return this.loaded;
+  }
+
+  /** Calls `cb` whenever an entry is added, undone or moved; returns how to stop. */
+  onChange(cb: () => void): () => void {
+    this.listeners.add(cb);
+    return () => this.listeners.delete(cb);
   }
 
   /** Adds a run's changes; a run that changed nothing isn't kept. */
@@ -143,6 +150,7 @@ export class ActivityLog {
   }
 
   private save(): Promise<void> {
+    for (const cb of [...this.listeners]) cb();
     const text = JSON.stringify(this.entries);
     this.saving = this.saving.then(() => this.store.write(text)).catch(() => {});
     return this.saving;

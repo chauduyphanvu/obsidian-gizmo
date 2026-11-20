@@ -1,0 +1,281 @@
+import { ItemView, MarkdownView, Notice, parseYaml, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { openActivity, when } from "./activity-view.ts";
+import { blockKey, parseHosted } from "./hosted.ts";
+import { copyShortcutLink } from "./link-command.ts";
+import type GizmoPlugin from "./main.ts";
+import { mapCanvas } from "./map-canvas.ts";
+import { ASK_GROUPS, buildMap, gizmoBlocks, writersOf, type Ask, type MapApp, type MapEmbed, type MapLens, type VaultMap } from "./map.ts";
+import { describePermission } from "./permissions.ts";
+import { basename } from "./store.ts";
+
+export const MAP_VIEW = "gizmo-map";
+
+const STATE_WORDS: Record<MapApp["state"], string> = { "allowed": "Allowed", "not-opened": "Never opened", "asks-again": "Asks again" };
+
+/**
+ * Every app in the vault on one page: what each may do, what makes it act and when it last
+ * changed something, with Revoke. With a note set, it starts with the apps that can change that note.
+ */
+export class MapView extends ItemView {
+  private plugin: GizmoPlugin;
+  private note: string | undefined;
+  private query = "";
+  private timer: number | undefined;
+  private rendering = 0;
+
+  constructor(leaf: WorkspaceLeaf, plugin: GizmoPlugin) {
+    super(leaf);
+    this.plugin = plugin;
+  }
+
+  getViewType(): string { return MAP_VIEW; }
+  getDisplayText(): string { return "Automation map"; }
+  getIcon(): string { return "network"; }
+
+  getState(): Record<string, unknown> {
+    return { note: this.note };
+  }
+
+  async setState(state: unknown, result: ViewStateResult): Promise<void> {
+    const note = (state as { note?: unknown } | null)?.note;
+    this.note = typeof note === "string" ? note : undefined;
+    await super.setState(state, result);
+    this.render();
+  }
+
+  async onOpen(): Promise<void> {
+    const later = () => this.schedule();
+    this.register(this.plugin.onGrantsChange(later));
+    this.register(this.plugin.activity.onChange(later));
+    const bg = this.plugin.background;
+    if (bg) this.register(bg.onIndexChange(later));
+    this.render();
+  }
+
+  async onClose(): Promise<void> {
+    window.clearTimeout(this.timer);
+  }
+
+  private schedule(): void {
+    window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => this.render(), 200);
+  }
+
+  private render(): void {
+    void this.draw();
+  }
+
+  private async draw(): Promise<void> {
+    const run = ++this.rendering;
+    const plugin = this.plugin;
+    const apps = plugin.background?.list() ?? [];
+    const activity = await plugin.activity.list();
+    if (run !== this.rendering) return;
+    const map = buildMap(apps, plugin.store.grants, plugin.lenses.lenses(), activity);
+    const el = this.contentEl;
+    el.empty();
+    const box = el.createDiv({ cls: "gizmo gz-map" });
+
+    const head = box.createDiv({ cls: "gz-map-head" });
+    const filter = head.createEl("input", { type: "search", placeholder: "Filter apps", value: this.query });
+    filter.addEventListener("input", () => {
+      this.query = filter.value;
+      this.drawApps(list, map);
+    });
+    head.createEl("button", { text: "Save as canvas" }).addEventListener("click", () => void saveMapCanvas(plugin));
+    if (this.note) this.drawWriters(box, this.note, apps, activity);
+    const counts = (["allowed", "not-opened", "asks-again"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
+    box.createDiv({
+      cls: "gz-muted gz-map-summary",
+      text: `${map.apps.length} ${map.apps.length === 1 ? "app" : "apps"}: ${counts.filter(([, n]) => n).map(([s, n]) => `${n} ${STATE_WORDS[s].toLowerCase()}`).join(", ") || "none yet"}`,
+    });
+    const list = box.createDiv({ cls: "gz-map-apps" });
+    this.drawApps(list, map);
+    if (map.embeds.length) {
+      box.createEl("h4", { text: "Apps inside notes" });
+      for (const embed of map.embeds) void this.drawEmbed(box.createDiv({ cls: "gz-card gz-map-app" }), embed);
+    }
+    if (map.lenses.length) {
+      box.createEl("h4", { text: "Lenses" });
+      for (const lens of map.lenses) this.drawLens(box.createDiv({ cls: "gz-card gz-map-app" }), lens);
+    }
+  }
+
+  /** The apps that can change one note, from their keys and from what the log saw. */
+  private drawWriters(box: HTMLElement, note: string, apps: ReturnType<NonNullable<GizmoPlugin["background"]>["list"]>, activity: Awaited<ReturnType<GizmoPlugin["activity"]["list"]>>): void {
+    const card = box.createDiv({ cls: "gz-card gz-map-writers" });
+    card.createDiv({ cls: "gz-title", text: `Apps that can change ${basename(note)}` });
+    const writers = writersOf(note, apps, activity, (scope, path) => this.plugin.dataLayer.inScope(scope, path));
+    const embedded = Object.keys(this.plugin.store.grants).filter((k) => k.startsWith(`${note}#`));
+    if (!writers.length && !embedded.length) card.createDiv({ cls: "gz-muted", text: "None: no app's keys let it change this note, and the log has no change to it." });
+    const ul = card.createEl("ul");
+    const now = new Date();
+    for (const w of writers) {
+      const li = ul.createEl("li");
+      this.link(li, w.path, w.name);
+      if (w.reason) li.createSpan({ text: `: ${w.reason}` });
+      if (w.last) li.createDiv({ cls: "gz-muted", text: `Last: ${when(w.last.at, now)} · ${w.last.actor}: ${w.last.what}` });
+    }
+    if (embedded.length) ul.createEl("li", { text: `${embedded.length === 1 ? "A gizmo block" : `${embedded.length} gizmo blocks`} in this note (listed under Apps inside notes)` });
+    card.createEl("button", { text: "Show every app" }).addEventListener("click", () => {
+      this.note = undefined;
+      this.render();
+    });
+  }
+
+  private drawApps(list: HTMLElement, map: VaultMap): void {
+    list.empty();
+    const q = this.query.trim().toLowerCase();
+    const shown = map.apps.filter((a) => !q || `${a.name} ${a.description} ${a.path}`.toLowerCase().includes(q));
+    if (!shown.length) list.createDiv({ cls: "gz-muted", text: map.apps.length ? "No app matches." : "No apps yet: a note whose properties start with app: is one." });
+    for (const a of shown) this.drawApp(list.createDiv({ cls: "gz-card gz-map-app" }), a);
+  }
+
+  private drawApp(card: HTMLElement, a: MapApp): void {
+    const head = card.createDiv({ cls: "gz-map-app-head" });
+    this.link(head, a.path, a.name, "gz-title");
+    head.createSpan({ cls: `gz-map-state is-${a.state}`, text: STATE_WORDS[a.state] });
+    const actions = head.createDiv({ cls: "gz-map-actions" });
+    actions.createEl("button", { text: "Activity" }).addEventListener("click", () => openActivity(this.plugin, a.path));
+    if (a.state !== "not-opened") {
+      actions.createEl("button", { text: "Revoke" }).addEventListener("click", async () => {
+        await this.plugin.revoke(a.path);
+        new Notice(`${a.name} is stopped; open it to allow it again`);
+      });
+    }
+    if (a.description) card.createDiv({ cls: "gz-muted gz-map-desc", text: a.description });
+    this.drawAsks(card, a.asks);
+
+    const acts = card.createDiv({ cls: "gz-map-acts" });
+    if (a.shortcuts.length || a.acts.length || a.runBy.length) acts.createDiv({ cls: "gz-label", text: "Acts" });
+    const ul = acts.createEl("ul");
+    for (const s of a.shortcuts) {
+      const li = ul.createEl("li", { cls: "gz-map-shortcut" });
+      li.createSpan({ text: `Shortcut “${s.label}” (${s.id}): from its command or link` });
+      const row = li.createSpan({ cls: "gz-map-actions" });
+      row.createEl("button", { text: "Copy link" }).addEventListener("click", () => {
+        const link = this.plugin.background?.shortcutLinks().find((l) => l.path === a.path && l.shortcut === s.id);
+        if (link) copyShortcutLink(link);
+      });
+      row.createEl("button", { text: "New link key" }).addEventListener("click", async () => {
+        await this.plugin.resetLinkKey(a.path, s.id);
+        new Notice(`Links to “${s.label}” copied before now ask before they run`);
+      });
+    }
+    for (const line of a.acts) ul.createEl("li", { text: line });
+    for (const r of a.runBy) {
+      const li = ul.createEl("li");
+      li.createSpan({ text: `Runs “${r.do}” when ` });
+      this.link(li, r.path, r.name);
+      li.createSpan({ text: " asks" });
+    }
+    if (a.last) card.createDiv({ cls: "gz-muted gz-map-last", text: `Last change: ${when(a.last.at, new Date())} · ${a.last.actor}: ${a.last.what}` });
+  }
+
+  private drawAsks(card: HTMLElement, asks: Ask[]): void {
+    if (!asks.length) {
+      card.createDiv({ cls: "gz-muted", text: "Asks for nothing: it only reads and writes its own notes." });
+      return;
+    }
+    const groups = card.createDiv({ cls: "gz-map-groups" });
+    for (const group of ASK_GROUPS) {
+      const mine = asks.filter((x) => x.group === group);
+      if (!mine.length) continue;
+      const g = groups.createDiv({ cls: "gz-map-group" });
+      g.createDiv({ cls: "gz-label", text: group });
+      const ul = g.createEl("ul");
+      for (const ask of mine) {
+        const li = ul.createEl("li");
+        if (ask.isNew) li.createSpan({ cls: "gz-new", text: "New" });
+        li.createSpan({ text: ask.text + (ask.by.length ? ` — for ${ask.by.map((p) => `[[${basename(p)}]]`).join(", ")}` : "") });
+      }
+    }
+  }
+
+  /** A block's app, found in its note by the hash its grant is kept under. */
+  private async drawEmbed(card: HTMLElement, embed: MapEmbed): Promise<void> {
+    const head = card.createDiv({ cls: "gz-map-app-head" });
+    head.createSpan({ cls: "gz-title", text: "A gizmo block in " });
+    this.link(head, embed.hostPath, basename(embed.hostPath), "gz-title");
+    const actions = head.createDiv({ cls: "gz-map-actions" });
+    const file = this.app.vault.getFileByPath(embed.hostPath);
+    const source = file ? gizmoBlocks(await this.app.vault.cachedRead(file)).find((b) => blockKey(embed.hostPath, b) === embed.key) : undefined;
+    if (source === undefined) {
+      card.createDiv({ cls: "gz-muted", text: "This block is no longer in the note; what it was allowed is kept until removed." });
+      actions.createEl("button", { text: "Remove" }).addEventListener("click", () => void this.plugin.revoke(embed.key));
+      return;
+    }
+    let what = "";
+    try {
+      const block = parseHosted(parseYaml(source));
+      what = "kind" in block && block.kind === "app" ? `Shows [[${block.link}]]` : "Runs its own keys";
+    } catch {
+      what = "Its keys aren't YAML Gizmo can read";
+    }
+    card.createDiv({ cls: "gz-muted", text: what });
+    actions.createEl("button", { text: "Revoke" }).addEventListener("click", () => void this.plugin.revoke(embed.key));
+    this.drawAllowed(card, embed.allowed);
+  }
+
+  private drawLens(card: HTMLElement, lens: MapLens): void {
+    const head = card.createDiv({ cls: "gz-map-app-head" });
+    this.link(head, lens.path, lens.name, "gz-title");
+    head.createSpan({ cls: `gz-map-state is-${lens.allowed ? "allowed" : "not-opened"}`, text: lens.allowed ? "Allowed" : "Not allowed yet" });
+    if (lens.allowed) {
+      head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", () => void this.plugin.revoke(lens.path));
+    }
+    card.createDiv({ cls: "gz-muted", text: `Shows on every note in ${lens.scope}` });
+    if (lens.allowed) this.drawAllowed(card, lens.allowed);
+  }
+
+  private drawAllowed(card: HTMLElement, allowed: string[]): void {
+    if (!allowed.length) return void card.createDiv({ cls: "gz-muted", text: "Allowed to do nothing beyond its own notes." });
+    const ul = card.createEl("ul");
+    for (const perm of allowed) ul.createEl("li", { text: describePermission(perm) });
+  }
+
+  private link(parent: HTMLElement, path: string, text: string, cls = ""): void {
+    const a = parent.createEl("a", { cls: `internal-link ${cls}`.trim(), text, href: "#" });
+    a.addEventListener("click", (e) => {
+      e.preventDefault();
+      void this.app.workspace.openLinkText(path, "", false);
+    });
+  }
+}
+
+/** Saves the map as a new canvas at the vault's top, never over one already there, and opens it. */
+export async function saveMapCanvas(plugin: GizmoPlugin): Promise<void> {
+  const vault = plugin.app.vault;
+  const data = mapCanvas(plugin.background?.list() ?? [], (path) => !!vault.getFileByPath(path));
+  const d = new Date();
+  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  let path = `Gizmo map ${day}.canvas`;
+  for (let n = 2; vault.getAbstractFileByPath(path); n++) path = `Gizmo map ${day} ${n}.canvas`;
+  const file = await vault.create(path, JSON.stringify(data, null, "\t"));
+  new Notice(`Saved the map as ${file.basename}`);
+  await plugin.app.workspace.getLeaf("tab").openFile(file);
+}
+
+/** Opens the map (one tab, reused), optionally starting with the apps that can change a note. */
+export async function openMap(plugin: GizmoPlugin, note?: string): Promise<void> {
+  const ws = plugin.app.workspace;
+  const leaf = ws.getLeavesOfType(MAP_VIEW)[0] ?? ws.getLeaf("tab");
+  await leaf.setViewState({ type: MAP_VIEW, state: { note }, active: true });
+  void ws.revealLeaf(leaf);
+}
+
+export function registerMap(plugin: GizmoPlugin): void {
+  plugin.registerView(MAP_VIEW, (leaf) => new MapView(leaf, plugin));
+  plugin.addCommand({ id: "open-map", name: "Open the automation map", callback: () => void openMap(plugin) });
+  plugin.addCommand({ id: "save-map-canvas", name: "Save the automation map as a canvas", callback: () => void saveMapCanvas(plugin) });
+  plugin.addCommand({
+    id: "who-changes-note",
+    name: "Which apps can change this note?",
+    checkCallback: (checking) => {
+      const file = plugin.app.workspace.getActiveFile() ?? plugin.app.workspace.getActiveViewOfType(MarkdownView)?.file;
+      if (!file) return false;
+      if (!checking) void openMap(plugin, file.path);
+      return true;
+    },
+  });
+}

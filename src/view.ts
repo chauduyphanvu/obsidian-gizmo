@@ -61,6 +61,11 @@ export class AppView extends FileView {
     this.controller?.resize();
   }
 
+  /** Looks again at whether the app is allowed, after a grant changed somewhere else. */
+  recheck(): void {
+    this.controller?.recheck();
+  }
+
   private start(file: TFile): void {
     this.controller = new AppController(this.contentEl, file.path, obsidianAppEnv(this.plugin, this.leaf, file));
     this.controller.load();

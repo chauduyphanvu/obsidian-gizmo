@@ -4,7 +4,7 @@ import { basename } from "./store.ts";
 import type GizmoPlugin from "./main.ts";
 
 /** When something happened, as a list of recent things says it. */
-function when(at: number, now: Date): string {
+export function when(at: number, now: Date): string {
   const d = new Date(at);
   const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
   const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();

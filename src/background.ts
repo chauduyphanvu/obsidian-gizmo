@@ -221,6 +221,9 @@ export class Background {
   /** An app's permission was taken back: it stops at once, its pins and alerts go, and its `then`s start over when allowed again. */
   revoked(path: string): void {
     this.forget(path);
+    // Allowed again, it is evaluated when it opens rather than at its next refresh.
+    const entry = this.apps.get(path);
+    if (entry) entry.checkedAt = undefined;
   }
 
   /** Runs whatever is due for every allowed app. Never rejects; one app's failure doesn't stop the others. */

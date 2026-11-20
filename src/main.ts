@@ -11,9 +11,12 @@ import { dropGrants, grantedOf, isAllowed, moveGrants, setGrant } from "./grants
 import { obsidianHost, obsidianUndoIO, pluginFile } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
+import type { LensIndex } from "./lenses.ts";
 import { registerLinkCommand } from "./link-command.ts";
+import { registerMap } from "./map-view.ts";
 import { newLinkKey } from "./links.ts";
 import { registerShareCommands } from "./share-command.ts";
+import { permissionsOf } from "./permissions.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
 import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
@@ -35,6 +38,9 @@ export default class GizmoPlugin extends Plugin {
   background: ReturnType<typeof registerBackground> | undefined;
   /** What every app changed in the vault, kept in the plugin's folder so it can be shown and undone. */
   activity!: ActivityLog;
+  /** Which lenses show on which notes. */
+  lenses!: LensIndex;
+  private grantListeners = new Set<() => void>();
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
@@ -70,12 +76,13 @@ export default class GizmoPlugin extends Plugin {
       void this.activity.rename(oldPath, file.path);
     }));
     registerEmbeds(this);
-    registerLenses(this);
+    this.lenses = registerLenses(this);
     registerInsertPanel(this);
     registerGalleryCommand(this);
     registerLinkCommand(this);
     registerShareCommands(this);
     registerActivity(this);
+    registerMap(this);
 
     this.addCommand({
       id: "open-as-app",
@@ -207,7 +214,43 @@ export default class GizmoPlugin extends Plugin {
   }
 
   async grant(path: string, wanted: string[]): Promise<void> {
+    // An app that asks for nothing is granted that each time it draws; only a change is news.
+    if (isAllowed(this.store.grants, path, wanted, true)) return;
     setGrant(this.store.grants, path, wanted);
     await this.saveData(this.store);
+    this.grantsChanged();
+  }
+
+  /**
+   * Takes back what an app, a block or a lens was allowed: it stops now and asks again when next
+   * shown. An app that asks for nothing is allowed again whenever its tab draws, so its tabs close.
+   */
+  async revoke(key: string): Promise<void> {
+    if (!Object.hasOwn(this.store.grants, key)) return;
+    delete this.store.grants[key];
+    await this.saveData(this.store);
+    this.background?.revoked(key);
+    const spec = this.background?.spec(key);
+    if (spec && permissionsOf(spec, key).length === 0) {
+      for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) if ((leaf.view as AppView).file?.path === key) leaf.detach();
+    }
+    this.grantsChanged();
+  }
+
+  /** A new key for a shortcut's link: links copied before it ask before they run. */
+  async resetLinkKey(path: string, shortcut: string): Promise<void> {
+    (this.store.linkKeys ??= {})[`${path}#${shortcut}`] = newLinkKey();
+    await this.saveData(this.store);
+  }
+
+  /** Calls `cb` whenever something is allowed or taken back; returns how to stop. */
+  onGrantsChange(cb: () => void): () => void {
+    this.grantListeners.add(cb);
+    return () => this.grantListeners.delete(cb);
+  }
+
+  private grantsChanged(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) (leaf.view as AppView).recheck();
+    for (const cb of [...this.grantListeners]) cb();
   }
 }

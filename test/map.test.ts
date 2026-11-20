@@ -141,3 +141,35 @@ test("the background tells listeners when an app's keys change, and revoking dro
   t.bg.revoked("Apps/P.md");
   assert.deepEqual(t.out.status, []);
 });
+
+test("gizmo blocks in a note's text, found by the key their grant is kept under", async () => {
+  const { gizmoBlocks } = await import("../src/map.ts");
+  const { blockKey } = await import("../src/hosted.ts");
+  const text = "# Day\n```gizmo\nview: countdown\nto: 2027-01-01\n```\n\n````gizmo\napp: \"[[Meds]]\"\n````\n```js\nnot: this\n```\n";
+  const blocks = gizmoBlocks(text);
+  assert.deepEqual(blocks, ["view: countdown\nto: 2027-01-01", "app: \"[[Meds]]\""]);
+  assert.equal(blockKey("Daily.md", blocks[0]), blockKey("Daily.md", "view: countdown\nto: 2027-01-01\n"));
+});
+
+test("the map as a canvas: reads on the left, apps in the middle, writes on the right, a line per then", async () => {
+  const { mapCanvas } = await import("../src/map-canvas.ts");
+  const { apps } = await summaries();
+  const exists = (path: string) => path !== "Apps/Meds data.md";
+  const canvas = mapCanvas(apps, exists);
+  const byText = (n: { file?: string; text?: string }) => n.file ?? n.text;
+  const node = (name: string) => canvas.nodes.find((n) => byText(n) === name)!;
+  const meds = node("Apps/Meds.md");
+  const inbox = node("Apps/Inbox.md");
+  assert.equal(meds.type, "file");
+  assert.ok(node("api.example.com").x < meds.x && meds.x < node("Tasks/Inbox.md").x);
+  assert.equal(node("Apps/Meds data.md").type, "text", "a data note not made yet is a text card");
+  const label = (from: { id: string }, to: { id: string }) => canvas.edges.filter((e) => e.fromNode === from.id && e.toNode === to.id).map((e) => e.label);
+  assert.deepEqual(label(meds, inbox), ["then: add"]);
+  assert.deepEqual(label(node("api.example.com"), node("Apps/Weather.md")), ["fetches"]);
+  assert.deepEqual(label(inbox, node("Tasks/Inbox.md")), ["adds lines"]);
+  const projects = canvas.nodes.filter((n) => byText(n) === "Notes in Projects").sort((a, b) => a.x - b.x);
+  assert.deepEqual(label(projects[0], node("Apps/Projects.md")), ["reads"], "what it reads is on the left");
+  assert.deepEqual(label(node("Apps/Projects.md"), projects[1]), ["changes"], "and what it changes on the right");
+  assert.equal(new Set(canvas.nodes.map((n) => n.id)).size, canvas.nodes.length, "ids are unique");
+  assert.deepEqual(mapCanvas(apps, exists), canvas, "the same apps make the same canvas");
+});
