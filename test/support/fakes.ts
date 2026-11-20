@@ -259,11 +259,16 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     apps: [] as string[],
     /** What a link without its key asked the person. */
     asked: [] as { title: string; lines: string[] }[],
+    /** What a keyed link asked about where it sends word back, and the links opened out of Obsidian. */
+    chose: [] as { title: string; lines: string[] }[],
+    opened: [] as string[],
   };
-  /** How the person answers a link that asks: Run unless `answer` is false, or whatever `wait` resolves to. */
-  const ask = { answer: true, wait: undefined as undefined | (() => Promise<boolean>) };
+  /** How the person answers a link that asks: Run unless `answer` is false, or whatever `wait` resolves to; `choice` for where word goes back. */
+  const ask = { answer: true, wait: undefined as undefined | (() => Promise<boolean>), choice: 1 as number | undefined };
   /** Each shortcut's link key, made in order: k1, k2, … */
   const linkKeys = new Map<string, string>();
+  /** Where each shortcut's keyed link may send word back without asking. */
+  const destinations = new Map<string, string[]>();
   const bg = new Background({
     data: t.data,
     frontmatter: t.env.frontmatter,
@@ -288,6 +293,12 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
       if (!linkKeys.has(id) && create) linkKeys.set(id, `k${linkKeys.size + 1}`);
       return linkKeys.get(id);
     },
+    destinations: (path, shortcut) => destinations.get(`${path}#${shortcut}`) ?? [],
+    allowDestination: (path, shortcut, to) => {
+      const id = `${path}#${shortcut}`;
+      destinations.set(id, [...(destinations.get(id) ?? []), to]);
+    },
+    logSent: (entry) => void t.activity.add(entry),
     sink: {
       notify: t.env.notify,
       setCommands: (list) => { out.commands = list; },
@@ -297,6 +308,11 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
         out.asked.push({ title, lines });
         return ask.wait ? ask.wait() : ask.answer;
       },
+      choose: async (title, lines) => {
+        out.chose.push({ title, lines });
+        return ask.choice;
+      },
+      openUrl: (url) => { out.opened.push(url); },
     },
   });
   return {

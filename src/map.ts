@@ -1,4 +1,4 @@
-import { describeActor, describeChange, type Entry } from "./activity.ts";
+import { describeActor, describeChange, describeSent, type Entry } from "./activity.ts";
 import { grantedOf, isAllowed } from "./grants.ts";
 import { describePermission } from "./permissions.ts";
 import { basename, notePath } from "./store.ts";
@@ -138,7 +138,11 @@ export function buildMap(apps: AppSummary[], grants: Record<string, string[]>, l
       shortcuts: a.shortcuts,
       runBy: (runBy.get(a.path) ?? []).sort((x, y) => x.name.localeCompare(y.name)),
       dataPath: a.dataPath,
-      last: last && { at: last.at, actor: describeActor(last.actor), what: last.changes.length ? describeChange(last.changes[0]) : last.what },
+      last: last && {
+        at: last.at,
+        actor: describeActor(last.actor),
+        what: last.changes.length ? describeChange(last.changes[0]) : last.sent ? describeSent(last.what, last.sent) : last.what,
+      },
     };
   }).sort((x, y) => x.name.localeCompare(y.name) || x.path.localeCompare(y.path));
 

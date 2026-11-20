@@ -13,10 +13,70 @@ export interface ShortcutLink {
   fields: string[];
   link: string;
   allowed: boolean;
+  /** It answers with a value (a number or progress panel) instead of acting. */
+  answers: boolean;
 }
 
 /** A link's own parameters; a form field of one of these names can't be filled from a link. */
-export const LINK_PARAMS = ["action", "app", "do", "key"];
+export const LINK_PARAMS = ["action", "app", "do", "key", "x-success", "x-error", "x-cancel", "x-source"];
+
+/** The apps a link may hand its answer back to (x-callback-url), by URL scheme; any other is refused. */
+export const CALLBACK_SCHEMES = ["shortcuts", "raycast", "alfred", "kmtrigger", "drafts", "https"];
+
+/** Where a link wants its answer, or word that it's done, sent: x-success, x-error and x-cancel. */
+export interface Callbacks {
+  success?: string;
+  error?: string;
+  cancel?: string;
+  /** The app they all go to, as `scheme://host`, shown when asking and remembered with the link's key. */
+  to?: string;
+}
+
+/** A callback's app as a person can check it: its scheme and host, never what the link calls itself. */
+export function destinationOf(url: URL): string {
+  return `${url.protocol}//${url.host}`;
+}
+
+/**
+ * A link's callbacks, each a URL with a scheme Gizmo answers to, all going to one app; or the problem with them.
+ * `x-source` (what the caller calls itself) is never trusted to say where an answer goes.
+ */
+export function readCallbacks(params: Record<string, string>): Callbacks | { problem: string } {
+  const out: Callbacks = {};
+  for (const [param, key] of [["x-success", "success"], ["x-error", "error"], ["x-cancel", "cancel"]] as const) {
+    const text = params[param];
+    if (text === undefined) continue;
+    let url: URL;
+    try {
+      url = new URL(text);
+    } catch {
+      return { problem: `${param} isn't a link` };
+    }
+    const scheme = url.protocol.replace(/:$/, "").toLowerCase();
+    if (!CALLBACK_SCHEMES.includes(scheme)) return { problem: `${param} goes to ${scheme}:, and Gizmo only answers to ${CALLBACK_SCHEMES.join(", ")}` };
+    const to = destinationOf(url);
+    if (out.to !== undefined && out.to !== to) return { problem: "x-success, x-error and x-cancel must all go to one app" };
+    out.to = to;
+    out[key] = text;
+  }
+  return out;
+}
+
+/** A callback with its parameters set (replacing any of those names it already had). */
+export function withParams(callback: string, params: Record<string, string>): string {
+  const url = new URL(callback);
+  for (const [k, v] of Object.entries(params)) url.searchParams.set(k, v);
+  return url.toString();
+}
+
+/** What an answer sends back: its value as shown, cut to a few hundred characters, and the value itself when it is a plain one. */
+export function answerParams(shown: string, value: unknown): Record<string, string> {
+  const result = shown.length > MAX_ANSWER ? `${shown.slice(0, MAX_ANSWER - 1)}…` : shown;
+  const plain = typeof value === "number" || typeof value === "boolean" || (typeof value === "string" && value.length <= MAX_ANSWER);
+  return plain ? { result, value: String(value) } : { result };
+}
+
+const MAX_ANSWER = 200;
 
 /**
  * What a link asks: the app it names, the shortcut to run, the key it carries, and every other
@@ -39,6 +99,11 @@ export function newLinkKey(): string {
 
 /** What copying a shortcut's link tells: which link, how a form's fields are filled, and what stops it. */
 export function linkNotice(s: ShortcutLink): string {
+  if (s.answers) {
+    const parts = [`Copied the link that answers with “${s.label}” from ${s.app}. Use it in an app that opens x-callback-url links (Shortcuts' Open X-Callback URL); the value comes back as result.`];
+    if (!s.allowed) parts.push(`Open ${s.app} once to allow it; until then the link is refused.`);
+    return parts.join(" ");
+  }
   const parts = [`Copied the link to “${s.label}” in ${s.app}.`];
   const fillable = s.fields.filter((f) => !LINK_PARAMS.includes(f));
   if (fillable.length) parts.push(`Add ${fillable.map((f) => `&${f}=…`).join("")} to fill the form.`);

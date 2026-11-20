@@ -33,6 +33,8 @@ export interface Entry {
   /** The panel or action, as the app calls it. */
   what: string;
   changes: Change[];
+  /** A value it sent out of Obsidian, answering a link: where to, and the value as shown. */
+  sent?: { to: string; shown: string };
   /** How many changes, from the last, have been undone. */
   undone: number;
 }
@@ -90,9 +92,9 @@ export class ActivityLog {
     return () => this.listeners.delete(cb);
   }
 
-  /** Adds a run's changes; a run that changed nothing isn't kept. */
+  /** Adds a run's changes; a run that changed nothing and sent nothing isn't kept. */
   async add(entry: NewEntry): Promise<Entry | undefined> {
-    if (!entry.changes.length) return undefined;
+    if (!entry.changes.length && !entry.sent) return undefined;
     await this.load();
     const at = this.now();
     // A copy, so a row the app goes on to change (or the vault's own copy of it) can't change what was kept.
@@ -340,6 +342,11 @@ export function describeChange(c: Change): string {
     case "note-created": return `Created the note ${note}`;
     case "task": return `${c.done ? "Ticked" : "Unticked"} “${c.text}” in ${note}`;
   }
+}
+
+/** A value an app sent out, answering a link. */
+export function describeSent(what: string, sent: { to: string; shown: string }): string {
+  return `Sent “${what}” (${sent.shown}) to ${sent.to}`;
 }
 
 /** Who acted, as the log says it. */

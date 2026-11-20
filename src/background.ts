@@ -1,12 +1,14 @@
 import { fillLine, runActions, type ActionDeps } from "./actions.ts";
-import type { Actor, LogStore } from "./activity.ts";
+import type { Actor, LogStore, NewEntry } from "./activity.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { fileDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import type { NoteReader } from "./expand.ts";
-import { appsNamed, formRow, readLink, shortcutLink, type ShortcutLink } from "./links.ts";
+import {
+  answerParams, appsNamed, formRow, readCallbacks, readLink, shortcutLink, withParams, type Callbacks, type ShortcutLink,
+} from "./links.ts";
 import { thisValues } from "./sources/this.ts";
 import {
   panelIds, readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then,
@@ -46,6 +48,10 @@ export interface BackgroundSink {
   openApp(path: string): void;
   /** Asks the person whether to go ahead, showing `lines` under `title`; true for Run. */
   confirm(title: string, lines: string[]): Promise<boolean>;
+  /** Asks the person to pick one of `choices` (the first is Cancel); the index picked, or undefined when closed. */
+  choose(title: string, lines: string[], choices: string[]): Promise<number | undefined>;
+  /** Opens a link that goes out of Obsidian: a link's x-success, x-error or x-cancel. */
+  openUrl(url: string): void;
 }
 
 /** What the background needs from Obsidian; the glue passes the real thing, tests fakes. */
@@ -66,6 +72,22 @@ export interface BackgroundEnv {
   triggers?: LogStore;
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined;
+  /** The apps (`scheme://host`) a shortcut's keyed link may send to without asking. */
+  destinations(path: string, shortcut: string): string[];
+  allowDestination(path: string, shortcut: string, to: string): void;
+  /** Keeps what an app sent out of Obsidian, answering a link, in the activity log. */
+  logSent(entry: NewEntry): void;
+}
+
+/** What a link brings besides a form's values: the key it carries and where it wants word back. */
+export interface LinkCall {
+  key?: string;
+  callbacks: Callbacks;
+}
+
+/** A shortcut on a panel that shows one value answers with it instead of acting. */
+function answers(p: Panel): boolean {
+  return p.view === "number" || p.view === "progress";
 }
 
 /** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
@@ -295,10 +317,13 @@ export class Background {
    */
   async runUri(params: Record<string, string>): Promise<void> {
     const { app: name, shortcut, key, fields } = readLink(params);
+    const callbacks = readCallbacks(params);
+    if ("problem" in callbacks) return this.say(`Refused a link to “${shortcut}” in ${name}: ${callbacks.problem}`);
+    // Nothing goes back to the caller until the link is allowed, so a page can't find out which apps there are.
     const found = appsNamed(this.apps, name);
     if (found.length === 0) return this.say(`No app called “${name}”`);
     if (found.length > 1) return this.say(`Several apps are called “${name}”; use its path`);
-    return this.runShortcut(found[0].path, shortcut, "link", fields, undefined, key);
+    return this.runShortcut(found[0].path, shortcut, "link", fields, undefined, { key, callbacks });
   }
 
   /** Every app's shortcuts with the link that runs each, whether or not the app is allowed yet. */
@@ -311,6 +336,7 @@ export class Background {
           path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), fields,
           link: shortcutLink(this.apps, e.path, shortcut, this.env.linkKey(e.path, shortcut, true)!),
           allowed: this.granted(e),
+          answers: answers(p),
         };
       }))
       .sort((a, b) => a.path.localeCompare(b.path) || a.shortcut.localeCompare(b.shortcut));
@@ -321,7 +347,7 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], key?: string): Promise<void> {
+  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall): Promise<void> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
@@ -332,6 +358,7 @@ export class Background {
     const triggered = chain !== undefined;
     if (!r.panel) return triggered ? this.say(`${entry.name}: “${shortcut}” waits for a choice in the app, so it can't run from ${by(actor)}`) : this.env.sink.openApp(entry.path);
     const p = r.panel;
+    if (answers(p)) return this.answer(entry, ps, p, shortcut, actor, link);
     let input: Row = {};
     if (triggered && p.view !== "form" && params && Object.keys(params).length) {
       return this.say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
@@ -349,14 +376,23 @@ export class Background {
       if ("error" in filled) return this.say(`${entry.name}: ${filled.error}`);
       input = filled.row;
     }
-    if (actor === "link" && !(await this.linkMayRun(entry, p, shortcut, key, params ?? {}, input))) return;
+    const label = labelOf(p, shortcut);
+    const cb = link?.callbacks ?? {};
+    let allowed: "keyed" | "asked" | false = false;
+    if (actor === "link") {
+      const given = params ?? {};
+      const lines = Object.keys(input).filter((k) => Object.hasOwn(given, k)).map((k) => `${k}: ${String(input[k])}`);
+      if (cb.to) lines.push(`Then it tells ${cb.to} it ran`);
+      allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`);
+      if (!allowed) return;
+    }
     const trail = chain ?? [`${entry.path}#${shortcut}`];
     // Said before what its `then` runs says, in the order they happen.
     let told = false;
     const done = () => {
       if (told || p.notify) return;
       told = true;
-      this.say(`${entry.name}: ${labelOf(p, shortcut)} done${triggered ? ` for ${by(actor)}` : ""}`);
+      this.say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
     };
     const deps: ActionDeps = {
       ...this.env.actionDeps(entry.path, entry.dataPath, actor),
@@ -367,15 +403,45 @@ export class Background {
     };
     const result = await runActions(p, input, deps);
     if (result.ok) done();
+    if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
+    // Only a link with its key hears why it failed; any other could be a page finding out what's there.
+    if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: `“${label}” didn't run` }));
+  }
+
+  /**
+   * A number or progress panel's shortcut: its command tells its value in a notice, its link sends
+   * the value back to the app that opened it (x-success). It is worked out only once the link may
+   * run, so a link without its key fetches nothing until the person says so.
+   */
+  private async answer(entry: AppEntry, ps: PanelSpec, p: Panel, shortcut: string, actor: Actor, link: LinkCall | undefined): Promise<void> {
+    const label = labelOf(p, shortcut);
+    if (actor.startsWith("trigger:")) return this.say(`${entry.name}: “${shortcut}” answers links with a value; a then can't run it`);
+    const tell = (r: Evaluation) => this.say(`${entry.name}: ${label}: ${"shown" in r ? r.shown : "waiting" in r ? `waits for ${r.waiting}` : r.error}`);
+    if (actor !== "link") return tell(await this.evaluate(entry.path, ps));
+    const cb = link?.callbacks ?? {};
+    const lines = cb.to ? [`Its value goes to ${cb.to}`] : [];
+    const allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks for “${label}” from ${entry.name}`);
+    if (!allowed) return;
+    const r = await this.evaluate(entry.path, ps);
+    if (!("shown" in r)) {
+      const why = "waiting" in r ? `it waits for ${r.waiting}` : r.error;
+      if (allowed === "keyed" && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: why }));
+      return this.say(`${entry.name}: couldn't answer “${label}”: ${why}`);
+    }
+    if (!cb.success) return tell(r);
+    this.env.sink.openUrl(withParams(cb.success, answerParams(r.shown, r.value)));
+    this.env.logSent({ app: entry.path, actor, what: label, changes: [], sent: { to: cb.to!, shown: r.shown } });
   }
 
   /**
    * Whether a link may run a shortcut. Any web page, email or chat message can send one, so: at most
    * MAX_RUNS_PER_HOUR an hour, and without the key its copied link carries, only once the person
-   * says Run in a window showing the values it gives. One window at a time; links without the key
-   * that come meanwhile are dropped.
+   * says Run in a window showing `lines` (the values it gives, where word goes back). A keyed link
+   * that sends word back asks the first time it would go to an app, and remembers that app with
+   * the key when told Always; Cancel there opens its x-cancel. One window at a time; links that
+   * come meanwhile are dropped. Says "keyed" or "asked" when it may run.
    */
-  private async linkMayRun(entry: AppEntry, p: Panel, shortcut: string, key: string | undefined, given: Record<string, string>, row: Row): Promise<boolean> {
+  private async linkMayRun(entry: AppEntry, p: Panel, shortcut: string, link: LinkCall | undefined, lines: string[], title: string): Promise<"keyed" | "asked" | false> {
     const label = labelOf(p, shortcut);
     const rateKey = `link\n${entry.path}#${shortcut}`;
     const recent = () => (this.runs.get(rateKey) ?? []).filter((t) => this.env.now().getTime() - t < 3_600_000);
@@ -385,21 +451,37 @@ export class Background {
       return false;
     }
     const expected = this.env.linkKey(entry.path, shortcut, false);
-    if (expected === undefined || key !== expected) {
-      if (this.asking) {
-        this.say(`Ignored a link to “${label}” in ${entry.name} while another link waits for an answer`);
-        return false;
-      }
+    const keyed = expected !== undefined && link?.key === expected;
+    const cb = link?.callbacks ?? {};
+    const asks = !keyed || (cb.to !== undefined && !this.env.destinations(entry.path, shortcut).includes(cb.to));
+    if (asks && this.asking) {
+      this.say(`Ignored a link to “${label}” in ${entry.name} while another link waits for an answer`);
+      return false;
+    }
+    if (!keyed) {
       this.asking = true;
       try {
-        const lines = Object.keys(row).filter((k) => Object.hasOwn(given, k)).map((k) => `${k}: ${String(row[k])}`);
-        if (!(await this.env.sink.confirm(`A link asks to run “${label}” in ${entry.name}`, lines))) return false;
+        if (!(await this.env.sink.confirm(title, lines))) return false;
       } finally {
         this.asking = false;
       }
+    } else if (asks) {
+      this.asking = true;
+      let choice: number | undefined;
+      try {
+        const what = answers(p) ? `its value (${label})` : `word that “${label}” ran`;
+        choice = await this.env.sink.choose(`${entry.name} would send ${what} to ${cb.to}`, lines, ["Cancel", "Once", "Always"]);
+      } finally {
+        this.asking = false;
+      }
+      if (choice !== 1 && choice !== 2) {
+        if (cb.cancel) this.env.sink.openUrl(cb.cancel);
+        return false;
+      }
+      if (choice === 2) this.env.allowDestination(entry.path, shortcut, cb.to!);
     }
     this.runs.set(rateKey, [...recent(), this.env.now().getTime()]);
-    return true;
+    return keyed ? "keyed" : "asked";
   }
 
   /**

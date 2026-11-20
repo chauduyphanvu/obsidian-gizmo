@@ -13,6 +13,8 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
   // Named as typed, like the notes it writes: the app it names is looked up when it runs.
   if (p.then) out.push([`run:${storeTarget(p.then.app)}#${p.then.do}`, "then"]);
+  // Its link sends the panel's value out of Obsidian, to whatever app opened it.
+  if (p.shortcut !== undefined && (p.view === "number" || p.view === "progress")) out.push([`answer:${p.shortcut}`, "shortcut"]);
   // A lens writes the properties of whichever note in its scope it is shown on.
   if (p.target?.kind === "this" && p.target.scope) out.push([`edit:${p.target.scope}`, "save"]);
   if (p.target?.kind === "folder") {
@@ -146,6 +148,7 @@ export function describePermission(perm: string): string {
     case "create": return `Create notes in ${what}`;
     case "edit": return `Change properties of notes in ${what}`;
     case "tasks": return `Tick tasks in notes in ${what}`;
+    case "answer": return `Send its “${what}” value to the app that opens its link`;
     case "run": {
       const cut = what.lastIndexOf("#");
       return `Run “${what.slice(cut + 1)}” in ${what.slice(0, cut)}`;

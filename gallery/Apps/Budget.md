@@ -22,6 +22,7 @@ panels:
     agg: sum
     compare: previous
     label: spent so far
+    shortcut: spent
   - view: progress
     title: Against my limit
     source: month
@@ -60,5 +61,6 @@ panels:
 ---
 Add each purchase as you make it. You get a notice once the month's total reaches the limit (the
 2000 in `max` and `alert`), and the bars stack each week by category against the `goal` line;
-change those numbers to your own budget, and fix a wrong amount or category in the table. It asks
-for nothing; entries are saved in Budget data.
+change those numbers to your own budget, and fix a wrong amount or category in the table. The link
+"Copy link to an app shortcut" gives for This month answers with what you've spent so far, for a
+phone shortcut to read out. That is all it asks for; entries are saved in Budget data.

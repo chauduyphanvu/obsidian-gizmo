@@ -1,5 +1,5 @@
 import { Modal, Notice } from "obsidian";
-import { describeActor, describeChange, undoMessage, type Entry } from "./activity.ts";
+import { describeActor, describeChange, describeSent, undoMessage, type Entry } from "./activity.ts";
 import { basename } from "./store.ts";
 import type GizmoPlugin from "./main.ts";
 
@@ -58,6 +58,9 @@ class ActivityModal extends Modal {
       const li = ul.createEl("li", { text: describeChange(c) });
       if (i >= total - entry.undone) li.addClass("gz-undone");
     });
+    if (entry.sent) ul.createEl("li", { text: describeSent(entry.what, entry.sent) });
+    // What was sent out can't be taken back.
+    if (total === 0) return;
     if (entry.undone >= total) {
       head.createSpan({ cls: "gz-activity-undone", text: "Undone" });
       return;

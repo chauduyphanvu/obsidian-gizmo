@@ -151,7 +151,8 @@ export class MapView extends ItemView {
     const ul = acts.createEl("ul");
     for (const s of a.shortcuts) {
       const li = ul.createEl("li", { cls: "gz-map-shortcut" });
-      li.createSpan({ text: `Shortcut “${s.label}” (${s.id}): from its command or link` });
+      const answers = s.view === "number" || s.view === "progress";
+      li.createSpan({ text: answers ? `Answers “${s.label}” (${s.id}) to its command or link` : `Shortcut “${s.label}” (${s.id}): from its command or link` });
       const row = li.createSpan({ cls: "gz-map-actions" });
       row.createEl("button", { text: "Copy link" }).addEventListener("click", () => {
         const link = this.plugin.background?.shortcutLinks().find((l) => l.path === a.path && l.shortcut === s.id);

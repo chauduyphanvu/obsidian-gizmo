@@ -49,20 +49,21 @@ export function registerLinkCommand(plugin: GizmoPlugin): void {
   });
 }
 
-/**
- * A link without its shortcut's key: what it would run and the values it gives, with Cancel
- * focused and Run beside it. Closing the window any other way is Cancel.
- */
-class LinkRunModal extends Modal {
+/** A window a link opens before it runs: what it asks, then buttons, the first (Cancel) focused. Closing it any other way is Cancel. */
+class LinkAskModal extends Modal {
   private heading: string;
   private lines: string[];
-  private done: (run: boolean) => void;
+  private note: string;
+  private choices: { label: string; cls?: string }[];
+  private done: (choice: number | undefined) => void;
   private answered = false;
 
-  constructor(app: App, heading: string, lines: string[], done: (run: boolean) => void) {
+  constructor(app: App, heading: string, lines: string[], note: string, choices: { label: string; cls?: string }[], done: (choice: number | undefined) => void) {
     super(app);
     this.heading = heading;
     this.lines = lines;
+    this.note = note;
+    this.choices = choices;
     this.done = done;
   }
 
@@ -73,29 +74,38 @@ class LinkRunModal extends Modal {
       const ul = el.createEl("ul");
       for (const line of this.lines) ul.createEl("li", { text: line });
     }
-    el.createEl("p", {
-      cls: "gz-muted",
-      text: "This link doesn't carry the key a copied link has, so it may come from anywhere: a web page, an email or a message. Run it only if you meant to.",
-    });
+    el.createEl("p", { cls: "gz-muted", text: this.note });
     const row = el.createDiv({ cls: "modal-button-container" });
-    const cancel = row.createEl("button", { text: "Cancel" });
-    const run = row.createEl("button", { cls: "mod-warning", text: "Run" });
-    cancel.addEventListener("click", () => this.close());
-    run.addEventListener("click", () => {
-      this.answered = true;
-      this.done(true);
-      this.close();
+    const buttons = this.choices.map((c, i) => {
+      const b = row.createEl("button", { cls: c.cls, text: c.label });
+      b.addEventListener("click", () => {
+        this.answered = true;
+        this.done(i === 0 ? undefined : i);
+        this.close();
+      });
+      return b;
     });
-    cancel.focus();
+    buttons[0]?.focus();
   }
 
   onClose(): void {
     this.contentEl.empty();
-    if (!this.answered) this.done(false);
+    if (!this.answered) this.done(undefined);
   }
 }
 
 /** Asks whether to run what a link without its key asks; true for Run. */
 export function askToRun(app: App, heading: string, lines: string[]): Promise<boolean> {
-  return new Promise((resolve) => new LinkRunModal(app, heading, lines, resolve).open());
+  const note = "This link doesn't carry the key a copied link has, so it may come from anywhere: a web page, an email or a message. Run it only if you meant to.";
+  return new Promise((resolve) => new LinkAskModal(app, heading, lines, note, [{ label: "Cancel" }, { label: "Run", cls: "mod-warning" }], (c) => resolve(c === 1)).open());
+}
+
+/**
+ * Asks where a keyed link may send word back: Cancel, Once, or Always (remembered with the link's
+ * key). The index picked, or undefined for Cancel.
+ */
+export function askWhereTo(app: App, heading: string, lines: string[], choices: string[]): Promise<number | undefined> {
+  const note = "This link carries its key, so it was copied in Obsidian. What it sends back leaves Obsidian for the app named above.";
+  const styled = choices.map((label, i) => ({ label, cls: i === choices.length - 1 ? "mod-cta" : undefined }));
+  return new Promise((resolve) => new LinkAskModal(app, heading, lines, note, styled, resolve).open());
 }

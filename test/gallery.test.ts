@@ -67,9 +67,9 @@ const reader: NoteReader = (() => {
 const APPS: Record<string, string[]> = {
   "Apps/Aurora watch.md": ["net:services.swpc.noaa.gov"],
   "Apps/Book finder.md": ["create:Books", "edit:Books", "images", "net:openlibrary.org", "read:Books", "send:openlibrary.org|typed.q"],
-  "Apps/Budget.md": [],
+  "Apps/Budget.md": ["answer:spent"],
   "Apps/Decision journal.md": ["create:Decisions", "edit:Decisions", "read:Decisions"],
-  "Apps/Medication log.md": [],
+  "Apps/Medication log.md": ["answer:doses-today"],
   "Apps/Project board.md": ["create:Projects", "edit:Projects", "read:Projects"],
   "Apps/Read later.md": ["create:Reading", "edit:Reading", "net:feeds.bbci.co.uk", "net:feeds.npr.org", "read:Reading"],
   "Apps/Task inbox.md": ["read:Tasks", "tasks:Tasks", "write:Tasks/Inbox.md"],
@@ -132,7 +132,7 @@ test("Today is a plain note; each of its gizmo blocks reads without errors and a
   const shown = pickPanels(app.spec!, meds.panels ?? [], "Medication log");
   assert.deepEqual(shown.errors, []);
   assert.deepEqual(shown.spec.panels.map((ps) => ps.panel.view), ["button", "number"]);
-  assert.deepEqual(permissionsOf(shown.spec, "Apps/Medication log.md"), []);
+  assert.deepEqual(permissionsOf(shown.spec, "Apps/Medication log.md"), ["answer:doses-today"]);
 
   assert.ok("kind" in water && water.kind === "embed");
   const own = readSpec(water.definition, { path: "Today.md", notes: reader, host: {} })!;
@@ -187,7 +187,10 @@ test("Medication log: a dose from the button, a hotkey or a link; the count, str
   const path = "Apps/Medication log.md";
   const doses = [{ at: "2026-11-16T08:00" }, { at: "2026-11-17T08:05" }];
   const t = await background({ [path]: { fm: fm(path) }, "Apps/Medication log data.md": { fm: { doses } } });
-  assert.deepEqual(t.out.commands, [{ id: `${path}:took-meds`, name: "Medication log: Took meds" }]);
+  assert.deepEqual(t.out.commands, [
+    { id: `${path}:doses-today`, name: "Medication log: Doses today" },
+    { id: `${path}:took-meds`, name: "Medication log: Took meds" },
+  ]);
   assert.deepEqual(t.out.status, [{ appPath: path, text: "Doses today: 0", title: "Medication log" }]);
 
   const root = await t.open(path);

@@ -28,6 +28,8 @@ interface StoredData {
   folded?: Record<string, true>;
   /** `<app path>#<shortcut>` → the key that shortcut's copied link carries. */
   linkKeys?: Record<string, string>;
+  /** `<app path>#<shortcut>` → the apps (`scheme://host`) its keyed link may send word back to without asking. */
+  answerTo?: Record<string, string[]>;
 }
 
 export default class GizmoPlugin extends Plugin {
@@ -65,14 +67,14 @@ export default class GizmoPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.dataLayer.fileDeleted(file.path);
-      const dropped = dropGrants(this.store.grants, file.path);
-      if (dropGrants(this.store.linkKeys ?? {}, file.path) || dropped) void this.saveData(this.store);
+      const dropped = [this.store.grants, this.store.linkKeys ?? {}, this.store.answerTo ?? {}].map((m: Record<string, unknown>) => dropGrants(m, file.path));
+      if (dropped.some(Boolean)) void this.saveData(this.store);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.dataLayer.fileRenamed(file.path, oldPath);
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
-      const moved = moveGrants(this.store.grants, oldPath, file.path);
-      if (moveGrants(this.store.linkKeys ?? {}, oldPath, file.path) || moved) void this.saveData(this.store);
+      const moved = [this.store.grants, this.store.linkKeys ?? {}, this.store.answerTo ?? {}].map((m: Record<string, unknown>) => moveGrants(m, oldPath, file.path));
+      if (moved.some(Boolean)) void this.saveData(this.store);
       void this.activity.rename(oldPath, file.path);
     }));
     registerEmbeds(this);
@@ -237,9 +239,11 @@ export default class GizmoPlugin extends Plugin {
     this.grantsChanged();
   }
 
-  /** A new key for a shortcut's link: links copied before it ask before they run. */
+  /** A new key for a shortcut's link: links copied before it ask before they run, and send word back nowhere until allowed again. */
   async resetLinkKey(path: string, shortcut: string): Promise<void> {
     (this.store.linkKeys ??= {})[`${path}#${shortcut}`] = newLinkKey();
+    // Where the old key's link was allowed to send word back goes with it.
+    delete this.store.answerTo?.[`${path}#${shortcut}`];
     await this.saveData(this.store);
   }
 

@@ -80,7 +80,7 @@ const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert", "then"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert", "then", "shortcut"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p), ...checkCompare(p)],
@@ -90,6 +90,7 @@ export const number: ViewDef = {
     { panel: { view: "number", source: "renewals", where: { due: "upcoming" }, sort: "due", field: "due", agg: "first", format: "until" } },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", format: "$0.0.0" }, errors: [BAD_FORMAT] },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", where: { at: "this week" }, compare: "previous", format: "$0,0.00" } },
+    { panel: { view: "number", title: "Doses today", source: "doses", where: { at: "today" }, agg: "count", shortcut: "doses-today" } },
     { panel: { view: "number", source: "spending", agg: "count", where: { at: "last 7 days" }, compare: "last" }, errors: ["compare must be previous"] },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", compare: "previous" }, errors: ["compare needs a date window in where, e.g. where: {at: this week}"] },
     { panel: { view: "number", source: "spending", agg: "count", where: { category: "food" }, compare: "previous" }, errors: ["compare needs a date window in where, e.g. where: {at: this week}"] },
@@ -146,7 +147,7 @@ export const text: ViewDef = {
 
 export const progress: ViewDef = {
   id: "progress",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert", "then"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert", "then", "shortcut"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p)],
