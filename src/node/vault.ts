@@ -4,7 +4,7 @@
  * (the frontmatter's and inline #tags outside code), its times, and links resolved as Obsidian
  * resolves them. The config folder and dot folders aren't part of it. A watcher keeps it current.
  */
-import { existsSync, promises as fs, watch, type FSWatcher } from "node:fs";
+import { existsSync, promises as fs, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
 import type { FileInfo } from "../datalayer.ts";
@@ -163,6 +163,15 @@ export class NodeVault {
     if (!candidates.length) return undefined;
     const here = candidates.find((p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "") === fromDir);
     return here ?? candidates.sort((a, b) => a.length - b.length || (a < b ? -1 : 1))[0];
+  }
+
+  /** A file's size in bytes, without reading it; undefined when there's none. */
+  size(path: string): number | undefined {
+    try {
+      return statSync(this.abs(path)).size;
+    } catch {
+      return undefined;
+    }
   }
 
   async read(path: string): Promise<string> {

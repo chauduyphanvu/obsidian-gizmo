@@ -113,6 +113,7 @@ export function obsidianHost(app: App, pluginDir?: string, device?: () => string
     parseYaml: (text) => parseYaml(text) as unknown,
     responses,
     filesIn: (folder) => (app.vault.getFolderByPath(normalizePath(folder))?.children ?? []).filter((c): c is TFile => c instanceof TFile).map((f) => f.path),
+    fileSize: (path) => file(normalizePath(path))?.stat.size,
     append: (path, text) => queued(normalizePath(path), async () => {
       const f = file(normalizePath(path));
       if (f) return app.vault.append(f, text);

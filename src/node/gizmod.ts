@@ -249,6 +249,8 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       clearInterval(timer);
       if (addressTimer) clearInterval(addressTimer);
       bg.stop();
+      // What's waiting is written before the vault is let go of.
+      await env.data.flushSnapshots().catch(() => {});
       env.vault.close();
       env.data.dispose();
       await Promise.all([...servers.values()].map((s) => new Promise((r) => s.close(r))));

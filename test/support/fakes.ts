@@ -97,6 +97,10 @@ export function fakeHost(notes: Notes = {}, disk?: ReturnType<typeof memoryAdapt
     responses,
     // Files that aren't notes (an app's ledger) are kept as text in `others`.
     filesIn: (folder) => [...files.keys(), ...others.keys()].filter((p) => p.startsWith(`${folder}/`) && !p.slice(folder.length + 1).includes("/")),
+    fileSize: (path) => {
+      const text = files.get(path)?.raw ?? others.get(path);
+      return text === undefined ? undefined : new TextEncoder().encode(text).length;
+    },
     append: async (path, text) => {
       const given = files.get(path);
       if (given) given.raw = (given.raw ?? "") + text;
@@ -233,7 +237,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     now: () => new Date(2026, 10, 18, 12, 0),
   };
   // This device runs background work, so it writes each data note's snapshot, at once here.
-  data.setSnapshots({ isRunner: () => true, delayMs: 0, writeNote: (path, fn) => env.writeFrontmatter(path, fn) });
+  data.setSnapshots({ isRunner: () => true, delayMs: 0, gapMs: 0, writeNote: (path, fn) => env.writeFrontmatter(path, fn) });
   /** The activity log, kept in memory, its clock the env's. */
   const kept = { text: undefined as string | undefined };
   const activity = new ActivityLog({ read: async () => kept.text, write: async (text) => { kept.text = text; } }, () => env.now().getTime());

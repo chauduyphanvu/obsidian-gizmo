@@ -68,12 +68,15 @@ export default class GizmoPlugin extends Plugin {
     // Each device writes only its own log, which a sync never has to merge; it reads the others'.
     await adoptOldLog(this).catch(() => {});
     this.activity = new ActivityLog(pluginFile(this, `activity/${this.device.id}.json`), Date.now, () => otherLogs(this));
-    // The device that runs background work keeps each data note's snapshot current, a few seconds after a change.
+    // The device that runs background work keeps each data note's snapshot current, a few seconds after
+    // a change and at most every five minutes; what's waiting is written before Obsidian quits.
     this.dataLayer.setSnapshots({
       isRunner: () => this.beat?.isRunner() ?? false,
       delayMs: 5000,
+      gapMs: 5 * 60_000,
       writeNote: (path, fn) => obsidianAppEnvWrites(this).writeFrontmatter(path, fn),
     });
+    this.registerEvent(this.app.workspace.on("quit", (tasks) => tasks.add(() => this.dataLayer.flushSnapshots())));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));
     this.registerEvent(this.app.metadataCache.on("changed", (file) => {
       this.dataLayer.fileChanged(file.path);

@@ -42,6 +42,8 @@ export interface Host {
   append?(path: string, text: string): Promise<void>;
   /** Writes a whole file, making it and its folders when there's none. */
   writeFile?(path: string, text: string): Promise<void>;
+  /** A file's size in bytes, known without reading it: a log a checkpoint holds all of is then left unread. */
+  fileSize?(path: string): number | undefined;
   /** This device's id, which its ledger files are named for. */
   device?(): string;
 }
@@ -51,6 +53,8 @@ export interface Snapshots {
   isRunner(): boolean;
   /** How long after a change the snapshot is written, so a burst of changes makes one write. */
   delayMs: number;
+  /** The least time between two snapshots of a note with recorded lists, so a list sampled every minute isn't rewritten every minute. */
+  gapMs: number;
   writeNote(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
 }
 
@@ -114,7 +118,9 @@ export class DataLayer {
   private snapshots: Snapshots | undefined;
   /** Each data note's app note, and its folder of old device notes, as the panels reading it said. */
   private appOf = new Map<string, { appPath: string; devices?: string }>();
-  private snapshotTimers = new Map<string, ReturnType<typeof setTimeout>>();
+  private snapshotTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; due: number }>();
+  /** When each data note's snapshot was last written. */
+  private snapshotted = new Map<string, number>();
 
   /**
    * The vault as it was at this time (ms), for replay: lists from the ledger's events up to it and web
@@ -127,7 +133,7 @@ export class DataLayer {
   constructor(host: Host, opts: { at?: number; like?: DataLayer } = {}) {
     this.host = host;
     this.at = opts.at;
-    const { filesIn, append, writeFile } = host;
+    const { filesIn, append, writeFile, fileSize } = host;
     if (filesIn && append && writeFile) {
       this.ledger = new Ledger({
         filesIn: (folder) => filesIn.call(host, folder),
@@ -135,6 +141,7 @@ export class DataLayer {
         append: (path, text) => append.call(host, path, text),
         writeFile: (path, text) => writeFile.call(host, path, text),
         frontmatter: (path) => host.frontmatter(path),
+        ...(fileSize && { size: (path: string) => fileSize.call(host, path) }),
       }, () => host.device?.() ?? "device", () => host.now(), opts.at);
       this.ledger.onWrite = (path) => this.fileChanged(path);
       if (opts.like?.ledger) this.ledger.capsFrom(opts.like.ledger);
@@ -167,21 +174,33 @@ export class DataLayer {
   }
 
   private writeSnapshot(dataPath: string, s: Snapshots, ledger: Ledger): Promise<void> {
+    this.snapshotted.set(dataPath, this.host.now());
     const app = this.appOf.get(dataPath);
     const appFm = (app && this.host.frontmatter(app.appPath)) || {};
     return ledger.snapshot(dataPath, appFm, (fn) => s.writeNote(dataPath, fn), false, app?.devices ? this.deviceNotes(app.devices) : []).catch(() => {});
   }
 
-  /** Writes a data note's snapshot a little after its ledger last changed, when this device is the one that does. */
+  /**
+   * Writes a data note's snapshot a little after its ledger last changed, when this device is the one
+   * that does. A note with recorded lists is written at most once a gap, so samples coming in wait for
+   * the gap's end; any other note, a few seconds after what a person saved.
+   */
   private snapshotSoon(dataPath: string): void {
     const s = this.snapshots;
     const ledger = this.ledger;
     if (!s || !ledger || !s.isRunner()) return;
-    clearTimeout(this.snapshotTimers.get(dataPath));
-    this.snapshotTimers.set(dataPath, setTimeout(() => {
+    const now = this.host.now();
+    const gap = ledger.recorded(dataPath) ? s.gapMs : 0;
+    const due = Math.max(now + s.delayMs, (this.snapshotted.get(dataPath) ?? -Infinity) + gap);
+    const waiting = this.snapshotTimers.get(dataPath);
+    // One waiting for the gap to end keeps its time; one waiting for changes to stop waits again.
+    if (waiting && waiting.due > now + s.delayMs) return;
+    if (waiting) clearTimeout(waiting.timer);
+    const timer = setTimeout(() => {
       this.snapshotTimers.delete(dataPath);
       void this.writeSnapshot(dataPath, s, ledger);
-    }, s.delayMs));
+    }, due - now);
+    this.snapshotTimers.set(dataPath, { timer, due });
   }
 
   /**
@@ -198,7 +217,7 @@ export class DataLayer {
 
   /** Stops waiting snapshots: the plugin is going, and the runner writes them next time. */
   dispose(): void {
-    for (const t of this.snapshotTimers.values()) clearTimeout(t);
+    for (const t of this.snapshotTimers.values()) clearTimeout(t.timer);
     this.snapshotTimers.clear();
   }
 
@@ -209,7 +228,7 @@ export class DataLayer {
     if (!s || !ledger) return;
     const waiting = [...this.snapshotTimers.keys()];
     for (const dataPath of waiting) {
-      clearTimeout(this.snapshotTimers.get(dataPath));
+      clearTimeout(this.snapshotTimers.get(dataPath)!.timer);
       this.snapshotTimers.delete(dataPath);
       await this.writeSnapshot(dataPath, s, ledger);
     }

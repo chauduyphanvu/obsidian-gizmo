@@ -46,7 +46,8 @@ export const EXPECT_MISSED = "expect_missed";
 export const PAUSE_TELL_MS = 10 * 60_000;
 
 /** A recorded list keeps this many rows, the newest. */
-export const MAX_SAMPLES = 10_000;
+/** A week of samples at the shortest interval, so a late copy of a sample can't fall past the cap. */
+export const MAX_SAMPLES = 10_080;
 /** The version of what alerts ran for, as kept on disk. */
 const FIRED_VERSION = 2;
 /** How many shortcuts one action may run through `then`, one app after another. */

@@ -125,6 +125,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     parseYaml: (text) => parse(text) as unknown,
     responses: new ResponseHistory(fsAdapter, join(pluginDir, "responses"), () => id, now),
     filesIn: (folder) => vault.filesIn(folder),
+    fileSize: (path) => vault.size(path),
     append: (path, text) => vault.append(path, text),
     writeFile: (path, text) => vault.write(path, text),
     device: () => id,
@@ -301,7 +302,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     quietAlerts: () => false,
   };
   // Only the device running background work writes data notes' snapshots: gizmod, when it's there.
-  data.setSnapshots({ isRunner: () => beat.isRunner(), delayMs: 5000, writeNote: (path, fn) => io.writeFrontmatter(path, fn) });
+  data.setSnapshots({ isRunner: () => beat.isRunner(), delayMs: 5000, gapMs: 5 * 60_000, writeNote: (path, fn) => io.writeFrontmatter(path, fn) });
 
   return { vault, data, host, io, activity, beat, sink, notices, bgEnv, store, pluginDir, unseenMs: UNSEEN_MS };
 }

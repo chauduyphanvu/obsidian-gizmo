@@ -199,7 +199,17 @@ export interface FoldBase {
   ticked: Record<string, string[]>;
 }
 
+/** The last set of a cell, for telling a later set that didn't see it. */
 type Cell = { value: unknown; from: unknown; t: string; d: string };
+
+/** A Folder as a checkpoint keeps it: everything a fold needs to go on from where it stopped. */
+export interface FolderState {
+  lists: Record<string, { order: string[]; rows: Row[]; cells: [string, Cell][]; conflicts: Conflict[] }>;
+  ticked: Record<string, string[]>;
+  /** `<list>\n<row id>`, as the folder keeps them. */
+  gone: string[];
+  last?: { t: string; d: string };
+}
 
 /**
  * Lists being folded: a base, then events applied one at a time in the order they apply. Kept
@@ -321,6 +331,44 @@ export class Folder {
     }
   }
 
+  /**
+   * What the folder holds, to go on from later. A list with a cap keeps only its newest rows (one
+   * that dropped out comes back only if newer ones are deleted, which samples aren't), and each list
+   * its newest `maxGone` rows that stay out.
+   */
+  save(maxGone: number): FolderState {
+    const lists: FolderState["lists"] = {};
+    for (const [name, l] of this.lists) {
+      const cap = this.caps[name];
+      const order = cap !== undefined && l.order.length > cap ? l.order.slice(l.order.length - cap) : l.order;
+      const kept = new Set(order);
+      lists[name] = {
+        order: [...order],
+        rows: order.map((id) => l.rows.get(id)!),
+        cells: [...l.cells].filter(([key]) => kept.has(key.slice(0, key.indexOf("\n")))),
+        conflicts: l.conflicts.filter((c) => kept.has(c.row)),
+      };
+    }
+    const gone = [...this.lists.keys()].flatMap((name) => this.goneIn(name).slice(-maxGone).map((id) => `${name}\n${id}`));
+    return { lists, ticked: Object.fromEntries(this.ticked), gone, ...(this.last && { last: { t: this.last.t, d: this.last.d } }) };
+  }
+
+  /** A folder going on from a saved state; what it holds is its own, never the state's. */
+  static load(state: FolderState, caps: Record<string, number>): Folder {
+    const f = new Folder({ lists: {}, ticked: {} }, caps);
+    for (const [name, l] of Object.entries(state.lists)) {
+      const into = f.listOf(name);
+      into.order = [...l.order];
+      l.order.forEach((id, i) => into.rows.set(id, l.rows[i]));
+      into.cells = new Map(l.cells);
+      into.conflicts = [...l.conflicts];
+    }
+    for (const [name, items] of Object.entries(state.ticked)) f.ticked.set(name, [...items]);
+    for (const key of state.gone) f.gone.add(key);
+    if (state.last) f.last = state.last as LedgerEvent;
+    return f;
+  }
+
   /** Each list's rows that stay out whatever add comes later, for a snapshot to keep. */
   goneIn(list: string): string[] {
     const prefix = `${list}\n`;
@@ -354,11 +402,18 @@ export class Folder {
  * `caps` keeps only the newest rows of lists that grow on their own (recorded samples).
  */
 export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {}, ticked: {} }, caps: Record<string, number> = {}): Folded & { folder: Folder } {
+  return foldOnto(new Folder(base, caps), events);
+}
+
+/**
+ * Folds events onto a folder that holds every event before them (a checkpoint's): what an undo or
+ * redo among them names must be among them too.
+ */
+export function foldOnto(folder: Folder, events: readonly LedgerEvent[]): Folded & { folder: Folder } {
   const unique = new Map<string, LedgerEvent>();
   for (const e of events) if (!unique.has(eventId(e))) unique.set(eventId(e), e);
   const ordered = [...unique.values()].sort(compareEvents);
   const undone = undoneEvents(ordered);
-  const folder = new Folder(base, caps);
   for (const e of ordered) if (undone.has(eventId(e))) folder.hide(e);
   // A list whose every event was undone is still there, empty: its note's copy must say so.
   for (const e of ordered) {
@@ -369,9 +424,9 @@ export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {
   return { lists: folder.lists_(), ticked: folder.ticked, undone, applied: folder.applied, folder };
 }
 
-/** Which events are undone: the last undo or redo of each, in order, decides. */
-export function undoneEvents(events: readonly LedgerEvent[]): Set<string> {
-  const undone = new Set<string>();
+/** Which events are undone: the last undo or redo of each, in order, decides; `from`, those undone before them. */
+export function undoneEvents(events: readonly LedgerEvent[], from: Iterable<string> = []): Set<string> {
+  const undone = new Set<string>(from);
   for (const e of [...events].filter((x) => x.op === "undo" || x.op === "redo").sort(compareEvents)) {
     for (const id of (e as { ev: string[] }).ev) {
       if (e.op === "undo") undone.add(id);

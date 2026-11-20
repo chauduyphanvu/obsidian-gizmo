@@ -195,7 +195,7 @@ async function run(name: string, w: Workload, notes: Notes) {
   if (t.data.ledger) {
     const ledger = t.data.ledger;
     t.env.store = (dataPath, appPath) => ledgerStore(ledger, dataPath, () => t.f.files.get(appPath)?.fm ?? {});
-    t.data.setSnapshots({ isRunner: () => true, delayMs: 3_600_000, writeNote: (path, fn) => t.env.writeFrontmatter(path, fn) });
+    t.data.setSnapshots({ isRunner: () => true, delayMs: 3_600_000, gapMs: 0, writeNote: (path, fn) => t.env.writeFrontmatter(path, fn) });
   }
   const root = document.createElement("div");
   document.body.appendChild(root);

@@ -3,6 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { MAX_SAMPLES } from "../src/background.ts";
+import { NOTE_ROWS } from "../src/ledger-store.ts";
 import { readSpec } from "../src/spec.ts";
 import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, savedAt } from "./support/fakes.ts";
@@ -71,13 +72,18 @@ test("record needs one row: told once a session, and again when the app is opene
   assert.equal(t.notices.length, 2);
 });
 
-test("at most 10,000 rows are kept, the newest", async () => {
+test("at most a week of minute samples is kept, the newest; the data note holds the newest 500 of them", async () => {
+  assert.equal(MAX_SAMPLES, 10_080);
   const old = Array.from({ length: MAX_SAMPLES }, (_, i) => ({ at: "2026-11-17T00:00", n: i }));
   const t = kpApp(undefined, { kp_log: old });
   await t.bg.start();
+  const kept = await t.env.store!("Apps/Kp data.md", "Apps/Kp.md").rows("kp_log");
+  assert.equal(kept.length, MAX_SAMPLES);
+  assert.equal(kept[0].n, 1);
+  assert.equal(kept.at(-1)!.at, savedAt("2026-11-18T12:00"));
   const log = t.log()!;
-  assert.equal(log.length, MAX_SAMPLES);
-  assert.equal(log[0].n, 1);
+  assert.equal(log.length, NOTE_ROWS);
+  assert.equal(log[0].n, MAX_SAMPLES - NOTE_ROWS + 1);
   assert.equal(log.at(-1)!.at, savedAt("2026-11-18T12:00"));
 });
 
