@@ -1,3 +1,4 @@
+import { readExpect, type Expectation } from "./expect.ts";
 import { POLICY_PATH, isPolicyPath } from "./policy.ts";
 import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
 import { computeErrors } from "./formula.ts";
@@ -165,6 +166,13 @@ export interface AppSpec {
   blocks: Record<string, Record<string, unknown>>;
   /** Each block that records, as the panel it is read as while the app is closed: `view: table` naming it. */
   recorded: Record<string, PanelSpec>;
+  /** The rules under `expect:` (see expect.ts). */
+  expect: Expectation[];
+  /**
+   * Each rhythm and state rule, by id, as the panel it is read as while the app is closed: a table
+   * of its source, its `then` and, for a state rule, an alert on `none`. Asked for and checked as panels.
+   */
+  expected: Record<string, PanelSpec>;
   /** Component notes read while expanding (path → frontmatter), and the names of every `use` link. */
   read: Record<string, unknown>;
   links: string[];
@@ -679,9 +687,40 @@ export function readSpec(
     if (fm.devices === "split") split = true;
     else errors.push("devices must be split, e.g. devices: split");
   }
+  // Only a list is the setting: an app that saves a field called expect into its own note keeps it as data.
+  const expect = Array.isArray(fm.expect) ? readExpect(fm.expect, errors) : [];
+  const expected: Record<string, PanelSpec> = {};
+  for (const rule of expect) {
+    if (rule.kind === "value") continue;
+    const label = `expect.${rule.id}`;
+    if (opts.host) {
+      errors.push(`${label}: ${notHere("expect")}`);
+      continue;
+    }
+    // A state rule is an alert on the rows of its source, as a count; a rhythm's rows are read at its
+    // deadlines, and its then (checked as an alert's is) is kept beside them for what it asks and sends.
+    const raw = rule.kind === "state"
+      ? { view: "number", title: rule.say ?? rule.id, source: rule.source, agg: "count", alert: rule.none, ...(rule.then && { then: rule.then }) }
+      : { view: "table", title: rule.say ?? rule.id, source: rule.source };
+    let then: Then | undefined;
+    if (rule.kind === "rhythm" && rule.then) {
+      const c = checkPanel({ view: "number", source: rule.source, alert: "> 0", then: rule.then }, true);
+      const wrong = c.errors.filter((e) => e.includes("then"));
+      errors.push(...wrong.map((e) => `${label}: ${e}`));
+      then = wrong.length ? undefined : c.panel?.then;
+    }
+    const before = expander.errors.length;
+    const [p] = expander.expand(raw, scope, label);
+    errors.push(...expander.errors.splice(before));
+    if (!p) continue;
+    const uses = refsIn(p.template);
+    const r = checkAt(p.template, uses, start, true);
+    errors.push(...r.errors.map((e) => `${label}: ${e}`));
+    if (r.panel) expected[rule.id] = { template: p.template, panel: { ...r.panel, ...(then && { then }) }, label, inputs: uses, strict: true, writtenIn: p.writtenIn };
+  }
   const spec = {
     description, panels, refreshMs, store, split, inputs, selections,
-    blocks: Object.fromEntries(blocks), recorded, read: expander.read, links: [...expander.links],
+    blocks: Object.fromEntries(blocks), recorded, expect, expected, read: expander.read, links: [...expander.links],
   };
   return { spec, errors, empty: false };
 }

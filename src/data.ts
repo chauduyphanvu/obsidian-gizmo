@@ -216,6 +216,15 @@ function compileCondition(cond: string | number | boolean, now: Date): Test {
       return t !== undefined && t >= from && t < to;
     };
   }
+  const range = cond.match(/^\s*between\s+(.+?)\s+and\s+(.+?)\s*$/i);
+  if (range) {
+    const [lo, hi] = [range[1], range[2]].map((x) => toNumber(x) ?? toTime(x));
+    if (lo === undefined || hi === undefined) return () => false;
+    return (v) => {
+      const a = toNumber(v) ?? toTime(v);
+      return a !== undefined && a >= lo && a <= hi;
+    };
+  }
   const m = cond.match(/^\s*(>=|<=|!=|>|<)\s*(.+)$/);
   if (m) {
     const [, op, rhs] = m;

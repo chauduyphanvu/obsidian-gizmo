@@ -79,7 +79,7 @@ function sendPermissions(ps: PanelSpec, spec: Pick<AppSpec, "inputs" | "selectio
  * no panel shows them. What it may do is asked from exactly these.
  */
 function running(spec: AppSpec): PanelSpec[] {
-  return [...spec.panels, ...Object.values(spec.recorded)];
+  return [...spec.panels, ...Object.values(spec.recorded), ...Object.values(spec.expected)];
 }
 
 /** What an app is allowed to do, as stable strings. Writes to the note itself need no grant. */
@@ -104,8 +104,8 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
     for (const [perm, key] of panelPermissions(ps.panel, selfPath)) add(perm, ps.writtenIn[key] ?? selfPath);
     for (const perm of sendPermissions(ps, spec)) add(perm, ps.writtenIn.source ?? selfPath);
   }
-  // Blocks that record are the app's own.
-  for (const ps of Object.values(spec.recorded)) {
+  // Blocks that record, and what the app expects, are the app's own.
+  for (const ps of [...Object.values(spec.recorded), ...Object.values(spec.expected)]) {
     for (const [perm] of panelPermissions(ps.panel, selfPath)) add(perm, selfPath);
     for (const perm of sendPermissions(ps, spec)) add(perm, selfPath);
   }

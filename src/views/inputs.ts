@@ -119,8 +119,11 @@ export const form: ViewDef = {
       }
       submit.disabled = true;
       try {
-        await ctx.runActions(p, row);
-        f.reset();
+        const r = await ctx.runActions(p, row);
+        f.querySelector(".gz-form-error")?.remove();
+        // Refused by the app's expect: what was typed stays, with why.
+        if (r && r.error) f.createDiv({ cls: "gz-form-error", text: `Not saved: ${r.error}` });
+        else f.reset();
       } finally {
         submit.disabled = false;
       }

@@ -18,6 +18,7 @@ export const KEY_HINTS: Record<string, string> = {
   tabs: "Panels grouped in tabs: tabs: {Score: [ …panels… ], Waiting: [ … ]}",
   use: "Use a component note here, e.g. use: \"[[Ticker]]\"",
   with: "Give the component its params, e.g. with: {symbol: AAPL}",
+  expect: "What this app's data should do: a row by a time (every, by), what each row holds (check), what no row matches (none)",
   component: "Makes this note a reusable component; the text says what it is",
   params: "Names this component takes, each with an optional default",
   for: "Show this component on every note in a folder or tag, e.g. Books/ or \"#book\"",
@@ -155,6 +156,7 @@ export const VALUE_HINTS: Record<string, Record<string, string>> = {
     notes: "One row per note in from: a folder or #tag",
     tasks: "One row per checkbox task in the notes in from",
     this: "One row: the properties of the note this app sits in",
+    expect: "One row per window of each rhythm under expect: rule, window, met",
   },
   fields: Object.fromEntries(FIELD_TYPES.map((t) => [t, FIELD_HINTS[t] ?? ""])),
 };
@@ -168,8 +170,8 @@ export interface Suggestion {
   hint: string;
 }
 
-// `devices` is offered but isn't reserved: a list or a saved field may still be called that.
-const TOP_KEYS = { app: [...APP_KEYS, "devices"], component: COMPONENT_KEYS };
+// `devices` and `expect` are offered but aren't reserved: a list or a saved field may still be called that.
+const TOP_KEYS = { app: [...APP_KEYS, "devices", "expect"], component: COMPONENT_KEYS };
 
 /** Keys a panel with this view takes. */
 function panelKeys(view: string): string[] | undefined {

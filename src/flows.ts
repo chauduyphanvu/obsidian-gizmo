@@ -138,7 +138,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   const badSends = new Set<string>();
   const dataLabels = merged(noteLabels(policy, ctx.dataPath, ctx.tags(ctx.dataPath)), noteLabels(policy, ctx.appPath, ctx.tags(ctx.appPath)));
   const thisLabels = ctx.lensScope ? scopeLabels(policy, ctx.lensScope) : noteLabels(policy, ctx.hostPath, ctx.tags(ctx.hostPath));
-  const running = [...spec.panels, ...Object.values(spec.recorded)];
+  const running = [...spec.panels, ...Object.values(spec.recorded), ...Object.values(spec.expected)];
 
   /** The labels of a source's data, before a panel's own keys. */
   const sourceLabels = (p: Panel): Labels => {

@@ -55,7 +55,7 @@ export function noteLink(el: HTMLElement, text: string, path: string, ctx: Panel
 }
 
 /** Disables the button while its work runs, so a double click doesn't save twice. */
-export function busy(button: HTMLButtonElement, work: () => Promise<void>): void {
+export function busy(button: HTMLButtonElement, work: () => Promise<unknown>): void {
   button.addEventListener("click", async () => {
     button.disabled = true;
     try { await work(); } finally { button.disabled = false; }

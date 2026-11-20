@@ -32,7 +32,7 @@ export function withoutDefinition<T extends Record<string, unknown>>(row: T): T 
 }
 
 /** Kinds of source that are one word (`this` is in RESERVED): `source:` reads the kind, so a list can't be named after one. */
-export const SOURCE_WORDS = ["notes", "tasks"];
+export const SOURCE_WORDS = ["notes", "tasks", "expect"];
 
 /** A frontmatter value that is there: not missing, null or false. */
 export function isSet(v: unknown): boolean {

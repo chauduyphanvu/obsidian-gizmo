@@ -22,7 +22,8 @@ export interface PanelCtx {
   now: Date;
   /** The drawing width inside the panel with this key. */
   width(key: string): number;
-  runActions(p: Panel, row: Row): Promise<void>;
+  /** Runs a panel's actions; says why when a value rule refused the row, so a form can keep what was typed. */
+  runActions(p: Panel, row: Row): Promise<{ error?: string } | void>;
   toggleChecked(key: string, item: string): Promise<void>;
   clearChecked(key: string): Promise<void>;
   openNote(path: string): void;

@@ -56,7 +56,7 @@ test("the values a key takes come from the registries", () => {
   assert.deepEqual(Object.keys(VALUE_HINTS.layout), ["cards", "year"]);
   assert.deepEqual(Object.keys(VALUE_HINTS.compare), ["previous"]);
   assert.deepEqual(Object.keys(VALUE_HINTS.pin), ["status"]);
-  assert.deepEqual(Object.keys(VALUE_HINTS.source), ["notes", "tasks", "this"]);
+  assert.deepEqual(Object.keys(VALUE_HINTS.source), ["notes", "tasks", "this", "expect"]);
   for (const [key, values] of Object.entries(VALUE_HINTS)) for (const [v, hint] of Object.entries(values)) assert.ok(hint, `${key}: ${v}`);
 });
 
@@ -69,11 +69,11 @@ test("the source words are the kinds of source that are one word, and each has i
 // ---- Suggestions -----------------------------------------------------------------------------------
 
 test("top-level keys depend on whether the note is an app or a component, and leave out what is typed", () => {
-  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view", "devices"]);
+  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view", "devices", "expect"]);
   assert.deepEqual(suggested("---\n‸\n---", true), ["component", "params", "data", "panels", "tabs", "for", "spec"]);
-  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view", "devices"]);
+  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view", "devices", "expect"]);
   assert.deepEqual(suggested("---\ncomponent: C\nparams: [a]\n‸\n---", true), ["data", "panels", "tabs", "for", "spec"]);
-  assert.deepEqual(suggested(app("p‸")), ["panels", "spec", "inputs"]);
+  assert.deepEqual(suggested(app("p‸")), ["panels", "spec", "inputs", "expect"]);
 });
 
 test("a top-level key is matched by what it starts with, then by what it contains", () => {
@@ -85,7 +85,7 @@ test("a top-level key is matched by what it starts with, then by what it contain
 
 test("a single panel written at the top takes its view's keys too", () => {
   const keys = suggested("---\napp: A\nview: countdown\n‸\n---");
-  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "devices", "title", "tab", "span", "to", "label"]);
+  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "devices", "expect", "title", "tab", "span", "to", "label"]);
   assert.deepEqual(suggested("---\ncomponent: C\nview: countdown\n‸\n---", true), ["params", "data", "panels", "tabs", "for", "spec"]);
 });
 
@@ -136,12 +136,12 @@ test("the values of view, agg, per, layout, compare and pin", () => {
 });
 
 test("source offers the kinds that are words, in a panel, a data block and at the top", () => {
-  const words = ["notes", "tasks", "this"];
+  const words = ["notes", "tasks", "this", "expect"];
   assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: ‸")), words);
   assert.deepEqual(suggested(app("data:\n  q:\n    source: ‸")), words);
   assert.deepEqual(suggested("---\napp: A\nview: list\nsource: ‸\n---"), words);
   assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: ta‸")), ["tasks"]);
-  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: t‸")), ["tasks", "this", "notes"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: t‸")), ["tasks", "this", "notes", "expect"]);
   assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: n‸")), ["notes"]);
   // What isn't one of them (an address, a file, a list or a block) is typed freely, and nothing is offered once it can't be one.
   assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: https://api.example.com/q?a=1‸")), []);

@@ -1,3 +1,4 @@
+import { refusal, type Expectation } from "./expect.ts";
 import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
 import { saveTarget, type Panel } from "./spec.ts";
@@ -20,6 +21,8 @@ export interface ActionDeps {
   store?: DataStore;
   /** The id a row this run saves gets, so the same run made twice (a then that fires on two devices) saves it once. */
   rowId?: string;
+  /** The app's rules under `expect:`; a row that breaks a value rule isn't saved. */
+  expect?: readonly Expectation[];
   /** Adds a line at the end of a note, creating it when there's none; true when it created it. */
   appendLine(path: string, line: string): Promise<boolean | void>;
   /** Creates a note; its text (or true), or false, writing nothing, when one is already at that path. */
@@ -63,6 +66,8 @@ export interface ActionResult {
   logged?: Promise<string | undefined>;
   /** A checklist item that was already ticked, so nothing changed. */
   already?: boolean;
+  /** Why nothing was saved, when a value rule refused the row. */
+  error?: string;
 }
 
 /** Where a run writes the app's lists: its store, else the data note's properties. */
@@ -225,6 +230,11 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
+      const refused = refusal(deps.expect ?? [], target.name, saved, deps.now());
+      if (refused) {
+        deps.notify(`Not saved: ${refused}`);
+        return { ok: false, error: refused };
+      }
       const { event, already } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
       // Another runner already saved this very row: nothing was written here.
       if (!already) changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });

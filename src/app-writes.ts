@@ -1,3 +1,4 @@
+import { refusal, type Expectation } from "./expect.ts";
 import { actionDepsOf, runActions } from "./actions.ts";
 import type { Change } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
@@ -21,6 +22,8 @@ export interface WriteSite {
   dataPath(): string;
   /** What the activity log calls a checklist: its panel's title, else the list it ticks into. */
   checklistName(key: string): string;
+  /** The app's rules under `expect:`, as it reads now. */
+  expect(): readonly Expectation[];
 }
 
 /** A drawn panel, whose checked keys are read as they are when a write needs them. */
@@ -118,6 +121,12 @@ export class AppWrites {
       if (typeof index !== "number" && id === undefined) return;
       const store = this.store();
       const name = m.p.source!;
+      const refused = refusal(this.site.expect(), name, { ...row, [field]: value }, this.env.now());
+      if (refused) {
+        this.env.notify(`Not saved: ${refused}`);
+        reload();
+        return;
+      }
       const r = await store.set(name, { id, index: typeof index === "number" ? index : undefined, shown: row }, field, value);
       if ("row" in r) {
         this.log(m.p.title ?? field, [{ kind: "row-edited", path: store.dataPath, list: name, row: r.row, field, from: row[field], to: value, ...(r.event && { event: r.event }) }]);
@@ -144,13 +153,15 @@ export class AppWrites {
     reload();
   }
 
-  async runActions(p: Panel, row: Row): Promise<void> {
+  async runActions(p: Panel, row: Row): Promise<{ error?: string } | void> {
     const env = this.env;
     const appPath = this.site.appPath;
-    await runActions(p, row, {
+    const r = await runActions(p, row, {
       ...actionDepsOf(env, appPath, this.site.dataPath()),
+      expect: this.site.expect(),
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
     });
+    if (r.error) return { error: r.error };
   }
 }

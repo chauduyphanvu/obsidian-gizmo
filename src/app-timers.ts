@@ -8,7 +8,7 @@ export interface TimerSite {
   /** The drawn panel a timer belongs to, by the panel's key. */
   panel(key: string): { el: HTMLElement; p: Panel } | undefined;
   notify(message: string): void;
-  runActions(p: Panel, row: Row): Promise<void>;
+  runActions(p: Panel, row: Row): Promise<unknown>;
   redraw(key: string): void;
 }
 

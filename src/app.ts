@@ -221,7 +221,7 @@ export class AppController {
     this.hostPath = hosting?.hostPath ?? appPath;
     this.memory = hosting?.memory ?? newMemory();
     this.writes = new AppWrites(env, {
-      appPath, hostPath: this.hostPath, dataPath: () => this.dataPath, checklistName: (key) => this.checklistName(key),
+      appPath, hostPath: this.hostPath, dataPath: () => this.dataPath, checklistName: (key) => this.checklistName(key), expect: () => this.spec?.expect ?? [],
     });
     this.timers = new Timers(this.memory.timers, {
       panel: (key) => this.mounted.get(key),

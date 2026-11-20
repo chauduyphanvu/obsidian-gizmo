@@ -1,3 +1,4 @@
+import { metIn, refusal, windowsDue, type Rhythm, type Window } from "./expect.ts";
 import { rowId as ledgerRowId } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { fillLine, runActions, storeOf, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
@@ -32,6 +33,9 @@ export const TICK_MS = 60_000;
 export const DEFAULT_REFRESH_MS = 10 * 60_000;
 /** The shortest `record` interval; shorter ones are treated as this. */
 export const MIN_RECORD_MS = 60_000;
+/** Where a rhythm's misses are kept, in the app's data note. */
+export const EXPECT_MISSED = "expect_missed";
+
 /** A recorded list keeps this many rows, the newest. */
 export const MAX_SAMPLES = 10_000;
 /** The version of what alerts ran for, as kept on disk. */
@@ -161,7 +165,10 @@ function answers(p: Panel): boolean {
 }
 
 /** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
-type Fired = { on: boolean } | { rows: string[] };
+type Fired = { on: boolean } | { rows: string[] } | { decided: number };
+
+/** A rhythm missed while nothing ran (Obsidian closed, no gizmod): told for at most this many of its latest windows. */
+const MAX_CATCH_UP = 3;
 
 /**
  * A panel worked out without drawing it: its value, that value as its view shows it (`shown`, unit
@@ -344,6 +351,53 @@ export class Background {
     if (!this.granted(entry)) return this.forget(entry.path);
     for (const job of entry.records) await this.sample(entry, job, false).catch(() => {});
     if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.check(entry);
+    await this.rhythms(entry).catch(() => {});
+  }
+
+  // ---- Expect -------------------------------------------------------------------------------
+
+  /**
+   * Decides each rhythm's deadlines that passed since it last decided, once: a window with no row
+   * by its deadline is a miss, kept in the data note's `expect_missed` under an id made from the
+   * rule and window (so two runners keep it once and only the first tells it), told, and its then
+   * run. A rule seen for the first time starts from now; one that can't be read now waits a tick.
+   */
+  private async rhythms(entry: AppEntry): Promise<void> {
+    if (!this.env.runsBackground()) return;
+    const rules = entry.spec.expect.filter((r): r is Rhythm => r.kind === "rhythm");
+    if (!rules.length) return;
+    const fired = await this.firedState();
+    const now = this.env.now();
+    for (const rule of rules) {
+      const key = `${entry.path}\nexpect:${rule.id}`;
+      const before = fired[key];
+      if (!before || !("decided" in before)) {
+        fired[key] = { decided: now.getTime() };
+        this.saveFired();
+        continue;
+      }
+      const due = windowsDue(rule, before.decided, now.getTime());
+      if (!due.length) continue;
+      const ps = entry.spec.expected[rule.id];
+      const r = ps && (await this.evaluate(entry.path, ps, true));
+      if (!r || !("panel" in r)) continue;
+      const rows = rowsOf(r.rows);
+      for (const w of due.slice(-MAX_CATCH_UP)) if (!metIn(rows, rule, w, now)) await this.missed(entry, rule, w);
+      fired[key] = { decided: due.at(-1)!.deadline };
+      this.saveFired();
+    }
+  }
+
+  private async missed(entry: AppEntry, rule: Rhythm, w: Window): Promise<void> {
+    const seed = `miss\n${entry.path}\n${rule.id}\n${w.start}`;
+    const window = stampParts(new Date(w.start)).date;
+    const deps = this.env.actionDeps(entry.path, entry.dataPath);
+    const { already } = await storeOf(deps).add(EXPECT_MISSED, { rule: rule.id, window, at: stampParts(this.env.now()).at }, { id: ledgerRowId(seed) });
+    if (already) return;
+    const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}`;
+    this.say(text);
+    this.env.sink.alert?.({ app: entry.name, panel: rule.say ?? rule.id, text });
+    if (rule.then) await this.runThen(entry.path, rule.then, { rule: rule.id, window }, [], undefined, seed);
   }
 
   private granted(entry: AppEntry): boolean {
@@ -585,6 +639,7 @@ export class Background {
       const base: ActionDeps = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       const deps: ActionDeps = {
         ...(dry ? recordingDeps(dry.overlay, base, step) : base),
+        expect: entry.spec.expect,
         ...(seed && { rowId: ledgerRowId(`then\n${seed}`) }),
         then: async (panel, ctx) => {
           done();
@@ -991,6 +1046,8 @@ export class Background {
       const at = stampParts(now).at;
       const sample: Row = { at, ...row };
       sample.at = at;
+      const refused = refusal(entry.spec.expect, job.list, sample, now);
+      if (refused) return this.problem(entry, `data.${job.block}: not recorded: ${refused}`, opened);
       // One id per interval: two devices sampling the same interval keep one row.
       await storeOf(deps).add(job.list, sample, { cap: MAX_SAMPLES, id: ledgerRowId(`sample\n${entry.path}\n${job.list}\n${Math.floor(now.getTime() / job.everyMs)}`) });
     } finally {
@@ -1048,7 +1105,11 @@ export class Background {
       wanted: permissionsOf(spec, path),
       records: recordJobs(spec),
       shortcuts,
-      watched: spec.panels.flatMap((ps, i) => (ps.panel.pin || ps.panel.alert !== undefined ? [{ key: `${path}\n${ids[i]}`, ps }] : [])),
+      watched: [
+        ...spec.panels.flatMap((ps, i) => (ps.panel.pin || ps.panel.alert !== undefined ? [{ key: `${path}\n${ids[i]}`, ps }] : [])),
+        // A state rule is watched as an alert is: told, listed in Attention and its then run when a row comes to match.
+        ...Object.entries(spec.expected).flatMap(([id, ps]) => (ps.panel.alert !== undefined ? [{ key: `${path}\nexpect:${id}`, ps }] : [])),
+      ],
       refreshMs: spec.refreshMs ?? DEFAULT_REFRESH_MS,
       stop: () => {},
     };

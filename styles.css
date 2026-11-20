@@ -530,3 +530,6 @@ button.gz-lens-toggle {
   color: var(--text-warning);
   cursor: pointer;
 }
+
+/* expect: a row a value rule refused stays in its form, with why */
+.gizmo .gz-form-error { color: var(--text-error); font-size: var(--font-ui-small); margin-top: var(--size-4-1); }
