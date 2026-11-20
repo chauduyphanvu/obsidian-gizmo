@@ -1,5 +1,6 @@
 import { fillLine, runActions, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activity.ts";
+import { captureTargets, parseLine, type CaptureIndex, type Parsed } from "./capture.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type Row } from "./data.ts";
@@ -350,6 +351,29 @@ export class Background {
   }
 
   // ---- Shortcuts ----------------------------------------------------------------------------
+
+  /** The names a capture line can start with, from every app's shortcuts. */
+  captureIndex(): CaptureIndex {
+    return captureTargets(this.apps.values());
+  }
+
+  /** What a capture line would run and, worked out by a dry run, what that would change and tell. */
+  async previewLine(line: string): Promise<{ parsed: Parsed; effects?: string[] }> {
+    const parsed = parseLine(line, this.captureIndex(), this.env.now());
+    if (!parsed.ok) return { parsed };
+    return { parsed, effects: dryLines(await this.dryRun(parsed.target.path, parsed.target.shortcut, parsed.params)) };
+  }
+
+  /**
+   * Runs a capture line (`spend 14.5 food lunch`): the shortcut it names, with the values it types,
+   * as that shortcut's command would with a link's values. A line that can't be read runs nothing
+   * and says why only in its result, for the place it was typed to show.
+   */
+  async capture(line: string, actor: Actor = "shortcut"): Promise<ShortcutResult & { parsed: Parsed }> {
+    const parsed = parseLine(line, this.captureIndex(), this.env.now());
+    if (!parsed.ok) return { ok: false, error: parsed.error, parsed };
+    return { ...(await this.runShortcut(parsed.target.path, parsed.target.shortcut, actor, parsed.params)), parsed };
+  }
 
   /** Runs the command `<app path>:<shortcut>`. */
   runCommand(id: string): Promise<ShortcutResult> {
