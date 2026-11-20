@@ -63,6 +63,21 @@ panels:
 ---
 `;
 
+// Two apps due a few minutes from now: Vitamins gets its row in time, Pills doesn't.
+const due = new Date(Date.now() + 150_000);
+const by = `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`;
+const rhythmApp = (name) => `---
+app: ${name}
+panels:
+  - view: button
+    label: Took
+    save: doses
+    shortcut: took
+expect:
+  - {id: daily, every: day, by: "${by}", source: doses, say: "nothing by ${by}"}
+---
+`;
+
 const home = join(work, "home");
 const env = { ...process.env, NODE_EXTRA_CA_CERTS: join(work, "cert.pem"), GIZMOD_HOME: home, GIZMOD_PORT: String(gizmodPort), GIZMOD_NTFY_URL: `${stubUrl}/ntfy`, GIZMOD_MAC_NOTICES: "0" };
 const cli = (...args) => {
@@ -95,12 +110,16 @@ try {
   a = await launch({ repo, dir: join(work, "a"), port, fill: (vault) => {
     cpSync(join(repo, "test/vault"), vault, { recursive: true });
     writeFileSync(join(vault, "Apps/Pulse.md"), PULSE);
+    writeFileSync(join(vault, "Apps/Pills.md"), rhythmApp("Pills"));
+    writeFileSync(join(vault, "Apps/Vitamins.md"), rhythmApp("Vitamins"));
   } });
   const vault = a.vault;
   const ta = await tools(a.page, join(work, "shots"), "obsidian", results);
   const keys = await ta.run(`
     await na.open("Apps/Pulse");
     await na.open("Apps/Errands");
+    await na.open("Apps/Pills");
+    await na.open("Apps/Vitamins");
     const pack = na.plugin().background.captureIndex().names.get("pack");
     await na.open(pack.path.replace(/\\.md$/, ""));
     const link = na.plugin().linkKey("Apps/Errands.md", "add", true);
@@ -149,6 +168,18 @@ try {
     expect(run.code === 0 && get.out.value === 5 && doIt.code === 0 && none.status === 401 && keyed.status === 200 && wrong.status === 403 && captured.status === 200,
       { run, get, doIt, none, keyed, wrong, captured });
     return `get Pulse: ${get.out.shown}; no key ${none.status}, link key ${keyed.status}, wrong key ${wrong.status}, capture key ${captured.status}`;
+  });
+
+  await check("gizmod: a rhythm missed by its deadline is pushed; one whose row came in time isn't", async () => {
+    const took = cli("run", "Vitamins", "took");
+    const wait = due.getTime() + 90_000 - Date.now();
+    const pushed = await until(() => pushes.find((p) => p.body.startsWith("Pills")), Math.max(wait, 1000));
+    // The miss is a row in Pills' data: in gizmod's log at once, in the note at its next snapshot (5 s).
+    const note = () => (existsSync(join(vault, "Apps/Pills data.md")) ? readFileSync(join(vault, "Apps/Pills data.md"), "utf8") : "");
+    const missed = (await until(() => note().includes("expect_missed") && note(), 15000)) || note();
+    const vitamins = pushes.filter((p) => p.body.startsWith("Vitamins"));
+    expect(took.code === 0 && pushed?.body === `Pills: nothing by ${by}` && vitamins.length === 0 && missed.includes("expect_missed"), { took, pushes, missed, log: log.slice(-800) });
+    return `pushed “${pushed.body}”; Vitamins quiet`;
   });
 
   b = await launch({ repo, dir: join(work, "b"), port: port + 1, vault });
