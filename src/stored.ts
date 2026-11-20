@@ -1,3 +1,4 @@
+import { shortcutId } from "./links.ts";
 import type { AppliedPolicy } from "./policy.ts";
 
 /** Gizmo's settings as kept in the plugin's data.json, shared by every device a sync reaches. */
@@ -62,4 +63,22 @@ export function mergeSettings(base: StoredData, disk: StoredData, local: StoredD
     if (v !== undefined) out[key] = v;
   }
   return { ...out, grants: (out.grants as StoredData["grants"] | undefined) ?? {} } as StoredData;
+}
+
+/** The key a shortcut's copied link carries; undefined when none was made. */
+export function linkKeyOf(stored: Pick<StoredData, "linkKeys">, path: string, shortcut: string): string | undefined {
+  const keys = stored.linkKeys;
+  const id = shortcutId(path, shortcut);
+  return keys && Object.hasOwn(keys, id) ? keys[id] : undefined;
+}
+
+/** The apps (`scheme://host`) a shortcut's keyed link may send word back to without asking. */
+export function destinationsOf(stored: Pick<StoredData, "answerTo">, path: string, shortcut: string): string[] {
+  return stored.answerTo?.[shortcutId(path, shortcut)] ?? [];
+}
+
+/** What a capture link's key may run without asking: name → shortcut id; undefined for a key Gizmo never made. */
+export function captureNamesOf(stored: Pick<StoredData, "captureKeys">, key: string): Record<string, string> | undefined {
+  const keys = stored.captureKeys;
+  return keys && Object.hasOwn(keys, key) ? keys[key] : undefined;
 }

@@ -21,6 +21,7 @@ import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
 import { Background, dryLines, type ShortcutResult } from "../background.ts";
 import { parseLine } from "../capture.ts";
+import { captureCovers } from "../links.ts";
 import { gizmodEnv } from "./host.ts";
 
 const run = promisify(execFile);
@@ -198,7 +199,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
         if (!parsed.ok) return reply(422, { ok: false, error: parsed.error });
         const { name, path, shortcut } = parsed.target;
         // A key runs only the names it was made for, and only while each still reaches the same shortcut.
-        if (!Object.hasOwn(names, name) || names[name] !== `${path}#${shortcut}`) throw new HttpError(403, `that key doesn't cover “${name}”`);
+        if (!captureCovers(names, parsed.target)) throw new HttpError(403, `that key doesn't cover “${name}”`);
         const r = await bg.runFrom(path, shortcut, { params: parsed.params, captureKeyed: true });
         return reply(statusOf(r), { ok: r.ok, error: r.error, entryId: r.entryId });
       }

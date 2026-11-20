@@ -7,7 +7,9 @@ import { dropKeys } from "./identity.ts";
 import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
+import { shortcutId } from "./links.ts";
 import { DeviceBeat } from "./settings.ts";
+import { captureNamesOf, destinationsOf } from "./stored.ts";
 import { openInstall } from "./share-command.ts";
 import { isApp, notePath, storeTarget } from "./store.ts";
 
@@ -56,10 +58,10 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     dropped: (path) => { if (dropKeys(plugin.store, path)) void plugin.saveSettings(); },
     otherTriggers: async () => (await pluginFolder(plugin, "triggers")).filter((f) => f.name !== plugin.device.id).map((f) => f.text),
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
-    captureKey: (key) => (plugin.store.captureKeys && Object.hasOwn(plugin.store.captureKeys, key) ? plugin.store.captureKeys[key] : undefined),
-    destinations: (path, shortcut) => plugin.store.answerTo?.[`${path}#${shortcut}`] ?? [],
+    captureKey: (key) => captureNamesOf(plugin.store, key),
+    destinations: (path, shortcut) => destinationsOf(plugin.store, path, shortcut),
     allowDestination(path, shortcut, to) {
-      const id = `${path}#${shortcut}`;
+      const id = shortcutId(path, shortcut);
       const all = (plugin.store.answerTo ??= {});
       all[id] = [...new Set([...(all[id] ?? []), to])];
       void plugin.saveSettings();

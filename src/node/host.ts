@@ -19,17 +19,12 @@ import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../responses.ts";
 import { isApp, notePath, storeTarget } from "../store.ts";
+import { captureNamesOf, destinationsOf, linkKeyOf, type StoredData } from "../stored.ts";
 import { NodeVault, yamlText } from "./vault.ts";
 import { vaultWrites } from "../vault-ops.ts";
 
 /** Gizmo's settings as Obsidian keeps them in data.json; gizmod only reads them. */
-export interface Settings {
-  grants: Record<string, string[]>;
-  linkKeys?: Record<string, string>;
-  answerTo?: Record<string, string[]>;
-  captureKeys?: Record<string, Record<string, string>>;
-  policy?: AppliedPolicy;
-}
+export type Settings = Pick<StoredData, "grants" | "linkKeys" | "answerTo" | "captureKeys" | "policy">;
 
 /** Node's fs as the history's folder adapter. */
 export const fsAdapter: FolderAdapter = {
@@ -277,12 +272,9 @@ export function gizmodEnv(opts: GizmodOptions) {
       return out;
     },
     // gizmod uses the keys Obsidian made; it never makes one.
-    linkKey: (path, shortcut) => store().linkKeys?.[`${path}#${shortcut}`],
-    captureKey: (key) => {
-      const keys = store().captureKeys;
-      return keys && Object.hasOwn(keys, key) ? keys[key] : undefined;
-    },
-    destinations: (path, shortcut) => store().answerTo?.[`${path}#${shortcut}`] ?? [],
+    linkKey: (path, shortcut) => linkKeyOf(store(), path, shortcut),
+    captureKey: (key) => captureNamesOf(store(), key),
+    destinations: (path, shortcut) => destinationsOf(store(), path, shortcut),
     allowDestination: () => {},
     logSent: (entry: NewEntry) => void activity.add(entry),
     runsBackground: () => beat.isRunner(),

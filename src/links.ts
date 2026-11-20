@@ -93,6 +93,21 @@ export function readLink(params: Record<string, string>): { app: string; shortcu
   return { app: params.app ?? "", shortcut: params.do ?? "", key: params.key, fields };
 }
 
+/** A shortcut's id across the vault, as data.json's keys and a `then` chain name it: `<app path>#<shortcut>`. */
+export function shortcutId(path: string, shortcut: string): string {
+  return `${path}#${shortcut}`;
+}
+
+/** The app note a shortcut id names. */
+export function appOfShortcut(id: string): string {
+  return id.slice(0, id.lastIndexOf("#"));
+}
+
+/** Whether a capture key's names (name → shortcut id) cover this name, while it still reaches the shortcut it was made for. */
+export function captureCovers(names: Record<string, string> | undefined, target: { name: string; path: string; shortcut: string }): boolean {
+  return !!names && Object.hasOwn(names, target.name) && names[target.name] === shortcutId(target.path, target.shortcut);
+}
+
 /**
  * A new key for a shortcut's link: 16 random bytes as URL-safe text. Any web page, email or chat
  * message can send an obsidian:// link; only a link copied in Obsidian carries the key, and only

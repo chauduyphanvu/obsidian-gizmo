@@ -25,7 +25,7 @@ import type { LensIndex } from "./lenses.ts";
 import { registerCaptureCommand } from "./capture-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
-import { newLinkKey } from "./links.ts";
+import { newLinkKey, shortcutId } from "./links.ts";
 import { DeviceBeat, GizmoSettings, adoptOldLog, devicesSeen, otherLogs } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
 import { permissionsOf } from "./permissions.ts";
@@ -340,7 +340,7 @@ export default class GizmoPlugin extends Plugin {
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined {
     const keys = (this.store.linkKeys ??= {});
-    const id = `${path}#${shortcut}`;
+    const id = shortcutId(path, shortcut);
     if (!Object.hasOwn(keys, id) && create) {
       keys[id] = newLinkKey();
       void this.saveSettings();
@@ -374,9 +374,9 @@ export default class GizmoPlugin extends Plugin {
 
   /** A new key for a shortcut's link: links copied before it ask before they run, and send word back nowhere until allowed again. */
   async resetLinkKey(path: string, shortcut: string): Promise<void> {
-    (this.store.linkKeys ??= {})[`${path}#${shortcut}`] = newLinkKey();
+    (this.store.linkKeys ??= {})[shortcutId(path, shortcut)] = newLinkKey();
     // Where the old key's link was allowed to send word back goes with it.
-    delete this.store.answerTo?.[`${path}#${shortcut}`];
+    delete this.store.answerTo?.[shortcutId(path, shortcut)];
     await this.saveSettings();
   }
 
@@ -386,7 +386,7 @@ export default class GizmoPlugin extends Plugin {
    */
   async newCaptureKey(targets: { name: string; path: string; shortcut: string }[]): Promise<string> {
     const key = newLinkKey();
-    (this.store.captureKeys ??= {})[key] = Object.fromEntries(targets.map((t) => [t.name, `${t.path}#${t.shortcut}`]));
+    (this.store.captureKeys ??= {})[key] = Object.fromEntries(targets.map((t) => [t.name, shortcutId(t.path, t.shortcut)]));
     await this.saveSettings();
     this.grantsChanged();
     return key;

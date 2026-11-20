@@ -15,7 +15,8 @@ import { stableJson } from "./hash.ts";
 import { PENDING_MS, RENAME_MS, fingerprint } from "./identity.ts";
 import type { NoteReader } from "./expand.ts";
 import {
-  answerParams, appsNamed, formRow, pickItem, readCallbacks, readLink, shortcutLink, withParams, type Callbacks, type ShortcutLink,
+  answerParams, appOfShortcut, appsNamed, captureCovers, formRow, pickItem, readCallbacks, readLink, shortcutId, shortcutLink, withParams,
+  type Callbacks, type ShortcutLink,
 } from "./links.ts";
 import { thisValues } from "./sources/this.ts";
 import {
@@ -573,9 +574,9 @@ export class Background {
     const parsed = parseLine(line, this.captureIndex(), this.env.now());
     if (!parsed.ok) return this.say(`A capture link couldn't run “${line}”: ${parsed.error}`);
     const granted = params.key !== undefined ? this.env.captureKey(params.key) : undefined;
-    const { name, path, shortcut } = parsed.target;
+    const { path, shortcut } = parsed.target;
     // A name that now reaches another shortcut than the one it was copied for asks again.
-    const captureKeyed = !!granted && Object.hasOwn(granted, name) && granted[name] === `${path}#${shortcut}`;
+    const captureKeyed = captureCovers(granted, parsed.target);
     await this.runShortcut(path, shortcut, "link", parsed.params, undefined, { callbacks, captureKeyed });
   }
 
@@ -702,7 +703,7 @@ export class Background {
       allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`, effects);
       if (!allowed) return { ok: false, error: "the link wasn't allowed to run" };
     }
-    const trail = chain ?? [`${entry.path}#${shortcut}`];
+    const trail = chain ?? [shortcutId(entry.path, shortcut)];
     // Said before what its `then` runs says, in the order they happen.
     let told = false;
     const done = () => {
@@ -831,7 +832,7 @@ export class Background {
     entry: AppEntry, p: Panel, shortcut: string, link: LinkCall | undefined, lines: string[], title: string, effects?: () => Promise<string[]>,
   ): Promise<"keyed" | "asked" | false> {
     const label = labelOf(p, shortcut);
-    const rateKey = `link\n${entry.path}#${shortcut}`;
+    const rateKey = `link\n${shortcutId(entry.path, shortcut)}`;
     const recent = () => (this.runs.get(rateKey) ?? []).filter((t) => this.env.now().getTime() - t < 3_600_000);
     if (recent().length >= MAX_RUNS_PER_HOUR) {
       this.runs.set(rateKey, recent());
@@ -890,8 +891,8 @@ export class Background {
       if (!path) return say(`${from.name}: no app called “${name}” to run “${then.do}” in`);
       const target = this.apps.get(path) ?? (this.running ? this.index(path) : undefined);
       if (!target) return say(`${from.name}: “${name}” isn't an app, so it can't run “${then.do}”`);
-      const key = `${target.path}#${then.do}`;
-      const names = (keys: string[]) => keys.map((k) => basename(k.slice(0, k.lastIndexOf("#")))).join(" → ");
+      const key = shortcutId(target.path, then.do);
+      const names = (keys: string[]) => keys.map((k) => basename(appOfShortcut(k))).join(" → ");
       if (chain.includes(key)) return say(`${from.name}: stopped a loop: ${names([...chain, key])}`);
       if (chain.length >= MAX_CHAIN) return say(`${from.name}: stopped after ${MAX_CHAIN} apps in a row: ${names([...chain, key])}`);
       if (!dry) {
