@@ -109,8 +109,8 @@ export interface InstallTarget {
   existing(name: string): string[];
   notes: NoteReader;
   parse(yaml: string): unknown;
-  /** What the applied data policy says of the app at `path`; undefined with no policy. */
-  judge?(spec: AppSpec, path: string): Verdict | undefined;
+  /** What the applied data policy says of the app at `path`, its links read as `notes` reads them; undefined with no policy. */
+  judge?(spec: AppSpec, path: string, notes: NoteReader): Verdict | undefined;
 }
 
 /** What installing shared notes would do, for a person to read before saying yes. */
@@ -151,7 +151,7 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
   const component = fm.app === undefined;
   const preview = component ? readComponentPreview(fm, { path: self, notes: reader }) : undefined;
   const result = preview?.result ?? readSpec(fm, { path: self, notes: reader }) ?? { errors: [], empty: true };
-  const verdict = result.spec && !component ? target.judge?.(result.spec, self) : undefined;
+  const verdict = result.spec && !component ? target.judge?.(result.spec, self, reader) : undefined;
   const asks = result.spec ? (verdict?.asked ?? permissionsOf(result.spec, self)).map(describePermission) : [];
   const extras = notes.slice(1).flatMap((n) => {
     const other = fms.get(pathOf(n.name));

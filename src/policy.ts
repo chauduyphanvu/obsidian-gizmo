@@ -8,9 +8,6 @@ import { isPlainObject } from "./keys.ts";
 export type Label = "public" | "personal" | "private" | "secret";
 export const LABELS: readonly Label[] = ["public", "personal", "private", "secret"];
 
-/** A place cleared for nothing: no label goes there. */
-export const NOTHING = -1;
-
 export function rank(label: Label): number {
   return LABELS.indexOf(label);
 }
@@ -26,11 +23,6 @@ export const POLICY_PATH = "Gizmo policy.md";
 /** Whether a path is the policy note, which apps never write. */
 export function isPolicyPath(path: string): boolean {
   return path.toLowerCase() === POLICY_PATH.toLowerCase();
-}
-
-/** Why an app can't write a note, as the end of a sentence; undefined when it may. */
-export function policyReason(path: string): string | undefined {
-  return isPolicyPath(path) ? "which is your Gizmo policy; change it by hand" : undefined;
 }
 
 /**
@@ -155,7 +147,10 @@ export interface AppliedPolicy {
 
 /** A policy's fingerprint: equal for equal rules, whatever their order in the note's text. */
 export function policyHash(policy: Policy): string {
-  return fnv1a(stableJson(policy)).toString(36);
+  // Labels join and releases add up, so neither's order in the note means anything.
+  const labels = [...policy.labels].sort((a, b) => a.key.localeCompare(b.key));
+  const release = [...policy.release].map((r) => ({ ...r, to: [...r.to].sort() })).sort((a, b) => a.app.localeCompare(b.app) || a.panel.localeCompare(b.panel));
+  return fnv1a(stableJson({ ...policy, labels, release })).toString(36);
 }
 
 /** A glob as a pattern over a path: `**` any depth, `*` within one folder. */

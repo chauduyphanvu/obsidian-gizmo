@@ -3,13 +3,13 @@ import {
   fromBundle, fromFetched, previewInstall, sharedUrl, thenTargets, toBundle, type BundleNote, type InstallPreview,
 } from "./bundle.ts";
 import { existingNotes, installNotes } from "./gallery-command.ts";
-import { copyText, vaultNotes, vaultStorePath } from "./host.ts";
+import { copyText, vaultNotes } from "./host.ts";
 import { permissionsOf } from "./permissions.ts";
 import { planCopy } from "./gallery.ts";
 import type GizmoPlugin from "./main.ts";
 import { tryBundle } from "./try-modal.ts";
 import { readComponentPreview, readSpec } from "./spec.ts";
-import { basename, dataPathOf, isApp, isComponent, storeTarget } from "./store.ts";
+import { basename, dataPathOf, isApp, isComponent, notePath, storeTarget } from "./store.ts";
 
 /**
  * The notes sharing an app takes along: the note itself, every component it reads at any depth,
@@ -156,9 +156,11 @@ class InstallModal extends Modal {
       existing: (name) => existing[name] ?? [],
       notes: vaultNotes(this.app),
       parse: parseYaml,
-      judge: (spec, path) => this.plugin.verdict(spec, permissionsOf(spec, path), {
-        appPath: path, dataPath: dataPathOf(spec.store, path, vaultStorePath(this.app)), hostPath: path,
-      }),
+      judge: (spec, path, notes) => {
+        // The shared notes resolve as they will once installed: a store or a then target among them counts.
+        const storePath = (store: string, from: string) => notes.resolve(storeTarget(store), from) ?? notePath(storeTarget(store));
+        return this.plugin.verdict(spec, permissionsOf(spec, path), { appPath: path, dataPath: dataPathOf(spec.store, path, storePath), hostPath: path }, undefined, notes, storePath);
+      },
     });
     if ("error" in preview) return this.say(cap(preview.error), "gz-error-text");
     this.show(preview);

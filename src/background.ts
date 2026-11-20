@@ -274,7 +274,7 @@ export class Background {
         description: e.spec.description,
         dataPath: e.dataPath,
         wanted: e.wanted,
-        verdict: e.verdict,
+        verdict: this.verdictNow(e),
         askers: askersOf(e.spec, e.path),
         shortcuts: [...e.shortcuts].map(([id, ps]) => ({
           id, label: labelOf(ps.panel, id), view: ps.panel.view,
@@ -328,8 +328,19 @@ export class Background {
   }
 
   private granted(entry: AppEntry): boolean {
-    if (entry.verdict?.violations.length) return false;
-    return this.env.isGranted(entry.path, entry.wanted, entry.verdict?.asked);
+    const verdict = this.verdictNow(entry);
+    if (verdict?.violations.length) return false;
+    return this.env.isGranted(entry.path, entry.wanted, verdict?.asked);
+  }
+
+  /**
+   * What the policy says of an app now. Worked out each time it's asked: a label can change with a
+   * note the app's keys don't name (a tag on its data note, a note moved into a labelled folder).
+   */
+  private verdictNow(entry: AppEntry): Verdict | undefined {
+    const policy = this.env.policy?.();
+    entry.verdict = policy ? this.verdictOf(policy.rules, entry.spec, entry.wanted, entry.path, entry.dataPath) : undefined;
+    return entry.verdict;
   }
 
   private verdictOf(policy: Policy, spec: AppSpec, wanted: string[], path: string, dataPath: string): Verdict {
@@ -987,8 +998,6 @@ export class Background {
       refreshMs: spec.refreshMs ?? DEFAULT_REFRESH_MS,
       stop: () => {},
     };
-    const policy = this.env.policy?.();
-    if (policy) entry.verdict = this.verdictOf(policy.rules, spec, entry.wanted, path, dataPath);
     const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
     const files = { appPath: path, dataPath: entry.dataPath, split: entry.split?.() };
     const start = this.valuesOf(path, spec, this.env.now());

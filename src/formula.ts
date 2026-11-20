@@ -223,23 +223,25 @@ export function computesRowByRow(compute: Record<string, string | number>): bool
   });
 }
 
-/** The row fields a tree reads, by their first name; "*" when `field()` names one only as it runs. */
-function fieldsOf(n: Node, out: Set<string>): Set<string> | "*" {
-  if (n.k === "field") out.add(n.path.split(".")[0]);
-  if (n.k === "call" && n.fn === "field") return "*";
+/** The row fields a tree reads, by their first name, and the `$names` it reads; fields are "*" when `field()` names one only as it runs. */
+function readsOf(n: Node, out: { fields: Set<string> | "*"; vars: Map<string, { name: string; path: string }> }): void {
+  if (n.k === "field" && out.fields !== "*") out.fields.add(n.path.split(".")[0]);
+  if (n.k === "var") out.vars.set(`${n.name}.${n.path}`, { name: n.name, path: n.path });
+  if (n.k === "call" && n.fn === "field") out.fields = "*";
   const kids = n.k === "unary" ? [n.a] : n.k === "binary" ? [n.a, n.b] : n.k === "call" ? n.args : [];
-  for (const k of kids) if (fieldsOf(k, out) === "*") return "*";
-  return out;
+  for (const k of kids) readsOf(k, out);
 }
 
 /**
- * The row fields a formula reads, for working out what its result is made of; "*" when it may read
- * any (`field()` with a name it works out), undefined when it can't be read.
+ * What a formula reads, for working out what its result is made of: the row fields (or "*" when it
+ * may read any, through `field()` with a name it works out) and the `$names` with the path read in
+ * each; undefined when it can't be read.
  */
-export function fieldsRead(text: string): string[] | "*" | undefined {
+export function formulaReads(text: string): { fields: string[] | "*"; vars: { name: string; path: string }[] } | undefined {
   try {
-    const found = fieldsOf(parse(tokenize(text)), new Set());
-    return found === "*" ? "*" : [...found];
+    const out = { fields: new Set<string>() as Set<string> | "*", vars: new Map<string, { name: string; path: string }>() };
+    readsOf(parse(tokenize(text)), out);
+    return { fields: out.fields === "*" ? "*" : [...out.fields], vars: [...out.vars.values()] };
   } catch {
     return undefined;
   }

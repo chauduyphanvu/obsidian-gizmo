@@ -15,6 +15,7 @@ import { obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes,
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
 import type { AppSpec } from "./spec.ts";
+import type { NoteReader } from "./expand.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import type { LensIndex } from "./lenses.ts";
@@ -91,11 +92,13 @@ export default class GizmoPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.dataLayer.fileDeleted(file.path);
+      if (isPolicyPath(file.path)) this.grantsChanged();
       const dropped = [this.store.grants, this.store.linkKeys ?? {}, this.store.answerTo ?? {}].map((m: Record<string, unknown>) => dropGrants(m, file.path));
       if (dropped.some(Boolean)) void this.saveData(this.store);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.dataLayer.fileRenamed(file.path, oldPath);
+      if (isPolicyPath(file.path) || isPolicyPath(oldPath)) this.grantsChanged();
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
       const moved = [this.store.grants, this.store.linkKeys ?? {}, this.store.answerTo ?? {}].map((m: Record<string, unknown>) => moveGrants(m, oldPath, file.path));
       if (moved.some(Boolean)) void this.saveData(this.store);
@@ -247,10 +250,12 @@ export default class GizmoPlugin extends Plugin {
   }
 
   /** What the applied data policy says of an app running here; undefined with no policy applied. */
-  verdict(spec: AppSpec, wanted: string[], where: FlowWhere, policy: Policy | undefined = this.store.policy?.rules): Verdict | undefined {
+  verdict(
+    spec: AppSpec, wanted: string[], where: FlowWhere, policy: Policy | undefined = this.store.policy?.rules,
+    notes: NoteReader = vaultNotes(this.app), storePath: (store: string, from: string) => string = vaultStorePath(this.app),
+  ): Verdict | undefined {
     if (!policy) return undefined;
-    const ctx = flowContext(policy, where, vaultNotes(this.app), vaultStorePath(this.app), (p) => this.dataLayer.host.tags(p));
-    return checkFlows(spec, wanted, ctx);
+    return checkFlows(spec, wanted, flowContext(policy, where, notes, storePath, (p) => this.dataLayer.host.tags(p)));
   }
 
   /** The policy note as it reads now: no note, its errors, or its rules with their fingerprint. */

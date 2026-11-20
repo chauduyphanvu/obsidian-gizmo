@@ -181,3 +181,35 @@ test("the map shows an app the policy blocks, and which of its asks the policy g
   assert.equal(weather.state, "allowed");
   assert.deepEqual(weather.asks.map((a) => [a.perm, a.covered ?? false, a.isNew]), [["net:api.open-meteo.com", true, false]]);
 });
+
+test("the background checks an app against the policy each time it acts, so a tag added to its data note stops it", async () => {
+  const policy = readPolicy({ labels: { "#health": "private" } }).policy!;
+  const t = fakeBackground({
+    "Apps/Doses.md": { fm: { app: "d", view: "number", title: "Doses", source: "doses", agg: "count", pin: "status" } },
+    "Apps/Doses data.md": { fm: { doses: [{ at: "2026-11-18T09:00" }] } },
+  }, {}, { policy });
+  await t.bg.start();
+  await settle();
+  assert.deepEqual(t.out.status.map((s) => s.text), ["Doses: 1"]);
+  t.f.files.get("Apps/Doses data.md")!.tags = ["#health"];
+  t.changed("Apps/Doses data.md");
+  t.advance(11 * 60_000);
+  await t.bg.tick();
+  await settle();
+  assert.deepEqual(t.out.status, []);
+});
+
+test("the install preview reads a then target shipped in the same share as it will be once installed", () => {
+  const policy = readPolicy({ labels: { "Health/**": "private" } }).policy!;
+  const watch = "---\napp: w\nview: number\ntitle: Due\nsource: notes\nfrom: Health\nalert: {due: past}\nthen: {app: \"[[Med log]]\", do: log, fill: {med: \"{med}\"}}\n---\n";
+  const log = "---\napp: m\nview: form\nfields: {med: text}\nsave: doses\nshortcut: log\nnotify: Logged {med}\n---\n";
+  const p = previewInstall([{ name: "Watch", text: watch }, { name: "Med log", text: log }], {
+    folder: "Apps", existing: () => [], parse: parseYaml,
+    notes: { resolve: () => undefined, frontmatter: () => undefined },
+    judge: (spec, path, notes) => checkFlows(spec, permissionsOf(spec, path), flowContext(policy, {
+      appPath: path, dataPath: dataPathOf(spec.store, path, (s) => `${s}.md`), hostPath: path,
+    }, notes, (s) => `${s}.md`, () => [])),
+  });
+  assert.ok(!("error" in p));
+  assert.ok(p.policy?.violations.includes("Due: notes in Health: med (private) → Med log (through then) (personal)"), JSON.stringify(p.policy));
+});

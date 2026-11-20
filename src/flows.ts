@@ -1,6 +1,6 @@
 import { namesInTemplate } from "./data.ts";
 import { selectOf, typedName } from "./expand.ts";
-import { fieldsRead } from "./formula.ts";
+import { formulaReads } from "./formula.ts";
 import { isPlainObject } from "./keys.ts";
 import {
   clearance, fieldLabel, hostLabel, join, noteLabels, rank, released, scopeLabels, topLabel, vaultLabels,
@@ -8,7 +8,7 @@ import {
 } from "./policy.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { urlHost } from "./sources/url.ts";
-import { saveTarget, type AppSpec, type Panel } from "./spec.ts";
+import { readSpec, saveTarget, type AppSpec, type Panel } from "./spec.ts";
 import type { NoteReader } from "./expand.ts";
 import { basename, dataPathOf, notePath, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
@@ -24,8 +24,15 @@ export interface FlowContext {
   /** A lens's `for` scope: `$this` is any note there. */
   lensScope?: string;
   tags(path: string): string[];
-  /** The data note of the app a `then` names, as its link resolves from this app; undefined when there's none. */
-  thenData(app: string): string | undefined;
+  /** The app a `then` names, as its link resolves from `from`: its note, data note and keys; undefined when there's none. */
+  thenTarget(app: string, from: string): ThenTarget | undefined;
+}
+
+/** An app another one runs a shortcut of with `then`. */
+export interface ThenTarget {
+  path: string;
+  dataPath: string;
+  spec: AppSpec;
 }
 
 /** Data going somewhere its label may not go: what it is and its label, where to and what that place is cleared for. */
@@ -59,15 +66,15 @@ export interface FlowWhere {
 export function flowContext(
   policy: Policy, where: FlowWhere, notes: NoteReader, storePath: (store: string, from: string) => string, tags: (path: string) => string[],
 ): FlowContext {
-  return { policy, ...where, tags, thenData: (app) => thenDataPath(notes, storePath, app, where.appPath) };
+  return { policy, ...where, tags, thenTarget: (app, from) => thenTargetOf(notes, storePath, app, from) };
 }
 
-/** The data note of the app a `then` names, as its link resolves from `from`; undefined when there's no such note. */
-export function thenDataPath(notes: NoteReader, storePath: (store: string, from: string) => string, app: string, from: string): string | undefined {
+/** The app a `then` names, as its link resolves from `from`; undefined when there's no such app. */
+export function thenTargetOf(notes: NoteReader, storePath: (store: string, from: string) => string, app: string, from: string): ThenTarget | undefined {
   const path = notes.resolve(storeTarget(app), from);
-  if (!path) return undefined;
-  const store = notes.frontmatter(path)?.store;
-  return dataPathOf(typeof store === "string" ? store : undefined, path, storePath);
+  const spec = path ? readSpec(notes.frontmatter(path), { notes, path })?.spec : undefined;
+  if (!path || !spec) return undefined;
+  return { path, dataPath: dataPathOf(spec.store, path, storePath), spec };
 }
 
 /** A violation as one line: `Medication log data.med (private) → a notice (personal)`. */
@@ -77,6 +84,18 @@ export function violationText(v: Violation): string {
 
 /** Names a template fills that come from the time, or from the note a save just made. */
 const STAMPS = new Set(["date", "time", "at", "path"]);
+
+/** How many apps deep a `then` is followed: A runs B, which runs C. */
+const THEN_DEPTH = 3;
+
+/** The `$name` references in a key's value as written, however deep. */
+function refsIn(v: unknown, out: InputRef[] = []): InputRef[] {
+  if (v instanceof InputRef) out.push(v);
+  else if (v instanceof InputText) v.parts.forEach((p) => refsIn(p, out));
+  else if (Array.isArray(v)) v.forEach((x) => refsIn(x, out));
+  else if (isPlainObject(v) && !(v instanceof Date)) Object.values(v).forEach((x) => refsIn(x, out));
+  return out;
+}
 
 /** A place data goes, with how it's named in a violation. */
 const PLACES: Record<string, string> = { notify: "a notice", pin: "the status bar", answer: "a link's answer", images: "image cells", gizmod: "gizmod's answers" };
@@ -133,6 +152,23 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     }
   };
 
+  const typed = new Set(spec.inputs.filter((d) => d.kind === "text").map((d) => d.name));
+  const selected = new Map<string, Labels>();
+
+  /** What a `$name` reference reads, as a label, how a violation names it, and the send permission it is part of. */
+  const refOf = (v: { input: string; path: string }): { label: Label; what: string; perm: string } | undefined => {
+    const path = v.path ? `.${v.path}` : "";
+    const field = v.path?.split(".")[0] ?? "";
+    if (v.input === THIS) {
+      return { label: field ? fieldLabel(thisLabels, field) : topLabel(thisLabels), what: `${ctx.lensScope ? `notes in ${ctx.lensScope}` : basename(ctx.hostPath)}${path}`, perm: `this${path}` };
+    }
+    const picked = selected.get(v.input);
+    if (picked) return { label: field ? fieldLabel(picked, field) : topLabel(picked), what: `the picked ${typedName(v.input)}${path}`, perm: `picked.${typedName(v.input)}${path}` };
+    if (typed.has(v.input)) return { label: policy.typed, what: `what you type in ${v.input}`, perm: `typed.${v.input}` };
+    return undefined;
+  };
+  const refsLabel = (v: unknown): Label => refsIn(v).map((r) => refOf(r)?.label ?? "public").reduce(join, "public");
+
   /** A panel's rows as labels: its source's, through the stages of the blocks above it and its own keys. */
   const rowLabels = (p: Panel): Labels => {
     let l = sourceLabels(p);
@@ -140,8 +176,11 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
       if (stage.compute) {
         const fields = { ...l.fields };
         for (const [name, text] of Object.entries(stage.compute)) {
-          const read = fieldsRead(String(text));
-          fields[name] = read === undefined || read === "*" ? topLabel(l) : read.map((f) => fieldLabel(l, f)).reduce(join, "public");
+          const read = formulaReads(String(text));
+          const fromRows = !read || read.fields === "*" ? topLabel(l) : read.fields.map((f) => fieldLabel(l, f)).reduce(join, "public");
+          // A formula may read a note's property or a picked row as well as its own row.
+          const fromVars = (read?.vars ?? []).map((v) => refOf({ input: v.name, path: v.path })?.label ?? "public").reduce(join, "public");
+          fields[name] = join(fromRows, fromVars);
         }
         l = { base: l.base, fields };
       }
@@ -154,10 +193,12 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   /** The one value a panel shows (a number, a progress bar): its field's label, or the rows' as a count. */
   const valueLabel = (p: Panel, l: Labels): Label => (p.field ? fieldLabel(l, p.field) : l.base);
 
-  const selected = new Map<string, Labels>();
-  for (const ps of spec.panels) {
-    const name = selectOf(ps.template);
-    if (name !== undefined && spec.selections.includes(name)) selected.set(name, rowLabels(ps.panel));
+  // Twice, so a selection whose formulas read another selection gets that one's labels.
+  for (let pass = 0; pass < 2; pass++) {
+    for (const ps of spec.panels) {
+      const name = selectOf(ps.template);
+      if (name !== undefined && spec.selections.includes(name)) selected.set(name, rowLabels(ps.panel));
+    }
   }
 
   const check = (panel: string, what: string, label: Label, place: string, cleared: Label | undefined) => {
@@ -178,58 +219,40 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     const nameLabel = (name: string): Label => {
       if (STAMPS.has(name)) return "public";
       if (formFields.has(name)) return policy.typed;
-      if (name === "value") return valueLabel(p, rows);
+      // `{value}` is a number's value, or a row's field of that name: either way, the higher label.
+      if (name === "value") return join(valueLabel(p, rows), p.source ? fieldLabel(rows, name) : "public");
       return p.source ? fieldLabel(rows, name) : "public";
     };
+    /** What a key fills from its `{fields}`, and from the `$references` written in it. */
+    const keyLabel = (key: string, text: string | undefined): Label => join(text ? namesInTemplate(text).map(nameLabel).reduce(join, "public") : "public", refsLabel(ps.template[key]));
     const templateLabel = (text: string | undefined): Label => (text ? namesInTemplate(text).map(nameLabel).reduce(join, "public") : "public");
-    const fieldsWhat = (text: string) => {
+    const fieldsWhat = (text: string, key?: string) => {
       const names = namesInTemplate(text).filter((n) => !STAMPS.has(n) && !formFields.has(n));
-      return names.length ? `${from}: ${names.join(", ")}` : from;
+      const refs = key ? refsIn(ps.template[key]).flatMap((r) => { const o = refOf(r); return o && o.label !== "public" ? [o.what] : []; }) : [];
+      return [...(names.length ? [`${from}: ${names.join(", ")}`] : []), ...refs].join(", ") || from;
     };
 
     // A request: what it carries from a note, a picked row or a text input, to its website.
     if (p.source && sourceDef(p.source).id === "url") {
       const host = urlHost(p.source);
-      const typed = new Set(spec.inputs.filter((d) => d.kind === "text").map((d) => d.name));
-      const walk = (v: unknown): void => {
-        if (v instanceof InputRef) {
-          const path = v.path ? `.${v.path}` : "";
-          const field = v.path?.split(".")[0] ?? "";
-          let label: Label | undefined;
-          let what = "";
-          let perm = "";
-          if (v.input === THIS) {
-            label = field ? fieldLabel(thisLabels, field) : topLabel(thisLabels);
-            what = `${ctx.lensScope ? `notes in ${ctx.lensScope}` : basename(ctx.hostPath)}${path}`;
-            perm = `this${path}`;
-          } else if (selected.has(v.input)) {
-            const picked = selected.get(v.input)!;
-            label = field ? fieldLabel(picked, field) : topLabel(picked);
-            what = `the picked ${typedName(v.input)}${path}`;
-            perm = `picked.${typedName(v.input)}${path}`;
-          } else if (typed.has(v.input)) {
-            label = policy.typed;
-            what = `what you type in ${v.input}`;
-            perm = `typed.${v.input}`;
-          }
-          if (!label) return;
-          const send = `send:${host}|${perm}`;
-          const cleared = clearance(policy, host);
+      const cleared = clearance(policy, host);
+      for (const key of ["source", "headers", "body"]) {
+        for (const r of refsIn(ps.template[key])) {
+          const o = refOf(r);
+          if (!o) continue;
+          const send = `send:${host}|${o.perm}`;
           // A website the policy doesn't list may still be allowed by asking, for data no more than personal.
-          const fits = cleared !== undefined ? rank(label) <= rank(cleared) : rank(label) <= rank("personal");
+          const fits = cleared !== undefined ? rank(o.label) <= rank(cleared) : rank(o.label) <= rank("personal");
           if (fits && cleared !== undefined) goodSends.add(send);
           if (!fits) {
             badSends.add(send);
-            check(where, what, label, host, cleared ?? "personal");
+            check(where, o.what, o.label, host, cleared ?? "personal");
           }
-        } else if (v instanceof InputText) v.parts.forEach(walk);
-        else if (Array.isArray(v)) v.forEach(walk);
-        else if (isPlainObject(v) && !(v instanceof Date)) Object.values(v).forEach(walk);
-      };
-      for (const key of ["source", "headers", "body"]) walk(ps.template[key]);
+        }
+      }
     }
 
-    if (p.notify && !released(policy, ctx.appPath, title, "notify")) check(where, fieldsWhat(p.notify), templateLabel(p.notify), "notify", clearance(policy, "notify"));
+    if (p.notify && !released(policy, ctx.appPath, title, "notify")) check(where, fieldsWhat(p.notify, "notify"), keyLabel("notify", p.notify), "notify", clearance(policy, "notify"));
     const value = valueLabel(p, rows);
     const valueWhat = `${from}${p.field ? `.${p.field}` : ""}`;
     if (p.alert !== undefined && !released(policy, ctx.appPath, title, "notify")) check(where, valueWhat, typeof p.alert === "string" ? value : rows.base, "notify", clearance(policy, "notify"));
@@ -237,21 +260,26 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     if (p.shortcut !== undefined && (p.view === "number" || p.view === "progress") && !released(policy, ctx.appPath, title, "answer")) {
       check(where, valueWhat, value, "answer", clearance(policy, "answer"));
     }
-    for (const [field, cell] of Object.entries(p.cells ?? {})) if (cell === "image") check(where, `${from}.${field}`, fieldLabel(rows, field), "images", clearance(policy, "images"));
+    if (!released(policy, ctx.appPath, title, "images")) {
+      for (const [field, cell] of Object.entries(p.cells ?? {})) if (cell === "image") check(where, `${from}.${field}`, fieldLabel(rows, field), "images", clearance(policy, "images"));
+    }
 
-    // Writes: what goes into a note keeps its label only if the note is labelled as high.
+    // Through `then`, what it fills goes on into the other app, and wherever that app sends it.
     if (p.then?.fill) {
-      const target = ctx.thenData(p.then.app);
-      const fills = Object.values(p.then.fill).map(String);
-      if (target) {
-        const label = fills.map(templateLabel).reduce(join, "public");
-        check(where, fills.map(fieldsWhat).join(", "), label, `${basename(target)} (through then)`, noteLabels(policy, target, ctx.tags(target)).base);
-      }
+      const fill = isPlainObject(ps.template.then) && isPlainObject(ps.template.then.fill) ? ps.template.then.fill : {};
+      const labels = Object.fromEntries(Object.entries(p.then.fill).map(([k, t]) => [k, join(templateLabel(String(t)), refsLabel(fill[k]))]));
+      const what = [...new Set(Object.entries(p.then.fill).flatMap(([k, t]) => {
+        const names = namesInTemplate(String(t)).filter((n) => !STAMPS.has(n) && !formFields.has(n));
+        const refs = refsIn(fill[k]).flatMap((r) => { const o = refOf(r); return o && o.label !== "public" ? [o.what] : []; });
+        return [...(names.length ? [`${from}: ${names.join(", ")}`] : []), ...refs];
+      }))].join(", ") || from;
+      followThen(where, what, p.then, labels, ctx.appPath, 1);
     }
     const target = p.target ?? (p.save && p.view !== "checklist" ? saveTarget(p.save) : undefined);
     // What a save writes, field by field: `row`'s values, else the whole row a row action was pressed on, else a form's typing.
+    const rowKeys = isPlainObject(ps.template.row) ? ps.template.row : {};
     const saved: Labels = p.row
-      ? { base: "public", fields: Object.fromEntries(Object.entries(p.row).map(([k, t]) => [k, templateLabel(String(t))])) }
+      ? { base: "public", fields: Object.fromEntries(Object.entries(p.row).map(([k, t]) => [k, join(templateLabel(String(t)), refsLabel(rowKeys[k]))])) }
       : p.action && p.source ? { base: rows.base, fields: Object.fromEntries(Object.keys(rows.fields).map((f) => [f, fieldLabel(rows, f)])) }
         : { base: p.view === "form" ? policy.typed : "public", fields: {} };
     /** A save into notes labelled `into`: each field it writes may hold no more than the notes' own label for that field. */
@@ -263,8 +291,39 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     if (target?.kind === "folder") intoNotes(`notes in ${target.folder}`, scopeLabels(policy, target.folder));
     if (p.append) {
       const into = notePath(p.append);
-      const label = p.line ? templateLabel(p.line) : topLabel(saved);
-      check(where, p.line ? fieldsWhat(p.line) : from, label, `the note ${basename(into)}`, noteLabels(policy, into, ctx.tags(into)).base);
+      const label = join(p.line ? keyLabel("line", p.line) : topLabel(saved), refsLabel(ps.template.append));
+      check(where, p.line ? fieldsWhat(p.line, "line") : from, label, `the note ${basename(into)}`, noteLabels(policy, into, ctx.tags(into)).base);
+    }
+  }
+
+  /**
+   * Follows a `then` into the app it runs: the fields it fills carry their labels into that app's
+   * shortcut, which may save them, tell them in a notice, add them to a note or fill another app
+   * in turn. Each place takes only what it is cleared for, as if the first app sent it there.
+   */
+  function followThen(where: string, what: string, then: { app: string; do: string }, fields: Record<string, Label>, from: string, depth: number): void {
+    const t = ctx.thenTarget(then.app, from);
+    const ps = t?.spec.panels.find((x) => x.panel.shortcut === then.do);
+    if (!t || !ps) return;
+    const q = ps.panel;
+    const via = `${basename(t.path)} (through then)`;
+    const label = (text: string | undefined) => (text ? namesInTemplate(text).map((n) => fields[n] ?? "public").reduce(join, "public") : "public");
+    const into = merged(noteLabels(policy, t.dataPath, ctx.tags(t.dataPath)), noteLabels(policy, t.path, ctx.tags(t.path)));
+    const saveTo = q.target ?? (q.save && q.view !== "checklist" ? saveTarget(q.save) : undefined);
+    const saved = q.row ? Object.fromEntries(Object.entries(q.row).map(([k, v]) => [k, label(String(v))])) : fields;
+    const notes = saveTo?.kind === "list" ? into : saveTo?.kind === "folder" ? scopeLabels(policy, saveTo.folder) : undefined;
+    if (notes) for (const [f, l] of Object.entries(saved)) if (rank(l) > rank(fieldLabel(notes, f))) check(where, what, l, via, fieldLabel(notes, f));
+    if (q.notify && !released(policy, t.path, q.title ?? q.label ?? q.view, "notify")) {
+      const l = label(q.notify);
+      if (rank(l) > rank(clearance(policy, "notify")!)) check(where, what, l, `a notice from ${basename(t.path)} (through then)`, clearance(policy, "notify"));
+    }
+    if (q.append) {
+      const note = notePath(q.append);
+      const l = q.line ? label(q.line) : Object.values(saved).reduce(join, "public");
+      check(where, what, l, `the note ${basename(note)} (through then)`, noteLabels(policy, note, ctx.tags(note)).base);
+    }
+    if (q.then?.fill && depth < THEN_DEPTH) {
+      followThen(where, what, q.then, Object.fromEntries(Object.entries(q.then.fill).map(([k, v]) => [k, label(String(v))])), t.path, depth + 1);
     }
   }
 

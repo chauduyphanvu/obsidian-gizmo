@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { checkFlows, violationText, type FlowContext } from "../src/flows.ts";
-import { fieldsRead } from "../src/formula.ts";
+import { formulaReads } from "../src/formula.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import {
   clearance, hostLabel, isPolicyPath, noteLabels, policyHash, readPolicy, released, scopeLabels, type Policy,
@@ -84,19 +84,29 @@ test("a policy's fingerprint doesn't depend on the order its keys are written in
   const a = policyOf({ labels: { "Health/**": "private", "#finance": "private" }, sinks: { "a.example": "public" } });
   const b = policyOf({ sinks: { "a.example": "public" }, labels: { "Health/**": "private", "#finance": "private" } });
   assert.equal(policyHash(a), policyHash(b));
+  const swapped = policyOf({ labels: { "#finance": "private", "Health/**": "private" }, sinks: { "a.example": "public" } });
+  assert.equal(policyHash(a), policyHash(swapped), "nor on the order of its label lines");
   assert.notEqual(policyHash(a), policyHash(policyOf({ labels: { "Health/**": "secret" } })));
   assert.ok(isPolicyPath("Gizmo policy.md") && isPolicyPath("gizmo POLICY.md") && !isPolicyPath("Notes/Gizmo policy.md"));
 });
 
-test("a formula's result is made of the fields it reads", () => {
-  assert.deepEqual(fieldsRead("amount * rate + fee"), ["amount", "rate", "fee"]);
-  assert.deepEqual(fieldsRead("round(trip.cost, 2)"), ["trip"]);
-  assert.equal(fieldsRead("field(name)"), "*");
-  assert.deepEqual(fieldsRead("1 + 2"), []);
-  assert.equal(fieldsRead("1 +"), undefined);
+test("a formula's result is made of the fields and the $names it reads", () => {
+  assert.deepEqual(formulaReads("amount * rate + fee"), { fields: ["amount", "rate", "fee"], vars: [] });
+  assert.deepEqual(formulaReads("round(trip.cost, 2)")?.fields, ["trip"]);
+  assert.equal(formulaReads("field(name)")?.fields, "*");
+  assert.deepEqual(formulaReads("close * $holding.shares"), { fields: ["close"], vars: [{ name: "holding", path: "shares" }] });
+  assert.deepEqual(formulaReads("1 + 2"), { fields: [], vars: [] });
+  assert.equal(formulaReads("1 +"), undefined);
 });
 
 // ---- Flows ---------------------------------------------------------------------------------------
+
+/** Apps a `then` may run in these tests, and where their data is kept when not beside them. */
+const TARGETS: Record<string, Record<string, unknown>> = {
+  Errands: { app: "e", view: "form", fields: { errand: "text" }, save: "errands", shortcut: "add" },
+  "Med log": { app: "m", view: "form", fields: { med: "text" }, save: "doses", shortcut: "log", notify: "Logged {med}" },
+};
+const TARGET_DATA: Record<string, string> = { "Med log": "Health/Med log data" };
 
 function flows(path: string, fm: Record<string, unknown>, more: Partial<FlowContext> = {}, policy = POLICY) {
   const r = readSpec(fm, { now: NOW, path });
@@ -105,7 +115,13 @@ function flows(path: string, fm: Record<string, unknown>, more: Partial<FlowCont
   const wanted = permissionsOf(spec, path);
   const ctx: FlowContext = {
     policy, appPath: path, dataPath: path.replace(/\.md$/, " data.md"), hostPath: path, tags: () => [],
-    thenData: (app) => `Apps/${app.replace(/^\[\[|\]\]$/g, "")} data.md`, ...more,
+    thenTarget: (app) => {
+      const name = app.replace(/^\[\[|\]\]$/g, "");
+      const fm = TARGETS[name];
+      const spec = fm && readSpec(fm, { now: NOW, path: `Apps/${name}.md` })?.spec;
+      return spec && { path: `Apps/${name}.md`, dataPath: `${TARGET_DATA[name] ?? `Apps/${name} data`}.md`, spec };
+    },
+    ...more,
   };
   const v = checkFlows(spec, wanted, ctx);
   return { ...v, wanted, lines: v.violations.map(violationText) };
@@ -210,7 +226,7 @@ test("then may fill another app only with data no more private than that app's d
   const r = flows("Apps/Watch.md", watch);
   assert.deepEqual(r.lines, [
     "Due: notes in Health (private) → a notice (personal)",
-    "Due: notes in Health: name (private) → Errands data (through then) (personal)",
+    "Due: notes in Health: name (private) → Errands (through then) (personal)",
     "Visits: notes in Health: name (private) → the note Daily (personal)",
   ]);
 });
@@ -240,7 +256,7 @@ test("a file's label is its own; a lens's $this is any note in its scope; a kit'
   const lens = readSpec({ app: "c", panels: [{ view: "text", title: "Clinic", source: "https://api.notes.example/c?n=$this.clinic", text: "{x}" }] }, { now: NOW, path: "Lens.md", host: { scope: "Health" } });
   assert.ok(lens?.spec);
   const v = checkFlows(lens.spec, permissionsOf(lens.spec, "Lens.md"), {
-    policy: POLICY, appPath: "Lens.md", dataPath: "Lens data.md", hostPath: "Health/Dentist.md", lensScope: "Health", tags: () => [], thenData: () => undefined,
+    policy: POLICY, appPath: "Lens.md", dataPath: "Lens data.md", hostPath: "Health/Dentist.md", lensScope: "Health", tags: () => [], thenTarget: () => undefined,
   });
   assert.deepEqual(v.violations.map(violationText), ["Clinic: notes in Health.clinic (private) → api.notes.example (personal)"]);
   const kit = { component: "Log", params: { what: "x" }, panels: [{ view: "number", title: "$what", source: "log", agg: "count", pin: "status" }] };
@@ -248,7 +264,39 @@ test("a file's label is its own; a lens's $this is any note in its scope; a kit'
   const r = readSpec({ app: "a", use: "[[Kit]]", with: { what: "Doses" } }, { now: NOW, notes, path: "Health/Doses.md" })!;
   assert.deepEqual(r.errors, []);
   const kv = checkFlows(r.spec!, permissionsOf(r.spec!, "Health/Doses.md"), {
-    policy: POLICY, appPath: "Health/Doses.md", dataPath: "Health/Doses data.md", hostPath: "Health/Doses.md", tags: () => [], thenData: () => undefined,
+    policy: POLICY, appPath: "Health/Doses.md", dataPath: "Health/Doses data.md", hostPath: "Health/Doses.md", tags: () => [], thenTarget: () => undefined,
   });
   assert.deepEqual(kv.violations.map(violationText), ["Doses: Doses data (private) → the status bar (personal)"]);
+});
+
+test("a then can't pass private data on through another app: what that app saves, tells or adds is checked as if sent from here", () => {
+  const watch = {
+    app: "w",
+    panels: [{ view: "number", title: "Due", source: "notes", from: "Health", alert: { due: "past" }, then: { app: "[[Med log]]", do: "log", fill: { med: "{med}" } } }],
+  };
+  const r = flows("Apps/Watch.md", watch, {}, policyOf({ labels: { "Health/**": "private" }, release: [{ app: "Apps/Watch", panel: "Due", to: ["notify"] }] }));
+  // Med log keeps its data in Health, so saving there is fine; its notice isn't.
+  assert.deepEqual(r.lines, ["Due: notes in Health: med (private) → a notice from Med log (through then) (personal)"]);
+});
+
+test("a note's property or a picked row read in a notice, a line, a row or a formula carries its label", () => {
+  const lens = flows("Apps/Lens.md", {
+    app: "l",
+    panels: [
+      { view: "button", title: "Took", label: "Took", notify: "Took $this.med", save: "doses" },
+      { view: "button", title: "Logged", label: "Log", append: "Daily", line: "- $this.med" },
+    ],
+  }, { hostPath: "Health/Meds.md" });
+  assert.deepEqual(lens.lines, [
+    "Took: Meds.med (private) → a notice (personal)",
+    "Logged: Meds.med (private) → the note Daily (personal)",
+  ]);
+  const holdings = flows("Apps/Holdings.md", {
+    app: "h",
+    panels: [
+      { view: "table", title: "Positions", source: "notes", from: "Health", select: "position" },
+      { view: "table", title: "Value", source: "https://api.open-meteo.com/q", compute: { value: "close * $position.shares" }, action: "Tell", notify: "Worth {value}" },
+    ],
+  });
+  assert.deepEqual(holdings.lines, ["Value: api.open-meteo.com: value (private) → a notice (personal)"]);
 });

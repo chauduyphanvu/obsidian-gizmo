@@ -403,7 +403,9 @@ export class AppController {
     const blocked = verdict?.violations.length ? verdict.violations.map(violationText) : undefined;
     const granted = !blocked && this.env.isGranted(this.grantKey, wanted, verdict?.asked);
     // The app is its own keys plus those of every component it uses, and whether it may run.
-    const definition = JSON.stringify([fm, result?.spec?.read ?? null, granted, blocked ?? null, verdict?.asked ?? null]);
+    // The blocked card says whether the policy note waits to be applied.
+    const pending = blocked ? this.env.policyPending?.() ?? false : false;
+    const definition = JSON.stringify([fm, result?.spec?.read ?? null, granted, blocked ?? null, verdict?.asked ?? null, pending]);
     if (definition === this.definition) {
       if (moved) this.refillHostReaders();
       return;
@@ -435,7 +437,7 @@ export class AppController {
     if (!spec?.panels.length || component?.missing.length || component?.lens) return this.showOnly(header);
 
     if (blocked) {
-      renderBlocked(header, blocked, this.env.policyPending?.() ?? false, this.cards);
+      renderBlocked(header, blocked, pending, this.cards);
       return this.showOnly(header);
     }
     if (!granted) {
