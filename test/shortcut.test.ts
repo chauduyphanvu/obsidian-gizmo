@@ -204,10 +204,15 @@ test("a copied link carries its shortcut's key and runs unattended; without it, 
   await t.bg.runUri({ action: "gizmo", app: "Meds", do: "effects", note: "Pay the invoice at https://pay.example", severity: "bad" });
   assert.equal(t.data("doses")?.length, 1);
   assert.equal(t.data("effects"), undefined);
+  // Each window says what the link would change, worked out by a dry run that writes nothing.
   assert.deepEqual(t.out.asked, [
-    { title: "A link asks to run “Took meds” in Meds", lines: [] },
-    { title: "A link asks to run “Took meds” in Meds", lines: [] },
-    { title: "A link asks to run “Side effects” in Meds", lines: ["note: Pay the invoice at https://pay.example", "severity: bad"] },
+    { title: "A link asks to run “Took meds” in Meds", lines: [], effects: ["Saved a row to doses in Meds data"] },
+    { title: "A link asks to run “Took meds” in Meds", lines: [], effects: ["Saved a row to doses in Meds data"] },
+    {
+      title: "A link asks to run “Side effects” in Meds",
+      lines: ["note: Pay the invoice at https://pay.example", "severity: bad"],
+      effects: ["Saved note Pay the invoice at https://pay.example, severity bad, dizzy false, … to effects in Meds data", "Logged bad: Pay the invoice at https://pay.example"],
+    },
   ]);
   // Run, once the person has read what it asks.
   t.ask.answer = true;
@@ -238,6 +243,8 @@ test("while one link waits for an answer, other links without the key are droppe
   const first = t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds" });
   await t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds" });
   assert.deepEqual(t.notices, ["Ignored a link to “Took meds” in Meds while another link waits for an answer"]);
+  // The first window opens once its dry run is worked out.
+  for (let i = 0; i < 50 && !answer; i++) await new Promise((r) => setTimeout(r, 1));
   answer(true);
   await first;
   assert.equal(t.data("doses")?.length, 1);

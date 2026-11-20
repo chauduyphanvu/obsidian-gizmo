@@ -1,4 +1,5 @@
-import { ItemView, MarkdownView, Notice, parseYaml, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { ItemView, MarkdownView, Modal, Notice, parseYaml, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { dryLines } from "./background.ts";
 import { openActivity, when } from "./activity-view.ts";
 import { blockKey, parseHosted } from "./hosted.ts";
 import { copyShortcutLink } from "./link-command.ts";
@@ -154,6 +155,9 @@ export class MapView extends ItemView {
       const answers = s.view === "number" || s.view === "progress";
       li.createSpan({ text: answers ? `Answers “${s.label}” (${s.id}) to its command or link` : `Shortcut “${s.label}” (${s.id}): from its command or link` });
       const row = li.createSpan({ cls: "gz-map-actions" });
+      if (!answers && a.state === "allowed") {
+        row.createEl("button", { text: "Dry run" }).addEventListener("click", () => new DryRunModal(this.plugin, a.path, a.name, s).open());
+      }
       row.createEl("button", { text: "Copy link" }).addEventListener("click", () => {
         const link = this.plugin.background?.shortcutLinks().find((l) => l.path === a.path && l.shortcut === s.id);
         if (link) copyShortcutLink(link);
@@ -241,6 +245,64 @@ export class MapView extends ItemView {
       e.preventDefault();
       void this.app.workspace.openLinkText(path, "", false);
     });
+  }
+}
+
+/**
+ * What a shortcut would change if it ran now, through every app its `then` reaches, worked out
+ * without writing anything. A form's fields can be typed in, and it works it out again as you type.
+ */
+class DryRunModal extends Modal {
+  private plugin: GizmoPlugin;
+  private path: string;
+  private name: string;
+  private shortcut: MapApp["shortcuts"][number];
+  private values: Record<string, string> = {};
+  private timer: number | undefined;
+  private run = 0;
+
+  constructor(plugin: GizmoPlugin, path: string, name: string, shortcut: MapApp["shortcuts"][number]) {
+    super(plugin.app);
+    this.plugin = plugin;
+    this.path = path;
+    this.name = name;
+    this.shortcut = shortcut;
+  }
+
+  onOpen(): void {
+    this.titleEl.setText(`If “${this.shortcut.label}” in ${this.name} ran now`);
+    const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-dry" });
+    if (this.shortcut.fields.length) {
+      const form = el.createDiv({ cls: "gz-dry-fields" });
+      for (const field of this.shortcut.fields) {
+        const label = form.createEl("label", { cls: "gz-input" });
+        label.createSpan({ cls: "gz-input-name", text: field });
+        const input = label.createEl("input", { type: "text" });
+        input.addEventListener("input", () => {
+          this.values[field] = input.value;
+          window.clearTimeout(this.timer);
+          this.timer = window.setTimeout(() => void this.show(list), 250);
+        });
+      }
+    }
+    el.createEl("h4", { text: "It would:" });
+    const list = el.createEl("ul", { cls: "gz-effects" });
+    el.createEl("p", { cls: "gz-muted", text: "Worked out on copies of the notes it would change; nothing has been written." });
+    void this.show(list);
+  }
+
+  onClose(): void {
+    window.clearTimeout(this.timer);
+    this.contentEl.empty();
+  }
+
+  private async show(list: HTMLElement): Promise<void> {
+    const run = ++this.run;
+    const params = this.shortcut.fields.length ? { ...this.values } : undefined;
+    const steps = await this.plugin.background?.dryRun(this.path, this.shortcut.id, params);
+    if (run !== this.run) return;
+    list.empty();
+    for (const line of dryLines(steps ?? [])) list.createEl("li", { text: line });
   }
 }
 

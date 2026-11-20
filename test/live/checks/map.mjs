@@ -61,7 +61,7 @@ export default async function map(t) {
     return r.notices.join(" | ");
   });
 
-  await check("New link key: a link copied before asks before it runs", async () => {
+  await check("New link key: a link copied before asks before it runs, and its window says what it would change", async () => {
     const r = await run(`
       const id = "Apps/Errands.md#add";
       const old = na.plugin().background.shortcutLinks().find((l) => l.app === "Errands").link;
@@ -78,11 +78,36 @@ export default async function map(t) {
       const modals = () => [document, activeDocument].flatMap((d) => [...d.querySelectorAll(".modal")]);
       const modal = await na.until(() => modals().find((m) => m.innerText.includes("A link asks to run")), 3000);
       const title = modal?.querySelector(".modal-title")?.textContent;
+      const effects = modal ? [...modal.querySelectorAll(".gz-effects li")].map((li) => li.textContent) : [];
       if (modal) na.button("Cancel", modal)?.click();
       await na.sleep(300);
-      return { changed: na.plugin().store.linkKeys[id] !== key, title, notices: na.notices.slice(mark), errands: (na.fm("Apps/Errands data.md")?.errands ?? []).map((e) => e.errand) };`);
+      return { changed: na.plugin().store.linkKeys[id] !== key, title, effects, notices: na.notices.slice(mark), errands: (na.fm("Apps/Errands data.md")?.errands ?? []).map((e) => e.errand) };`);
     expect(r.changed && r.title?.includes("A link asks to run") && !r.errands.includes("Old link"), r);
-    return r.title;
+    expect(r.effects.join() === "Saved errand Old link to errands in Errands data", r);
+    return `${r.title}: ${r.effects.join(" | ")}`;
+  });
+
+  await check("Dry run in the map: what a shortcut would change, through its then, as you type, with nothing written", async () => {
+    const r = await run(`
+      app.commands.executeCommandById("gizmo:open-map");
+      const box = await na.until(() => document.querySelector(".workspace-leaf.mod-active .gz-map .gz-map-app"), 5000) && document.querySelector(".workspace-leaf.mod-active .gz-map");
+      const calls = [...box.querySelectorAll(".gz-map-app")].find((c) => c.querySelector(".gz-title")?.textContent === "Calls");
+      const before = JSON.stringify([na.fm("Apps/Calls data.md"), na.fm("Apps/Errands data.md")]);
+      na.button("Dry run", calls).click();
+      const modals = () => [document, activeDocument].flatMap((d) => [...d.querySelectorAll(".modal")]);
+      const modal = await na.until(() => modals().find((m) => m.querySelector(".gz-dry")), 3000);
+      const inputs = [...modal.querySelectorAll(".gz-dry-fields input")];
+      na.fill(inputs[0], "Kim");
+      na.fill(inputs[1], "2099-02-01");
+      const lines = await na.until(() => {
+        const l = [...modal.querySelectorAll(".gz-effects li")].map((li) => li.textContent);
+        return l.some((x) => x.includes("Kim")) && l;
+      }, 3000);
+      modal.querySelector(".modal-close-button")?.click();
+      await na.sleep(300);
+      return { lines, title: modal.querySelector(".modal-title")?.textContent, same: JSON.stringify([na.fm("Apps/Calls data.md"), na.fm("Apps/Errands data.md")]) === before };`);
+    expect(r.same && r.lines?.some((l) => l.startsWith("Saved who Kim")) && r.lines.some((l) => l === "Errands: Saved errand Call Kim back by 2099-02-01 to errands in Errands data"), r);
+    return `${r.title}: ${r.lines.join(" | ")}`;
   });
 
   await canvas(t);

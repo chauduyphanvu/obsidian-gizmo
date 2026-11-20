@@ -55,16 +55,21 @@ class LinkAskModal extends Modal {
   private lines: string[];
   private note: string;
   private choices: { label: string; cls?: string }[];
+  private effects: string[] | undefined;
   private done: (choice: number | undefined) => void;
   private answered = false;
 
-  constructor(app: App, heading: string, lines: string[], note: string, choices: { label: string; cls?: string }[], done: (choice: number | undefined) => void) {
+  constructor(
+    app: App, heading: string, lines: string[], note: string, choices: { label: string; cls?: string }[],
+    done: (choice: number | undefined) => void, effects?: string[],
+  ) {
     super(app);
     this.heading = heading;
     this.lines = lines;
     this.note = note;
     this.choices = choices;
     this.done = done;
+    this.effects = effects;
   }
 
   onOpen(): void {
@@ -73,6 +78,11 @@ class LinkAskModal extends Modal {
     if (this.lines.length) {
       const ul = el.createEl("ul");
       for (const line of this.lines) ul.createEl("li", { text: line });
+    }
+    if (this.effects?.length) {
+      el.createEl("h4", { text: "It will:" });
+      const ul = el.createEl("ul", { cls: "gz-effects" });
+      for (const line of this.effects) ul.createEl("li", { text: line });
     }
     el.createEl("p", { cls: "gz-muted", text: this.note });
     const row = el.createDiv({ cls: "modal-button-container" });
@@ -94,10 +104,11 @@ class LinkAskModal extends Modal {
   }
 }
 
-/** Asks whether to run what a link without its key asks; true for Run. */
-export function askToRun(app: App, heading: string, lines: string[]): Promise<boolean> {
+/** Asks whether to run what a link without its key asks, showing what it would change; true for Run. */
+export function askToRun(app: App, heading: string, lines: string[], effects?: string[]): Promise<boolean> {
   const note = "This link doesn't carry the key a copied link has, so it may come from anywhere: a web page, an email or a message. Run it only if you meant to.";
-  return new Promise((resolve) => new LinkAskModal(app, heading, lines, note, [{ label: "Cancel" }, { label: "Run", cls: "mod-warning" }], (c) => resolve(c === 1)).open());
+  const choices = [{ label: "Cancel" }, { label: "Run", cls: "mod-warning" }];
+  return new Promise((resolve) => new LinkAskModal(app, heading, lines, note, choices, (c) => resolve(c === 1), effects).open());
 }
 
 /**

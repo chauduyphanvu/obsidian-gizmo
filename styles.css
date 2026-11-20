@@ -488,3 +488,5 @@ button.gz-lens-toggle {
 .gizmo .gz-map-acts, .gizmo .gz-map-last { margin-top: var(--size-4-2); }
 .gizmo .gz-map-shortcut .gz-map-actions { margin-left: var(--size-4-2); }
 .gizmo .gz-map-shortcut .gz-new { margin-right: var(--size-4-1); }
+.gizmo.gz-share .gz-effects li { color: var(--text-normal); }
+.gizmo.gz-dry .gz-dry-fields { display: flex; flex-wrap: wrap; gap: var(--size-4-2) var(--size-4-4); margin-bottom: var(--size-4-2); }

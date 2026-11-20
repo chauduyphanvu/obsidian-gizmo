@@ -86,7 +86,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
         });
       },
       openApp,
-      confirm: (title, lines) => askToRun(app, title, lines),
+      confirm: (title, lines, effects) => askToRun(app, title, lines, effects),
       choose: (title, lines, choices) => askWhereTo(app, title, lines, choices),
       openUrl: (url) => { window.open(url); },
     },

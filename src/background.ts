@@ -1,5 +1,6 @@
 import { fillLine, runActions, type ActionDeps } from "./actions.ts";
-import type { Actor, LogStore, NewEntry } from "./activity.ts";
+import { describeChange, type Actor, type LogStore, type NewEntry } from "./activity.ts";
+import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type Row } from "./data.ts";
 import type { DataLayer } from "./datalayer.ts";
@@ -46,8 +47,8 @@ export interface BackgroundSink {
   setCommands(list: { id: string; name: string }[]): void;
   setStatus(items: StatusItem[]): void;
   openApp(path: string): void;
-  /** Asks the person whether to go ahead, showing `lines` under `title`; true for Run. */
-  confirm(title: string, lines: string[]): Promise<boolean>;
+  /** Asks the person whether to go ahead, showing `lines` under `title` and what it would change; true for Run. */
+  confirm(title: string, lines: string[], effects?: string[]): Promise<boolean>;
   /** Asks the person to pick one of `choices` (the first is Cancel); the index picked, or undefined when closed. */
   choose(title: string, lines: string[], choices: string[]): Promise<number | undefined>;
   /** Opens a link that goes out of Obsidian: a link's x-success, x-error or x-cancel. */
@@ -83,6 +84,21 @@ export interface BackgroundEnv {
 export interface LinkCall {
   key?: string;
   callbacks: Callbacks;
+}
+
+/** A dry run in progress: the copies of the notes it touched, and what each app would do. */
+interface DryRun {
+  overlay: Overlay;
+  steps: DryStep[];
+}
+
+/** A dry run as lines to read: each change, the apps a `then` reaches named, and what each would tell. */
+export function dryLines(steps: DryStep[]): string[] {
+  const lines = steps.flatMap((step, i) => [
+    ...step.changes.map((c) => `${i > 0 ? `${step.app}: ` : ""}${describeChange(c)}`),
+    ...step.notices.map((n) => (i > 0 && !n.startsWith(`${step.app}:`) ? `${step.app}: ${n}` : n)),
+  ]);
+  return lines.length ? lines : ["Nothing would change"];
 }
 
 /** A shortcut on a panel that shows one value answers with it instead of acting. */
@@ -347,65 +363,91 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall): Promise<void> {
+  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun): Promise<void> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
-    if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
-    if (!this.granted(entry)) return this.say(`Open ${entry.name} once to allow it`);
+    // In a dry run, what it would tell is kept with what it would change, and nothing is shown or opened.
+    const step: DryStep = { app: entry?.name ?? basename(appPath), what: shortcut, changes: [], notices: [] };
+    dry?.steps.push(step);
+    const say = (message: string) => (dry ? void step.notices.push(message) : this.say(message));
+    const openApp = (path: string) => (dry ? say(`It would open ${basename(path)} to be filled in`) : this.env.sink.openApp(path));
+    if (!entry || !ps) return say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
+    if (!this.granted(entry)) return say(`Open ${entry.name} once to allow it`);
     const now = this.env.now();
     const r = resolvePanel(ps, this.valuesOf(entry.path, entry.spec, now));
     // Another app's trigger never opens an app: what it can't run is told instead.
     const triggered = chain !== undefined;
-    if (!r.panel) return triggered ? this.say(`${entry.name}: “${shortcut}” waits for a choice in the app, so it can't run from ${by(actor)}`) : this.env.sink.openApp(entry.path);
+    if (!r.panel) return triggered ? say(`${entry.name}: “${shortcut}” waits for a choice in the app, so it can't run from ${by(actor)}`) : openApp(entry.path);
     const p = r.panel;
-    if (answers(p)) return this.answer(entry, ps, p, shortcut, actor, link);
+    const label = labelOf(p, shortcut);
+    step.what = label;
+    if (answers(p)) return dry ? say(`“${label}” answers with its value; it changes nothing`) : this.answer(entry, ps, p, shortcut, actor, link);
     let input: Row = {};
     if (triggered && p.view !== "form" && params && Object.keys(params).length) {
-      return this.say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
+      return say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
     }
     if (p.view === "form") {
-      if (!params && triggered) return this.say(`${entry.name}: “${shortcut}” is a form; give ${by(actor)}'s then a fill with its values`);
+      if (!params && triggered) return say(`${entry.name}: “${shortcut}” is a form; give ${by(actor)}'s then a fill with its values`);
       if (!params) {
-        this.env.sink.openApp(entry.path);
-        return this.say(`${entry.name}: fill in the form`);
+        openApp(entry.path);
+        return say(`${entry.name}: fill in the form`);
       }
       // Rule 0.2: whatever a link carries is refused whole if any of it holds a secret or a line break.
       const problem = Object.entries(params).map(([k, v]) => valueProblem(new InputRef(k), v, true)).find(Boolean);
-      if (problem) return this.say(`${entry.name}: ${problem}`);
+      if (problem) return say(`${entry.name}: ${problem}`);
       const filled = formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, params, now);
-      if ("error" in filled) return this.say(`${entry.name}: ${filled.error}`);
+      if ("error" in filled) return say(`${entry.name}: ${filled.error}`);
       input = filled.row;
     }
-    const label = labelOf(p, shortcut);
     const cb = link?.callbacks ?? {};
     let allowed: "keyed" | "asked" | false = false;
-    if (actor === "link") {
+    if (actor === "link" && !dry) {
       const given = params ?? {};
       const lines = Object.keys(input).filter((k) => Object.hasOwn(given, k)).map((k) => `${k}: ${String(input[k])}`);
       if (cb.to) lines.push(`Then it tells ${cb.to} it ran`);
-      allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`);
+      const effects = async () => dryLines(await this.dryRun(entry.path, shortcut, params));
+      allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`, effects);
       if (!allowed) return;
     }
     const trail = chain ?? [`${entry.path}#${shortcut}`];
     // Said before what its `then` runs says, in the order they happen.
     let told = false;
     const done = () => {
-      if (told || p.notify) return;
+      if (told || p.notify || dry) return;
       told = true;
-      this.say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
+      say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
     };
+    const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
     const deps: ActionDeps = {
-      ...this.env.actionDeps(entry.path, entry.dataPath, actor),
+      ...(dry ? recordingDeps(dry.overlay, base, step) : base),
       then: async (panel, ctx) => {
         done();
-        if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail);
+        if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail, dry);
       },
     };
     const result = await runActions(p, input, deps);
     if (result.ok) done();
+    if (dry) return;
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
     if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: `“${label}” didn't run` }));
+  }
+
+  /**
+   * What running a shortcut would change and tell, app by app through its `then`s, worked out by
+   * the same checks and writes as a real run against copies of the notes it touches. Nothing is
+   * written, shown or opened, and the hourly limits are neither counted nor read.
+   */
+  async dryRun(appPath: string, shortcut: string, params?: Record<string, string>): Promise<DryStep[]> {
+    const host = this.env.data.host;
+    const overlay = new Overlay({
+      frontmatter: (path) => this.env.frontmatter(path),
+      text: (path) => host.readFile(path).catch(() => undefined),
+      exists: (path) => host.fileInfo(path) !== undefined,
+    });
+    const steps: DryStep[] = [];
+    await this.runShortcut(appPath, shortcut, params ? "link" : "shortcut", params, undefined, undefined, { overlay, steps });
+    return steps;
   }
 
   /**
@@ -436,12 +478,15 @@ export class Background {
   /**
    * Whether a link may run a shortcut. Any web page, email or chat message can send one, so: at most
    * MAX_RUNS_PER_HOUR an hour, and without the key its copied link carries, only once the person
-   * says Run in a window showing `lines` (the values it gives, where word goes back). A keyed link
+   * says Run in a window showing `lines` (the values it gives, where word goes back) and what it
+   * would change (`effects`, from a dry run). A keyed link
    * that sends word back asks the first time it would go to an app, and remembers that app with
    * the key when told Always; Cancel there opens its x-cancel. One window at a time; links that
    * come meanwhile are dropped. Says "keyed" or "asked" when it may run.
    */
-  private async linkMayRun(entry: AppEntry, p: Panel, shortcut: string, link: LinkCall | undefined, lines: string[], title: string): Promise<"keyed" | "asked" | false> {
+  private async linkMayRun(
+    entry: AppEntry, p: Panel, shortcut: string, link: LinkCall | undefined, lines: string[], title: string, effects?: () => Promise<string[]>,
+  ): Promise<"keyed" | "asked" | false> {
     const label = labelOf(p, shortcut);
     const rateKey = `link\n${entry.path}#${shortcut}`;
     const recent = () => (this.runs.get(rateKey) ?? []).filter((t) => this.env.now().getTime() - t < 3_600_000);
@@ -461,7 +506,8 @@ export class Background {
     if (!keyed) {
       this.asking = true;
       try {
-        if (!(await this.env.sink.confirm(title, lines))) return false;
+        // What it would do is worked out only now, once the window may open: a dropped link costs nothing.
+        if (!(await this.env.sink.confirm(title, lines, await effects?.()))) return false;
       } finally {
         this.asking = false;
       }
@@ -490,32 +536,35 @@ export class Background {
    * chain longer than MAX_CHAIN, or more than MAX_RUNS_PER_HOUR runs of one `then` is a loop, and
    * stops with a notice naming it. Never rejects.
    */
-  async runThen(fromPath: string, then: Then, ctx: Row, chain: string[] = []): Promise<void> {
+  async runThen(fromPath: string, then: Then, ctx: Row, chain: string[] = [], dry?: DryRun): Promise<void> {
+    const say = (message: string) => (dry ? void dry.steps.at(-1)?.notices.push(message) : this.say(message));
     try {
       const from = this.apps.get(fromPath) ?? (this.running ? this.index(fromPath) : undefined);
       if (!from || !this.granted(from)) return;
       // Found as Obsidian finds the link from the app's note, as `use` links are.
       const name = storeTarget(then.app);
       const path = this.env.notes.resolve(name, from.path);
-      if (!path) return this.say(`${from.name}: no app called “${name}” to run “${then.do}” in`);
+      if (!path) return say(`${from.name}: no app called “${name}” to run “${then.do}” in`);
       const target = this.apps.get(path) ?? (this.running ? this.index(path) : undefined);
-      if (!target) return this.say(`${from.name}: “${name}” isn't an app, so it can't run “${then.do}”`);
+      if (!target) return say(`${from.name}: “${name}” isn't an app, so it can't run “${then.do}”`);
       const key = `${target.path}#${then.do}`;
       const names = (keys: string[]) => keys.map((k) => basename(k.slice(0, k.lastIndexOf("#")))).join(" → ");
-      if (chain.includes(key)) return this.say(`${from.name}: stopped a loop: ${names([...chain, key])}`);
-      if (chain.length >= MAX_CHAIN) return this.say(`${from.name}: stopped after ${MAX_CHAIN} apps in a row: ${names([...chain, key])}`);
-      const now = this.env.now().getTime();
-      const rateKey = `${from.path}\n${key}`;
-      const recent = (this.runs.get(rateKey) ?? []).filter((t) => now - t < 3_600_000);
-      if (recent.length >= MAX_RUNS_PER_HOUR) {
-        this.runs.set(rateKey, recent);
-        return this.say(`${from.name}: stopped running “${then.do}” in ${target.name}: it ran ${MAX_RUNS_PER_HOUR} times this hour`);
+      if (chain.includes(key)) return say(`${from.name}: stopped a loop: ${names([...chain, key])}`);
+      if (chain.length >= MAX_CHAIN) return say(`${from.name}: stopped after ${MAX_CHAIN} apps in a row: ${names([...chain, key])}`);
+      if (!dry) {
+        const now = this.env.now().getTime();
+        const rateKey = `${from.path}\n${key}`;
+        const recent = (this.runs.get(rateKey) ?? []).filter((t) => now - t < 3_600_000);
+        if (recent.length >= MAX_RUNS_PER_HOUR) {
+          this.runs.set(rateKey, recent);
+          return say(`${from.name}: stopped running “${then.do}” in ${target.name}: it ran ${MAX_RUNS_PER_HOUR} times this hour`);
+        }
+        this.runs.set(rateKey, [...recent, now]);
       }
-      this.runs.set(rateKey, [...recent, now]);
       const params = Object.fromEntries(Object.entries(then.fill ?? {}).map(([k, v]) => [k, fillLine(v, ctx)]));
-      await this.runShortcut(target.path, then.do, `trigger:${from.name}`, then.fill ? params : undefined, [...chain, key]);
+      await this.runShortcut(target.path, then.do, `trigger:${from.name}`, then.fill ? params : undefined, [...chain, key], undefined, dry);
     } catch (e) {
-      this.say(`${basename(fromPath)}: couldn't run “${then.do}”: ${(e as Error).message}`);
+      say(`${basename(fromPath)}: couldn't run “${then.do}”: ${(e as Error).message}`);
     }
   }
 

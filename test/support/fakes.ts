@@ -258,7 +258,7 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     status: [] as { appPath: string; text: string; title: string }[],
     apps: [] as string[],
     /** What a link without its key asked the person. */
-    asked: [] as { title: string; lines: string[] }[],
+    asked: [] as { title: string; lines: string[]; effects?: string[] }[],
     /** What a keyed link asked about where it sends word back, and the links opened out of Obsidian. */
     chose: [] as { title: string; lines: string[] }[],
     opened: [] as string[],
@@ -304,8 +304,8 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
       setCommands: (list) => { out.commands = list; },
       setStatus: (items) => { out.status = items; },
       openApp: (path) => { out.apps.push(path); },
-      confirm: async (title, lines) => {
-        out.asked.push({ title, lines });
+      confirm: async (title, lines, effects) => {
+        out.asked.push(effects ? { title, lines, effects } : { title, lines });
         return ask.wait ? ask.wait() : ask.answer;
       },
       choose: async (title, lines) => {

@@ -31,7 +31,7 @@ export interface CanvasData {
 const W = 300;
 const H = 120;
 const GAP = 40;
-const COLUMN = 480;
+const COLUMN = 900;
 
 /** A canvas id from a key: the same apps make the same ids, so two saved maps can be compared. */
 function idOf(key: string): string {
@@ -81,14 +81,15 @@ export function mapCanvas(apps: AppSummary[], exists: (path: string) => boolean)
   };
   const edge = (from: CanvasNode, to: CanvasNode, label: string, fromSide: CanvasEdge["fromSide"] = "right", toSide: CanvasEdge["toSide"] = "left") => {
     const id = idOf(`${from.id}>${to.id}>${label}`);
-    if (!edges.some((e) => e.id === id)) edges.push({ id, fromNode: from.id, fromSide, toNode: to.id, toSide, label });
+    if (!edges.some((e) => e.id === id)) edges.push({ id, fromNode: from.id, fromSide, toNode: to.id, toSide, ...(label ? { label } : {}) });
   };
 
   const appNodes = new Map(sorted.map((a, i): [string, CanvasNode] => [a.path, { id: idOf(`app:${a.path}`), type: "file", file: a.path, x: COLUMN, y: i * (H + GAP), width: W, height: H, color: "4" }]));
   for (const a of sorted) {
     const me = appNodes.get(a.path)!;
+    // Every app has a data note; its line goes unlabelled so the others stand out.
     const data = node(right, 2 * COLUMN, `file:${a.dataPath}`, a.dataPath, a.dataPath);
-    edge(me, data, "saves data");
+    edge(me, data, "");
     for (const perm of a.wanted) {
       const t = targetOf(perm);
       if (!t) continue;
@@ -100,8 +101,19 @@ export function mapCanvas(apps: AppSummary[], exists: (path: string) => boolean)
       if (to && to !== me) edge(me, to, `then: ${t.do}`, "bottom", "top");
     }
   }
-  // Each side column is stacked from the top, in the order its cards were first met.
-  for (const column of [left, right]) [...column.values()].forEach((n, i) => { n.y = i * (H + GAP); });
+  // A side card sits level with the apps it is drawn to, pushed down only as far as the card above needs.
+  const ys = new Map([...appNodes.values()].map((n) => [n.id, n.y]));
+  for (const column of [left, right]) {
+    const wanted = (n: CanvasNode) => {
+      const linked = edges.flatMap((e) => (e.fromNode === n.id ? [e.toNode] : e.toNode === n.id ? [e.fromNode] : [])).map((id) => ys.get(id)!).filter((y) => y !== undefined);
+      return linked.length ? linked.reduce((a, b) => a + b, 0) / linked.length : 0;
+    };
+    let next = 0;
+    for (const n of [...column.values()].map((n) => ({ n, y: wanted(n) })).sort((a, b) => a.y - b.y)) {
+      n.n.y = Math.max(n.y, next);
+      next = n.n.y + n.n.height + GAP;
+    }
+  }
   nodes.push(...left.values(), ...appNodes.values(), ...right.values());
   return { nodes, edges };
 }
