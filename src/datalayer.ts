@@ -46,6 +46,18 @@ export interface AppFiles {
   hostPath?: string;
 }
 
+/** A note as a row: its properties, then its name, path, tags and file times (which win over properties of those names). */
+export function noteRow(f: FileInfo, frontmatter: Record<string, unknown> | undefined, tags: string[]): Row {
+  return {
+    ...(frontmatter ?? {}),
+    name: f.basename,
+    path: f.path,
+    tags,
+    mtime: stampParts(new Date(f.mtime)).at,
+    ctime: stampParts(new Date(f.ctime)).at,
+  };
+}
+
 const SECRET = /\{secret:([a-z0-9-]+)\}/g;
 
 /** A web response longer than this isn't read: no app's data is that big, and reading it would stall the window. */
@@ -262,14 +274,7 @@ export class DataLayer {
   }
 
   private row(f: FileInfo): Row {
-    return {
-      ...(this.host.frontmatter(f.path) ?? {}),
-      name: f.basename,
-      path: f.path,
-      tags: this.host.tags(f.path),
-      mtime: stampParts(new Date(f.mtime)).at,
-      ctime: stampParts(new Date(f.ctime)).at,
-    };
+    return noteRow(f, this.host.frontmatter(f.path), this.host.tags(f.path));
   }
 
   // ---- Changes ------------------------------------------------------------------------------

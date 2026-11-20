@@ -107,8 +107,8 @@ async function ensureFolder(app: App, path: string): Promise<void> {
   if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
 }
 
-/** Changes an existing note's frontmatter; false, writing nothing, when the note is gone. */
-async function updateFrontmatterOf(app: App, path: string, fn: (fm: Record<string, unknown>) => void): Promise<boolean> {
+/** Changes an existing note's frontmatter, after any other app's write to it; false, writing nothing, when the note is gone. */
+export async function updateFrontmatterOf(app: App, path: string, fn: (fm: Record<string, unknown>) => void): Promise<boolean> {
   let written = false;
   await queued(path, async () => {
     const target = app.vault.getFileByPath(path);
