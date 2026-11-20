@@ -490,3 +490,8 @@ button.gz-lens-toggle {
 .gizmo .gz-map-shortcut .gz-new { margin-right: var(--size-4-1); }
 .gizmo.gz-share .gz-effects li { color: var(--text-normal); }
 .gizmo.gz-dry .gz-dry-fields { display: flex; flex-wrap: wrap; gap: var(--size-4-2) var(--size-4-4); margin-bottom: var(--size-4-2); }
+
+/* Try before Allow */
+.modal.gz-try-modal { width: min(1000px, 94vw); }
+.gizmo.gz-try .gz-try-app { border: 1px dashed var(--background-modifier-border); border-radius: var(--radius-m); margin: var(--size-4-3) 0; }
+.gizmo.gz-try .gz-try-app > .gizmo { padding: var(--size-4-3); max-width: none; }

@@ -9,6 +9,7 @@ import type { FileInfo, Host } from "./datalayer.ts";
 import type { NoteReader } from "./expand.ts";
 import type GizmoPlugin from "./main.ts";
 import { tickLine } from "./sources/tasks.ts";
+import { tryVaultApp } from "./try-modal.ts";
 import { notePath, storeTarget } from "./store.ts";
 
 /** A note's frontmatter by its path, from Obsidian's metadata cache. */
@@ -220,6 +221,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     now: () => new Date(),
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
+    tryFirst: () => void tryVaultApp(plugin, file.path),
   };
 }
 

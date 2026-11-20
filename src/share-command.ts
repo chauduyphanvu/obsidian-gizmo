@@ -6,6 +6,7 @@ import { existingNotes, installNotes } from "./gallery-command.ts";
 import { copyText, vaultNotes } from "./host.ts";
 import { planCopy } from "./gallery.ts";
 import type GizmoPlugin from "./main.ts";
+import { tryBundle } from "./try-modal.ts";
 import { readComponentPreview, readSpec } from "./spec.ts";
 import { basename, isApp, isComponent, storeTarget } from "./store.ts";
 
@@ -82,6 +83,8 @@ class InstallModal extends Modal {
   private preview: InstallPreview | undefined;
   private output!: HTMLElement;
   private installButton!: HTMLButtonElement;
+  private tryButton!: HTMLButtonElement;
+  private folder = "";
 
   constructor(plugin: GizmoPlugin, start = "") {
     super(plugin.app);
@@ -98,6 +101,9 @@ class InstallModal extends Modal {
     this.output = el.createDiv({ cls: "gz-install-preview" });
     const row = el.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { text: "Preview" }).addEventListener("click", () => void this.read(area.value));
+    this.tryButton = row.createEl("button", { text: "Try it" });
+    this.tryButton.disabled = true;
+    this.tryButton.addEventListener("click", () => tryBundle(this.plugin, this.notes, this.folder, () => this.install()));
     this.installButton = row.createEl("button", { cls: "mod-cta", text: "Install" });
     this.installButton.disabled = true;
     this.installButton.addEventListener("click", () => void this.install());
@@ -116,6 +122,7 @@ class InstallModal extends Modal {
     this.output.empty();
     this.output.createEl("p", { cls, text });
     this.installButton.disabled = true;
+    this.tryButton.disabled = true;
     this.preview = undefined;
   }
 
@@ -142,8 +149,9 @@ class InstallModal extends Modal {
     this.notes = got.notes;
     const existing = await existingNotes(this.app, got.notes.map((n) => n.name));
     const folder = this.app.fileManager.getNewFileParent("").path;
+    this.folder = folder === "/" ? "" : folder;
     const preview = previewInstall(got.notes, {
-      folder: folder === "/" ? "" : folder,
+      folder: this.folder,
       existing: (name) => existing[name] ?? [],
       notes: vaultNotes(this.app),
       parse: parseYaml,
@@ -178,6 +186,7 @@ class InstallModal extends Modal {
       this.output.createEl("p", { text: "It asks for nothing: it only keeps its own data beside it." });
     }
     this.installButton.disabled = "refusal" in p.plan;
+    this.tryButton.disabled = p.kind !== "app";
   }
 
   private async install(): Promise<void> {

@@ -37,6 +37,8 @@ export function renderPermissionPrompt(header: HTMLElement, wanted: string[], as
     await app.env.grant(app.grantKey, wanted);
     app.load();
   });
+  // In an embed or a lens `$this` is a real note, which a try must not read; there it isn't offered.
+  if (!app.hosted && app.env.tryFirst) row.createEl("button", { text: "Try it first" }).addEventListener("click", () => app.env.tryFirst?.());
   // An embed's keys are in the note it is drawn in, and a lens's in its component.
   if (!app.hosted) row.createEl("button", { text: "Edit source" }).addEventListener("click", () => app.env.showSource());
 }

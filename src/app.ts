@@ -83,6 +83,10 @@ export interface AppEnv {
   opened?(appPath: string): void;
   /** Alerts true now across the vault, from the background service. */
   alerts?: AlertFeed;
+  /** A try before Allow: nothing it draws may reach out of Obsidian (pictures are drawn as their address). */
+  preview?: boolean;
+  /** Opens the app on copies of its own notes before it's allowed; absent where that can't be offered. */
+  tryFirst?(): void;
 }
 
 /** What an app keeps while it is open: input values, selections, the open tab and its timers. */
@@ -224,6 +228,7 @@ export class AppController {
       toggleChecked: (key, item) => this.writes.toggleChecked(key, item),
       clearChecked: (key) => this.writes.clearChecked(key),
       openNote: (path) => this.env.openNote(path, this.appPath),
+      preview: env.preview,
       timer: (key, p) => this.timers.state(key, p),
       startTimer: (key, p) => {
         this.timers.start(key, p);

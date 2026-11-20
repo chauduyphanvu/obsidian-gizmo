@@ -22,7 +22,7 @@ export class Overlay {
   private texts = new Map<string, string | null>();
   /** Notes the run changed, in the order it changed them. */
   readonly touched: string[] = [];
-  private listeners = new Set<() => void>();
+  private listeners = new Set<(path: string) => void>();
 
   constructor(source: OverlaySource) {
     this.source = source;
@@ -48,15 +48,15 @@ export class Overlay {
     return this.source.exists(path);
   }
 
-  /** Calls `cb` after each change; returns how to stop. */
-  onChange(cb: () => void): () => void {
+  /** Calls `cb` with the note after each change; returns how to stop. */
+  onChange(cb: (path: string) => void): () => void {
     this.listeners.add(cb);
     return () => this.listeners.delete(cb);
   }
 
   private changed(path: string): void {
     if (!this.touched.includes(path)) this.touched.push(path);
-    for (const cb of [...this.listeners]) cb();
+    for (const cb of [...this.listeners]) cb(path);
   }
 
   /** As Obsidian's processFrontMatter: the note is made when it isn't there. */

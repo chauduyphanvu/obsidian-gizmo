@@ -46,6 +46,8 @@ export interface PanelCtx {
   setProperty?(field: string, value: unknown): Promise<void>;
   /** Alerts true now across the vault, when the plugin's background service runs. */
   alerts?: AlertFeed;
+  /** In a try before Allow, where nothing drawn may reach out of Obsidian. */
+  preview?: boolean;
 }
 
 export interface PanelHandle {

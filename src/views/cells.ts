@@ -99,7 +99,8 @@ export function drawCell(td: HTMLElement, kind: string, value: unknown, row: Row
     case "progress": return progressCell(td, value, p, shown);
     case "sparkline": return sparklineCell(td, value, shown);
     case "link": return linkCell(td, value, ctx, shown);
-    case "image": return imageCell(td, value, row);
+    // A picture loads from wherever the row says, before anything is allowed; its address is shown instead.
+    case "image": return ctx.preview ? void td.setText(shown(value)) : imageCell(td, value, row);
     case "check": return checkCell(td, value);
   }
 }
