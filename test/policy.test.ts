@@ -122,8 +122,8 @@ test("a count from a Health app may go to a notice only when released; its own a
   };
   const r = flows("Health/Meds.md", meds);
   assert.deepEqual(r.lines, [
-    "panel 3: Meds data (private) → a notice (personal)",
-    "panel 3: Meds data (private) → the status bar (personal)",
+    "Doses this week: Meds data (private) → a notice (personal)",
+    "Doses this week: Meds data (private) → the status bar (personal)",
   ]);
   const elsewhere = flows("Apps/Meds.md", meds);
   assert.deepEqual(elsewhere.lines, []);
@@ -179,10 +179,10 @@ test("a formula's column takes the label of what it reads, and a field that choo
   const r = flows("Apps/Budget.md", budget);
   // A copy keeps amount where amount is private already; twice, made from it, lands in a field nothing labels.
   assert.deepEqual(r.lines, [
-    "panel 2: Budget data (private) → the status bar (personal)",
-    "panel 3: Budget data: twice (private) → Budget data (personal)",
-    "panel 4: Budget data: twice (private) → a notice (personal)",
-    "panel 4: Budget data: twice (private) → Budget data (personal)",
+    "Big ones: Budget data (private) → the status bar (personal)",
+    "Doubled: Budget data: twice (private) → Budget data (personal)",
+    "Doubled money: Budget data: twice (private) → a notice (personal)",
+    "Doubled money: Budget data: twice (private) → Budget data (personal)",
   ]);
 });
 
@@ -195,7 +195,7 @@ test("a picked row carries its panel's labels to the website it's sent to", () =
     ],
   };
   const r = flows("Apps/Visits.md", visits);
-  assert.deepEqual(r.lines, ["panel 2: the picked visit.clinic (private) → api.notes.example (personal)"]);
+  assert.deepEqual(r.lines, ["Clinic: the picked visit.clinic (private) → api.notes.example (personal)"]);
 });
 
 test("then may fill another app only with data no more private than that app's data note; copies into notes likewise", () => {
@@ -209,9 +209,9 @@ test("then may fill another app only with data no more private than that app's d
   };
   const r = flows("Apps/Watch.md", watch);
   assert.deepEqual(r.lines, [
-    "panel 1: notes in Health (private) → a notice (personal)",
-    "panel 1: notes in Health: name (private) → Errands data (through then) (personal)",
-    "panel 2: notes in Health: name (private) → the note Daily (personal)",
+    "Due: notes in Health (private) → a notice (personal)",
+    "Due: notes in Health: name (private) → Errands data (through then) (personal)",
+    "Visits: notes in Health: name (private) → the note Daily (personal)",
   ]);
 });
 
@@ -226,9 +226,29 @@ test("a website's answer to a request with a secret, or one the policy labels, i
   };
   const r = flows("Apps/Bank.md", bank);
   assert.deepEqual(r.lines, [
-    "panel 1: api.bank.example (private) → the status bar (personal)",
-    "panel 2: api.rates.example (private) → the status bar (personal)",
+    "Balance: api.bank.example (private) → the status bar (personal)",
+    "Rate: api.rates.example (private) → the status bar (personal)",
   ]);
   assert.ok(r.asked.includes("secret:rates") && r.asked.includes("net:api.bank.example"));
   assert.ok(r.covered.includes("net:api.open-meteo.com"));
+});
+
+test("a file's label is its own; a lens's $this is any note in its scope; a kit's panels are labelled as the app's", () => {
+  const files = policyOf({ labels: { "Calendar/family.ics": "private", "Health/**": "private" } });
+  const week = flows("Apps/Week.md", { app: "w", view: "number", title: "Next", source: "Calendar/family.ics", agg: "count", pin: "status" }, {}, files);
+  assert.deepEqual(week.lines, ["Next: family.ics (private) → the status bar (personal)"]);
+  const lens = readSpec({ app: "c", panels: [{ view: "text", title: "Clinic", source: "https://api.notes.example/c?n=$this.clinic", text: "{x}" }] }, { now: NOW, path: "Lens.md", host: { scope: "Health" } });
+  assert.ok(lens?.spec);
+  const v = checkFlows(lens.spec, permissionsOf(lens.spec, "Lens.md"), {
+    policy: POLICY, appPath: "Lens.md", dataPath: "Lens data.md", hostPath: "Health/Dentist.md", lensScope: "Health", tags: () => [], thenData: () => undefined,
+  });
+  assert.deepEqual(v.violations.map(violationText), ["Clinic: notes in Health.clinic (private) → api.notes.example (personal)"]);
+  const kit = { component: "Log", params: { what: "x" }, panels: [{ view: "number", title: "$what", source: "log", agg: "count", pin: "status" }] };
+  const notes = { resolve: (l: string) => (l === "Kit" ? "Kit.md" : undefined), frontmatter: (p: string) => (p === "Kit.md" ? kit : undefined) };
+  const r = readSpec({ app: "a", use: "[[Kit]]", with: { what: "Doses" } }, { now: NOW, notes, path: "Health/Doses.md" })!;
+  assert.deepEqual(r.errors, []);
+  const kv = checkFlows(r.spec!, permissionsOf(r.spec!, "Health/Doses.md"), {
+    policy: POLICY, appPath: "Health/Doses.md", dataPath: "Health/Doses data.md", hostPath: "Health/Doses.md", tags: () => [], thenData: () => undefined,
+  });
+  assert.deepEqual(kv.violations.map(violationText), ["Doses: Doses data (private) → the status bar (personal)"]);
 });

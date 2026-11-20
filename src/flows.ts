@@ -122,7 +122,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
       case "list": return dataLabels;
       case "notes": case "tasks": return p.from ? scopeLabels(policy, p.from) : vaultLabels(policy);
       case "base": return vaultLabels(policy);
-      case "file": return noteLabels(policy, notePath(p.source), ctx.tags(notePath(p.source)));
+      case "file": return noteLabels(policy, filePath(p.source), ctx.tags(filePath(p.source)));
       case "this": return thisLabels;
       case "url": {
         // What a website answers to a request made with a secret or a body is about you.
@@ -168,7 +168,8 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   for (const ps of running) {
     const p = ps.panel;
     const title = p.title ?? p.label ?? p.view;
-    const where = ps.label || title;
+    // Named as the person titled it; a panel without a title by where it is written.
+    const where = p.title ?? (ps.label || p.view);
     const rows = rowLabels(p);
     const from = sourceName(p, ctx);
     const formFields = new Set(p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : []);
@@ -278,6 +279,11 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   return { violations, covered, asked };
 }
 
+/** The file a `file` source reads: its path, or the link as written. */
+function filePath(source: string): string {
+  return source.replace(/^\[\[|\]\]$/g, "");
+}
+
 /** Where a panel's data comes from, as a violation names it. */
 function sourceName(p: Panel, ctx: FlowContext): string {
   if (!p.source) return p.view === "form" ? "what you type" : "the panel";
@@ -285,7 +291,7 @@ function sourceName(p: Panel, ctx: FlowContext): string {
     case "list": return basename(ctx.dataPath);
     case "notes": case "tasks": return p.from ? `notes in ${p.from}` : "notes anywhere";
     case "base": return "a base";
-    case "file": return basename(notePath(p.source));
+    case "file": return basename(filePath(p.source));
     case "this": return ctx.lensScope ? `notes in ${ctx.lensScope}` : basename(ctx.hostPath);
     case "url": return urlHost(p.source);
     default: return p.source;

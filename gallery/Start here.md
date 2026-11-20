@@ -31,4 +31,12 @@ Each shows what it will do before you press Enter. Values fill the form's fields
 be words (today, yday, fri, last mon), and a name is the panel's `alias:` or its `shortcut:`. Copy
 capture link gives a phone's shortcut or a launcher the same line.
 
+To say once what may happen to your data, write a note called Gizmo policy at the root of your vault:
+`labels` says how private notes are (`"Health/**": private`, `"#finance": private`), `sinks` says
+where data may go and how private it may be there (`api.open-meteo.com: public`; notices and the
+status bar take personal unless you say), and `release` lets one panel's value through anyway. Then
+run Gizmo: Review and apply data policy. From then on an app that would send data somewhere it may
+not go is blocked and says why, and an app that only reads notes and fetches from sites you listed
+opens without asking.
+
 Copy a note into your vault and open it; it will ask before it touches anything.

@@ -108,9 +108,11 @@ export class MapView extends ItemView {
     const card = el.createDiv({ cls: `gz-card gz-map-policy${pending ? " is-pending" : ""}` });
     const blocked = map.apps.filter((a) => a.state === "blocked").length;
     card.createSpan({
-      text: pending
-        ? "Gizmo policy.md has changes that aren't applied yet; apps follow the policy as it was."
-        : `Your data policy is applied: ${blocked ? `${blocked} ${blocked === 1 ? "app is" : "apps are"} blocked by it` : "every app fits it"}.`,
+      text: pending && !plugin.store.policy
+        ? "Gizmo policy.md isn't applied yet; until it is, apps ask for everything as before."
+        : pending
+          ? "Gizmo policy.md has changes that aren't applied yet; apps follow the policy as it was."
+          : `Your data policy is applied: ${blocked ? `${blocked} ${blocked === 1 ? "app is" : "apps are"} blocked by it` : "every app fits it"}.`,
     });
     card.createEl("button", { text: pending ? "Review and apply" : "Review" }).addEventListener("click", () => new PolicyModal(plugin).open());
   }

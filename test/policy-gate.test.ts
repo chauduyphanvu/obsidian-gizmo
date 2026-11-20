@@ -99,7 +99,7 @@ test("an app the policy blocks shows each flow it refuses and draws no panel", a
   const t = underPolicy({ "Health/Meds.md": { fm: MEDS } }, "Health/Meds.md");
   await settle();
   assert.equal(text(t.root.querySelector(".gz-blocked .gz-title")), "Blocked by your data policy");
-  assert.deepEqual([...t.root.querySelectorAll(".gz-blocked li")].map(text), ["panel 3: Meds data (private) → the status bar (personal)"]);
+  assert.deepEqual([...t.root.querySelectorAll(".gz-blocked li")].map(text), ["Doses this week: Meds data (private) → the status bar (personal)"]);
   assert.equal(t.root.querySelectorAll(".gz-panel").length, 0);
   assert.deepEqual(t.grants, {});
 });
@@ -152,7 +152,7 @@ test("the install preview says how a shared app fares under the policy, and asks
   const meds = [{ name: "Meds", text: text("app: m\npanels:\n  - {view: button, label: Took, save: doses}\n  - {view: number, title: Doses this week, source: doses, agg: count, pin: status}") }];
   const blocked = previewInstall(meds, target(POLICY));
   assert.ok(!("error" in blocked));
-  assert.deepEqual(blocked.policy?.violations, ["panel 2: Meds data (private) → the status bar (personal)"]);
+  assert.deepEqual(blocked.policy?.violations, ["Doses this week: Meds data (private) → the status bar (personal)"]);
   const weather = [{ name: "Rain", text: text("app: w\nview: number\nsource: https://api.open-meteo.com/v1/x\npick: rain") }];
   const fits = previewInstall(weather, target(POLICY));
   assert.ok(!("error" in fits));
@@ -177,7 +177,7 @@ test("the map shows an app the policy blocks, and which of its asks the policy g
   const map = buildMap([summary(MEDS, "Health/Meds.md"), summary(WEATHER, "Apps/Weather.md")], { "Apps/Weather.md": [] }, [], []);
   const [meds, weather] = [map.apps.find((a) => a.name === "Meds")!, map.apps.find((a) => a.name === "Weather")!];
   assert.equal(meds.state, "blocked");
-  assert.deepEqual(meds.policy?.violations, ["panel 3: Meds data (private) → the status bar (personal)"]);
+  assert.deepEqual(meds.policy?.violations, ["Doses this week: Meds data (private) → the status bar (personal)"]);
   assert.equal(weather.state, "allowed");
   assert.deepEqual(weather.asks.map((a) => [a.perm, a.covered ?? false, a.isNew]), [["net:api.open-meteo.com", true, false]]);
 });
