@@ -78,7 +78,8 @@ export const KEY_HINTS: Record<string, string> = {
   edit: "Table columns to change in place: edit: [status, done], or true for every field of the block shown",
   detail: "A sentence about the row you pick, shown under the rows: \"{name}: due {due}\"",
   of: "With agg: share, the rows to count, e.g. of: {outcome: right}",
-  shortcut: "Gives this button or form a command and link; letters, digits and -",
+  shortcut: "Gives this button, form or checklist a command and link; letters, digits and -",
+  alias: "A short name to type this shortcut on a capture line (Gizmo: Do…, or ;; in a note), e.g. weight",
   // Background
   pin: "status shows this panel's value in the status bar",
   alert: "Tell me when this is true, e.g. \">= 5\" or {kp: \">= 5\"}",

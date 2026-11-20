@@ -29,7 +29,7 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   compute: "compute", select: "string", action: "string", row: "textMap", name: "string", template: "string",
   open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
-  end: "string", shortcut: "string", pin: "string", alert: "alert", detail: "string", of: "where",
+  end: "string", shortcut: "string", alias: "string", pin: "string", alert: "alert", detail: "string", of: "where",
   then: "then",
 };
 

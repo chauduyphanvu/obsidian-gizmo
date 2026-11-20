@@ -18,7 +18,7 @@ export interface AlertFeed {
   subscribe(cb: () => void): () => void;
 }
 
-const SHORTCUT = /^[a-z0-9-]+$/;
+export const SHORTCUT = /^[a-z0-9-]+$/;
 
 /**
  * Problems with the keys that make a panel work while its app is closed: `shortcut` (an id for a
@@ -28,6 +28,7 @@ const SHORTCUT = /^[a-z0-9-]+$/;
 export function backgroundKeyErrors(p: Panel): string[] {
   return [
     ...(p.shortcut !== undefined && !SHORTCUT.test(p.shortcut) ? ["shortcut must be lowercase letters, digits and -"] : []),
+    ...(p.alias !== undefined && !SHORTCUT.test(p.alias) ? ["alias must be lowercase letters, digits and -"] : []),
     ...(p.pin !== undefined && p.pin !== "status" ? ["pin must be status"] : []),
     ...(typeof p.alert === "string" && p.view !== "number" && p.view !== "progress"
       ? [`alert on a ${p.view} needs a field, e.g. alert: {amount: "> 100"}`] : []),

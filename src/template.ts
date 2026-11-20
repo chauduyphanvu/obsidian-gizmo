@@ -165,11 +165,11 @@ export function resolveInputs(value: unknown, values: Readonly<Record<string, un
 /** Keys a `$name` can never fill: they decide how an app is laid out and what it reads and writes. */
 const FIXED = [
   "view", "tab", "span", "from", "append", "store",
-  "select", "shortcut", "pin", "template", "edit", "cells", "layout", "stack", "compare", "then",
+  "select", "shortcut", "alias", "pin", "template", "edit", "cells", "layout", "stack", "compare", "then",
 ];
 
 /** Keys a component param typed literally may fill: they say what an app reads and writes, which its prompt then names. */
-const KIT_KEYS = ["from", "save", "append", "template", "tab"];
+const KIT_KEYS = ["from", "save", "append", "template", "tab", "alias"];
 
 /**
  * A component's params as a kit sees them. A param is literal when its value came from the

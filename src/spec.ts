@@ -17,7 +17,7 @@ import { COMMON_KEYS, KEY_TYPES, isPlainObject, readFields, readValue, type Fiel
 import { editErrors, editableSource } from "./edit.ts";
 import { CONTROL_PROBLEM, controlKey, hasControl } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import { backgroundKeyErrors } from "./views/alerts.ts";
+import { SHORTCUT, backgroundKeyErrors } from "./views/alerts.ts";
 
 export { parseDuration };
 
@@ -74,6 +74,8 @@ export interface Panel {
   start?: string;
   end?: string;
   shortcut?: string;
+  /** A short name for typing this shortcut on a capture line; it also makes the shortcut when there is none. */
+  alias?: string;
   pin?: string;
   alert?: string | Record<string, string | number | boolean>;
   /** Another app's shortcut to run after this panel acts, or when its alert turns true. */
@@ -330,6 +332,8 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
   }
   const p = { ...panel, ...internal } as Panel;
   const fieldProblems = settleFields(p);
+  // An alias is typed to run a shortcut, so it makes one under its own name when there is none.
+  if (p.alias !== undefined && p.shortcut === undefined && SHORTCUT.test(p.alias)) p.shortcut = p.alias;
   // A checklist's save is the list it ticks; anything else may save to a folder.
   if (p.save && def.id !== "checklist") p.target ??= saveTarget(p.save);
   const problems = [

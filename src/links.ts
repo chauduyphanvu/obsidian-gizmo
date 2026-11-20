@@ -9,7 +9,9 @@ export interface ShortcutLink {
   app: string;
   shortcut: string;
   label: string;
-  /** A form's fields, each filled by `&field=value`; none for a button. */
+  /** The shortcut's panel: a form, button or checklist, or a number or progress panel that answers. */
+  view: string;
+  /** A form's fields, each filled by `&field=value`, or a checklist's `item`; none for a button. */
   fields: string[];
   link: string;
   allowed: boolean;
@@ -106,7 +108,8 @@ export function linkNotice(s: ShortcutLink): string {
   }
   const parts = [`Copied the link to “${s.label}” in ${s.app}.`];
   const fillable = s.fields.filter((f) => !LINK_PARAMS.includes(f));
-  if (fillable.length) parts.push(`Add ${fillable.map((f) => `&${f}=…`).join("")} to fill the form.`);
+  if (s.view === "checklist") parts.push("Add &item=… to say which item to tick.");
+  else if (fillable.length) parts.push(`Add ${fillable.map((f) => `&${f}=…`).join("")} to fill the form.`);
   const stuck = s.fields.filter((f) => LINK_PARAMS.includes(f));
   if (stuck.length) parts.push(`A link can't fill ${stuck.join(", ")}; rename ${stuck.length === 1 ? "that field" : "those fields"} to fill ${stuck.length === 1 ? "it" : "them"}.`);
   if (!s.allowed) parts.push(`Open ${s.app} once to allow it; until then the link is refused.`);
@@ -142,6 +145,23 @@ export function formRow(fields: Record<string, string | string[]>, info: Panel["
     row[name] = value;
   }
   return { row };
+}
+
+/**
+ * The checklist item a link or a capture line names with `item`: the one with that text, else the
+ * only one starting with it, case aside. A checklist takes no other values.
+ */
+export function pickItem(items: readonly string[], params: Record<string, string>): { row: Row } | { error: string } {
+  const extra = Object.keys(params).filter((k) => k !== "item");
+  if (extra.length) return { error: `a checklist takes only item, not ${extra.join(", ")}` };
+  const raw = (params.item ?? "").trim();
+  if (!raw) return { error: "say which item to tick: item=…" };
+  const word = raw.toLowerCase();
+  const exact = items.find((i) => i.toLowerCase() === word);
+  if (exact !== undefined) return { row: { item: exact } };
+  const starting = items.filter((i) => i.toLowerCase().startsWith(word));
+  if (starting.length === 1) return { row: { item: starting[0] } };
+  return { error: starting.length ? `“${raw}” could be ${starting.join(" or ")}` : `no item “${raw}”; the items are ${items.join(", ")}` };
 }
 
 /** Link text as a field of this type holds it; undefined when it can't. */

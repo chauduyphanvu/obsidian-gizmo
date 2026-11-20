@@ -8,7 +8,7 @@ import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
 export const button: ViewDef = {
   id: "button",
-  keys: [...ACTION_KEYS, "label", "shortcut", "then"],
+  keys: [...ACTION_KEYS, "label", "shortcut", "alias", "then"],
   span: 1,
   validate: (p) => needsAction("button", p),
   examples: [
@@ -19,6 +19,8 @@ export const button: ViewDef = {
     { panel: { view: "button", label: "New idea", save: "Ideas/", row: { status: "new" }, template: "[[Idea template]]" } },
     { panel: { view: "button", label: "Took meds", save: "doses", shortcut: "took-meds" } },
     { panel: { view: "button", label: "Took meds", save: "doses", shortcut: "Took meds" }, errors: ["shortcut must be lowercase letters, digits and -"] },
+    { panel: { view: "button", label: "Took meds", save: "doses", alias: "meds" } },
+    { panel: { view: "button", label: "Took meds", save: "doses", alias: "My meds" }, errors: ["alias must be lowercase letters, digits and -"] },
   ],
   mount: (el, p, ctx) => redraw(el, () => {
     heading(el, p);
@@ -49,7 +51,7 @@ function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
 
 export const form: ViewDef = {
   id: "form",
-  keys: [...ACTION_KEYS, "fields", "label", "shortcut", "then"],
+  keys: [...ACTION_KEYS, "fields", "label", "shortcut", "alias", "then"],
   span: 4,
   implicitSource: (p) => (p.target?.kind === "this" ? THIS : undefined),
   validate(p) {
@@ -127,7 +129,7 @@ export const form: ViewDef = {
 
 export const checklist: ViewDef = {
   id: "checklist",
-  keys: ["items", "save", "label"],
+  keys: ["items", "save", "label", "shortcut", "alias"],
   span: 4,
   implicitSource: (p) => p.save ?? "checked",
   validate: (p) => [
@@ -138,6 +140,7 @@ export const checklist: ViewDef = {
     { panel: { view: "checklist", items: ["Passport", "Chargers"], save: "packed" } },
     { panel: { view: "checklist", items: ["Passport"], append: "Daily" }, errors: ['"append" doesn\'t apply to checklist'] },
     { panel: { view: "checklist", items: ["Passport"], save: "Trips/" }, errors: ["checklist saves its ticks to a list, not a folder; leave out the /"] },
+    { panel: { view: "checklist", items: ["Passport", "Chargers"], save: "packed", shortcut: "pack" } },
   ],
   mount: (el, p, ctx) => redraw(el, (saved) => {
     const key = p.save ?? "checked";

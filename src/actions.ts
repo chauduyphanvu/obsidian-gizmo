@@ -156,6 +156,28 @@ async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: Ac
 }
 
 /**
+ * Ticks one item of a checklist panel in the app's data note, as ticking its box does; an item
+ * already ticked stays so and nothing is kept in the activity log.
+ */
+export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promise<ActionResult> {
+  const list = p.save ?? "checked";
+  let ticked = false;
+  try {
+    await deps.writeFrontmatter(deps.dataPath, (fm) => {
+      const had = Array.isArray(fm[list]) ? (fm[list] as unknown[]).map(String) : [];
+      if (had.includes(item)) return;
+      ticked = true;
+      fm[list] = [...had, item];
+    });
+  } catch (e) {
+    deps.notify(`Couldn't save: ${(e as Error).message}`);
+    return { ok: false };
+  }
+  if (ticked) deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]);
+  return { ok: true };
+}
+
+/**
  * Runs a panel's actions with one row (a form's values, a list's row, a button's empty row): append
  * a line, save the row (to a list, or as a new note), notify, then open a note. `{placeholders}` in
  * them read the row, the saved row and `date`, `time`, `at`; after a save to a folder, `{path}` is

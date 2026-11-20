@@ -1,4 +1,4 @@
-import { fillLine, runActions, type ActionDeps } from "./actions.ts";
+import { fillLine, runActions, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activity.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
@@ -8,7 +8,7 @@ import { fileDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import type { NoteReader } from "./expand.ts";
 import {
-  answerParams, appsNamed, formRow, readCallbacks, readLink, shortcutLink, withParams, type Callbacks, type ShortcutLink,
+  answerParams, appsNamed, formRow, pickItem, readCallbacks, readLink, shortcutLink, withParams, type Callbacks, type ShortcutLink,
 } from "./links.ts";
 import { thisValues } from "./sources/this.ts";
 import {
@@ -251,7 +251,7 @@ export class Background {
         askers: askersOf(e.spec, e.path),
         shortcuts: [...e.shortcuts].map(([id, ps]) => ({
           id, label: labelOf(ps.panel, id), view: ps.panel.view,
-          fields: ps.panel.view === "form" ? Object.keys(ps.panel.fields ?? ps.panel.schema ?? {}) : [],
+          fields: shortcutFields(ps.panel),
         })),
         records: e.records.map((r) => ({ ...r })),
         alerts: panels.filter((p) => p.alert !== undefined).map((p) => ({
@@ -360,9 +360,8 @@ export class Background {
     return [...this.apps.values()]
       .flatMap((e) => [...e.shortcuts].map(([shortcut, ps]): ShortcutLink => {
         const p = ps.panel;
-        const fields = p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
         return {
-          path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), fields,
+          path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), view: p.view, fields: shortcutFields(p),
           link: shortcutLink(this.apps, e.path, shortcut, this.env.linkKey(e.path, shortcut, true)!),
           allowed: this.granted(e),
           answers: answers(p),
@@ -396,21 +395,19 @@ export class Background {
     step.what = label;
     if (answers(p)) return dry ? void step.remarks.push(`Answer with the value of “${label}”, changing nothing`) : this.answer(entry, ps, p, shortcut, actor, link);
     let input: Row = {};
-    if (triggered && p.view !== "form" && params && Object.keys(params).length) {
+    if (triggered && p.view === "button" && params && Object.keys(params).length) {
       return say(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
     }
-    if (p.view === "form") {
-      if (!params && triggered) return say(`${entry.name}: “${shortcut}” is a form; give ${by(actor)}'s then a fill with its values`);
+    if (p.view === "form" || p.view === "checklist") {
+      const form = p.view === "form";
+      if (!params && triggered) return say(`${entry.name}: “${shortcut}” is a ${p.view}; give ${by(actor)}'s then a fill with ${form ? "its values" : "item"}`);
       if (!params) {
         openApp(entry.path);
-        return say(`${entry.name}: fill in the form`);
+        return say(`${entry.name}: ${form ? "fill in the form" : "tick an item"}`);
       }
-      // Rule 0.2: whatever a link carries is refused whole if any of it holds a secret or a line break.
-      const problem = Object.entries(params).map(([k, v]) => valueProblem(new InputRef(k), v, true)).find(Boolean);
-      if (problem) return say(`${entry.name}: ${problem}`);
-      const filled = formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, params, now);
-      if ("error" in filled) return say(`${entry.name}: ${filled.error}`);
-      input = filled.row;
+      const read = readParams(p, params, now);
+      if ("error" in read) return say(`${entry.name}: ${read.error}`);
+      input = read.row;
     }
     const cb = link?.callbacks ?? {};
     let allowed: "keyed" | "asked" | false = false;
@@ -431,19 +428,27 @@ export class Background {
       say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
     };
     const split = entry.split?.();
-    const base: ActionDeps = {
-      ...this.env.actionDeps(entry.path, split?.mine ?? entry.dataPath, dry ? undefined : actor),
-      stamp: split && { device: split.id },
-    };
-    const deps: ActionDeps = {
-      ...(dry ? recordingDeps(dry.overlay, base, step) : base),
-      then: async (panel, ctx) => {
-        done();
-        if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail, dry);
-      },
-    };
-    const result = await runActions(p, input, deps);
-    if (result.ok) done();
+    let result: ActionResult;
+    if (p.view === "checklist") {
+      // Ticks are kept in the app's own data note, also with devices: split, as ticking a box keeps them.
+      const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
+      result = await tickItem(p, String(input.item), dry ? recordingDeps(dry.overlay, base, step) : base);
+      if (result.ok) say(`${entry.name}: ticked ${String(input.item)}${triggered ? ` for ${by(actor)}` : ""}`);
+    } else {
+      const base: ActionDeps = {
+        ...this.env.actionDeps(entry.path, split?.mine ?? entry.dataPath, dry ? undefined : actor),
+        stamp: split && { device: split.id },
+      };
+      const deps: ActionDeps = {
+        ...(dry ? recordingDeps(dry.overlay, base, step) : base),
+        then: async (panel, ctx) => {
+          done();
+          if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail, dry);
+        },
+      };
+      result = await runActions(p, input, deps);
+      if (result.ok) done();
+    }
     if (dry) return;
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
@@ -460,6 +465,10 @@ export class Background {
     if (!entry || !ps) return undefined;
     const now = this.env.now();
     const p = resolvePanel(ps, this.valuesOf(entry.path, entry.spec, now)).panel;
+    if (p?.view === "checklist") {
+      const items = (p.items ?? []).map(String);
+      return { fields: { item: items }, row: { item: items[0] ?? "" } };
+    }
     if (p?.view !== "form") return undefined;
     const fields = p.fields ?? p.schema ?? {};
     const filled = formRow(fields, p.fieldInfo, {}, now);
@@ -882,6 +891,24 @@ export class Background {
     this.apps.set(path, entry);
     return entry;
   }
+}
+
+/**
+ * The row a link, a `then` or a capture line gives a form or checklist shortcut, or why not. What
+ * they carry is refused whole if any of it holds a secret or a line break (rule 0.2); a form reads
+ * each value as its field's type, a checklist takes the item to tick.
+ */
+function readParams(p: Panel, params: Record<string, string>, now: Date): { row: Row } | { error: string } {
+  const problem = Object.entries(params).map(([k, v]) => valueProblem(new InputRef(k), v, true)).find(Boolean);
+  if (problem) return { error: problem };
+  if (p.view === "checklist") return pickItem((p.items ?? []).map(String), params);
+  return formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, params, now);
+}
+
+/** The values a shortcut takes from a link: a form's fields, a checklist's item; a button takes none. */
+function shortcutFields(p: Panel): string[] {
+  if (p.view === "checklist") return ["item"];
+  return p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
 }
 
 /** Who ran a shortcut, as a notice names them. */
