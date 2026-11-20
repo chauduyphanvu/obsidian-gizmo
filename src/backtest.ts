@@ -123,7 +123,9 @@ export async function backtest(job: BacktestJob): Promise<BacktestResult | undef
   // A loop, not a spread: a year of samples is more arguments than a call takes.
   let earliest = Infinity;
   for (const t of changes) if (t < earliest) earliest = t;
-  let from = Math.max(job.to - SPAN_MS, Number.isFinite(earliest) ? startOfDay(earliest) : job.to - 30 * 86_400_000);
+  // With nothing kept yet, it starts when the app's note was made: no deadline before that was its to miss.
+  const made = layer.host.fileInfo(job.appPath)?.ctime ?? job.to;
+  let from = Math.max(job.to - SPAN_MS, Number.isFinite(earliest) ? startOfDay(earliest) : made);
   const steps = new Set([...changes].filter((t) => t >= from && t <= job.to));
   for (let t = nextMidnight(from); t <= job.to; t = nextMidnight(t)) steps.add(t);
   const deadlines = new Map<string, Map<number, Window>>();

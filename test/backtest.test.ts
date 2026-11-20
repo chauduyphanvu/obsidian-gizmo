@@ -69,6 +69,17 @@ test("a rhythm due by 10:00 misses the days with no row by then, a late row incl
   ]);
 });
 
+test("an app with nothing kept yet is backtested from when its note was made, not from a month before", async () => {
+  const rule = { id: "weigh", every: "day", by: "10:00", source: "weight", say: "no weight by 10:00" };
+  const t = await logged([], weightApp("> 1000", [rule]));
+  const info = t.f.host.fileInfo.bind(t.f.host);
+  t.f.host.fileInfo = (p) => (p === APP ? { ...info(p)!, ctime: day(22, 11) } : info(p));
+  const r = (await backtest(job(t, weightApp("> 1000", [rule]), undefined, day(24, 18))))!;
+  // The 22nd's deadline came before the app did.
+  assert.equal(r.from, day(22, 11));
+  assert.deepEqual(r.after.map((f) => f.at), [day(23, 10), day(24, 10)]);
+});
+
 test("a state rule fires when a row comes to match it, as an alert does", async () => {
   const rule = { id: "heavy", source: "weight", none: { kg: "> 79" }, say: "over 79" };
   const t = await logged(WEIGHTS, weightApp("> 1000", [rule]));

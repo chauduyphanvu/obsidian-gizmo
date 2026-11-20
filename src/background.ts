@@ -665,9 +665,10 @@ export class Background {
     if (dry) return { ok: result.ok };
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
-    if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: `“${label}” didn't run` }));
+    const failed = `“${label}” didn't run${result.error ? `: ${result.error}` : ""}`;
+    if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: failed }));
     const entryId = await result.logged?.catch(() => undefined);
-    return result.ok ? { ok: true, entryId } : { ok: false, error: `“${label}” didn't run`, entryId };
+    return result.ok ? { ok: true, entryId } : { ok: false, error: failed, entryId };
   }
 
   /**

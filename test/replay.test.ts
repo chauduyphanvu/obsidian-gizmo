@@ -88,3 +88,15 @@ test("a replay keeps the newest rows of a recorded list as the live app does", a
   const rows = await pastEnv(t.env, T0 + 2 * HOUR).store!("Apps/W data.md", "Apps/W.md").rows("weight");
   assert.deepEqual(rows.map((r) => r.kg), [79]);
 });
+
+test("before its first row, a replay shows the list empty, not as the data note holds it now", async () => {
+  const t = await history();
+  // The runner's snapshot puts today's rows in the data note.
+  await t.env.data.ledger!.snapshot("Apps/W data.md", {}, (fn) => t.env.writeFrontmatter("Apps/W data.md", fn));
+  t.env.data.fileChanged("Apps/W data.md");
+  assert.equal((t.env.frontmatter("Apps/W data.md")?.weight as unknown[]).length, 2);
+  const before = open(pastEnv(t.env, T0 - HOUR));
+  await settle();
+  const rows = await pastEnv(t.env, T0 - HOUR).store!("Apps/W data.md", "Apps/W.md").rows("weight");
+  assert.deepEqual([rows, before.big("Last")], [[], "—"]);
+});

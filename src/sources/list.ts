@@ -43,7 +43,9 @@ export const list: SourceDef = {
         if (rows) return rows;
         const ticked = state.ticked.get(p.source!);
         if (ticked) return [...ticked];
-        return resolveList(p.source!, layer.host.frontmatter(files.dataPath), layer.host.frontmatter(files.appPath) ?? {});
+        const value = resolveList(p.source!, layer.host.frontmatter(files.dataPath), layer.host.frontmatter(files.appPath) ?? {});
+        // In the past, a list its events hadn't started was empty; what the note holds now came later.
+        return layer.at !== undefined && Array.isArray(value) ? [] : value;
       });
     }
     return layer.kept(`list\n${files.dataPath}\n${files.appPath}\n${p.source}`, [files.dataPath, files.appPath], () => {
