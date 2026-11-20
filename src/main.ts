@@ -13,7 +13,7 @@ import { registerGalleryCommand } from "./gallery-command.ts";
 import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
 import { grantedOf, isAllowed, isAllowedUnder, migrateGrants, sameGrant, setGrant } from "./grants.ts";
 import { moveKeys } from "./identity.ts";
-import { mergeSettings, type StoredData } from "./stored.ts";
+import { SettingsFile, type StoredData } from "./stored.ts";
 import {
   adoptOldLog, obsidianHost, obsidianOtherLogs, obsidianUndoIO, obsidianWrites, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath,
 } from "./host.ts";
@@ -38,7 +38,8 @@ import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 
 export default class GizmoPlugin extends Plugin {
-  store: StoredData = { grants: {} };
+  /** data.json: the settings every device a sync reaches shares, saved by merging (see stored.ts). */
+  private settingsFile = new SettingsFile({ load: () => this.loadData(), save: (data) => this.saveData(data) });
   /** Shared by every open app: web cache, notes index, change notifications. */
   dataLayer!: DataLayer;
   /** Works for allowed apps while their notes are closed: records, shortcuts, status bar, alerts. */
@@ -55,14 +56,14 @@ export default class GizmoPlugin extends Plugin {
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
   private unloading = false;
-  /** The settings as last read from or written to data.json: what a save tells this device's changes by. */
-  private settingsBase: StoredData = { grants: {} };
-  /** Saves and reloads of data.json, one after another. */
-  private settingsQueue: Promise<unknown> = Promise.resolve();
+
+  /** The settings in use. */
+  get store(): StoredData {
+    return this.settingsFile.data;
+  }
 
   async onload(): Promise<void> {
-    this.store = await this.readSettings();
-    this.settingsBase = structuredClone(this.store);
+    await this.settingsFile.open();
     // A permission a later Gizmo words differently is kept in both wordings, so nothing allowed asks again.
     if (migrateGrants(this.store.grants)) await this.saveSettings();
     this.dataLayer = new DataLayer(obsidianHost(this.app, this.manifest.dir, () => this.device.id));
@@ -150,11 +151,7 @@ export default class GizmoPlugin extends Plugin {
   /** `data.json` changed on disk (a sync from another device): what was allowed there holds here too, and what changed here and isn't saved yet stays. */
   async onExternalSettingsChange(): Promise<void> {
     const before = this.store.policy?.hash;
-    await this.queueSettings(async () => {
-      const disk = await this.readSettings();
-      this.store = mergeSettings(this.settingsBase, disk, this.store);
-      this.settingsBase = disk;
-    });
+    await this.settingsFile.reload();
     if (this.store.policy?.hash !== before) this.background?.policyChanged();
     this.grantsChanged();
   }
@@ -164,29 +161,7 @@ export default class GizmoPlugin extends Plugin {
    * over what is on disk now, entry by entry, so what another device saved meanwhile isn't lost.
    */
   saveSettings(): Promise<void> {
-    return this.queueSettings(async () => {
-      const local = structuredClone(this.store);
-      const merged = mergeSettings(this.settingsBase, await this.readSettings(), local);
-      await this.saveData(merged);
-      this.settingsBase = structuredClone(merged);
-      // What changed here while this was written stays; what came from disk comes in.
-      this.store = mergeSettings(local, merged, this.store);
-    });
-  }
-
-  /** data.json as it is on disk; one that can't be read (a sync caught mid-write) counts as unchanged since last read. */
-  private async readSettings(): Promise<StoredData> {
-    try {
-      return { grants: {}, ...((await this.loadData()) as Partial<StoredData> | null) };
-    } catch {
-      return structuredClone(this.settingsBase);
-    }
-  }
-
-  private queueSettings(fn: () => Promise<void>): Promise<void> {
-    const run = this.settingsQueue.then(fn, fn);
-    this.settingsQueue = run.catch(() => {});
-    return run;
+    return this.settingsFile.save();
   }
 
   onunload(): void {

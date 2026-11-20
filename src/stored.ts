@@ -82,3 +82,72 @@ export function captureNamesOf(stored: Pick<StoredData, "captureKeys">, key: str
   const keys = stored.captureKeys;
   return keys && Object.hasOwn(keys, key) ? keys[key] : undefined;
 }
+
+/** How data.json is read and written whole: Obsidian's loadData and saveData. */
+export interface SettingsIO {
+  load(): Promise<unknown>;
+  save(data: StoredData): Promise<void>;
+}
+
+/**
+ * data.json as this device keeps it: the settings in use, and each save merged with what is on disk
+ * (see mergeSettings), one save or reload after another.
+ */
+export class SettingsFile {
+  private io: SettingsIO;
+  /** The settings in use: what this device changes, and what a save writes. */
+  data: StoredData = { grants: {} };
+  /** The settings as last read from or written to data.json: what a save tells this device's changes by. */
+  private settingsBase: StoredData = { grants: {} };
+  /** Saves and reloads of data.json, one after another. */
+  private settingsQueue: Promise<unknown> = Promise.resolve();
+
+  constructor(io: SettingsIO) {
+    this.io = io;
+  }
+
+  /** Reads data.json as the plugin starts. */
+  async open(): Promise<void> {
+    this.data = await this.readSettings();
+    this.settingsBase = structuredClone(this.data);
+  }
+
+  /** data.json changed on disk (a sync from another device): what changed there comes in, and what changed here and isn't saved yet stays. */
+  reload(): Promise<void> {
+    return this.queueSettings(async () => {
+      const disk = await this.readSettings();
+      this.data = mergeSettings(this.settingsBase, disk, this.data);
+      this.settingsBase = disk;
+    });
+  }
+
+  /**
+   * Writes the settings to data.json: what changed here since they were last read or written, laid
+   * over what is on disk now, entry by entry, so what another device saved meanwhile isn't lost.
+   */
+  save(): Promise<void> {
+    return this.queueSettings(async () => {
+      const local = structuredClone(this.data);
+      const merged = mergeSettings(this.settingsBase, await this.readSettings(), local);
+      await this.io.save(merged);
+      this.settingsBase = structuredClone(merged);
+      // What changed here while this was written stays; what came from disk comes in.
+      this.data = mergeSettings(local, merged, this.data);
+    });
+  }
+
+  /** data.json as it is on disk; one that can't be read (a sync caught mid-write) counts as unchanged since last read. */
+  private async readSettings(): Promise<StoredData> {
+    try {
+      return { grants: {}, ...((await this.io.load()) as Partial<StoredData> | null) };
+    } catch {
+      return structuredClone(this.settingsBase);
+    }
+  }
+
+  private queueSettings(fn: () => Promise<void>): Promise<void> {
+    const run = this.settingsQueue.then(fn, fn);
+    this.settingsQueue = run.catch(() => {});
+    return run;
+  }
+}
