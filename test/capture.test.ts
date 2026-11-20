@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { captureDate, captureTargets, captureTime, completed, parseLine, type CaptureApp } from "../src/capture.ts";
+import { captureDate, captureLine, captureTargets, captureTime, completed, parseLine, receipt, type CaptureApp } from "../src/capture.ts";
 import { readSpec } from "../src/spec.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
@@ -162,4 +162,15 @@ test("taking a completion replaces the last word and leaves a space for the next
   assert.equal(completed("spend 5 f", "food"), "spend 5 food ");
   assert.equal(completed("sp", "spend"), "spend ");
   assert.equal(completed("pack ", "Phone charger"), 'pack "Phone charger" ');
+});
+
+test("a ;; line is a capture line, and once it runs its receipt isn't one", () => {
+  assert.equal(captureLine(";; spend 5 food"), " spend 5 food");
+  assert.equal(captureLine("  ;;meds"), "meds");
+  assert.equal(captureLine("> ;; spend"), undefined);
+  assert.equal(captureLine("spend 5"), undefined);
+  const r = receipt("spend 5 food", "Budget", new Date(2026, 10, 19, 8, 14), "abc-1");
+  assert.equal(r, "✓ spend 5 food · Budget · 08:14 · [details](obsidian://gizmo?activity=abc-1)");
+  assert.equal(captureLine(r), undefined);
+  assert.equal(receipt("meds", "Medication log", new Date(2026, 10, 19, 8, 14), undefined), "✓ meds · Medication log · 08:14");
 });

@@ -18,11 +18,14 @@ export function when(at: number, now: Date): string {
 class ActivityModal extends Modal {
   private plugin: GizmoPlugin;
   private app_: string | undefined;
+  /** The entry a capture line's receipt links to, shown marked and scrolled to. */
+  private focus: string | undefined;
 
-  constructor(plugin: GizmoPlugin, appPath?: string) {
+  constructor(plugin: GizmoPlugin, appPath?: string, focus?: string) {
     super(plugin.app);
     this.plugin = plugin;
     this.app_ = appPath;
+    this.focus = focus;
   }
 
   onOpen(): void {
@@ -44,7 +47,16 @@ class ActivityModal extends Modal {
       return;
     }
     const now = new Date();
-    for (const entry of entries) this.renderEntry(box.createDiv({ cls: "gz-activity-entry" }), entry, now);
+    for (const entry of entries) {
+      const row = box.createDiv({ cls: "gz-activity-entry" });
+      this.renderEntry(row, entry, now);
+      if (entry.id !== this.focus) continue;
+      row.addClass("gz-activity-focus");
+      window.requestAnimationFrame(() => row.scrollIntoView({ block: "center" }));
+    }
+    if (this.focus && !entries.some((e) => e.id === this.focus)) {
+      box.prepend(createEl("p", { cls: "gz-muted", text: "That change is no longer in the activity log: it keeps the newest 200 per app." }));
+    }
   }
 
   private renderEntry(row: HTMLElement, entry: Entry, now: Date): void {
@@ -76,8 +88,8 @@ class ActivityModal extends Modal {
   }
 }
 
-export function openActivity(plugin: GizmoPlugin, appPath?: string): void {
-  new ActivityModal(plugin, appPath).open();
+export function openActivity(plugin: GizmoPlugin, appPath?: string, focus?: string): void {
+  new ActivityModal(plugin, appPath, focus).open();
 }
 
 /** "Show app activity": the open app's, or every app's when no app is open. */

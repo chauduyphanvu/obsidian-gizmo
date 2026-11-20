@@ -1,6 +1,8 @@
-import { Modal, Notice } from "obsidian";
+import {
+  EditorSuggest, Modal, Notice, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo,
+} from "obsidian";
 import { undoMessage } from "./activity.ts";
-import { completed, type Parsed } from "./capture.ts";
+import { captureLine, completed, receipt, type Parsed } from "./capture.ts";
 import type GizmoPlugin from "./main.ts";
 
 /** A notice saying a capture line ran, with Undo for what it changed. */
@@ -121,11 +123,103 @@ class CaptureModal extends Modal {
   }
 }
 
-/** "Do…": run any app's shortcut by typing its name and values. */
+/** What a `;;` line offers: to run it (with what that would do), a word to complete it with, or why it can't run. */
+type LineSuggestion =
+  | { kind: "run"; parsed: Parsed & { ok: true }; effects: string[] }
+  | { kind: "complete"; text: string; hint?: string }
+  | { kind: "problem"; message: string };
+
+/** How far up a note is read to tell whether a line sits inside a fenced code block. */
+const MAX_FENCE_LINES = 2000;
+
+/** Whether a line is inside a ``` or ~~~ code block, where `;;` may be a comment. */
+function inCode(editor: Editor, line: number): boolean {
+  let open = false;
+  for (let i = Math.max(0, line - MAX_FENCE_LINES); i < line; i++) if (/^\s*(```|~~~)/.test(editor.getLine(i))) open = !open;
+  return open;
+}
+
+/**
+ * A line starting `;;` in any note is a capture line: `;; spend 14.5 food lunch`. It offers
+ * itself only once its first word is, or starts, a shortcut's name, so Enter on any other line
+ * is left alone. Choosing it runs the line and puts a receipt in its place, linking to what it
+ * changed in the activity log.
+ */
+class CaptureSuggest extends EditorSuggest<LineSuggestion> {
+  private plugin: GizmoPlugin;
+
+  constructor(plugin: GizmoPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+  }
+
+  onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
+    const text = editor.getLine(cursor.line);
+    const line = captureLine(text);
+    const index = this.plugin.background?.captureIndex();
+    if (line === undefined || !index || cursor.ch < text.length - text.trimStart().length + 2) return null;
+    const first = line.trimStart().split(/\s/)[0].toLowerCase();
+    const known = index.names.has(first) || index.clashes.has(first);
+    const starts = !/\s/.test(line.trimStart()) && [...index.names.keys()].some((n) => n.startsWith(first));
+    if (!known && !starts) return null;
+    if (inCode(editor, cursor.line)) return null;
+    return { start: { line: cursor.line, ch: 0 }, end: { line: cursor.line, ch: text.length }, query: line };
+  }
+
+  async getSuggestions(context: EditorSuggestContext): Promise<LineSuggestion[]> {
+    const bg = this.plugin.background;
+    if (!bg) return [];
+    const { parsed, effects } = await bg.previewLine(context.query);
+    if (parsed.ok) return [{ kind: "run", parsed, effects: effects ?? [] }];
+    if (parsed.completions.length) return parsed.completions.slice(0, 12).map((text) => ({ kind: "complete", text, hint: parsed.next }));
+    return [{ kind: "problem", message: parsed.next ? `${parsed.error} · ${parsed.next}` : parsed.error }];
+  }
+
+  renderSuggestion(s: LineSuggestion, el: HTMLElement): void {
+    if (s.kind === "run") {
+      el.createDiv({ cls: "gz-suggest-key", text: `Run in ${s.parsed.target.app}: ${s.parsed.target.label}` });
+      for (const line of s.effects) el.createDiv({ cls: "gz-suggest-hint", text: line });
+    } else if (s.kind === "complete") {
+      el.createDiv({ cls: "gz-suggest-key", text: s.text });
+      if (s.hint) el.createDiv({ cls: "gz-suggest-hint", text: s.hint });
+    } else {
+      el.createDiv({ cls: "gz-suggest-hint gz-error-text", text: s.message });
+    }
+  }
+
+  selectSuggestion(s: LineSuggestion): void {
+    const ctx = this.context;
+    if (!ctx || s.kind === "problem") return;
+    const { editor, start, end, query } = ctx;
+    if (s.kind === "complete") {
+      const text = editor.getLine(start.line);
+      const prefix = text.slice(0, text.length - query.length);
+      const next = `${prefix}${completed(query, s.text)}`;
+      editor.replaceRange(next, start, end);
+      editor.setCursor({ line: start.line, ch: next.length });
+      return;
+    }
+    void this.runLine(editor, start.line, query.trim(), s.parsed.target.app);
+  }
+
+  private async runLine(editor: Editor, at: number, line: string, app: string): Promise<void> {
+    const result = await this.plugin.background?.capture(line);
+    if (!result?.ok) return;
+    // The line may have moved while it ran; it is replaced only where it still is.
+    const where = editor.getLine(at) !== undefined && captureLine(editor.getLine(at))?.trim() === line ? at
+      : [...Array(editor.lineCount()).keys()].find((i) => captureLine(editor.getLine(i))?.trim() === line);
+    if (where === undefined) return;
+    const text = editor.getLine(where);
+    editor.replaceRange(receipt(line, app, new Date(), result.entryId), { line: where, ch: 0 }, { line: where, ch: text.length });
+  }
+}
+
+/** "Do…" and `;;` lines: run any app's shortcut by typing its name and values. */
 export function registerCaptureCommand(plugin: GizmoPlugin): void {
   plugin.addCommand({
     id: "capture",
     name: "Do…",
     callback: () => new CaptureModal(plugin).open(),
   });
+  plugin.registerEditorSuggest(new CaptureSuggest(plugin));
 }

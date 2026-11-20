@@ -3,6 +3,7 @@ import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv, pluginFile, vaultFrontmatter, vaultNotes } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
+import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
 import { DeviceBeat } from "./settings.ts";
 import { openInstall } from "./share-command.ts";
@@ -103,6 +104,8 @@ export function registerBackground(plugin: GizmoPlugin): Background {
   plugin.registerObsidianProtocolHandler("gizmo", (params) => {
     app.workspace.onLayoutReady(() => {
       if (typeof params.install === "string") return openInstall(plugin, params.install);
+      // A capture line's receipt: opening the activity log changes nothing, whoever sent it.
+      if (typeof params.activity === "string") return openActivity(plugin, undefined, params.activity);
       void bg.runUri({ ...params });
     });
   });

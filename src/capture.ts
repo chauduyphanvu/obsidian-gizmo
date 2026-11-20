@@ -305,3 +305,19 @@ export function completed(line: string, completion: string): string {
   const word = /\s/.test(completion) ? `"${completion}"` : completion;
   return `${line.slice(0, at)}${word} `;
 }
+
+/** A capture line in a note: the text after a leading `;;`, or undefined for any other line. */
+export function captureLine(text: string): string | undefined {
+  const m = /^\s*;;(.*)$/.exec(text);
+  return m ? m[1] : undefined;
+}
+
+/**
+ * What a capture line becomes once it ran: a tick, the line, the app and the time, and a link to
+ * what it changed in the activity log. It no longer starts with `;;`, so it never runs again.
+ */
+export function receipt(line: string, app: string, now: Date, entryId: string | undefined): string {
+  const time = stampParts(now).time;
+  const details = entryId ? ` · [details](obsidian://gizmo?activity=${encodeURIComponent(entryId)})` : "";
+  return `✓ ${line} · ${app} · ${time}${details}`;
+}
