@@ -3,10 +3,10 @@ import type { Change } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import type { Row } from "./data.ts";
 import { editErrors, editableSource } from "./edit.ts";
-import { ROW_INDEX } from "./sources/list.ts";
+import { ROW_INDEX, ROW_SOURCE } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { Panel } from "./spec.ts";
-import { resolveList } from "./store.ts";
+import { resolveList, type Split } from "./store.ts";
 
 /** What a write to a note that was renamed or deleted since it was shown says. */
 const GONE = "That note is gone";
@@ -23,6 +23,8 @@ export interface WriteSite {
   readonly hostPath: string;
   /** The app's data note as it is now; a change to `store` moves it. */
   dataPath(): string;
+  /** With `devices: split`, where this device's rows go. */
+  split(): Split | undefined;
   /** What the activity log calls a checklist: its panel's title, else the list it ticks into. */
   checklistName(key: string): string;
 }
@@ -118,11 +120,14 @@ export class AppWrites {
       }
       const index = (row as Record<symbol, unknown>)[ROW_INDEX];
       if (typeof index !== "number") return;
+      // A row read from a device's own note is changed there; that device's next save keeps it.
+      const source = (row as Record<symbol, unknown>)[ROW_SOURCE];
+      const path = typeof source === "string" ? source : this.site.dataPath();
       const name = m.p.source!;
       let changed = false;
       let edit: Change | undefined;
-      await this.writeData((fm) => {
-        const list = resolveList(name, fm, this.env.frontmatter(this.site.appPath) ?? {});
+      await this.env.writeFrontmatter(path, (fm) => {
+        const list = typeof source === "string" ? fm[name] : resolveList(name, fm, this.env.frontmatter(this.site.appPath) ?? {});
         const stored = Array.isArray(list) ? list[index] : undefined;
         if (!Array.isArray(list) || !holds(stored, row, field)) {
           changed = true;
@@ -131,7 +136,7 @@ export class AppWrites {
         const next = [...list];
         next[index] = { ...stored, [field]: value };
         fm[name] = next;
-        edit = { kind: "row-edited", path: this.site.dataPath(), list: name, row: next[index] as Row, field, from: stored[field], to: value };
+        edit = { kind: "row-edited", path, list: name, row: next[index] as Row, field, from: stored[field], to: value };
       });
       if (edit) this.log(m.p.title ?? field, [edit]);
       if (changed) {
@@ -160,8 +165,10 @@ export class AppWrites {
   async runActions(p: Panel, row: Row): Promise<void> {
     const env = this.env;
     const appPath = this.site.appPath;
+    const split = this.site.split();
     await runActions(p, row, {
-      ...actionDepsOf(env, appPath, this.site.dataPath()),
+      ...actionDepsOf(env, appPath, split?.mine ?? this.site.dataPath()),
+      stamp: split && { device: split.id },
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
     });

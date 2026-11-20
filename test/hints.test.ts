@@ -69,9 +69,9 @@ test("the source words are the kinds of source that are one word, and each has i
 // ---- Suggestions -----------------------------------------------------------------------------------
 
 test("top-level keys depend on whether the note is an app or a component, and leave out what is typed", () => {
-  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view"]);
+  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view", "devices"]);
   assert.deepEqual(suggested("---\n‸\n---", true), ["component", "params", "data", "panels", "tabs", "for", "spec"]);
-  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view"]);
+  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view", "devices"]);
   assert.deepEqual(suggested("---\ncomponent: C\nparams: [a]\n‸\n---", true), ["data", "panels", "tabs", "for", "spec"]);
   assert.deepEqual(suggested(app("p‸")), ["panels", "spec", "inputs"]);
 });
@@ -85,7 +85,7 @@ test("a top-level key is matched by what it starts with, then by what it contain
 
 test("a single panel written at the top takes its view's keys too", () => {
   const keys = suggested("---\napp: A\nview: countdown\n‸\n---");
-  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "title", "tab", "span", "to", "label"]);
+  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "devices", "title", "tab", "span", "to", "label"]);
   assert.deepEqual(suggested("---\ncomponent: C\nview: countdown\n‸\n---", true), ["params", "data", "panels", "tabs", "for", "spec"]);
 });
 

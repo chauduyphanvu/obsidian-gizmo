@@ -135,12 +135,18 @@ export default class GizmoPlugin extends Plugin {
     return result;
   }
 
-  /** A renamed or moved app takes its default data note along, so its recorded data stays attached. */
+  /**
+   * A renamed or moved app takes its default data note along, and the folder of its devices' notes
+   * (devices: split), so its recorded data stays attached.
+   */
   private async moveDataNote(app: TFile, oldPath: string): Promise<void> {
-    const data = this.app.vault.getFileByPath(defaultDataPath(oldPath));
+    const vault = this.app.vault;
+    const data = vault.getFileByPath(defaultDataPath(oldPath));
     const target = defaultDataPath(app.path);
-    if (!data || data === app || this.app.vault.getAbstractFileByPath(target)) return;
-    await this.app.fileManager.renameFile(data, target);
+    if (data && data !== app && !vault.getAbstractFileByPath(target)) await this.app.fileManager.renameFile(data, target);
+    const folder = vault.getFolderByPath(defaultDataPath(oldPath).replace(/\.md$/i, ""));
+    const folderTarget = target.replace(/\.md$/i, "");
+    if (folder && !vault.getAbstractFileByPath(folderTarget)) await this.app.fileManager.renameFile(folder, folderTarget);
   }
 
   /** Notes that open as apps: apps, and components (which show how to use them). */

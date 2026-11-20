@@ -46,7 +46,9 @@ export class DeviceBeat {
     const others = otherRunners(await devicesSeen(this.plugin), d.id, now);
     if (!others.length) return;
     this.warned = true;
-    new Notice(`Background work also runs on ${others.map((o) => o.name).join(", ")}: an alert's then or a record may run on each. Turn it off on one of them in Settings → Gizmo.`, 15_000);
+    // Two Macs are both "Mac" until renamed; the start of the id tells them apart.
+    const names = others.map((o) => (o.name === d.name ? `${o.name} (${o.id.slice(0, 4)})` : o.name));
+    new Notice(`Background work also runs on ${names.join(", ")}: an alert's then or a record may run on each. Turn it off on one of them in Settings → Gizmo.`, 15_000);
   }
 }
 

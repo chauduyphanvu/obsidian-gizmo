@@ -129,7 +129,13 @@ async function vanished(app: App, path: string): Promise<boolean> {
 
 async function ensureFolder(app: App, path: string): Promise<void> {
   const folder = path.includes("/") ? path.slice(0, path.lastIndexOf("/")) : "";
-  if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
+  if (!folder || app.vault.getFolderByPath(folder)) return;
+  try {
+    await app.vault.createFolder(folder);
+  } catch (e) {
+    // Made a moment ago by another device or program, before Obsidian here heard of it.
+    if (!(await app.vault.adapter.exists(folder))) throw e;
+  }
 }
 
 /** Changes an existing note's frontmatter, after any other app's write to it; false, writing nothing, when the note is gone. */
@@ -246,6 +252,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
     tryFirst: () => void tryVaultApp(plugin, file.path),
+    device: plugin.device,
   };
 }
 

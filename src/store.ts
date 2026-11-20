@@ -74,6 +74,25 @@ export function dataPathOf(store: string | undefined, appPath: string, storePath
   return store ? storePath(store, appPath) : defaultDataPath(appPath);
 }
 
+/** Where an app with `devices: split` keeps each device's rows: a folder beside its data note, and this device's note there. */
+export interface Split {
+  folder: string;
+  /** This device's own note, the only one it adds rows to. */
+  mine: string;
+  /** What this device's note says it is, so its rows are read as a device's. */
+  id: string;
+}
+
+export function splitOf(dataPath: string, device: { id: string; name: string }, noteName: (d: { id: string; name: string }) => string): Split {
+  const folder = dataPath.replace(/\.md$/i, "");
+  return { folder, mine: `${folder}/${noteName(device)}.md`, id: device.id };
+}
+
+/** The data note's folder of device notes, as a permission names it. */
+export function splitFolder(store: string | undefined, appPath: string): string {
+  return (store ? notePath(storeTarget(store)) : defaultDataPath(appPath)).replace(/\.md$/i, "");
+}
+
 /** The note a `store:` value points at, as link text: `[[Logs/Weight|w]]` and `Logs/Weight.md` both give `Logs/Weight`. */
 export function storeTarget(store: string): string {
   const inner = store.trim().replace(/^\[\[/, "").replace(/\]\]$/, "");

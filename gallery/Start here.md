@@ -6,6 +6,7 @@ A gizmo is an ordinary note whose properties start with `app:` and one sentence 
 - [[Weight]]: Log my weight and watch the trend toward my goal (needs [[Tracker kit]])
 - [[Sleep]]: Log how long I sleep and see whether I'm getting my eight hours (needs [[Tracker kit]])
 - [[Budget]]: Log what I spend and get told when the month runs past my limit
+- [[Household chores]]: Log the chores we do on our own phones and see who did what this week
 - [[Book finder]]: Find books on Open Library and keep the ones I want on my shelf
 - [[Reading progress]]: Track where I am in a book, on the book's own note
 - [[Project board]]: Move my projects from idea to done and open the one I'm working on

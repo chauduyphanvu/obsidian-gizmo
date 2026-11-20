@@ -5,7 +5,7 @@ import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
 import type { Panel } from "./spec.ts";
-import { basename } from "./store.ts";
+import { basename, type Split } from "./store.ts";
 import { secretIds, stringsIn } from "./template.ts";
 
 export interface FileInfo {
@@ -44,6 +44,8 @@ export interface AppFiles {
   dataPath: string;
   /** The note it sits in (`$this`, `source: this`) when that isn't its own: an embed's or a lens's note. */
   hostPath?: string;
+  /** With `devices: split`, where each device's rows are kept. */
+  split?: Split;
 }
 
 /** A note as a row: its properties, then its name, path, tags and file times (which win over properties of those names). */
@@ -221,7 +223,8 @@ export class DataLayer {
   }
 
   /**
-   * What `make` returns, made once and kept until one of `paths` changes, is deleted or is renamed.
+   * What `make` returns, made once and kept until one of `paths` changes, is deleted or is renamed
+   * (a path ending in `/`: any note in that folder, a new one included).
    * For work that reads only those files' frontmatter, which every panel on them would otherwise repeat.
    */
   kept<T>(key: string, paths: string[], make: () => T): T {
@@ -317,7 +320,8 @@ export class DataLayer {
   private touch(path: string, before: Row | undefined, after: Row | undefined): void {
     this.pending.add(fileDep(path));
     this.parsedFiles.delete(path);
-    for (const [key, made] of this.made) if (made.paths.includes(path)) this.made.delete(key);
+    // A path ending in a slash stands for every note in that folder, some of which may be new.
+    for (const [key, made] of this.made) if (made.paths.some((p) => p === path || (p.endsWith("/") && path.startsWith(p)))) this.made.delete(key);
     // Links resolve by name, so a note appearing, changing or moving under a name reaches its users.
     this.pending.add(nameDep(basename(path)));
     // Heard by whatever reads every note, such as a base.

@@ -147,6 +147,8 @@ export function panelIds(templates: Record<string, unknown>[]): string[] {
 export interface AppSpec {
   /** Link or path of the note that holds recorded data, when not the default `<App> data.md`. */
   store?: string;
+  /** `devices: split`: each device adds rows to a note of its own beside the data note, so two never write one note. */
+  split?: boolean;
   description: string;
   panels: PanelSpec[];
   refreshMs?: number;
@@ -651,8 +653,19 @@ export function readSpec(
     errors.push(`store can't be an app or a component note; name a note that only holds data, e.g. store: "[[Weight log]]"`);
     store = undefined;
   }
+  let split: boolean | undefined;
+  if (fm.devices !== undefined && fm.devices !== null) {
+    if (fm.devices === "split") split = true;
+    else errors.push("devices must be split, e.g. devices: split");
+  }
+  // A device's note says which device it is under `device`, so no list can have that name.
+  const lists = [
+    ...panels.flatMap((ps) => (ps.panel.target?.kind === "list" ? [ps.panel.target.name] : [])),
+    ...Object.entries(blocks).flatMap(([name, b]) => (b.record !== undefined ? [typeof b.into === "string" ? b.into : `${name}_log`] : [])),
+  ];
+  if (split && lists.includes("device")) errors.push(`with devices: split, a list can't be called "device"; that names each device's note`);
   const spec = {
-    description, panels, refreshMs, store, inputs, selections,
+    description, panels, refreshMs, store, split, inputs, selections,
     blocks: Object.fromEntries(blocks), recorded, read: expander.read, links: [...expander.links],
   };
   return { spec, errors, empty: false };

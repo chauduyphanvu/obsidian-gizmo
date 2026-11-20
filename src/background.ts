@@ -16,7 +16,9 @@ import {
 } from "./spec.ts";
 import type { AppSummary } from "./map.ts";
 import { askersOf, permissionsOf } from "./permissions.ts";
-import { basename, dataPathOf, notePath, resolveList, storeTarget } from "./store.ts";
+import { basename, dataPathOf, notePath, resolveList, splitOf, storeTarget, type Split } from "./store.ts";
+import { deviceNoteName } from "./device.ts";
+import { ROW_SOURCE, deviceNotes } from "./sources/list.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
@@ -80,6 +82,8 @@ export interface BackgroundEnv {
   logSent(entry: NewEntry): void;
   /** Whether this device runs background work: records, and what alerts run. Other devices may run it instead. */
   runsBackground(): boolean;
+  /** This device, for apps with `devices: split`. */
+  device(): { id: string; name: string };
 }
 
 /** What a link brings besides a form's values: the key it carries and where it wants word back. */
@@ -133,6 +137,8 @@ interface AppEntry {
   definition: string;
   spec: AppSpec;
   dataPath: string;
+  /** With `devices: split`: where this device's rows go. */
+  split?: Split;
   /** What the app needs allowed; it acts only while exactly this is granted. */
   wanted: string[];
   records: RecordJob[];
@@ -306,7 +312,7 @@ export class Background {
     const p = r.panel;
     const source = sourceOf(p);
     try {
-      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath }, { ttlMs: entry.refreshMs, now, force });
+      const loaded = await this.env.data.panelData(source, p, { appPath, dataPath: entry.dataPath, split: entry.split }, { ttlMs: entry.refreshMs, now, force });
       const rows = splitByWindow(p, loaded, now).current;
       const { value, text, unit } = panelValue(p, rows, now);
       return { value, shown: unit ? `${text} ${unit}` : text, rows, panel: p };
@@ -419,7 +425,10 @@ export class Background {
       told = true;
       say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
     };
-    const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
+    const base: ActionDeps = {
+      ...this.env.actionDeps(entry.path, entry.split?.mine ?? entry.dataPath, dry ? undefined : actor),
+      stamp: entry.split && { device: entry.split.id },
+    };
     const deps: ActionDeps = {
       ...(dry ? recordingDeps(dry.overlay, base, step) : base),
       then: async (panel, ctx) => {
@@ -755,8 +764,13 @@ export class Background {
     this.sampling.add(key);
     try {
       const now = this.env.now();
-      const last = lastSample(resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {}));
-      if (last !== undefined && now.getTime() - last < job.everyMs) return;
+      // With devices: split, the newest sample any device took counts, whichever device took it.
+      const devices = entry.split ? deviceNotes(this.env.data, entry.split.folder) : [];
+      const last = Math.max(
+        lastSample(resolveList(job.list, this.env.frontmatter(entry.dataPath), this.env.frontmatter(entry.path) ?? {})) ?? -Infinity,
+        ...devices.map((path) => lastSample(this.env.frontmatter(path)?.[job.list]) ?? -Infinity),
+      );
+      if (last !== -Infinity && now.getTime() - last < job.everyMs) return;
       const r = await this.evaluate(entry.path, entry.spec.recorded[job.block], true);
       if (!("panel" in r)) return;
       const row = oneRow(r.rows);
@@ -764,7 +778,9 @@ export class Background {
       const at = stampParts(now).at;
       const sample: Row = { at, ...row };
       sample.at = at;
-      await this.env.actionDeps(entry.path, entry.dataPath).writeFrontmatter(entry.dataPath, (fm) => {
+      const into = entry.split?.mine ?? entry.dataPath;
+      await this.env.actionDeps(entry.path, into).writeFrontmatter(into, (fm) => {
+        if (entry.split) fm.device = entry.split.id;
         const list = Array.isArray(fm[job.list]) ? fm[job.list] as unknown[] : [];
         fm[job.list] = [...list, sample].slice(-MAX_SAMPLES);
       });
@@ -812,12 +828,14 @@ export class Background {
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const shortcuts = new Map<string, PanelSpec>();
     for (const ps of spec.panels) if (ps.panel.shortcut && !shortcuts.has(ps.panel.shortcut)) shortcuts.set(ps.panel.shortcut, ps);
+    const dataPath = dataPathOf(spec.store, path, (store, from) => this.env.storePath(store, from));
     const entry: AppEntry = {
       path,
       name: basename(path),
       definition,
       spec,
-      dataPath: dataPathOf(spec.store, path, (store, from) => this.env.storePath(store, from)),
+      dataPath,
+      split: spec.split ? splitOf(dataPath, this.env.device(), deviceNoteName) : undefined,
       wanted: permissionsOf(spec, path),
       records: recordJobs(spec),
       shortcuts,
@@ -826,7 +844,7 @@ export class Background {
       stop: () => {},
     };
     const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
-    const files = { appPath: path, dataPath: entry.dataPath };
+    const files = { appPath: path, dataPath: entry.dataPath, split: entry.split };
     const start = this.valuesOf(path, spec, this.env.now());
     const dataDeps = entry.watched.flatMap(({ ps }) => {
       const p = resolvePanel(ps, start).panel;
@@ -848,10 +866,14 @@ function by(actor: Actor): string {
   return actor.startsWith("trigger:") ? actor.slice("trigger:".length) : actor === "link" ? "a link" : "a command";
 }
 
-/** A row as an alert's `then` remembers it: its note (and task text), else when it was saved, else all of it. */
+/**
+ * A row as an alert's `then` remembers it: its note (and task text), else when it was saved (and,
+ * with devices: split, on which device: two can save in the same minute), else all of it.
+ */
 function rowId(row: Row): string {
   if (typeof row.path === "string") return typeof row.text === "string" ? `${row.path}\n${row.text}` : row.path;
-  if (typeof row.at === "string") return `at:${row.at}`;
+  const source = (row as Record<symbol, unknown>)[ROW_SOURCE];
+  if (typeof row.at === "string") return typeof source === "string" ? `${source}\nat:${row.at}` : `at:${row.at}`;
   return stableJson(row);
 }
 

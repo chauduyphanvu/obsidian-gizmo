@@ -9,18 +9,21 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 
 /**
  * `dir` must be a new folder inside the work dir; `fill(vault)` puts the notes in. The built plugin
- * (main.js, manifest.json, styles.css in `repo`) is installed and turned on.
+ * (main.js, manifest.json, styles.css in `repo`) is installed and turned on. With `vault`, a second
+ * instance opens that vault (one another launch made) as another device would, with its own user data.
  */
-export async function launch({ repo, dir, port, fill }) {
-  const vault = join(dir, "vault");
+export async function launch({ repo, dir, port, fill, vault: shared }) {
+  const vault = shared ?? join(dir, "vault");
   const userData = join(dir, "userdata");
-  const pluginDir = join(vault, ".obsidian/plugins/gizmo");
-  mkdirSync(vault, { recursive: true });
   mkdirSync(userData, { recursive: true });
-  fill(vault);
-  mkdirSync(pluginDir, { recursive: true });
-  for (const f of ["main.js", "manifest.json", "styles.css"]) cpSync(join(repo, f), join(pluginDir, f));
-  writeFileSync(join(vault, ".obsidian/community-plugins.json"), '["gizmo"]');
+  if (!shared) {
+    const pluginDir = join(vault, ".obsidian/plugins/gizmo");
+    mkdirSync(vault, { recursive: true });
+    fill(vault);
+    mkdirSync(pluginDir, { recursive: true });
+    for (const f of ["main.js", "manifest.json", "styles.css"]) cpSync(join(repo, f), join(pluginDir, f));
+    writeFileSync(join(vault, ".obsidian/community-plugins.json"), '["gizmo"]');
+  }
   writeFileSync(join(userData, "obsidian.json"), JSON.stringify({
     vaults: { c3d4e5f607182930: { path: vault, ts: Date.now(), open: true } },
   }));

@@ -69,6 +69,7 @@ const APPS: Record<string, string[]> = {
   "Apps/Book finder.md": ["create:Books", "edit:Books", "images", "net:openlibrary.org", "read:Books", "send:openlibrary.org|typed.q"],
   "Apps/Budget.md": ["answer:spent"],
   "Apps/Decision journal.md": ["create:Decisions", "edit:Decisions", "read:Decisions"],
+  "Apps/Household chores.md": ["split:Apps/Household chores data"],
   "Apps/Medication log.md": ["answer:doses-today"],
   "Apps/Project board.md": ["create:Projects", "edit:Projects", "read:Projects"],
   "Apps/Read later.md": ["create:Reading", "edit:Reading", "net:feeds.bbci.co.uk", "net:feeds.npr.org", "read:Reading"],

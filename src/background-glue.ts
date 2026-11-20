@@ -55,6 +55,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     },
     logSent: (entry) => void plugin.activity.add(entry),
     runsBackground: () => plugin.device.background,
+    device: () => plugin.device,
     sink: {
       notify: (message) => { new Notice(message); },
       // Commands come and go with the apps that declare them; a hotkey stays bound to the id.

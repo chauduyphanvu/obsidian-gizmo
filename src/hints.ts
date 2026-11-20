@@ -167,7 +167,8 @@ export interface Suggestion {
   hint: string;
 }
 
-const TOP_KEYS = { app: APP_KEYS, component: COMPONENT_KEYS };
+// `devices` is offered but isn't reserved: a list or a saved field may still be called that.
+const TOP_KEYS = { app: [...APP_KEYS, "devices"], component: COMPONENT_KEYS };
 
 /** Keys a panel with this view takes. */
 function panelKeys(view: string): string[] | undefined {

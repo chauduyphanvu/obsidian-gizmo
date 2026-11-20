@@ -10,8 +10,10 @@ import { startOf } from "./keys.ts";
  */
 export interface ActionDeps {
   now(): Date;
-  /** The app's data note, where lists are saved. */
+  /** The app's data note, where lists are saved; with `devices: split`, this device's own note. */
   dataPath: string;
+  /** Properties the note rows are saved to must carry: a device's note says which device it is. */
+  stamp?: Record<string, unknown>;
   /** The app note: links in `open` resolve from it. */
   appPath: string;
   writeFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
@@ -189,6 +191,7 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     }
     if (target?.kind === "list") {
       await deps.writeFrontmatter(deps.dataPath, (fm) => {
+        for (const [k, v] of Object.entries(deps.stamp ?? {})) fm[k] = v;
         const list = fm[target.name];
         fm[target.name] = Array.isArray(list) ? [...list, saved] : [saved];
       });
