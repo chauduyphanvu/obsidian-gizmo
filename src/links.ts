@@ -16,12 +16,25 @@ export interface ShortcutLink {
 }
 
 /** A link's own parameters; a form field of one of these names can't be filled from a link. */
-export const LINK_PARAMS = ["action", "app", "do"];
+export const LINK_PARAMS = ["action", "app", "do", "key"];
 
-/** What a link asks: the app it names, the shortcut to run, and every other parameter, which fills a form's fields. */
-export function readLink(params: Record<string, string>): { app: string; shortcut: string; fields: Record<string, string> } {
+/**
+ * What a link asks: the app it names, the shortcut to run, the key it carries, and every other
+ * parameter, which fills a form's fields.
+ */
+export function readLink(params: Record<string, string>): { app: string; shortcut: string; key: string | undefined; fields: Record<string, string> } {
   const fields = Object.fromEntries(Object.entries(params).filter(([k]) => !LINK_PARAMS.includes(k)));
-  return { app: params.app ?? "", shortcut: params.do ?? "", fields };
+  return { app: params.app ?? "", shortcut: params.do ?? "", key: params.key, fields };
+}
+
+/**
+ * A new key for a shortcut's link: 16 random bytes as URL-safe text. Any web page, email or chat
+ * message can send an obsidian:// link; only a link copied in Obsidian carries the key, and only
+ * such a link runs without asking.
+ */
+export function newLinkKey(): string {
+  const bytes = crypto.getRandomValues(new Uint8Array(16));
+  return btoa(String.fromCharCode(...bytes)).replace(/\+/g, "-").replace(/\//g, "_").replace(/=+$/, "");
 }
 
 /** What copying a shortcut's link tells: which link, how a form's fields are filled, and what stops it. */
@@ -41,11 +54,11 @@ export function appsNamed<T extends { path: string; name: string }>(apps: Readon
   return exact ? [exact] : [...apps.values()].filter((e) => e.name === name);
 }
 
-/** The link that runs an app's shortcut: it names the app by name, or by path when another app has that name. */
-export function shortcutLink(apps: ReadonlyMap<string, { path: string; name: string }>, path: string, shortcut: string): string {
+/** The link that runs an app's shortcut, with its key: it names the app by name, or by path when another app has that name. */
+export function shortcutLink(apps: ReadonlyMap<string, { path: string; name: string }>, path: string, shortcut: string, key: string): string {
   const name = basename(path);
   const app = appsNamed(apps, name).length === 1 ? name : path.replace(/\.md$/i, "");
-  return `obsidian://gizmo?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}`;
+  return `obsidian://gizmo?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}&key=${encodeURIComponent(key)}`;
 }
 /**
  * A form's row from a link's parameters, each read as its field's type; a field the link doesn't

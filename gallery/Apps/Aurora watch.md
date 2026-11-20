@@ -51,6 +51,6 @@ panels:
     edit: [note]
 ---
 You get a notice when Kp reaches 5 or the forecast says it will, and the value sits in the status
-bar; press Saw aurora when you see one (a hotkey or `obsidian://gizmo?app=Aurora watch&do=saw-aurora`
+bar; press Saw aurora when you see one (a hotkey or its copied link
 works with the app closed), then add a note to it in the table. It asks to fetch from
 services.swpc.noaa.gov, and keeps an hourly Kp record while Obsidian is open.

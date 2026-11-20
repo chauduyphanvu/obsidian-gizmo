@@ -16,7 +16,9 @@ export default async function triggers(t) {
       const notices = await na.noticesSince(mark, "Errands");
       await na.until(() => count() === before + 1, 3000);
       return { links: links.map((l) => [l.app, l.link, l.fields]), notices, errands: na.fm("Apps/Errands data.md")?.errands };`);
-    expect(JSON.stringify(r.links) === JSON.stringify([["Calls", "obsidian://gizmo?app=Calls&do=log", ["who", "back"]], ["Errands", "obsidian://gizmo?app=Errands&do=add", ["errand"]]]), r);
+    // Each link carries its shortcut's key, which only a link copied in Obsidian has.
+    const keyless = r.links.map(([app, link, fields]) => [app, link.replace(/&key=[\w-]{22}$/, ""), fields]);
+    expect(JSON.stringify(keyless) === JSON.stringify([["Calls", "obsidian://gizmo?app=Calls&do=log", ["who", "back"]], ["Errands", "obsidian://gizmo?app=Errands&do=add", ["errand"]]]), r);
     expect(r.errands?.at(-1)?.errand === "Post the parcel" && r.notices.includes("Errands: Add done"), r);
     return `${r.links.length} links; ${r.errands.length} errands`;
   });
@@ -27,7 +29,9 @@ export default async function triggers(t) {
       const errands = () => na.fm("Apps/Errands data.md")?.errands ?? [];
       const before = errands().length;
       const mark = na.notices.length;
-      app.workspace.protocolHandler.dispatch({ action: "gizmo", app: "Calls", do: "log", who: "Sam", back: "2099-01-31" });
+      // The link as "Copy link to an app shortcut" gives it, key and all, with the form's values on the end.
+      const url = new URL(na.plugin().background.shortcutLinks().find((l) => l.app === "Calls" && l.shortcut === "log").link);
+      app.workspace.protocolHandler.dispatch({ action: url.host, ...Object.fromEntries(url.searchParams), who: "Sam", back: "2099-01-31" });
       const notices = await na.noticesSince(mark, "for Calls");
       await na.until(() => errands().length === before + 1, 3000);
       const log = await na.plugin().activity.list();

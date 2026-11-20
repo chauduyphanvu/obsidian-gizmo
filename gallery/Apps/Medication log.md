@@ -34,5 +34,6 @@ panels:
     format: {at: time}
 ---
 Press the button each time you take a dose: today's count sits in the status bar, and a hotkey or
-`obsidian://gizmo?app=Medication log&do=took-meds` logs one with the app closed. It asks for
+the link "Copy link to an app shortcut" gives for Took meds logs one with the app closed (a link
+without the key a copied one carries asks first). It asks for
 nothing, because everything is saved in the note Medication log data next to it.

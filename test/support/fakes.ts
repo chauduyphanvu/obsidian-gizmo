@@ -257,7 +257,13 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     commands: [] as { id: string; name: string }[],
     status: [] as { appPath: string; text: string; title: string }[],
     apps: [] as string[],
+    /** What a link without its key asked the person. */
+    asked: [] as { title: string; lines: string[] }[],
   };
+  /** How the person answers a link that asks: Run unless `answer` is false, or whatever `wait` resolves to. */
+  const ask = { answer: true, wait: undefined as undefined | (() => Promise<boolean>) };
+  /** Each shortcut's link key, made in order: k1, k2, … */
+  const linkKeys = new Map<string, string>();
   const bg = new Background({
     data: t.data,
     frontmatter: t.env.frontmatter,
@@ -277,11 +283,20 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     }),
     now,
     triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },
+    linkKey: (path, shortcut, create) => {
+      const id = `${path}#${shortcut}`;
+      if (!linkKeys.has(id) && create) linkKeys.set(id, `k${linkKeys.size + 1}`);
+      return linkKeys.get(id);
+    },
     sink: {
       notify: t.env.notify,
       setCommands: (list) => { out.commands = list; },
       setStatus: (items) => { out.status = items; },
       openApp: (path) => { out.apps.push(path); },
+      confirm: async (title, lines) => {
+        out.asked.push({ title, lines });
+        return ask.wait ? ask.wait() : ask.answer;
+      },
     },
   });
   return {
@@ -289,6 +304,8 @@ export function fakeBackground(notes: Notes = {}, responses: Record<string, unkn
     bg,
     denied,
     out,
+    ask,
+    linkKeys,
     triggers,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },
   };

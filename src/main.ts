@@ -12,6 +12,7 @@ import { obsidianHost, obsidianUndoIO, pluginFile } from "./host.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import { registerLinkCommand } from "./link-command.ts";
+import { newLinkKey } from "./links.ts";
 import { registerShareCommands } from "./share-command.ts";
 import { defaultDataPath, runsAsApp } from "./store.ts";
 import { registerAuthoring } from "./suggest.ts";
@@ -22,6 +23,8 @@ interface StoredData {
   grants: Record<string, string[]>;
   /** Lens component paths the user folded away. */
   folded?: Record<string, true>;
+  /** `<app path>#<shortcut>` → the key that shortcut's copied link carries. */
+  linkKeys?: Record<string, string>;
 }
 
 export default class GizmoPlugin extends Plugin {
@@ -56,12 +59,14 @@ export default class GizmoPlugin extends Plugin {
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
     this.registerEvent(this.app.vault.on("delete", (file) => {
       this.dataLayer.fileDeleted(file.path);
-      if (dropGrants(this.store.grants, file.path)) void this.saveData(this.store);
+      const dropped = dropGrants(this.store.grants, file.path);
+      if (dropGrants(this.store.linkKeys ?? {}, file.path) || dropped) void this.saveData(this.store);
     }));
     this.registerEvent(this.app.vault.on("rename", (file, oldPath) => {
       this.dataLayer.fileRenamed(file.path, oldPath);
       if (file instanceof TFile) void this.moveDataNote(file, oldPath);
-      if (moveGrants(this.store.grants, oldPath, file.path)) void this.saveData(this.store);
+      const moved = moveGrants(this.store.grants, oldPath, file.path);
+      if (moveGrants(this.store.linkKeys ?? {}, oldPath, file.path) || moved) void this.saveData(this.store);
       void this.activity.rename(oldPath, file.path);
     }));
     registerEmbeds(this);
@@ -188,6 +193,17 @@ export default class GizmoPlugin extends Plugin {
 
   granted(path: string): string[] | undefined {
     return grantedOf(this.store.grants, path);
+  }
+
+  /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
+  linkKey(path: string, shortcut: string, create: boolean): string | undefined {
+    const keys = (this.store.linkKeys ??= {});
+    const id = `${path}#${shortcut}`;
+    if (!Object.hasOwn(keys, id) && create) {
+      keys[id] = newLinkKey();
+      void this.saveData(this.store);
+    }
+    return Object.hasOwn(keys, id) ? keys[id] : undefined;
   }
 
   async grant(path: string, wanted: string[]): Promise<void> {

@@ -33,6 +33,7 @@ panels:
     item: "{text} · {name}"
 ---
 Every checkbox in the notes under Tasks, with undated ones first. New tasks are added as a line in
-Tasks/Inbox, and ticking one in the table ticks it in its note; `obsidian://gizmo?app=Task inbox&do=add&task=…`
-adds one from outside Obsidian (a phone shortcut, say). It asks to read the notes in Tasks, tick
+Tasks/Inbox, and ticking one in the table ticks it in its note. The link "Copy link to an app shortcut"
+gives for Add, with `&task=…` on the end, adds one from outside Obsidian (a phone shortcut, say); a
+link without the key a copied one carries asks before it runs. It asks to read the notes in Tasks, tick
 tasks in them, and add lines to Tasks/Inbox.md.

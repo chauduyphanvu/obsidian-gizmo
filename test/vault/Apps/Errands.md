@@ -13,5 +13,5 @@ panels:
     sort: -at
     item: "{errand}"
 ---
-Add an errand, or let another app add one: Calls adds a call-back here. `obsidian://gizmo?app=Errands&do=add&errand=…`
-adds one from outside Obsidian. It asks for nothing.
+Add an errand, or let another app add one: Calls adds a call-back here. Its copied link, with
+`&errand=…` on the end, adds one from outside Obsidian. It asks for nothing.

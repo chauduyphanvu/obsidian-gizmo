@@ -43,6 +43,8 @@ export interface BackgroundSink {
   setCommands(list: { id: string; name: string }[]): void;
   setStatus(items: StatusItem[]): void;
   openApp(path: string): void;
+  /** Asks the person whether to go ahead, showing `lines` under `title`; true for Run. */
+  confirm(title: string, lines: string[]): Promise<boolean>;
 }
 
 /** What the background needs from Obsidian; the glue passes the real thing, tests fakes. */
@@ -61,6 +63,8 @@ export interface BackgroundEnv {
   sink: BackgroundSink;
   /** Where the alerts that run a `then` keep what they already ran for, across restarts. */
   triggers?: LogStore;
+  /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
+  linkKey(path: string, shortcut: string, create: boolean): string | undefined;
 }
 
 /** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
@@ -133,8 +137,10 @@ export class Background {
   private fired: Promise<Record<string, Fired>> | undefined;
   private firedSaved = "{}";
   private firedSaving: Promise<void> = Promise.resolve();
-  /** When each `then` ran in the last hour, by source app and target shortcut. */
+  /** When each `then` ran in the last hour, by source app and target shortcut; and each shortcut's link runs. */
   private runs = new Map<string, number[]>();
+  /** A link without its key is waiting for the person's answer. */
+  private asking = false;
 
   /** Alerts true now across the vault, for `view: alerts`. */
   readonly alerts: AlertFeed = {
@@ -244,11 +250,11 @@ export class Background {
    * parameters only fill that form's fields, checked against their types.
    */
   async runUri(params: Record<string, string>): Promise<void> {
-    const { app: name, shortcut, fields } = readLink(params);
+    const { app: name, shortcut, key, fields } = readLink(params);
     const found = appsNamed(this.apps, name);
     if (found.length === 0) return this.say(`No app called “${name}”`);
     if (found.length > 1) return this.say(`Several apps are called “${name}”; use its path`);
-    return this.runShortcut(found[0].path, shortcut, "link", fields);
+    return this.runShortcut(found[0].path, shortcut, "link", fields, undefined, key);
   }
 
   /** Every app's shortcuts with the link that runs each, whether or not the app is allowed yet. */
@@ -259,7 +265,7 @@ export class Background {
         const fields = p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
         return {
           path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), fields,
-          link: shortcutLink(this.apps, e.path, shortcut),
+          link: shortcutLink(this.apps, e.path, shortcut, this.env.linkKey(e.path, shortcut, true)!),
           allowed: this.granted(e),
         };
       }))
@@ -271,7 +277,7 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[]): Promise<void> {
+  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], key?: string): Promise<void> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     if (!entry || !ps) return this.say(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
@@ -299,6 +305,7 @@ export class Background {
       if ("error" in filled) return this.say(`${entry.name}: ${filled.error}`);
       input = filled.row;
     }
+    if (actor === "link" && !(await this.linkMayRun(entry, p, shortcut, key, params ?? {}, input))) return;
     const trail = chain ?? [`${entry.path}#${shortcut}`];
     // Said before what its `then` runs says, in the order they happen.
     let told = false;
@@ -316,6 +323,39 @@ export class Background {
     };
     const result = await runActions(p, input, deps);
     if (result.ok) done();
+  }
+
+  /**
+   * Whether a link may run a shortcut. Any web page, email or chat message can send one, so: at most
+   * MAX_RUNS_PER_HOUR an hour, and without the key its copied link carries, only once the person
+   * says Run in a window showing the values it gives. One window at a time; links without the key
+   * that come meanwhile are dropped.
+   */
+  private async linkMayRun(entry: AppEntry, p: Panel, shortcut: string, key: string | undefined, given: Record<string, string>, row: Row): Promise<boolean> {
+    const label = labelOf(p, shortcut);
+    const rateKey = `link\n${entry.path}#${shortcut}`;
+    const recent = () => (this.runs.get(rateKey) ?? []).filter((t) => this.env.now().getTime() - t < 3_600_000);
+    if (recent().length >= MAX_RUNS_PER_HOUR) {
+      this.runs.set(rateKey, recent());
+      this.say(`${entry.name}: stopped running “${label}” from links: it ran ${MAX_RUNS_PER_HOUR} times this hour`);
+      return false;
+    }
+    const expected = this.env.linkKey(entry.path, shortcut, false);
+    if (expected === undefined || key !== expected) {
+      if (this.asking) {
+        this.say(`Ignored a link to “${label}” in ${entry.name} while another link waits for an answer`);
+        return false;
+      }
+      this.asking = true;
+      try {
+        const lines = Object.keys(row).filter((k) => Object.hasOwn(given, k)).map((k) => `${k}: ${String(row[k])}`);
+        if (!(await this.env.sink.confirm(`A link asks to run “${label}” in ${entry.name}`, lines))) return false;
+      } finally {
+        this.asking = false;
+      }
+    }
+    this.runs.set(rateKey, [...recent(), this.env.now().getTime()]);
+    return true;
   }
 
   /**

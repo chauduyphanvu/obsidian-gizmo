@@ -3,6 +3,7 @@ import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { obsidianAppEnv, pluginFile, vaultFrontmatter, vaultNotes } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
+import { askToRun } from "./link-command.ts";
 import { openInstall } from "./share-command.ts";
 import { isApp, notePath, storeTarget } from "./store.ts";
 
@@ -42,6 +43,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     },
     now: () => new Date(),
     triggers: pluginFile(plugin, "triggers.json"),
+    linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
     sink: {
       notify: (message) => { new Notice(message); },
       // Commands come and go with the apps that declare them; a hotkey stays bound to the id.
@@ -76,6 +78,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
         });
       },
       openApp,
+      confirm: (title, lines) => askToRun(app, title, lines),
     },
   });
 

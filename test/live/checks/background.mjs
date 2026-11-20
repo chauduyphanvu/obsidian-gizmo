@@ -48,7 +48,9 @@ export default async function background(t) {
       const count = () => na.fm("Apps/Space weather data.md")?.sightings?.length ?? 0;
       const before = count();
       const mark = na.notices.length;
-      app.workspace.protocolHandler.dispatch({ action: "gizmo", app: "Space weather", do: "saw-aurora" });
+      // The link as "Copy link to an app shortcut" gives it, key and all.
+      const url = new URL(na.plugin().background.shortcutLinks().find((l) => l.app === "Space weather" && l.shortcut === "saw-aurora").link);
+      app.workspace.protocolHandler.dispatch({ action: url.host, ...Object.fromEntries(url.searchParams) });
       const notices = await na.noticesSince(mark, "Sighting saved");
       await na.until(() => count() === before + 1, 3000);
       return { before, after: count(), notices };`);

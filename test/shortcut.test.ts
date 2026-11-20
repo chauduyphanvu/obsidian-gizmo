@@ -150,9 +150,9 @@ test("each shortcut has the link that runs it, and copying one says how a form's
   await t.bg.start();
   const links = t.bg.shortcutLinks();
   assert.deepEqual(links.map((l) => [l.path, l.shortcut, l.label, l.fields, l.link, l.allowed]), [
-    ["Apps/Meds.md", "effects", "Side effects", ["note", "severity", "dizzy", "hours", "on", "when"], "obsidian://gizmo?app=Meds&do=effects", true],
-    ["Apps/Meds.md", "took-meds", "Took meds", [], "obsidian://gizmo?app=Meds&do=took-meds", true],
-    ["Apps/Weight.md", "weigh-in", "weigh-in", ["kg"], "obsidian://gizmo?app=Weight&do=weigh-in", false],
+    ["Apps/Meds.md", "effects", "Side effects", ["note", "severity", "dizzy", "hours", "on", "when"], "obsidian://gizmo?app=Meds&do=effects&key=k2", true],
+    ["Apps/Meds.md", "took-meds", "Took meds", [], "obsidian://gizmo?app=Meds&do=took-meds&key=k1", true],
+    ["Apps/Weight.md", "weigh-in", "weigh-in", ["kg"], "obsidian://gizmo?app=Weight&do=weigh-in&key=k3", false],
   ]);
   assert.equal(linkNotice(links[1]), "Copied the link to “Took meds” in Meds.");
   assert.equal(linkNotice(links[2]), "Copied the link to “weigh-in” in Weight. Add &kg=… to fill the form. Open Weight once to allow it; until then the link is refused.");
@@ -167,9 +167,10 @@ test("a shortcut's link names its app by path when another app has its name, and
   const t = meds({ "Old/Meds.md": { fm: MEDS }, "Apps/Med log.md": { fm: { ...MEDS, panels: [MEDS.panels[0]] } } });
   await t.bg.start();
   const link = (path: string) => t.bg.shortcutLinks().find((l) => l.path === path && l.shortcut === "took-meds")!.link;
-  assert.equal(link("Apps/Meds.md"), "obsidian://gizmo?app=Apps%2FMeds&do=took-meds");
-  assert.equal(link("Old/Meds.md"), "obsidian://gizmo?app=Old%2FMeds&do=took-meds");
-  assert.equal(link("Apps/Med log.md"), "obsidian://gizmo?app=Med%20log&do=took-meds");
+  const key = (path: string) => `&key=${t.linkKeys.get(`${path}#took-meds`)}`;
+  assert.equal(link("Apps/Meds.md"), `obsidian://gizmo?app=Apps%2FMeds&do=took-meds${key("Apps/Meds.md")}`);
+  assert.equal(link("Old/Meds.md"), `obsidian://gizmo?app=Old%2FMeds&do=took-meds${key("Old/Meds.md")}`);
+  assert.equal(link("Apps/Med log.md"), `obsidian://gizmo?app=Med%20log&do=took-meds${key("Apps/Med log.md")}`);
   await t.bg.runUri(paramsOf(link("Old/Meds.md")));
   await t.bg.runUri(paramsOf(link("Apps/Med log.md")));
   assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
@@ -186,4 +187,70 @@ test("a link's own parameters (action, app, do) never fill a form's fields of th
   assert.deepEqual(jobs, [{ do: "", app: "", action: "", who: "me", at: "2026-11-18T12:00" }]);
   const [link] = t.bg.shortcutLinks();
   assert.equal(linkNotice(link), "Copied the link to “job” in Jobs. Add &who=… to fill the form. A link can't fill do, app, action; rename those fields to fill them.");
+});
+
+test("a copied link carries its shortcut's key and runs unattended; without it, or with a wrong one, it asks first, and Cancel writes nothing", async () => {
+  const t = meds();
+  await t.bg.start();
+  const link = t.bg.shortcutLinks().find((l) => l.shortcut === "took-meds")!.link;
+  assert.match(link, /^obsidian:\/\/gizmo\?app=Meds&do=took-meds&key=[\w-]+$/);
+  await t.bg.runUri(paramsOf(link));
+  assert.deepEqual(t.out.asked, []);
+  assert.equal(t.data("doses")?.length, 1);
+  // Any web page, email or chat message can send a link, but none of them knows the key.
+  t.ask.answer = false;
+  await t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds" });
+  await t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds", key: "guessed" });
+  await t.bg.runUri({ action: "gizmo", app: "Meds", do: "effects", note: "Pay the invoice at https://pay.example", severity: "bad" });
+  assert.equal(t.data("doses")?.length, 1);
+  assert.equal(t.data("effects"), undefined);
+  assert.deepEqual(t.out.asked, [
+    { title: "A link asks to run “Took meds” in Meds", lines: [] },
+    { title: "A link asks to run “Took meds” in Meds", lines: [] },
+    { title: "A link asks to run “Side effects” in Meds", lines: ["note: Pay the invoice at https://pay.example", "severity: bad"] },
+  ]);
+  // Run, once the person has read what it asks.
+  t.ask.answer = true;
+  await t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds" });
+  assert.equal(t.data("doses")?.length, 2);
+});
+
+test("a link runs a shortcut at most 20 times an hour, key or not", async () => {
+  const t = meds();
+  await t.bg.start();
+  const link = paramsOf(t.bg.shortcutLinks().find((l) => l.shortcut === "took-meds")!.link);
+  for (let i = 0; i < 21; i++) await t.bg.runUri(link);
+  assert.equal(t.data("doses")?.length, 20);
+  assert.equal(t.notices.at(-1), "Meds: stopped running “Took meds” from links: it ran 20 times this hour");
+  // A command isn't a link, and isn't counted.
+  await t.bg.runCommand("Apps/Meds.md:took-meds");
+  assert.equal(t.data("doses")?.length, 21);
+  t.advance(3_600_000);
+  await t.bg.runUri(link);
+  assert.equal(t.data("doses")?.length, 22);
+});
+
+test("while one link waits for an answer, other links without the key are dropped", async () => {
+  const t = meds();
+  await t.bg.start();
+  let answer!: (yes: boolean) => void;
+  t.ask.wait = () => new Promise((resolve) => { answer = resolve; });
+  const first = t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds" });
+  await t.bg.runUri({ action: "gizmo", app: "Meds", do: "took-meds" });
+  assert.deepEqual(t.notices, ["Ignored a link to “Took meds” in Meds while another link waits for an answer"]);
+  answer(true);
+  await first;
+  assert.equal(t.data("doses")?.length, 1);
+  assert.equal(t.out.asked.length, 1);
+});
+
+test("a link's key is the link's own, never a form field called key", async () => {
+  const fm = { app: "Jobs", view: "form", fields: { key: "text", who: "text" }, save: "jobs", shortcut: "job" };
+  const t = fakeBackground({ "Apps/Jobs.md": { fm } });
+  await t.bg.start();
+  const [link] = t.bg.shortcutLinks();
+  assert.equal(linkNotice(link), "Copied the link to “job” in Jobs. Add &who=… to fill the form. A link can't fill key; rename that field to fill it.");
+  await t.bg.runUri({ ...paramsOf(link.link), who: "me" });
+  assert.deepEqual(t.f.files.get("Apps/Jobs data.md")?.fm?.jobs, [{ key: "", who: "me", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.out.asked, []);
 });
