@@ -26,9 +26,23 @@ const ctx = await esbuild.context({
   outfile: "main.js",
   plugins: [galleryNotes],
 });
+/** gizmod: the same engine on Node, with the vault read from disk; yaml is bundled into it only. */
+const daemon = await esbuild.context({
+  entryPoints: ["src/node/gizmod.ts"],
+  bundle: true,
+  platform: "node",
+  format: "esm",
+  target: "node20",
+  logLevel: "info",
+  sourcemap: prod ? false : "inline",
+  outfile: process.env.GIZMOD_OUT ?? "gizmod.mjs",
+  // yaml is CommonJS and requires Node's own modules, which an ES module bundle has no require for.
+  banner: { js: 'import { createRequire as gizmodRequire } from "node:module"; const require = gizmodRequire(import.meta.url);' },
+  plugins: [galleryNotes],
+});
 if (prod) {
-  await ctx.rebuild();
-  await ctx.dispose();
+  await Promise.all([ctx.rebuild(), daemon.rebuild()]);
+  await Promise.all([ctx.dispose(), daemon.dispose()]);
 } else {
-  await ctx.watch();
+  await Promise.all([ctx.watch(), daemon.watch()]);
 }

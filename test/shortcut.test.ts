@@ -282,6 +282,6 @@ test("a shortcut that answers tells its value", async () => {
   });
   await t.bg.start();
   const r = await t.bg.runCommand("Apps/Meds.md:doses");
-  assert.deepEqual(r, { ok: true });
+  assert.deepEqual(r, { ok: true, value: 2, shown: "2" });
   assert.deepEqual(t.notices, ["Meds: Doses: 2"]);
 });

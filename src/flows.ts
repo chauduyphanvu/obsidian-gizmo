@@ -52,6 +52,10 @@ export interface Verdict {
   violations: Violation[];
   covered: string[];
   asked: string[];
+  /** Each alert's notice by its panel's title: the label of what it tells, for places that check (gizmod's push). */
+  alertLabels: Record<string, Label>;
+  /** Each shortcut that answers, by its panel's title: the label of its value, for gizmod's answers. */
+  answerLabels: Record<string, Label>;
 }
 
 /** Where an app runs, for the flow check: its note, its data note, the note `$this` reads, a lens's scope. */
@@ -128,6 +132,8 @@ function chosenBy(stage: Partial<Panel>): string[] {
 export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowContext): Verdict {
   const { policy } = ctx;
   const violations: Violation[] = [];
+  const alertLabels: Record<string, Label> = {};
+  const answerLabels: Record<string, Label> = {};
   const goodSends = new Set<string>();
   const badSends = new Set<string>();
   const dataLabels = merged(noteLabels(policy, ctx.dataPath, ctx.tags(ctx.dataPath)), noteLabels(policy, ctx.appPath, ctx.tags(ctx.appPath)));
@@ -255,10 +261,15 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     if (p.notify && !released(policy, ctx.appPath, title, "notify")) check(where, fieldsWhat(p.notify, "notify"), keyLabel("notify", p.notify), "notify", clearance(policy, "notify"));
     const value = valueLabel(p, rows);
     const valueWhat = `${from}${p.field ? `.${p.field}` : ""}`;
-    if (p.alert !== undefined && !released(policy, ctx.appPath, title, "notify")) check(where, valueWhat, typeof p.alert === "string" ? value : rows.base, "notify", clearance(policy, "notify"));
+    if (p.alert !== undefined) {
+      const told = typeof p.alert === "string" ? value : rows.base;
+      alertLabels[title] = join(alertLabels[title] ?? "public", told);
+      if (!released(policy, ctx.appPath, title, "notify")) check(where, valueWhat, told, "notify", clearance(policy, "notify"));
+    }
     if (p.pin && !released(policy, ctx.appPath, title, "pin")) check(where, valueWhat, value, "pin", clearance(policy, "pin"));
-    if (p.shortcut !== undefined && (p.view === "number" || p.view === "progress") && !released(policy, ctx.appPath, title, "answer")) {
-      check(where, valueWhat, value, "answer", clearance(policy, "answer"));
+    if (p.shortcut !== undefined && (p.view === "number" || p.view === "progress")) {
+      answerLabels[title] = value;
+      if (!released(policy, ctx.appPath, title, "answer")) check(where, valueWhat, value, "answer", clearance(policy, "answer"));
     }
     if (!released(policy, ctx.appPath, title, "images")) {
       for (const [field, cell] of Object.entries(p.cells ?? {})) if (cell === "image") check(where, `${from}.${field}`, fieldLabel(rows, field), "images", clearance(policy, "images"));
@@ -335,7 +346,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     const ok = kind === "read" || (kind === "net" && Object.hasOwn(policy.sinks, what.toLowerCase())) || (kind === "send" && goodSends.has(perm) && !badSends.has(perm));
     (ok ? covered : asked).push(perm);
   }
-  return { violations, covered, asked };
+  return { violations, covered, asked, alertLabels, answerLabels };
 }
 
 /** The file a `file` source reads: its path, or the link as written. */

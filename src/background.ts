@@ -20,7 +20,7 @@ import {
 import type { AppSummary } from "./map.ts";
 import { askersOf, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
-import type { AppliedPolicy, Policy } from "./policy.ts";
+import { clearance, rank, released, type AppliedPolicy, type Label, type Policy } from "./policy.ts";
 import { basename, dataPathOf, devicesFolder, notePath, resolveList, storeTarget } from "./store.ts";
 import { InputRef, THIS, valueProblem } from "./template.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
@@ -60,6 +60,18 @@ export interface BackgroundSink {
   choose(title: string, lines: string[], choices: string[]): Promise<number | undefined>;
   /** Opens a link that goes out of Obsidian: a link's x-success, x-error or x-cancel. */
   openUrl(url: string): void;
+  /**
+   * An alert that just turned true, for places beyond the notice (gizmod pushes it to a phone):
+   * the app and panel, the notice's text, and its label under the data policy when one is applied.
+   */
+  alert?(notice: AlertNotice): void;
+}
+
+export interface AlertNotice {
+  app: string;
+  panel: string;
+  text: string;
+  label?: Label;
 }
 
 /** What the background needs from Obsidian; the glue passes the real thing, tests fakes. */
@@ -103,17 +115,22 @@ export interface ShortcutResult {
   ok: boolean;
   error?: string;
   entryId?: string;
+  /** What a shortcut that answers answered: its value, and as shown. */
+  value?: unknown;
+  shown?: string;
 }
 
 /** A shortcut that answers: whether it had a value, or why not. */
 function answered(r: Evaluation): ShortcutResult {
-  return "shown" in r ? { ok: true } : { ok: false, error: "waiting" in r ? `it waits for ${r.waiting}` : r.error };
+  return "shown" in r ? { ok: true, value: r.value, shown: r.shown } : { ok: false, error: "waiting" in r ? `it waits for ${r.waiting}` : r.error };
 }
 
 /** What a link brings besides a form's values: the key it carries and where it wants word back. */
 export interface LinkCall {
   key?: string;
   callbacks: Callbacks;
+  /** Where an answer goes besides the link's own callback (gizmod's HTTP), checked against the data policy. */
+  sink?: "gizmod";
   /** A capture link whose key covers this shortcut's name: it runs as a keyed link does. */
   captureKeyed?: boolean;
 }
@@ -433,6 +450,24 @@ export class Background {
     await this.runShortcut(path, shortcut, "link", parsed.params, undefined, { callbacks, captureKeyed });
   }
 
+  /**
+   * Runs a shortcut asked for from outside Obsidian (gizmod's HTTP): with `key`, as its copied link
+   * runs, which only the key it carries lets run unattended; with `captureKeyed`, a capture key's
+   * name; `trusted` (the computer's own user) as its command. Gives what it answered, if it answers.
+   */
+  runFrom(appPath: string, shortcut: string, opts: { params?: Record<string, string>; key?: string; captureKeyed?: boolean; trusted?: boolean }): Promise<ShortcutResult> {
+    if (opts.trusted) return this.runShortcut(appPath, shortcut, "shortcut", opts.params);
+    return this.runShortcut(appPath, shortcut, "link", opts.params ?? {}, undefined, { key: opts.key, callbacks: {}, captureKeyed: opts.captureKeyed, sink: "gizmod" });
+  }
+
+  /** The app a name or path finds, as a link names it; undefined, with why, when none or several. */
+  appFor(name: string): { path: string } | { error: string } {
+    const found = appsNamed(this.apps, name);
+    if (found.length === 0) return { error: `No app called “${name}”` };
+    if (found.length > 1) return { error: `Several apps are called “${name}”; use its path` };
+    return { path: found[0].path };
+  }
+
   /** Runs the command `<app path>:<shortcut>`. */
   runCommand(id: string): Promise<ShortcutResult> {
     const cut = id.lastIndexOf(":");
@@ -621,6 +656,9 @@ export class Background {
     const lines = cb.to ? [`Its value goes to ${cb.to}`] : [];
     const allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks for “${label}” from ${entry.name}`);
     if (!allowed) return { ok: false, error: "the link wasn't allowed to run" };
+    if (link?.sink && !this.mayAnswerTo(entry, p.title ?? p.label ?? entry.name, link.sink)) {
+      return this.failed(`${entry.name}: your data policy keeps “${label}” from ${link.sink}'s answers`);
+    }
     const r = await this.evaluate(entry.path, ps);
     if (!("shown" in r)) {
       const why = "waiting" in r ? `it waits for ${r.waiting}` : r.error;
@@ -631,6 +669,16 @@ export class Background {
     this.env.sink.openUrl(withParams(cb.success, answerParams(r.shown, r.value)));
     this.env.logSent({ app: entry.path, actor, what: label, changes: [], sent: { to: cb.to!, shown: r.shown } });
     return answered(r);
+  }
+
+  /** Whether the applied data policy lets an answer's value go to `sink`: released there, or labelled no higher than it clears. */
+  private mayAnswerTo(entry: AppEntry, title: string, sink: "gizmod"): boolean {
+    const policy = this.env.policy?.()?.rules;
+    if (!policy) return true;
+    if (released(policy, entry.path, title, sink)) return true;
+    const label = this.verdictNow(entry)?.answerLabels[title] ?? "public";
+    const cleared = clearance(policy, sink);
+    return cleared !== undefined && rank(label) <= rank(cleared);
   }
 
   /**
@@ -797,7 +845,11 @@ export class Background {
       const text = matching === undefined ? shown : `${matching} ${matching === 1 ? "row" : "rows"}`;
       this.active.set(key, { appPath: entry.path, app: entry.name, title, text });
       // Told when it turns true, not again until it has been false.
-      if (was !== true && !this.env.quietAlerts?.()) this.say(`${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`);
+      if (was !== true) {
+        const told = `${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`;
+        if (!this.env.quietAlerts?.()) this.say(told);
+        this.env.sink.alert?.({ app: entry.name, panel: title, text: told, label: this.verdictNow(entry)?.alertLabels[title] });
+      }
     }
     this.publish();
   }
