@@ -2,7 +2,7 @@ import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import {
-  ActivityLog, MAX_PER_APP, describeActor, describeChange, undoEntry, undoMessage, type Entry,
+  ActivityLog, MAX_PER_APP, describeActor, describeChange, eventsOf, undoEntry, undoMessage, undoneIn, type Entry,
 } from "../src/activity.ts";
 import { AppController } from "../src/app.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
@@ -268,4 +268,26 @@ test("each change reads as a sentence", () => {
     "Created the note Emma",
     "Unticked “Buy stamps” in Home",
   ]);
+});
+
+test("another device's entry kept as ledger events can be undone here, and shows undone wherever it was undone", async () => {
+  const fm = { app: "W", panels: [{ view: "button", label: "Coffee", save: "cups" }] };
+  const t = open(fm);
+  await settle();
+  click(t.root.querySelector("button")!);
+  await settle();
+  const [mine] = await t.entries();
+  // The same entry as another device would list it: its own log, read here.
+  const theirs: Entry = { ...mine, device: "iPhone" };
+  assert.deepEqual(eventsOf(theirs), [{ path: DATA, event: (mine.changes[0] as { event: string }).event }]);
+  const undoneNow = async () => {
+    const undone = (await t.data.ledger!.state(DATA)).undone;
+    return undoneIn(theirs, (p) => (p === DATA ? undone : new Set()));
+  };
+  assert.equal(await undoneNow(), 0);
+  assert.deepEqual(await undoEntry(theirs, t.undoIO), { undone: 1, total: 1 });
+  assert.equal(await undoneNow(), 1);
+  assert.deepEqual(data(t.f, "cups"), []);
+  // A change not kept as an event (a line added to a note) stays the other device's to undo.
+  assert.equal(eventsOf({ ...theirs, changes: [{ kind: "line-added", path: "Daily.md", line: "x", created: false }] }), undefined);
 });

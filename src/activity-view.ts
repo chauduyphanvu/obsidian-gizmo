@@ -1,5 +1,5 @@
 import { Modal, Notice } from "obsidian";
-import { describeActor, describeChange, describeSent, undoMessage, type Entry } from "./activity.ts";
+import { describeActor, describeChange, describeSent, eventsOf, undoMessage, undoneIn, type Entry } from "./activity.ts";
 import { basename } from "./store.ts";
 import type GizmoPlugin from "./main.ts";
 
@@ -38,7 +38,13 @@ class ActivityModal extends Modal {
   }
 
   private async render(): Promise<void> {
-    const entries = await this.plugin.activity.list(this.app_);
+    const listed = await this.plugin.activity.list(this.app_);
+    // An entry of ledger events is undone as the ledger says, whichever device undid it.
+    const ledger = this.plugin.dataLayer.ledger;
+    const paths = new Set(listed.flatMap((e) => eventsOf(e)?.map((x) => x.path) ?? []));
+    const undone = new Map<string, Set<string>>();
+    for (const path of paths) undone.set(path, ledger ? (await ledger.state(path).catch(() => undefined))?.undone ?? new Set() : new Set());
+    const entries = listed.map((e) => ({ ...e, undone: undoneIn(e, (path) => undone.get(path) ?? new Set()) }));
     const el = this.contentEl;
     el.empty();
     const box = el.createDiv({ cls: "gizmo gz-activity" });
@@ -72,8 +78,8 @@ class ActivityModal extends Modal {
       if (i >= total - entry.undone) li.addClass("gz-undone");
     });
     if (entry.sent) ul.createEl("li", { text: describeSent(entry.what, entry.sent) });
-    // What was sent out can't be taken back, and only the device that made a change undoes it.
-    if (total === 0 || entry.device) return;
+    // What was sent out can't be taken back; another device's change only when it is kept as events.
+    if (total === 0 || (entry.device && !eventsOf(entry))) return;
     if (entry.undone >= total) {
       head.createSpan({ cls: "gz-activity-undone", text: "Undone" });
       return;

@@ -303,6 +303,18 @@ export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {
   return { lists: out, ticked, undone, applied };
 }
 
+/** Which events are undone: the last undo or redo of each, in order, decides. */
+export function undoneEvents(events: readonly LedgerEvent[]): Set<string> {
+  const undone = new Set<string>();
+  for (const e of [...events].filter((x) => x.op === "undo" || x.op === "redo").sort(compareEvents)) {
+    for (const id of (e as { ev: string[] }).ev) {
+      if (e.op === "undo") undone.add(id);
+      else undone.delete(id);
+    }
+  }
+  return undone;
+}
+
 /** The events up to and including time `at` (ms): the data as it was then. */
 export function eventsAt(events: readonly LedgerEvent[], at: number): LedgerEvent[] {
   return events.filter((e) => parseStamp(e.t)!.wall <= at);

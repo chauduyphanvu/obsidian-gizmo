@@ -35,7 +35,10 @@ export interface Entry {
   changes: Change[];
   /** A value it sent out of Obsidian, answering a link: where to, and the value as shown. */
   sent?: { to: string; shown: string };
-  /** On an entry another device kept: that device's name. Only the device that made a change undoes it. */
+  /**
+   * On an entry another device kept: that device's name. Only the device that made a change undoes
+   * it, unless every change is kept as a ledger event, which any device can take back.
+   */
   device?: string;
   /** How many changes, from the last, have been undone. */
   undone: number;
@@ -50,6 +53,24 @@ export const MAX_PER_APP = 200;
 export interface LogStore {
   read(): Promise<string | undefined>;
   write(text: string): Promise<void>;
+}
+
+/** The ledger events an entry's changes are, when every one of them is one; else undefined. */
+export function eventsOf(entry: Entry): { path: string; event: string }[] | undefined {
+  const out = entry.changes.map((c) => ("event" in c && c.event ? { path: c.path, event: c.event } : undefined));
+  return out.length && out.every(Boolean) ? (out as { path: string; event: string }[]) : undefined;
+}
+
+/**
+ * How many of an entry's changes, from the last, are undone, as every device's ledger says: an entry
+ * of events is undone wherever its undo was made.
+ */
+export function undoneIn(entry: Entry, undone: (path: string) => Set<string>): number {
+  const events = eventsOf(entry);
+  if (!events) return entry.undone;
+  let n = 0;
+  for (let i = events.length - 1; i >= 0 && undone(events[i].path).has(events[i].event); i--) n++;
+  return Math.max(n, entry.undone);
 }
 
 /** What other devices kept, each log's text with the name of the device that kept it. */

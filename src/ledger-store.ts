@@ -2,7 +2,7 @@ import { fnv1a, stableJson } from "./hash.ts";
 import { DEFINITION_KEYS } from "./store.ts";
 import type { Row } from "./data.ts";
 import {
-  Clock, baseIds, eventId, eventLine, fold, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp,
+  Clock, baseIds, eventId, eventLine, fold, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp, undoneEvents,
   type Conflict, type FoldBase, type Folded, type LedgerEvent, type Op,
 } from "./ledger.ts";
 
@@ -211,7 +211,8 @@ export class Ledger {
         conflicts: l.conflicts,
       });
     }
-    return { lists, ticked: n.folded.ticked, undone: n.folded.undone, handEdited };
+    // From every event, not only those the fold started past: an undo kept in a snapshot still counts.
+    return { lists, ticked: n.folded.ticked, undone: undoneEvents([...n.files.values()].flatMap((f) => f.events)), handEdited };
   }
 
   /** The events after a snapshot, when folding only them onto it gives what folding everything would. */
