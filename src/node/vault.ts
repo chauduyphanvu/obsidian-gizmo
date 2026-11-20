@@ -41,11 +41,14 @@ export function yamlText(fm: Record<string, unknown>): string {
   return stringify(fm, { lineWidth: 0 });
 }
 
-/** The tags `tags:` (or `tag:`) gives: a list, or one string split on commas and spaces. */
+/** A tag as Obsidian takes one: letters, digits, _, / and -, not all digits. */
+const isTag = (t: string) => /^[\p{L}\p{N}_/-]+$/u.test(t) && /[^\d]/.test(t);
+
+/** The tags `tags:` gives, as Obsidian reads them: each of a list, or one string as one tag; anything else isn't a tag. */
 function frontmatterTags(fm: Record<string, unknown> | undefined): string[] {
-  const raw = fm?.tags ?? fm?.tag;
-  const list = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? raw.split(/[,\s]+/) : [];
-  return list.map((t) => t.trim().replace(/^#/, "")).filter(Boolean).map((t) => `#${t}`);
+  const raw = fm?.tags;
+  const list = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
+  return list.map((t) => t.trim().replace(/^#/, "")).filter(isTag).map((t) => `#${t}`);
 }
 
 /** Inline #tags in a note's body, outside code blocks and inline code; a tag isn't all digits. */
@@ -143,7 +146,10 @@ export class NodeVault {
   resolve(link: string, from: string): string | undefined {
     const target = link.split("#")[0].split("|")[0].trim();
     if (!target) return undefined;
-    for (const p of [target, `${target}.md`]) if (this.files.has(p)) return p;
+    // A path is a path whatever its case, and wins over a note of that name nearer the link.
+    const lower = target.toLowerCase();
+    const exact = [...this.files.keys()].find((p) => p.toLowerCase() === lower || p.toLowerCase() === `${lower}.md`);
+    if (exact) return exact;
     const fromDir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : "";
     if (target.startsWith("./") || target.startsWith("../")) {
       const joined = toPosix(relative(this.root, join(this.root, fromDir, target)));

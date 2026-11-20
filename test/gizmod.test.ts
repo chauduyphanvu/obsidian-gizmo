@@ -28,7 +28,9 @@ function vaultDir(files: Record<string, string | { fm: Record<string, unknown>; 
 
 test("the vault reads frontmatter as Obsidian does: a block YAML can't read is dropped whole, tags come from it and the body", async () => {
   const root = vaultDir({
-    "A.md": "---\ntitle: A\ntags: [x, \"#y\"]\n---\nSee #inline and #2026 and `#code`\n```\n#fenced\n```\n#nested/tag-1 end",
+    "A.md": "---\ntitle: A\ntags: [x, \"#y\", 2026, \"a b\"]\n---\nSee #inline and #2026 and `#code`\n```\n#fenced\n```\n#nested/tag-1 end",
+    "B.md": "---\ntags: one, two\ntag: old\n---\n",
+    "C.md": "---\ntags: single\n---\n",
     "Broken.md": "---\ntitle: [unclosed\n---\nbody",
     "Plain.md": "No frontmatter #here",
     ".hidden/Secret.md": "---\nx: 1\n---\n",
@@ -37,23 +39,28 @@ test("the vault reads frontmatter as Obsidian does: a block YAML can't read is d
   });
   const v = new NodeVault(root);
   await v.scan();
-  assert.deepEqual(v.file("A.md")?.fm, { title: "A", tags: ["x", "#y"] });
+  assert.deepEqual(v.file("A.md")?.fm, { title: "A", tags: ["x", "#y", 2026, "a b"] });
+  assert.deepEqual([v.file("B.md")?.tags, v.file("C.md")?.tags], [[], ["#single"]], "only tags:, and a string is one tag");
   assert.deepEqual(v.file("A.md")?.tags, ["#x", "#y", "#inline", "#nested/tag-1"]);
   assert.equal(v.file("Broken.md")?.fm, undefined);
   assert.deepEqual(v.file("Plain.md")?.tags, ["#here"]);
   assert.equal(v.file(".hidden/Secret.md"), undefined, "dot folders and the config folder aren't the vault's");
-  assert.deepEqual(v.notes().map((n) => n.path).sort(), ["A.md", "Broken.md", "Plain.md"]);
+  assert.deepEqual(v.notes().map((n) => n.path).sort(), ["A.md", "B.md", "Broken.md", "C.md", "Plain.md"]);
   assert.deepEqual(v.filesIn("Apps/Data/log"), ["Apps/Data/log/d1-2026-11.jsonl"]);
   assert.deepEqual(splitNote("---\na: 1\n---\nbody"), { yaml: "a: 1", body: "body" });
   assert.deepEqual(inlineTags("a#notatag #ok"), ["#ok"]);
 });
 
 test("links resolve as Obsidian resolves them: a path, then a name from the linking note's folder, else the shortest path, case aside", async () => {
-  const root = vaultDir({ "Inbox.md": "", "Apps/Inbox.md": "", "Apps/Deep/Inbox.md": "", "Apps/Budget.md": "", "Notes/x.md": "", "Projects/Plan.md": "" });
+  const root = vaultDir({ "Inbox.md": "", "Apps/Inbox.md": "", "Apps/Deep/Inbox.md": "", "Apps/Budget.md": "", "Apps/Errands.md": "", "Notes/x.md": "", "Projects/Plan.md": "", "Lists/Errands.md": "" });
   const v = new NodeVault(root);
   await v.scan();
   assert.equal(v.resolve("Apps/Inbox", ""), "Apps/Inbox.md");
+  // A path is a path whatever its case, and wins over a note of that name in the linking note's folder.
+  assert.equal(v.resolve("inbox", "Apps/Budget.md"), "Inbox.md");
   assert.equal(v.resolve("Inbox", "Notes/x.md"), "Inbox.md");
+  assert.equal(v.resolve("Errands", "Apps/Budget.md"), "Apps/Errands.md");
+  assert.equal(v.resolve("errands", "Notes/x.md"), "Apps/Errands.md");
   assert.equal(v.resolve("deep/inbox", "Notes/x.md"), "Apps/Deep/Inbox.md");
   assert.equal(v.resolve("plan", "Notes/x.md"), "Projects/Plan.md");
   assert.equal(v.resolve("Nope", "Notes/x.md"), undefined);

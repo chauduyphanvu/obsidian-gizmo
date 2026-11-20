@@ -33,10 +33,10 @@ export default async function background(t) {
   await check("Space weather: one recorded Kp row, the NOAA answer cached on disk, Kp now in the status bar", async () => {
     const r = await run(`
       const log = await na.until(() => na.fm("Apps/Space weather data.md")?.kp_log, 5000);
-      const dir = ".obsidian/plugins/gizmo/cache";
-      const files = (await app.vault.adapter.exists(dir)) ? (await app.vault.adapter.list(dir)).files.filter((f) => f.endsWith(".json")) : [];
-      let noaa = false;
-      for (const f of files) if ((await app.vault.adapter.read(f)).includes("services.swpc.noaa.gov/json/planetary_k_index_1m.json")) noaa = true;
+      // Kept in this device's response history: its newest answers, by request.
+      const dir = ".obsidian/plugins/gizmo/responses/" + na.plugin().device.id;
+      const files = (await app.vault.adapter.exists(dir + "/blobs")) ? (await app.vault.adapter.list(dir + "/blobs")).files : [];
+      const noaa = await na.until(async () => (await app.vault.adapter.exists(dir + "/latest.json")) && (await app.vault.adapter.read(dir + "/latest.json")).includes("services.swpc.noaa.gov/json/planetary_k_index_1m.json"), 3000);
       return { log, files: files.length, noaa, status: na.status().find((s) => s.startsWith("Kp now")) };`);
     expect(r.log?.length === 1 && r.log[0].at && typeof r.log[0].estimated_kp === "number", r);
     expect(r.noaa && /^Kp now: \d+\.\d\d$/.test(r.status ?? ""), r);

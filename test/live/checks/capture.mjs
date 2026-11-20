@@ -134,7 +134,8 @@ export default async function capture(t) {
       const modal = await na.until(() => modals().find((m) => m.querySelector(".gz-activity-focus")), 3000);
       const focused = modal?.querySelector(".gz-activity-focus")?.textContent;
       modal?.querySelector(".modal-close-button")?.click();
-      return { text, focused, saved: na.fm("Apps/Spend data.md")?.spend };`);
+      const saved = await na.until(() => na.fm("Apps/Spend data.md")?.spend?.some((s) => s.note === "bus") && na.fm("Apps/Spend data.md").spend, 3000);
+      return { text, focused, saved };`);
     expect(offered?.includes("Run in Spend: Spent something") && offered.includes("3"), offered);
     const last = r.saved?.at(-1);
     expect(last?.amount === 3 && last.category === "home" && last.note === "bus", r);

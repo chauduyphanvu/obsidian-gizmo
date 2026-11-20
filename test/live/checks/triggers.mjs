@@ -65,22 +65,27 @@ export default async function triggers(t) {
     return `"${r.text.slice(0, 80)}…" → Undone`;
   });
 
-  await check("an undo after a hand edit is refused and leaves the note alone", async () => {
+  await check("an undo after a hand edit takes the row out of the app's data and leaves the edited note alone; Discard settles it", async () => {
     const r = await run(`
       await na.open("Apps/Errands");
-      const form = na.view().contentEl.querySelector("form");
+      const el = na.view().contentEl;
+      const form = el.querySelector("form");
       na.fill(form.querySelector("input"), "Buy milk");
       form.querySelector("button[type=submit], button").click();
       await na.until(() => (na.fm("Apps/Errands data.md")?.errands ?? []).some((e) => e.errand === "Buy milk"), 3000);
       await app.fileManager.processFrontMatter(na.file("Apps/Errands data.md"), (fm) => {
         fm.errands = fm.errands.map((e) => (e.errand === "Buy milk" ? { ...e, errand: "Buy oat milk" } : e));
       });
-      await na.sleep(300);
+      const card = await na.until(() => el.querySelector(".gz-hand-edit")?.innerText, 3000);
       const [latest] = await na.plugin().activity.list("Apps/Errands.md");
       const result = await na.plugin().undo(latest);
-      return { actor: latest.actor, result, errands: na.fm("Apps/Errands data.md").errands.map((e) => e.errand) };`);
-    expect(r.actor === "you" && r.result.undone === 0 && /has changed or is gone/.test(r.result.refusal) && r.errands.includes("Buy oat milk"), r);
-    return r.result.refusal;
+      const kept = (await na.plugin().dataLayer.ledger.state("Apps/Errands data.md")).lists.get("errands").rows.map((e) => e.errand);
+      const note = na.fm("Apps/Errands data.md").errands.map((e) => e.errand);
+      na.button("Discard it", el.querySelector(".gz-hand-edit")).click();
+      const settled = await na.until(() => !el.querySelector(".gz-hand-edit") && !na.fm("Apps/Errands data.md").errands.some((e) => /milk/.test(e.errand)), 3000);
+      return { actor: latest.actor, result, card, kept, note, settled: !!settled };`);
+    expect(r.actor === "you" && r.result.undone === 1 && !r.kept.includes("Buy milk") && r.note.includes("Buy oat milk") && r.card?.includes("was edited by hand") && r.settled, r);
+    return `undone; the note kept “Buy oat milk” until Discard`;
   });
 
   await check("Calls' overdue alert runs then once for a call-back whose day has passed, not again", async () => {
@@ -90,6 +95,10 @@ export default async function triggers(t) {
       await app.fileManager.processFrontMatter(na.file("Apps/Calls data.md"), (fm) => {
         fm.calls = [...(fm.calls ?? []), { who: "Pat", back: "2020-01-01", at: "2020-01-01T09:00" }];
       });
+      // A call added by hand counts once it's imported.
+      await na.open("Apps/Calls");
+      const card = await na.until(() => na.view().contentEl.querySelector(".gz-hand-edit"), 3000);
+      if (card) na.button("Import the edit", card).click();
       const once = await na.until(() => overdue() === 1, 8000);
       await app.fileManager.processFrontMatter(na.file("Apps/Calls data.md"), (fm) => { fm.calls = [...fm.calls]; fm.touched = true; });
       await na.sleep(1500);

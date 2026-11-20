@@ -300,10 +300,10 @@ async function install(vault: string, label: string): Promise<void> {
   await fs.writeFile(script, runScript({ node: process.execPath, script: fileURLToPath(import.meta.url), vault: resolve(vault), home }), { mode: 0o700 });
   const agent = agentPath(label);
   await fs.mkdir(dirname(agent), { recursive: true });
-  await fs.writeFile(agent, plist({ label, script, log: join(homedir(), "Library", "Logs", "gizmod.log") }));
+  await fs.writeFile(agent, plist({ label, script, log: join(homedir(), "Library", "Logs", `${label}.log`) }));
   await run("launchctl", ["bootout", `${domain()}/${label}`]).catch(() => {});
   await run("launchctl", ["bootstrap", domain(), agent]);
-  console.log(`Installed ${label}: it starts now and at each login. Logs: ~/Library/Logs/gizmod.log`);
+  console.log(`Installed ${label}: it starts now and at each login. Logs: ~/Library/Logs/${label}.log`);
   if (resolve(vault).includes("Mobile Documents")) {
     console.log(`The vault is in iCloud Drive: give ${process.execPath} access to files in System Settings → Privacy & Security, or gizmod can't read it.`);
   }

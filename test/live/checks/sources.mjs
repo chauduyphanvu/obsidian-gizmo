@@ -26,7 +26,8 @@ export default async function sources(t) {
       na.fill(form.querySelector("input"), "Rent went up?");
       na.button("Flag it", form).click();
       await na.until(() => na.text(el.querySelector(".gz-view-list")).includes("Rent went up?"), 3000);
-      const flagged = na.fm("Apps/Bank data.md")?.flagged;
+      // The device running background work writes the data note a moment after the save.
+      const flagged = await na.until(() => na.fm("Apps/Bank data.md")?.flagged, 3000);
       return { bars, row: row.textContent, list: na.text(el.querySelector(".gz-view-list")), flagged, type: typeof flagged?.[0]?.amount };`);
     expect(r.bars === 4, r);
     expect(r.list.includes("Rent went up?") && r.flagged?.length === 1 && r.type === "number" && r.flagged[0].description && r.flagged[0].date, r);

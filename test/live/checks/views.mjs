@@ -124,6 +124,12 @@ export default async function views(t) {
       await app.fileManager.processFrontMatter(na.file("Apps/Habits data.md"), (fm) => { fm.stretches = fm.stretches.filter((s) => !String(s.at).startsWith(key)); });
       await na.open("Apps/Habits");
       const el = na.view().contentEl;
+      // Once the app has written its data note, an edit by hand counts when it's imported.
+      const card = await na.until(() => el.querySelector(".gz-hand-edit"), 1500);
+      if (card) {
+        na.button("Import the edit", card).click();
+        await na.until(() => !el.querySelector(".gz-hand-edit"), 3000);
+      }
       [...el.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Year").click();
       await na.sleep(400);
       const day = () => el.querySelector('.gz-cal-year [data-date="' + key + '"]');
@@ -137,7 +143,7 @@ export default async function views(t) {
       const panel = el.querySelector(".gz-view-calendar");
       return { key, before, streak: streak(), label: label(), cls: day().getAttribute("class"), svg: svg.getBoundingClientRect().width, panel: panel.clientWidth, scroll: el.querySelector(".gz-cal-scroll").scrollWidth - el.querySelector(".gz-cal-scroll").clientWidth };`);
     expect(r.before.label === `${r.key}: 0` && !/gz-step/.test(r.before.cls), r.before);
-    expect(Number.parseInt(r.streak) > Number.parseInt(r.before.streak) && r.label === `${r.key}: 1` && /gz-step-\d/.test(r.cls) && /gz-today/.test(r.cls), r);
+    expect(Number.parseInt(r.streak) > Number.parseInt(r.before.streak) && r.label === `${r.key}: 1` && /gz-step-\d/.test(r.cls) && /gz-today/.test(r.cls), { before: r.before, after: r.streak, label: r.label, cls: r.cls });
     expect(r.svg <= r.panel && r.scroll <= 0, r);
     return `streak ${r.before.streak} → ${r.streak}; ${r.label}; ${r.cls}; ${Math.round(r.svg)} px in a ${r.panel} px panel`;
   });
