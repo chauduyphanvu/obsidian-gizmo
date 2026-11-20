@@ -128,3 +128,10 @@ test("the one file reader serves a note's body, a file's text and a stored file,
   await assert.rejects(f.host.readFile("Nope.md"), { message: "Can't find Nope.md" });
   await assert.rejects(f.host.readFile("Nope.csv"), { message: "Can't find Nope.csv" });
 });
+
+test("a web response over 10 MB isn't read", async () => {
+  const f = fakeHost();
+  f.host.fetch = async () => ({ status: 200, text: `[${"1,".repeat(5_000_001)}1]`, contentType: "application/json" });
+  const dl = new DataLayer(f.host);
+  await assert.rejects(dl.fetch(WEATHER, undefined, 60_000), /api\.example\.com sent more than 10 MB/);
+});

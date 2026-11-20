@@ -170,3 +170,36 @@ test("a summary drops the text of script and style elements, not just their tags
   assert.equal(summary('<![CDATA[Before <script src="x.js"/> after <style/> end]]>'), "Before after end");
   assert.equal(summary("<![CDATA[<scripty>keep</scripty> <b>bold</b>]]>"), "keep bold");
 });
+
+test("a hostile body of about 1 MB is read in well under a second, whatever it repeats", () => {
+  const n = 1_000_000;
+  const rep = (s: string) => s.repeat(Math.ceil(n / s.length));
+  const rss = (inside: string) => `<rss><channel>${inside}</channel></rss>`;
+  const item = (inside: string) => rss(`<item><title>t</title>${inside}</item>`);
+  const cases: [string, string, string][] = [
+    ["commas with no line break", rep(","), "text/plain"],
+    ["<item> never closed", rss(rep("<item>")), ""],
+    ["<item with no >", rss(rep("<item ")), ""],
+    ["<title> never closed", item(rep("<title>")), ""],
+    ["<link> never closed", item(rep("<link>")), ""],
+    ["<link with no >", item(rep("<link ")), ""],
+    ["one long link attribute", item(`<link ${rep("a")}/>`), ""],
+    ["one long item attribute", rss(`<item ${rep("a")}><title>t</title></item>`), ""],
+    ["CDATA never closed", item(`<description>${rep("<![CDATA[")}</description>`), ""],
+    ["<script never closed", item(`<description><![CDATA[${rep("<script ")}]]></description>`), ""],
+    ["<a with no > in a summary", item(`<description>${rep("&lt;a")}</description>`), ""],
+    ["</p with no > in a summary", item(`<description><![CDATA[${rep("</p ")}]]></description>`), ""],
+    ["calendar events never ended", `BEGIN:VCALENDAR\n${rep("BEGIN:VEVENT\n")}`, "text/calendar"],
+    ["deeply nested JSON", `${"[".repeat(n / 2)}${"]".repeat(n / 2)}`, "application/json"],
+  ];
+  for (const [what, body, type] of cases) {
+    const t0 = performance.now();
+    try {
+      parseBody(body, type, new Date(2026, 10, 19));
+    } catch {
+      // Refusing it is fine too; taking long isn't.
+    }
+    const ms = performance.now() - t0;
+    assert.ok(ms < 250, `${what}: ${Math.round(ms)} ms`);
+  }
+});

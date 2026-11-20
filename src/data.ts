@@ -398,6 +398,12 @@ function isFeed(text: string): boolean {
   return /^\s*<(?:rss|feed|rdf:RDF)[\s>]/i.test(text.slice(at, at + 200));
 }
 
+/** Whether text has a line break and a comma before it. Found by searching, not a regex, which took minutes on a long line. */
+function firstLineHasComma(text: string): boolean {
+  const nl = text.indexOf("\n");
+  return nl !== -1 && text.lastIndexOf(",", nl) !== -1;
+}
+
 /**
  * Parses an API response body: a calendar or a feed into rows, else JSON, then CSV, else the raw
  * text. `now` is the moment a calendar's repeating events are expanded around.
@@ -411,7 +417,7 @@ export function parseBody(text: string, contentType: string, now: Date = new Dat
   if (contentType.includes("json") || trimmed.startsWith("{") || trimmed.startsWith("[")) {
     return JSON.parse(text);
   }
-  if (contentType.includes("csv") || /^[^\n]*,[^\n]*\n/.test(trimmed)) return parseCSV(text);
+  if (contentType.includes("csv") || firstLineHasComma(trimmed)) return parseCSV(text);
   return text;
 }
 

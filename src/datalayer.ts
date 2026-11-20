@@ -48,6 +48,9 @@ export interface AppFiles {
 
 const SECRET = /\{secret:([a-z0-9-]+)\}/g;
 
+/** A web response longer than this isn't read: no app's data is that big, and reading it would stall the window. */
+export const MAX_RESPONSE_CHARS = 10_000_000;
+
 function hostOf(source: string): string {
   try {
     return new URL(source.replace(SECRET, "x")).host;
@@ -148,6 +151,7 @@ export class DataLayer {
       const init = body === undefined ? undefined : this.post(body, filled);
       const res = await this.host.fetch(this.withSecrets(source), filled, init);
       if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
+      if (res.text.length > MAX_RESPONSE_CHARS) throw new Error(`${hostOf(source)} sent more than 10 MB`);
       const data = parseBody(res.text, res.contentType, new Date(this.host.now()));
       void this.host.cacheWrite?.(key, { at: this.host.now(), text: res.text, contentType: res.contentType });
       return data;
