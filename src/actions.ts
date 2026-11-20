@@ -176,7 +176,7 @@ export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promis
     return { ok: false };
   }
   const logged = ticked ? deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true }]) : undefined;
-  return { ok: true, logged: logged ?? undefined };
+  return { ok: true, ...(logged && { logged }) };
 }
 
 /**
@@ -231,11 +231,11 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     // Kept before what `then` runs is, in the order they happened.
     log();
     if (p.then) await deps.then?.(p, ctx);
-    return { ok: true, path, logged };
+    return { ok: true, path, ...(logged && { logged }) };
   } catch (e) {
     deps.notify(`Couldn't save: ${(e as Error).message}`);
     log();
-    return { ok: false, logged };
+    return { ok: false, ...(logged && { logged }) };
   } finally {
     // What was written before a failure is kept too, so it can be undone.
     log();
