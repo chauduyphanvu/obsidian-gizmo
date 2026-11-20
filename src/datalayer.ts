@@ -178,6 +178,12 @@ export class DataLayer {
   }
 
   /** Writes now the snapshots waiting to be written. */
+  /** Stops waiting snapshots: the plugin is going, and the runner writes them next time. */
+  dispose(): void {
+    for (const t of this.snapshotTimers.values()) clearTimeout(t);
+    this.snapshotTimers.clear();
+  }
+
   async flushSnapshots(): Promise<void> {
     const s = this.snapshots;
     const ledger = this.ledger;

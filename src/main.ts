@@ -151,6 +151,7 @@ export default class GizmoPlugin extends Plugin {
   }
 
   onunload(): void {
+    this.dataLayer?.dispose();
     // Without this, open app tabs turn into empty placeholders when the plugin is turned off.
     this.unloading = true;
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {

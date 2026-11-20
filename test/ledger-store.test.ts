@@ -211,3 +211,56 @@ test("devices writing, reading late, undoing and snapshotting at random always r
     }
   }
 });
+
+test("a list that starts empty keeps the rows added to it through a snapshot", async () => {
+  const v = vault({ [DATA]: { spend: [], packed: ["Charger"] } });
+  const a = device(v, "a");
+  await a.ledger.write(DATA, [{ op: "tick", l: "packed", item: "Socks" }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  a.ledger.fileChanged(DATA);
+  await a.ledger.write(DATA, [{ op: "add", l: "spend", row: "r1", v: { amount: 5 } }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  assert.deepEqual(v.fms.get(DATA)!.spend, [{ amount: 5 }]);
+  assert.deepEqual((await device(v, "fresh").ledger.state(DATA)).lists.get("spend")!.rows, [{ amount: 5 }]);
+});
+
+test("lists typed in the app note are read with their ids after the data note has a snapshot, and an add keeps their rows", async () => {
+  const app = { app: "Budget", cats: [{ n: "food" }, { n: "rent" }] };
+  const v = vault();
+  const a = device(v, "a");
+  await a.ledger.write(DATA, [{ op: "add", l: "spend", row: "r1", v: { amount: 5 } }]);
+  await a.ledger.snapshot(DATA, app, v.writeNote(DATA));
+  const fresh = device(v, "b").ledger;
+  const cats = (await fresh.state(DATA, app)).lists.get("cats")!;
+  assert.deepEqual(cats.rows, [{ n: "food" }, { n: "rent" }]);
+  assert.ok(cats.rows.every((r) => rowIdOf(r)));
+  await fresh.write(DATA, [{ op: "add", l: "cats", row: "c3", v: { n: "fun" } }]);
+  assert.deepEqual((await fresh.state(DATA, app)).lists.get("cats")!.rows.map((r) => r.n), ["food", "rent", "fun"]);
+});
+
+test("importing a hand edit to a recorded list leaves the rows its cap keeps out of the note alone", async () => {
+  const v = vault();
+  const a = device(v, "a");
+  a.ledger.setCaps(DATA, { kp: 3 });
+  for (let i = 0; i < 5; i++) await a.ledger.write(DATA, [{ op: "add", l: "kp", row: `k${i}`, v: { kp: i } }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  assert.deepEqual(v.fms.get(DATA)!.kp, [{ kp: 2 }, { kp: 3 }, { kp: 4 }]);
+  (v.fms.get(DATA)!.kp as { kp: number }[])[2] = { kp: 40 };
+  a.ledger.fileChanged(DATA);
+  const ops = await a.ledger.importOps(DATA);
+  assert.deepEqual(ops.map((o) => o.op).sort(), ["add", "del"], "only the row edited: one taken out, one put in");
+});
+
+test("discarding a hand edit takes out a list the edit added", async () => {
+  const v = vault();
+  const a = device(v, "a");
+  await a.ledger.write(DATA, [{ op: "add", l: "spend", row: "r1", v: { amount: 5 } }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA));
+  v.fms.get(DATA)!.extra = [{ a: 1 }];
+  a.ledger.fileChanged(DATA);
+  assert.equal((await a.ledger.state(DATA)).handEdited, true);
+  await a.ledger.snapshot(DATA, {}, v.writeNote(DATA), true);
+  a.ledger.fileChanged(DATA);
+  assert.equal(v.fms.get(DATA)!.extra, undefined);
+  assert.equal((await a.ledger.state(DATA)).handEdited, false);
+});

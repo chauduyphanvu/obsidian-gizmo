@@ -22,7 +22,7 @@ export interface DataStore {
   /** A list's rows as they are now. */
   rows(list: string): Promise<Row[]>;
   /** Adds a row; `id` makes two runs that add the same row (two devices sampling, a then run twice) add it once. */
-  add(list: string, row: Row, opts?: { id?: string; cap?: number }): Promise<{ event?: string }>;
+  add(list: string, row: Row, opts?: { id?: string; cap?: number }): Promise<{ event?: string; already?: boolean }>;
   set(list: string, ref: RowRef, field: string, value: unknown): Promise<SetResult>;
   /** Ticks an item; undefined when it was already ticked. */
   tick(list: string, item: string): Promise<{ event?: string } | undefined>;
@@ -122,7 +122,7 @@ export function ledgerStore(ledger: Ledger, dataPath: string, appFm: () => Recor
     async add(list, row, opts) {
       const id = opts?.id ?? ledger.newRowId();
       // A row another run already added under this id stays as it is.
-      if (opts?.id && (await ledger.state(dataPath, appFm())).lists.get(list)?.rows.some((r) => rowIdOf(r) === id)) return {};
+      if (opts?.id && (await ledger.state(dataPath, appFm())).lists.get(list)?.rows.some((r) => rowIdOf(r) === id)) return { already: true };
       const [event] = await ledger.write(dataPath, [{ op: "add", l: list, row: id, v: row }]);
       return { event };
     },

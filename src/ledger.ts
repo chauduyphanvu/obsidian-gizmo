@@ -212,6 +212,8 @@ export class Folder {
   readonly applied = new Set<string>();
   /** The last event applied: one that comes after it can be applied on top. */
   last: LedgerEvent | undefined;
+  /** Rows deleted, or added by an event that was undone: another add of the same id doesn't bring them back. */
+  private gone = new Set<string>();
   /** Rows changed since last taken. */
   private touched = new Set<string>();
   private caps: Record<string, number>;
@@ -245,6 +247,14 @@ export class Folder {
     return !this.last || compareEvents(e, this.last) > 0;
   }
 
+  /**
+   * An undone add: its row stays out even when another runner added the same row under the same id,
+   * so undoing either takes the row away.
+   */
+  hide(e: LedgerEvent): void {
+    if (e.op === "add") this.gone.add(`${e.l}\n${e.row}`);
+  }
+
   /** Makes the list an event names, even when the event itself doesn't apply (it was undone). */
   names(e: LedgerEvent): void {
     if (e.op === "add" || e.op === "set" || e.op === "del") this.listOf(e.l);
@@ -259,7 +269,7 @@ export class Folder {
     switch (e.op) {
       case "add": {
         const l = this.listOf(e.l);
-        if (l.rows.has(e.row)) break;
+        if (l.rows.has(e.row) || this.gone.has(`${e.l}\n${e.row}`)) break;
         l.order.push(e.row);
         l.rows.set(e.row, e.v);
         this.touched.add(e.row);
@@ -287,6 +297,7 @@ export class Folder {
       }
       case "del": {
         const l = this.listOf(e.l);
+        this.gone.add(`${e.l}\n${e.row}`);
         if (!l.rows.delete(e.row)) break;
         l.order = l.order.filter((r) => r !== e.row);
         l.conflicts = l.conflicts.filter((c) => c.row !== e.row);
@@ -341,6 +352,7 @@ export function fold(events: readonly LedgerEvent[], base: FoldBase = { lists: {
   const ordered = [...unique.values()].sort(compareEvents);
   const undone = undoneEvents(ordered);
   const folder = new Folder(base, caps);
+  for (const e of ordered) if (undone.has(eventId(e))) folder.hide(e);
   // A list whose every event was undone is still there, empty: its note's copy must say so.
   for (const e of ordered) {
     if (undone.has(eventId(e))) folder.names(e);

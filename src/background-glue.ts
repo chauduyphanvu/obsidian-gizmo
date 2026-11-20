@@ -119,8 +119,9 @@ export function registerBackground(plugin: GizmoPlugin): Background {
   plugin.beat = beat;
   app.workspace.onLayoutReady(() => {
     if (stopped) return;
-    void bg.start();
-    void beat.beat();
+    void beat.beat().then(() => {
+      if (!stopped) void bg.start();
+    });
     plugin.registerInterval(window.setInterval(() => {
       void bg.tick();
       void beat.beat();

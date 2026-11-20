@@ -225,8 +225,9 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
-      const { event } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
-      changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });
+      const { event, already } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
+      // Another runner already saved this very row: nothing was written here.
+      if (!already) changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });
     } else if (target?.kind === "folder") {
       path = await saveNote(p, target.folder, saved, ctx, deps, changes);
       if (!path) return { ok: false };

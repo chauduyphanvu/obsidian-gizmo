@@ -155,3 +155,17 @@ test("folding starts from a base; a recorded list keeps its newest rows; the dat
   assert.deepEqual(fold(eventsAt(events, T0 + 30_000), base).lists.get("s")!.rows, [{ n: 1 }, { n: 2 }, { n: 3 }]);
   assert.deepEqual(fold(events, base).ticked.get("c"), ["x"]);
 });
+
+test("a row two runners added under one id goes when either add is undone; a deleted row stays deleted when a late copy of its add arrives", () => {
+  const a = writer("a");
+  const b = writer("b");
+  const addA = a(0, { op: "add", l: "x", row: "r1", v: { n: 1 } });
+  const addB = b(10, { op: "add", l: "x", row: "r1", v: { n: 1 } });
+  assert.deepEqual(fold([addA, addB]).lists.get("x")!.rows, [{ n: 1 }]);
+  const undo = a(20, { op: "undo", ev: [eventId(addA)] });
+  assert.deepEqual(fold([addA, addB, undo]).lists.get("x")!.rows, []);
+  assert.deepEqual(fold([addA, addB, undo, a(30, { op: "redo", ev: [eventId(addA)] })]).lists.get("x")!.rows, [{ n: 1 }]);
+  const del = a(40, { op: "del", l: "x", row: "r1" });
+  const late = b(50, { op: "add", l: "x", row: "r1", v: { n: 1 } });
+  assert.deepEqual(fold([addA, del, late]).lists.get("x")!.rows, []);
+});

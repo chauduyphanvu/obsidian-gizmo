@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActivityLog, type Entry } from "../src/activity.ts";
-import { PRIORITY, UNSEEN_MS, defaultName, readBeat, runnerOf, thisDevice, type Beat, type PlatformInfo } from "../src/device.ts";
+import { PRIORITY, UNSEEN_MS, defaultName, readBeat, runnerOf, startsOver, thisDevice, type Beat, type PlatformInfo } from "../src/device.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -40,9 +40,25 @@ test("one device runs background work: gizmod over a desktop over a phone, then 
   assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - UNSEEN_MS + 1000 }], now)?.id, "g");
   assert.equal(runnerOf([phone, mac, { ...daemon, seen: now - UNSEEN_MS }], now)?.id, "m2");
   assert.equal(runnerOf([], now), undefined);
-  // A beat written before priorities were kept counts as a desktop's.
-  assert.deepEqual(readBeat(JSON.stringify({ id: "x", name: "Mac", background: true, seen: 5 })), { id: "x", name: "Mac", host: "", priority: PRIORITY.desktop, seen: 5 });
+  // A beat written before priorities were kept is left out: that device decides for itself, and beats too seldom to count.
+  assert.equal(readBeat(JSON.stringify({ id: "x", name: "Mac", background: true, seen: 5 })), undefined);
+  assert.deepEqual(readBeat(JSON.stringify({ id: "x", name: "Mac", priority: 1, seen: 5 })), { id: "x", name: "Mac", host: "", priority: PRIORITY.desktop, seen: 5 });
   assert.equal(readBeat("{nope"), undefined);
+});
+
+test("a runner starts its alerts over when it takes over from another device, not on every launch", () => {
+  const now = 10 * UNSEEN_MS;
+  const phone: Beat = { id: "p", name: "iPhone", host: "", priority: PRIORITY.phone, seen: now };
+  // Mid-session: taking over from another device starts over; staying the runner doesn't; nor does not being it.
+  assert.equal(startsOver("m", "m", "p", false, undefined, [phone]), true);
+  assert.equal(startsOver("m", "m", "m", false, undefined, [phone]), false);
+  assert.equal(startsOver("m", "p", "m", false, undefined, [phone]), false);
+  // A launch: another device heard from long after this one's last beat ran things meanwhile.
+  assert.equal(startsOver("m", "m", undefined, true, now - 3 * UNSEEN_MS, [phone]), true);
+  // The phone was only around briefly after the Mac left, while the Mac's beat still counted: what the Mac kept holds.
+  assert.equal(startsOver("m", "m", undefined, true, now - UNSEEN_MS / 2, [phone]), false);
+  assert.equal(startsOver("m", "m", undefined, true, now - 3 * UNSEEN_MS, []), false, "no other device: it was the runner throughout");
+  assert.equal(startsOver("m", "m", undefined, true, undefined, []), true, "never ran here before");
 });
 
 test("on a device that doesn't run background work, records and alerts' thens don't run; becoming the runner, alerts start from what is true now", async () => {

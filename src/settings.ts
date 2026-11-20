@@ -1,6 +1,6 @@
 import { Platform, PluginSettingTab, Setting, normalizePath, type App } from "obsidian";
 import { when } from "./activity-view.ts";
-import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, saveDevice, type Beat } from "./device.ts";
+import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, saveDevice, startsOver, type Beat } from "./device.ts";
 import { pluginFile, pluginFolder } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { openMap } from "./map-view.ts";
@@ -36,6 +36,8 @@ export class DeviceBeat {
   /** Every device's last word, as last read. */
   beats: Beat[] = [];
   runner: Beat | undefined;
+  /** Whether this session has read every device's beat yet. */
+  private heard = false;
 
   constructor(plugin: GizmoPlugin) {
     this.plugin = plugin;
@@ -49,21 +51,25 @@ export class DeviceBeat {
   async beat(force = false): Promise<void> {
     const now = Date.now();
     const me = this.mine(now);
-    if (force || me.name !== this.said || now - this.saidAt >= BEAT_EVERY_MS) {
+    const all = await devicesSeen(this.plugin);
+    // This device's word from its last session, read before this one is written over it.
+    const last = this.heard ? undefined : all.find((b) => b.id === me.id)?.seen;
+    if (!this.heard || force || me.name !== this.said || now - this.saidAt >= BEAT_EVERY_MS) {
       await pluginFile(this.plugin, `devices/${me.id}.json`).write(JSON.stringify(me)).catch(() => {});
       this.said = me.name;
       this.saidAt = now;
     }
-    const others = (await devicesSeen(this.plugin)).filter((b) => b.id !== me.id);
+    const others = all.filter((b) => b.id !== me.id);
     this.beats = [me, ...others];
     const was = this.runner?.id;
     this.runner = runnerOf(this.beats, now);
-    if (this.runner?.id === me.id && was !== me.id) this.plugin.background?.startOver();
+    if (startsOver(me.id, this.runner?.id, was, !this.heard, last, others)) this.plugin.background?.startOver();
+    this.heard = true;
   }
 
-  /** Whether this device runs background work: until the first beat, only when it is the only one it knows of. */
+  /** Whether this device runs background work; not until it has read every device's beat. */
   isRunner(): boolean {
-    return (this.runner?.id ?? this.plugin.device.id) === this.plugin.device.id;
+    return this.heard && this.runner?.id === this.plugin.device.id;
   }
 
   /** gizmod runs on this computer and was heard from lately: it tells of alerts, so Obsidian here doesn't as well. */

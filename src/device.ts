@@ -37,13 +37,26 @@ export function runnerOf(beats: readonly Beat[], now: number): Beat | undefined 
   return live.sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
 }
 
+/**
+ * Whether this device, now the runner, starts its alerts over. Mid-session, when it takes over from
+ * another device. On its first beat of a session, when another device was heard from long enough
+ * after this one's last beat to have run background work meanwhile; else what it kept still holds.
+ */
+export function startsOver(me: string, runner: string | undefined, was: string | undefined, first: boolean, lastSeen: number | undefined, others: readonly Beat[]): boolean {
+  if (runner !== me) return false;
+  if (!first) return was !== undefined && was !== me;
+  return lastSeen === undefined || others.some((b) => b.seen > lastSeen + UNSEEN_MS);
+}
+
 /** A beat from a file's text; undefined when it isn't one. */
 export function readBeat(text: string): Beat | undefined {
   try {
     const b = JSON.parse(text) as Partial<Beat>;
     if (typeof b.id !== "string" || typeof b.name !== "string" || typeof b.seen !== "number") return undefined;
-    // A beat from before devices agreed on one runner says nothing of its priority: a desktop's.
-    return { id: b.id, name: b.name, host: typeof b.host === "string" ? b.host : "", priority: typeof b.priority === "number" ? b.priority : PRIORITY.desktop, seen: b.seen };
+    // A beat from before devices agreed on one runner: that device decides for itself, and beats
+    // too seldom to be counted as there, so it is left out.
+    if (typeof b.priority !== "number") return undefined;
+    return { id: b.id, name: b.name, host: typeof b.host === "string" ? b.host : "", priority: b.priority, seen: b.seen };
   } catch {
     return undefined;
   }

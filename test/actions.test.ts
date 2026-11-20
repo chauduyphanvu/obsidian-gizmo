@@ -302,3 +302,12 @@ test("row: a value that is exactly one param keeps the param's type, as a whole 
   await runActions(fixed.panel, {}, d);
   assert.deepEqual(data, { tally: [{ count: 5, paid: false, who: "Ann", text: "5 items", literal: "5", at: "2026-11-18T12:00" }] });
 });
+
+test("a save whose row another runner already saved under the same id writes nothing and logs nothing", async () => {
+  const { d } = deps();
+  const logged: unknown[] = [];
+  const store = { add: async () => ({ already: true }) } as unknown as NonNullable<ActionDeps["store"]>;
+  const r = await runActions(panel({ view: "form", fields: { task: "text" }, save: "todo" }), { task: "bins" }, { ...d, store, rowId: "fixed", log: (what, changes) => { logged.push({ what, changes }); return Promise.resolve(undefined); } });
+  assert.equal(r.ok, true);
+  assert.deepEqual(logged, []);
+});

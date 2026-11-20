@@ -58,7 +58,8 @@ export function rowIdOf(row: unknown): string | undefined {
 export function listsOf(fm: Record<string, unknown> | undefined, kept: Record<string, unknown> = {}): FoldBase {
   const base: FoldBase = { lists: {}, ticked: {} };
   for (const [k, v] of Object.entries(fm ?? {})) {
-    if (META_KEYS.includes(k) || !Array.isArray(v)) continue;
+    // An empty list could be either kind; events say which it is.
+    if (META_KEYS.includes(k) || !Array.isArray(v) || !v.length) continue;
     if (v.every((x) => typeof x === "string")) base.ticked[k] = v as string[];
     else if (v.every((x) => x !== null && typeof x === "object" && !Array.isArray(x))) {
       const ids = kept[k];
@@ -291,7 +292,7 @@ export class Ledger {
       for (const e of all) this.clock.seen(e.t);
       const fromSnapshot = snapshot && !handEdited ? this.tail(n, snapshot, fm!) : undefined;
       n.folder = (fromSnapshot
-        ? fold(fromSnapshot.events, fromSnapshot.base, caps)
+        ? fold(fromSnapshot.events, withApp(fromSnapshot.base, appFm), caps)
         : fold(all, withApp(snapshot ? await this.base(dataPath) : withDevices(note.lists, devices), appFm), caps)).folder;
       n.seen = new Set(all.map(eventId));
       n.out.clear();
@@ -417,7 +418,13 @@ export class Ledger {
     const kept = new Set([...Object.keys(fm ?? {}), ...devices.flatMap(listNames), ...[...n.files.values()].flatMap((f) => f.events.flatMap((e) => ("l" in e ? [e.l] : [])))]);
     await writeNote((note) => {
       for (const [name, l] of state.lists) if (kept.has(name)) note[name] = l.rows.map((r) => ({ ...r }));
-      for (const [name, items] of state.ticked) if (kept.has(name)) note[name] = [...items];
+      for (const [name, items] of state.ticked) if (kept.has(name) && !state.lists.has(name)) note[name] = [...items];
+      // Discarding a hand edit takes out the lists it added, so the note says what the log does.
+      if (force) {
+        for (const [k, v] of Object.entries(note)) {
+          if (!META_KEYS.includes(k) && Array.isArray(v) && v.length && !state.lists.has(k) && !state.ticked.has(k)) delete note[k];
+        }
+      }
       note[IDS_KEY] = Object.fromEntries([...state.lists].filter(([name]) => kept.has(name)).map(([name, l]) => [name, l.rows.map((r) => rowIdOf(r)!)]));
       const open = [...state.lists].filter(([name, l]) => kept.has(name) && l.conflicts.length);
       if (open.length) note[CONFLICTS_KEY] = Object.fromEntries(open.map(([name, l]) => [name, l.conflicts]));
@@ -437,7 +444,7 @@ export class Ledger {
     const appFm = given ?? n.appFm ?? {};
     const mark = readMark(fm);
     const all = [...n.files.values()].flatMap((f) => f.events);
-    const folded = fold(all, withApp(mark ? await this.base(dataPath) : { lists: {}, ticked: {} }, appFm));
+    const folded = fold(all, withApp(mark ? await this.base(dataPath) : { lists: {}, ticked: {} }, appFm), n.caps);
     const note = listsOf(fm);
     const ops: Op[] = [];
     for (const [name, { rows }] of Object.entries(note.lists)) {
