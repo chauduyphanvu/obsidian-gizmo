@@ -475,7 +475,8 @@ export class Background {
    * values a link gives (a command has none, so a form opens its app to be filled in). Notifies the
    * result: the panel's own `notify`, else that it's done.
    */
-  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun): Promise<ShortcutResult> {
+  /** `seed` makes the rows it saves the same rows wherever it runs: an alert's then on two runners at once saves one. */
+  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun, seed?: string): Promise<ShortcutResult> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     // In a dry run, what it would tell is kept with what it would change, and nothing is shown or opened.
@@ -549,9 +550,10 @@ export class Background {
       const base: ActionDeps = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       const deps: ActionDeps = {
         ...(dry ? recordingDeps(dry.overlay, base, step) : base),
+        ...(seed && { rowId: ledgerRowId(`then\n${seed}`) }),
         then: async (panel, ctx) => {
           done();
-          if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail, dry);
+          if (panel.then) await this.runThen(entry.path, panel.then, ctx, trail, dry, seed);
         },
       };
       result = await runActions(p, input, deps);
@@ -692,7 +694,7 @@ export class Background {
    * chain longer than MAX_CHAIN, or more than MAX_RUNS_PER_HOUR runs of one `then` is a loop, and
    * stops with a notice naming it. Never rejects.
    */
-  async runThen(fromPath: string, then: Then, ctx: Row, chain: string[] = [], dry?: DryRun): Promise<void> {
+  async runThen(fromPath: string, then: Then, ctx: Row, chain: string[] = [], dry?: DryRun, seed?: string): Promise<void> {
     const say = (message: string) => (dry ? void dry.steps.at(-1)?.notices.push(message) : this.say(message));
     try {
       const from = this.apps.get(fromPath) ?? (this.running ? this.index(fromPath) : undefined);
@@ -718,7 +720,7 @@ export class Background {
         this.runs.set(rateKey, [...recent, now]);
       }
       const params = Object.fromEntries(Object.entries(then.fill ?? {}).map(([k, v]) => [k, fillLine(v, ctx)]));
-      await this.runShortcut(target.path, then.do, `trigger:${from.name}`, then.fill ? params : undefined, [...chain, key], undefined, dry);
+      await this.runShortcut(target.path, then.do, `trigger:${from.name}`, then.fill ? params : undefined, [...chain, key], undefined, dry, seed && `${seed}\n${key}`);
     } catch (e) {
       say(`${basename(fromPath)}: couldn't run “${then.do}”: ${(e as Error).message}`);
     }
@@ -821,7 +823,11 @@ export class Background {
     this.saveFired();
     if (!before || !("rows" in before)) return;
     const seen = new Set(before.rows);
-    for (const [i, row] of rows.entries()) if (!seen.has(ids[i])) await this.runThen(entry.path, then, { ...row, value });
+    // A row's then saves under an id from the alert and the row as it is now, the same on any runner;
+    // a value turning true has no such row, and its then saves as a save does.
+    for (const [i, row] of rows.entries()) {
+      if (!seen.has(ids[i])) await this.runThen(entry.path, then, { ...row, value }, [], undefined, `${key}\n${ids[i]}\n${stableJson(row)}`);
+    }
   }
 
   /**

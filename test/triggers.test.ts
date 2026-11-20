@@ -153,6 +153,29 @@ test("a row alert's then runs once for each row that newly matches, never for wh
   assert.deepEqual(tasks(again)!.map((r) => r.task), ["Renew insurance", "Renew passport"]);
 });
 
+test("two runners at once (a handover not yet heard of) run a row's then on both, and it saves one row", async () => {
+  const passport = { what: "passport", due: "2026-11-25", at: "2026-10-01T09:00" };
+  const t = fakeBackground(renewals([passport]));
+  await t.bg.start();
+  await settle();
+  // What the other runner kept: the passport noted, nothing since.
+  const noted = t.triggers.text;
+  const fm = t.f.files.get("Apps/Renewals data.md")!.fm!;
+  fm.deadlines = [passport, { what: "insurance", due: "2026-11-30", at: "2026-11-18T12:00" }];
+  t.changed("Apps/Renewals data.md");
+  await settle();
+  assert.equal(tasks(t)!.length, 1);
+  // The other device, on the same files, sees the new row as new too and runs the then itself.
+  const logs = Object.fromEntries([...t.f.others].map(([path, raw]) => [path, { raw }]));
+  const other = fakeBackground({ ...renewals([]), ...logs, "Apps/Renewals data.md": t.f.files.get("Apps/Renewals data.md")!, "Apps/Inbox data.md": t.f.files.get("Apps/Inbox data.md")! }, {}, { triggers: { text: noted } });
+  other.f.host.device = () => "phone000";
+  await other.bg.start();
+  await settle();
+  assert.ok(other.notices.includes("Inbox: Add done for Renewals"), "the other runner ran it too");
+  const rows = (await other.data.ledger!.state("Apps/Inbox data.md")).lists.get("todo")!.rows;
+  assert.deepEqual(rows.map((r) => r.task), ["Renew insurance"]);
+});
+
 test("editing an alert's then, or allowing the app, notes what is due without running it", async () => {
   const t = fakeBackground(renewals([{ what: "passport", due: "2026-11-25", at: "2026-10-01T09:00" }]));
   t.denied.add("Apps/Renewals.md");

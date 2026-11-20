@@ -170,3 +170,44 @@ test("a cell two devices set at once is still offered both ways after a snapshot
   assert.equal(v.fms.get(DATA)!["gizmo-conflicts"], undefined);
   assert.deepEqual((await device(v, "r2").ledger.state(DATA)).lists.get("s")!.conflicts, []);
 });
+
+test("devices writing, reading late, undoing and snapshotting at random always read what a fresh fold reads", async () => {
+  for (let seed = 1; seed <= 25; seed++) {
+    let s = seed;
+    const rand = (n: number) => { s = (s * 1103515245 + 12345) & 0x7fffffff; return s % n; };
+    const v = vault();
+    const ds = ["a", "b", "c"].map((id) => ({ id, ...device(v, id, { now: T0 }), offline: false }));
+    const made: { d: string; ev: string }[] = [];
+    const rows = async () => (await ds[0].ledger.state(DATA)).lists.get("x")?.rows ?? [];
+    const seen = (st: Awaited<ReturnType<Ledger["state"]>>) => ({
+      lists: [...st.lists].map(([k, l]) => [k, l.rows.map((r) => [rowIdOf(r), { ...r }]), l.conflicts]),
+      ticked: [...st.ticked], undone: [...st.undone].sort(),
+    });
+    for (let step = 0; step < 60; step++) {
+      const d = ds[rand(3)];
+      d.clock.now += rand(4) * 500;
+      const kind = rand(10);
+      const ids = (await rows()).map((r) => rowIdOf(r)!);
+      if (kind <= 2 || !ids.length) made.push(...(await d.ledger.write(DATA, [{ op: "add", l: "x", row: d.ledger.newRowId(), v: { n: step } }])).map((ev) => ({ d: d.id, ev })));
+      else if (kind <= 4) {
+        const row = ids[rand(ids.length)];
+        const shown = (await d.ledger.state(DATA)).lists.get("x")?.rows.find((r) => rowIdOf(r) === row);
+        await d.ledger.write(DATA, [{ op: "set", l: "x", row, f: "n", v: step, from: shown?.n }]);
+      } else if (kind === 5) await d.ledger.write(DATA, [{ op: "del", l: "x", row: ids[rand(ids.length)] }]);
+      else if (kind === 6) await d.ledger.write(DATA, [{ op: rand(2) ? "tick" : "untick", l: "c", item: `i${rand(3)}` }]);
+      else if (kind === 7 && made.length) await d.ledger.write(DATA, [{ op: rand(3) ? "undo" : "redo", ev: [made[rand(made.length)].ev] }]);
+      else if (kind === 8) d.offline = !d.offline;
+      else {
+        await ds[0].ledger.snapshot(DATA, {}, v.writeNote(DATA));
+        for (const x of ds) x.ledger.fileChanged(DATA);
+      }
+      // Every device that's online hears of every file; one offline hears nothing until it's back.
+      for (const x of ds) if (!x.offline) for (const p of v.files.keys()) x.ledger.fileChanged(p);
+      for (const x of ds) {
+        if (x.offline) continue;
+        const fresh = new Ledger(v.io, () => "zzzz", () => x.clock.now);
+        assert.deepEqual(seen(await x.ledger.state(DATA)), seen(await fresh.state(DATA)), `seed ${seed}, step ${step}, device ${x.id}`);
+      }
+    }
+  }
+});
