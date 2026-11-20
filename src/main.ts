@@ -4,6 +4,7 @@ import {
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
 import { registerBackground } from "./background-glue.ts";
+import { registerBases } from "./bases.ts";
 import { DataLayer } from "./datalayer.ts";
 import { thisDevice, type Device, type DeviceStore } from "./device.ts";
 import { registerEmbeds } from "./embed.ts";
@@ -95,6 +96,7 @@ export default class GizmoPlugin extends Plugin {
     registerShareCommands(this);
     registerActivity(this);
     registerMap(this);
+    registerBases(this);
 
     this.addCommand({
       id: "open-as-app",

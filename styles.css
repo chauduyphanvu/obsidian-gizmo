@@ -385,6 +385,8 @@
 .gz-embed .gizmo,
 .gz-lens .gizmo { padding: 0; max-width: none; margin: 0; }
 .gz-embed { margin: var(--size-4-2) 0; }
+/* A Gizmo view in a base fills the pane under the base's toolbar. */
+.gizmo.gz-bases { padding: var(--size-4-3) var(--size-4-4) var(--size-4-4); max-width: none; margin: 0; }
 /* The lens sits above the editor and the preview, which share what is left of the view's height. */
 .view-content:has(> .gz-lens) { display: flex; flex-direction: column; }
 .view-content:has(> .gz-lens) > .markdown-source-view,
