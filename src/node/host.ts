@@ -8,7 +8,7 @@ import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
 import { ActivityLog, type LogStore, type NewEntry } from "../activity.ts";
-import { actionDepsOf, bodyOf, noteText, withLine, type ActionDeps, type ActionIO } from "../actions.ts";
+import { actionDepsOf, bodyOf, type ActionDeps, type ActionIO } from "../actions.ts";
 import type { Actor } from "../activity.ts";
 import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../background.ts";
 import { DataLayer, type Host } from "../datalayer.ts";
@@ -16,11 +16,11 @@ import { ledgerStore } from "../datastore.ts";
 import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, startsOver, whereYouAre, type Beat } from "../device.ts";
 import { localZone } from "../time.ts";
 import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
-import { clearance, isPolicyPath, rank, type AppliedPolicy } from "../policy.ts";
+import { clearance, rank, type AppliedPolicy } from "../policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../responses.ts";
 import { isApp, notePath, storeTarget } from "../store.ts";
-import { tickLine } from "../sources/tasks.ts";
 import { NodeVault, yamlText } from "./vault.ts";
+import { vaultWrites } from "../vault-ops.ts";
 
 /** Gizmo's settings as Obsidian keeps them in data.json; gizmod only reads them. */
 export interface Settings {
@@ -133,34 +133,24 @@ export function gizmodEnv(opts: GizmodOptions) {
   const data = new DataLayer(host);
   const ledger = data.ledger!;
   const frontmatter = (path: string) => vault.file(path)?.fm;
-  const refuse = (path: string) => {
-    // Any case: on a disk that ignores case, "gizmo POLICY.md" is the same note.
-    if (isPolicyPath(path)) throw new Error(`${path} is your Gizmo policy; apps can't change it`);
-  };
-  /** One write to a note at a time. */
-  const queues = new Map<string, Promise<unknown>>();
-  const queued = <T>(path: string, fn: () => Promise<T>): Promise<T> => {
-    refuse(path);
-    const run = (queues.get(path) ?? Promise.resolve()).then(fn, fn);
-    queues.set(path, run.catch(() => {}));
-    return run;
-  };
+  // Written as Obsidian writes them (see vault-ops.ts), each change read again just before it's written.
+  const writes = vaultWrites({
+    normalize: (path) => path,
+    exists: (path) => vault.file(path) !== undefined || existsSync(vault.abs(path)),
+    read: (path) => vault.read(path),
+    write: (path, text) => vault.write(path, text),
+    create: (path, text) => vault.write(path, text),
+    processFrontmatter: (path, fn) => vault.process(path, fn),
+    append: (path, text) => vault.append(path, text),
+  }, yamlText);
 
-  const io: ActionIO & { setTaskDone(path: string, line: number, text: string, done: boolean): Promise<boolean> } = {
+  const io: ActionIO = {
     now: () => new Date(now()),
-    writeFrontmatter: (path, fn) => queued(path, () => vault.process(path, fn)),
+    writeFrontmatter: (path, fn) => writes.writeFrontmatter(path, fn),
+    updateFrontmatter: (path, fn) => writes.updateFrontmatter(path, fn),
     store: (dataPath, appPath) => ledgerStore(ledger, dataPath, () => frontmatter(appPath) ?? {}),
-    appendLine: (path, line) => queued(path, async () => {
-      const there = vault.file(path) !== undefined;
-      await vault.write(path, withLine(there ? await vault.read(path) : "", line));
-      return !there;
-    }),
-    createNote: (path, fm, body) => queued(path, async () => {
-      if (vault.file(path) || existsSync(vault.abs(path))) return false;
-      const text = noteText(Object.keys(fm).length ? yamlText(fm) : "", body);
-      await vault.write(path, text);
-      return text;
-    }),
+    appendLine: (path, line) => writes.appendLine(path, line),
+    createNote: (path, fm, body) => writes.createNote(path, fm, body),
     readBody: async (path) => {
       const target = storeTarget(path);
       const found = vault.resolve(target, "") ?? (vault.file(notePath(target)) ? notePath(target) : undefined);
@@ -169,13 +159,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     },
     notify: (message) => log(message),
     openNote: () => {},
-    setTaskDone: (path, line, text, done) => queued(path, async () => {
-      if (!vault.file(path)) return false;
-      const next = tickLine(await vault.read(path), line, text, done);
-      if (next === undefined) return false;
-      await vault.write(path, next);
-      return true;
-    }),
+    setTaskDone: (path, line, text, done) => writes.setTaskDone(path, line, text, done),
   };
 
   const deviceNames = async () => {

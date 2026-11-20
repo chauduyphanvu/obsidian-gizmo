@@ -267,3 +267,24 @@ test("gizmod reads data.json again when Obsidian changes it", async () => {
     await t.s.close();
   }
 });
+
+test("a line gizmod adds to a note someone else is writing keeps their edit", async () => {
+  const t = await served();
+  try {
+    const path = join(t.root, "Daily.md");
+    writeFileSync(path, "# Today\n");
+    await t.s.env.vault.write("Daily.md", "# Today\n");
+    // Another program writes the note between gizmod's read and its write.
+    const read = t.s.env.vault.read.bind(t.s.env.vault);
+    let reads = 0;
+    t.s.env.vault.read = async (p: string) => {
+      const text = await read(p);
+      if (p === "Daily.md" && ++reads === 1) writeFileSync(path, "# Today\nTyped meanwhile\n");
+      return text;
+    };
+    assert.equal(await t.s.env.io.appendLine("Daily.md", "- from gizmod"), false);
+    assert.equal(readFileSync(path, "utf8"), "# Today\nTyped meanwhile\n- from gizmod\n");
+  } finally {
+    await t.s.close();
+  }
+});

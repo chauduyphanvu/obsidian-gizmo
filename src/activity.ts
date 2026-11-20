@@ -225,53 +225,6 @@ function listIn(fm: Record<string, unknown>, list: string): unknown[] | undefine
   return Array.isArray(fm[list]) ? fm[list] as unknown[] : undefined;
 }
 
-/**
- * Undoes a change to a note's frontmatter in place, only while the note still holds what the app
- * wrote; otherwise leaves it untouched and says why.
- */
-export function undoInFrontmatter(change: Change, fm: Record<string, unknown>): Refusal {
-  const note = basename(change.path);
-  switch (change.kind) {
-    case "row-added": {
-      const list = listIn(fm, change.list);
-      const i = list ? list.findLastIndex((r) => same(r, change.row)) : -1;
-      if (!list || i < 0) return `the row it saved in ${note} has changed or is gone`;
-      fm[change.list] = list.filter((_, j) => j !== i);
-      return undefined;
-    }
-    case "row-edited": {
-      const list = listIn(fm, change.list);
-      const i = list ? list.findLastIndex((r) => same(r, change.row)) : -1;
-      if (!list || i < 0) return `the row it changed in ${note} has changed again or is gone`;
-      const row = { ...(list[i] as Row) };
-      if (change.from === undefined) delete row[change.field];
-      else row[change.field] = change.from;
-      fm[change.list] = list.map((r, j) => (j === i ? row : r));
-      return undefined;
-    }
-    case "checklist": {
-      const list = (listIn(fm, change.list) ?? []).map(String);
-      if (list.includes(change.item) !== change.checked) return `“${change.item}” has been ${change.checked ? "unticked" : "ticked"} since`;
-      fm[change.list] = change.checked ? list.filter((i) => i !== change.item) : [...list, change.item];
-      return undefined;
-    }
-    case "cleared": {
-      const list = listIn(fm, change.list) ?? [];
-      if (list.length) return "something has been ticked since";
-      fm[change.list] = [...change.items];
-      return undefined;
-    }
-    case "property": {
-      if (!same(fm[change.field], change.to)) return `${change.field} in ${note} has changed since`;
-      if (change.had) fm[change.field] = change.from;
-      else delete fm[change.field];
-      return undefined;
-    }
-    default:
-      return "that isn't a change to properties";
-  }
-}
-
 /** A note's text without the line the app added (the last such line); undefined when it's gone. */
 export function withoutLine(text: string, line: string): string | undefined {
   const lines = text.split("\n");
@@ -296,6 +249,146 @@ export interface UndoIO {
   undoEvents?(dataPath: string, events: string[]): Promise<void>;
 }
 
+/** A value as a sentence shows it. */
+function shown(v: unknown): string {
+  if (v === undefined || v === null || v === "") return "nothing";
+  return formatValue(v, undefined, false);
+}
+
+/** A saved row in a few words: its first fields, without the time it was saved. */
+function rowWords(row: Row): string {
+  const fields = Object.entries(row).filter(([k, v]) => k !== "at" && v !== null && v !== "" && v !== undefined);
+  const words = fields.slice(0, 3).map(([k, v]) => `${k} ${shown(v)}`).join(", ");
+  return fields.length > 3 ? `${words}, …` : words;
+}
+
+/**
+ * One kind of change: what it did, as the log says it; what it would do, as a dry run says it; and
+ * how it's undone, either in the note's frontmatter (which is checked on a copy first, and only
+ * while the note still holds what the app wrote) or through the vault.
+ */
+interface ChangeKind<C extends Change> {
+  done(c: C, note: string): string;
+  ahead(c: C, note: string): string;
+  undo: { inFrontmatter(c: C, fm: Record<string, unknown>, note: string): Refusal } | { inVault(c: C, io: UndoIO, note: string): Promise<Refusal> };
+}
+
+const CHANGES: { [K in Change["kind"]]: ChangeKind<Extract<Change, { kind: K }>> } = {
+  "row-added": {
+    done: (c, note) => `Saved ${rowWords(c.row) ? `${rowWords(c.row)} ` : "a row "}to ${c.list} in ${note}`,
+    ahead: (c, note) => `Save ${rowWords(c.row) ? `${rowWords(c.row)} ` : "a row "}to ${c.list} in ${note}`,
+    undo: {
+      inFrontmatter(c, fm, note) {
+        const list = listIn(fm, c.list);
+        const i = list ? list.findLastIndex((r) => same(r, c.row)) : -1;
+        if (!list || i < 0) return `the row it saved in ${note} has changed or is gone`;
+        fm[c.list] = list.filter((_, j) => j !== i);
+        return undefined;
+      },
+    },
+  },
+  "row-edited": {
+    done: (c, note) => `Changed ${c.field} from ${shown(c.from)} to ${shown(c.to)} in ${c.list} in ${note}`,
+    ahead: (c, note) => `Change ${c.field} from ${shown(c.from)} to ${shown(c.to)} in ${c.list} in ${note}`,
+    undo: {
+      inFrontmatter(c, fm, note) {
+        const list = listIn(fm, c.list);
+        const i = list ? list.findLastIndex((r) => same(r, c.row)) : -1;
+        if (!list || i < 0) return `the row it changed in ${note} has changed again or is gone`;
+        const row = { ...(list[i] as Row) };
+        if (c.from === undefined) delete row[c.field];
+        else row[c.field] = c.from;
+        fm[c.list] = list.map((r, j) => (j === i ? row : r));
+        return undefined;
+      },
+    },
+  },
+  checklist: {
+    done: (c) => `${c.checked ? "Ticked" : "Unticked"} “${c.item}”`,
+    ahead: (c) => `${c.checked ? "Tick" : "Untick"} “${c.item}”`,
+    undo: {
+      inFrontmatter(c, fm) {
+        const list = (listIn(fm, c.list) ?? []).map(String);
+        if (list.includes(c.item) !== c.checked) return `“${c.item}” has been ${c.checked ? "unticked" : "ticked"} since`;
+        fm[c.list] = c.checked ? list.filter((i) => i !== c.item) : [...list, c.item];
+        return undefined;
+      },
+    },
+  },
+  cleared: {
+    done: (c) => `Cleared ${c.items.length} ticked ${c.items.length === 1 ? "item" : "items"}`,
+    ahead: (c) => `Clear ${c.items.length} ticked ${c.items.length === 1 ? "item" : "items"}`,
+    undo: {
+      inFrontmatter(c, fm) {
+        if ((listIn(fm, c.list) ?? []).length) return "something has been ticked since";
+        fm[c.list] = [...c.items];
+        return undefined;
+      },
+    },
+  },
+  property: {
+    done: (c, note) => `Set ${c.field} of ${note} to ${shown(c.to)}${c.had ? ` (was ${shown(c.from)})` : ""}`,
+    ahead: (c, note) => `Set ${c.field} of ${note} to ${shown(c.to)}${c.had ? ` (now ${shown(c.from)})` : ""}`,
+    undo: {
+      inFrontmatter(c, fm, note) {
+        if (!same(fm[c.field], c.to)) return `${c.field} in ${note} has changed since`;
+        if (c.had) fm[c.field] = c.from;
+        else delete fm[c.field];
+        return undefined;
+      },
+    },
+  },
+  "line-added": {
+    done: (c, note) => `${c.created ? `Created ${note} with` : `Added to ${note}`} the line “${c.line}”`,
+    ahead: (c, note) => (c.created ? `Create ${note} with the line “${c.line}”` : `Add the line “${c.line}” to ${note}`),
+    undo: {
+      async inVault(c, io, note) {
+        if (c.created) {
+          const trashed = await io.trashIf(c.path, (text) => text === withLine("", c.line));
+          if (trashed === "trashed") return undefined;
+          if (trashed === "gone") return `${note} is gone`;
+        }
+        let refusal: Refusal;
+        const written = await io.processText(c.path, (text) => {
+          const next = withoutLine(text, c.line);
+          if (next === undefined) refusal = `the line it added to ${note} has changed or is gone`;
+          return next ?? text;
+        });
+        return written ? refusal : `${note} is gone`;
+      },
+    },
+  },
+  "note-created": {
+    done: (_c, note) => `Created the note ${note}`,
+    ahead: (_c, note) => `Create the note ${note}`,
+    undo: {
+      async inVault(c, io, note) {
+        const trashed = await io.trashIf(c.path, (text) => textHash(text) === c.hash);
+        if (trashed === "trashed") return undefined;
+        return trashed === "gone" ? `${note} is gone already` : `${note} has been changed since; delete it yourself if you mean to`;
+      },
+    },
+  },
+  task: {
+    done: (c, note) => `${c.done ? "Ticked" : "Unticked"} “${c.text}” in ${note}`,
+    ahead: (c, note) => `${c.done ? "Tick" : "Untick"} “${c.text}” in ${note}`,
+    undo: {
+      inVault: async (c, io, note) => ((await io.setTaskDone(c.path, c.line, c.text, !c.done)) ? undefined : `the task “${c.text}” in ${note} has changed or is gone`),
+    },
+  },
+};
+
+const kindOf = (c: Change) => CHANGES[c.kind] as unknown as ChangeKind<Change>;
+
+/**
+ * Undoes a change to a note's frontmatter in place, only while the note still holds what the app
+ * wrote; otherwise leaves it untouched and says why.
+ */
+export function undoInFrontmatter(change: Change, fm: Record<string, unknown>): Refusal {
+  const undo = kindOf(change).undo;
+  return "inFrontmatter" in undo ? undo.inFrontmatter(change, fm, basename(change.path)) : "that isn't a change to properties";
+}
+
 /** Undoes one change, re-checking it as it writes; a refusal when the vault no longer holds what the app wrote. */
 async function undoOne(change: Change, io: UndoIO): Promise<Refusal> {
   const note = basename(change.path);
@@ -304,43 +397,16 @@ async function undoOne(change: Change, io: UndoIO): Promise<Refusal> {
     await io.undoEvents(change.path, [change.event]);
     return undefined;
   }
-  switch (change.kind) {
-    case "row-added":
-    case "row-edited":
-    case "checklist":
-    case "cleared":
-    case "property": {
-      const cached = io.frontmatter(change.path);
-      if (!cached) return `${note} is gone`;
-      // Checked on a copy first, so an undo that can't go ahead doesn't rewrite the note.
-      const first = undoInFrontmatter(change, structuredClone(cached));
-      if (first) return first;
-      let refusal: Refusal;
-      const written = await io.updateFrontmatter(change.path, (fm) => { refusal = undoInFrontmatter(change, fm); });
-      return written ? refusal : `${note} is gone`;
-    }
-    case "line-added": {
-      if (change.created) {
-        const trashed = await io.trashIf(change.path, (text) => text === withLine("", change.line));
-        if (trashed === "trashed") return undefined;
-        if (trashed === "gone") return `${note} is gone`;
-      }
-      let refusal: Refusal;
-      const written = await io.processText(change.path, (text) => {
-        const next = withoutLine(text, change.line);
-        if (next === undefined) refusal = `the line it added to ${note} has changed or is gone`;
-        return next ?? text;
-      });
-      return written ? refusal : `${note} is gone`;
-    }
-    case "note-created": {
-      const trashed = await io.trashIf(change.path, (text) => textHash(text) === change.hash);
-      if (trashed === "trashed") return undefined;
-      return trashed === "gone" ? `${note} is gone already` : `${note} has been changed since; delete it yourself if you mean to`;
-    }
-    case "task":
-      return (await io.setTaskDone(change.path, change.line, change.text, !change.done)) ? undefined : `the task “${change.text}” in ${note} has changed or is gone`;
-  }
+  const undo = kindOf(change).undo;
+  if ("inVault" in undo) return undo.inVault(change, io, note);
+  const cached = io.frontmatter(change.path);
+  if (!cached) return `${note} is gone`;
+  // Checked on a copy first, so an undo that can't go ahead doesn't rewrite the note.
+  const first = undo.inFrontmatter(change, structuredClone(cached), note);
+  if (first) return first;
+  let refusal: Refusal;
+  const written = await io.updateFrontmatter(change.path, (fm) => { refusal = undo.inFrontmatter(change, fm, note); });
+  return written ? refusal : `${note} is gone`;
 }
 
 /** How an undo went: how many of the entry's changes are undone now, and why it stopped when it did. */
@@ -378,53 +444,14 @@ export function undoMessage(r: UndoResult): string {
   return `${what}: ${r.refusal}`;
 }
 
-/** A value as a sentence shows it. */
-function shown(v: unknown): string {
-  if (v === undefined || v === null || v === "") return "nothing";
-  return formatValue(v, undefined, false);
-}
-
-/** A saved row in a few words: its first fields, without the time it was saved. */
-function rowWords(row: Row): string {
-  const fields = Object.entries(row).filter(([k, v]) => k !== "at" && v !== null && v !== "" && v !== undefined);
-  const words = fields.slice(0, 3).map(([k, v]) => `${k} ${shown(v)}`).join(", ");
-  return fields.length > 3 ? `${words}, …` : words;
-}
-
 /** A change as a plain sentence. */
 export function describeChange(c: Change): string {
-  const note = basename(c.path);
-  switch (c.kind) {
-    case "row-added": {
-      const words = rowWords(c.row);
-      return `Saved ${words ? `${words} ` : "a row "}to ${c.list} in ${note}`;
-    }
-    case "row-edited": return `Changed ${c.field} from ${shown(c.from)} to ${shown(c.to)} in ${c.list} in ${note}`;
-    case "checklist": return `${c.checked ? "Ticked" : "Unticked"} “${c.item}”`;
-    case "cleared": return `Cleared ${c.items.length} ticked ${c.items.length === 1 ? "item" : "items"}`;
-    case "property": return `Set ${c.field} of ${note} to ${shown(c.to)}${c.had ? ` (was ${shown(c.from)})` : ""}`;
-    case "line-added": return `${c.created ? `Created ${note} with` : `Added to ${note}`} the line “${c.line}”`;
-    case "note-created": return `Created the note ${note}`;
-    case "task": return `${c.done ? "Ticked" : "Unticked"} “${c.text}” in ${note}`;
-  }
+  return kindOf(c).done(c, basename(c.path));
 }
 
 /** A change a run would make, worded as what it is about to do (a dry run's list). */
 export function describeAhead(c: Change): string {
-  const note = basename(c.path);
-  switch (c.kind) {
-    case "row-added": {
-      const words = rowWords(c.row);
-      return `Save ${words ? `${words} ` : "a row "}to ${c.list} in ${note}`;
-    }
-    case "row-edited": return `Change ${c.field} from ${shown(c.from)} to ${shown(c.to)} in ${c.list} in ${note}`;
-    case "checklist": return `${c.checked ? "Tick" : "Untick"} “${c.item}”`;
-    case "cleared": return `Clear ${c.items.length} ticked ${c.items.length === 1 ? "item" : "items"}`;
-    case "property": return `Set ${c.field} of ${note} to ${shown(c.to)}${c.had ? ` (now ${shown(c.from)})` : ""}`;
-    case "line-added": return c.created ? `Create ${note} with the line “${c.line}”` : `Add the line “${c.line}” to ${note}`;
-    case "note-created": return `Create the note ${note}`;
-    case "task": return `${c.done ? "Tick" : "Untick"} “${c.text}” in ${note}`;
-  }
+  return kindOf(c).ahead(c, basename(c.path));
 }
 
 /** A value an app sent out, answering a link. */

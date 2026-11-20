@@ -42,6 +42,10 @@ export interface ActionDeps {
 export type ActionIO = Pick<ActionDeps, "now" | "writeFrontmatter" | "appendLine" | "createNote" | "readBody" | "notify" | "openNote"> & {
   /** Where an app's lists are kept, by its data note. */
   store?(dataPath: string, appPath: string): DataStore;
+  /** Changes an existing note's frontmatter; false, writing nothing, when the note is gone. */
+  updateFrontmatter(path: string, fn: (fm: Record<string, unknown>) => void): Promise<boolean>;
+  /** Ticks or unticks a task; false, writing nothing, when it can't be found for sure. */
+  setTaskDone(path: string, line: number, text: string, done: boolean): Promise<boolean>;
 };
 
 /** The deps an app's actions run with, through `io`; the caller adds `log` and `then`. */

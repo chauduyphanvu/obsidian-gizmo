@@ -14,7 +14,7 @@ export const button: ViewDef = {
   validate: (p) => needsAction("button", p),
   examples: [
     { panel: { view: "button", label: "Took meds", save: "doses", append: "Daily", line: "- Took meds {time}" } },
-    { panel: { view: "button", label: "Nothing" }, errors: ["button needs at least one of save, append, notify"] },
+    { panel: { view: "button", label: "Nothing" }, errors: ["button needs at least one of save, append, notify, open, then"] },
     { panel: { view: "button", notify: "Hi", unit: "kg" }, errors: ['"unit" doesn\'t apply to button'] },
     { panel: { view: "button", label: "Today's note", open: "Daily/{date}" } },
     { panel: { view: "button", label: "New idea", save: "Ideas/", row: { status: "new" }, template: "[[Idea template]]" } },

@@ -1,8 +1,8 @@
 import { describeActor, describeChange, describeSent, type Entry } from "./activity.ts";
 import { violationText, type Verdict } from "./flows.ts";
 import { grantedOf, isAllowed, isAllowedUnder } from "./grants.ts";
-import { describePermission } from "./permissions.ts";
-import { basename, notePath } from "./store.ts";
+import { describePermission, permissionChanges } from "./permissions.ts";
+import { basename } from "./store.ts";
 
 /** What the background knows about an app, as the map shows it. */
 export interface AppSummary {
@@ -172,15 +172,7 @@ export function buildMap(apps: AppSummary[], grants: Record<string, string[]>, l
 function writeReason(a: AppSummary, path: string, inScope: (scope: string, path: string) => boolean): string | undefined {
   if (a.dataPath === path) return "keeps its data here";
   if (a.writesSelf && a.path === path) return "changes its own note";
-  const reasons = a.wanted.flatMap((perm) => {
-    const [kind, ...rest] = perm.split(":");
-    const what = rest.join(":");
-    if (kind === "write" && notePath(what) === path) return [perm];
-    if (kind === "store" && what === path) return [perm];
-    if (kind === "create" && path.startsWith(`${what.replace(/\/+$/, "")}/`)) return [perm];
-    if ((kind === "edit" || kind === "tasks") && (what === "*" || inScope(what, path))) return [perm];
-    return [];
-  });
+  const reasons = a.wanted.filter((perm) => permissionChanges(perm, path, inScope));
   // The note is there already, so what changes it says more than what could have made it.
   const best = reasons.find((perm) => !perm.startsWith("create:")) ?? reasons[0];
   return best && describePermission(best);

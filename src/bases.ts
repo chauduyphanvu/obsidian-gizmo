@@ -5,7 +5,7 @@ import {
 import type { Change } from "./activity.ts";
 import { BASES_VIEWS, basesPanel, entryIds, entryRow, optionValues, writeErrors, type BasesKind, type OptionDef } from "./bases-rows.ts";
 import type { Row } from "./data.ts";
-import { updateFrontmatterOf } from "./host.ts";
+import { obsidianWrites } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { compilePipeline } from "./pipeline.ts";
 import type { Panel } from "./spec.ts";
@@ -161,7 +161,7 @@ class GizmoBasesView extends BasesView {
     if (refused.length) return void new Notice(refused.join("; "));
     try {
       let change: Change | undefined;
-      const written = await updateFrontmatterOf(this.app, path, (fm) => {
+      const written = await obsidianWrites(this.app).updateFrontmatter(path, (fm) => {
         change = { kind: "property", path, field, from: fm[field], to: value, had: Object.hasOwn(fm, field) };
         fm[field] = value;
       });

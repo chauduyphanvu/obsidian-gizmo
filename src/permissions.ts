@@ -123,36 +123,104 @@ export function editPermissions(p: Panel, key: keyof Panel): [string, keyof Pane
   return editableSource(p) === "notes" && p.from ? [[`edit:${p.from}`, key]] : [];
 }
 
-export function describePermission(perm: string): string {
-  if (perm === "read:*") return "Read any note in the vault";
-  if (perm === "edit:*") return "Change properties of notes anywhere in the vault";
-  if (perm === "images") return "Load images from any site (image cells)";
-  const [kind, ...rest] = perm.split(":");
-  const what = rest.join(":");
-  switch (kind) {
-    case "send": {
+/** Where a permission points on the map's canvas: a node, and the label of the line to it. */
+export interface PermissionTarget { side: "in" | "out"; key: string; label: string; file?: string; text: string }
+
+/**
+ * One kind of permission (`<kind>:<what>`): how the Allow card says it, where the canvas draws it,
+ * and whether it lets an app change a given note (for the map's "who changes this note").
+ */
+interface PermissionKind {
+  describe(what: string): string;
+  target?(what: string): PermissionTarget;
+  changes?(what: string, path: string, inScope: (scope: string, path: string) => boolean): boolean;
+}
+
+/** A host in a `send` permission: what's before its last `|`. */
+const sentTo = (what: string) => what.slice(0, what.lastIndexOf("|"));
+
+const PERMISSIONS: Record<string, PermissionKind> = {
+  send: {
+    describe(what) {
       const cut = what.lastIndexOf("|");
       const [from, ...path] = what.slice(cut + 1).split(".");
       const to = what.slice(0, cut);
       if (from === "typed") return `Send what you type in ${path.join(".")} to ${to}`;
       if (from === "picked") return `Send the picked ${path[0]}${path.length > 1 ? `'s ${path.slice(1).join(".")}` : ""} to ${to}`;
       return `Send the note's ${path.length ? path.join(".") : "properties"} to ${to}`;
-    }
-    case "net": return `Fetch data from ${what}`;
-    case "post": return `Send a request body to ${what}`;
-    case "secret": return `Use your saved secret "${what}"`;
-    // A file (a template note) or a scope of notes (a folder or #tag).
-    case "read": return /\.[A-Za-z0-9]+$/.test(what) ? `Read ${what}` : `Read notes in ${what}`;
-    case "write": return `Add lines to ${what}`;
-    case "store": return `Save its data in ${what}`;
-    case "create": return `Create notes in ${what}`;
-    case "edit": return `Change properties of notes in ${what}`;
-    case "tasks": return `Tick tasks in notes in ${what}`;
-    case "answer": return `Send its “${what}” value to the app that opens its link`;
-    case "run": {
+    },
+    target: (what) => ({ side: "out", key: `host:${sentTo(what)}`, label: "sends to", text: sentTo(what) }),
+  },
+  net: {
+    describe: (what) => `Fetch data from ${what}`,
+    target: (what) => ({ side: "in", key: `host:${what}`, label: "fetches", text: what }),
+  },
+  post: {
+    describe: (what) => `Send a request body to ${what}`,
+    target: (what) => ({ side: "out", key: `host:${what}`, label: "sends to", text: what }),
+  },
+  secret: { describe: (what) => `Use your saved secret "${what}"` },
+  // A file (a template note) or a scope of notes (a folder or #tag).
+  read: {
+    describe: (what) => (what === "*" ? "Read any note in the vault" : /\.[A-Za-z0-9]+$/.test(what) ? `Read ${what}` : `Read notes in ${what}`),
+    target: (what) => (what === "*" ? { side: "in", key: "notes:*", label: "reads", text: "Every note" }
+      : /\.[A-Za-z0-9]+$/.test(what) ? { side: "in", key: `file:${what}`, label: "reads", file: what, text: what }
+      : { side: "in", key: `notes:${what}`, label: "reads", text: `Notes in ${what}` }),
+  },
+  write: {
+    describe: (what) => `Add lines to ${what}`,
+    target: (what) => ({ side: "out", key: `file:${notePath(what)}`, label: "adds lines", file: notePath(what), text: notePath(what) }),
+    changes: (what, path) => notePath(what) === path,
+  },
+  store: {
+    describe: (what) => `Save its data in ${what}`,
+    target: (what) => ({ side: "out", key: `file:${what}`, label: "saves data", file: what, text: what }),
+    changes: (what, path) => what === path,
+  },
+  create: {
+    describe: (what) => `Create notes in ${what}`,
+    target: (what) => ({ side: "out", key: `notes:${what}`, label: "creates notes", text: `Notes in ${what}` }),
+    changes: (what, path) => path.startsWith(`${what.replace(/\/+$/, "")}/`),
+  },
+  edit: {
+    describe: (what) => (what === "*" ? "Change properties of notes anywhere in the vault" : `Change properties of notes in ${what}`),
+    target: (what) => ({ side: "out", key: `notes:${what}`, label: "changes", text: what === "*" ? "Every note" : `Notes in ${what}` }),
+    changes: (what, path, inScope) => what === "*" || inScope(what, path),
+  },
+  tasks: {
+    describe: (what) => `Tick tasks in notes in ${what}`,
+    target: (what) => ({ side: "out", key: `notes:${what}`, label: "ticks tasks", text: `Notes in ${what}` }),
+    changes: (what, path, inScope) => what === "*" || inScope(what, path),
+  },
+  answer: { describe: (what) => `Send its “${what}” value to the app that opens its link` },
+  run: {
+    describe(what) {
       const cut = what.lastIndexOf("#");
       return `Run “${what.slice(cut + 1)}” in ${what.slice(0, cut)}`;
-    }
-    default: return perm;
-  }
+    },
+  },
+};
+
+/** A permission's kind, and what it's about. */
+function kindOf(perm: string): [PermissionKind | undefined, string] {
+  const cut = perm.indexOf(":");
+  return cut < 0 ? [undefined, ""] : [PERMISSIONS[perm.slice(0, cut)], perm.slice(cut + 1)];
+}
+
+export function describePermission(perm: string): string {
+  if (perm === "images") return "Load images from any site (image cells)";
+  const [kind, what] = kindOf(perm);
+  return kind ? kind.describe(what) : perm;
+}
+
+/** Where the canvas draws a permission; undefined for one it doesn't draw. */
+export function permissionTarget(perm: string): PermissionTarget | undefined {
+  const [kind, what] = kindOf(perm);
+  return kind?.target?.(what);
+}
+
+/** Whether a permission lets an app change the note at `path`. */
+export function permissionChanges(perm: string, path: string, inScope: (scope: string, path: string) => boolean): boolean {
+  const [kind, what] = kindOf(perm);
+  return kind?.changes?.(what, path, inScope) ?? false;
 }

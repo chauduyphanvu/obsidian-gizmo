@@ -14,7 +14,7 @@ import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.t
 import { grantedOf, isAllowed, isAllowedUnder, migrateGrants, sameGrant, setGrant } from "./grants.ts";
 import { moveKeys } from "./identity.ts";
 import { mergeSettings, type StoredData } from "./stored.ts";
-import { obsidianAppEnvWrites, obsidianHost, obsidianUndoIO, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
+import { obsidianHost, obsidianUndoIO, obsidianWrites, pluginFile, vaultFrontmatter, vaultNotes, vaultStorePath } from "./host.ts";
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
 import type { AppSpec } from "./spec.ts";
@@ -74,7 +74,7 @@ export default class GizmoPlugin extends Plugin {
       isRunner: () => this.beat?.isRunner() ?? false,
       delayMs: 5000,
       gapMs: 5 * 60_000,
-      writeNote: (path, fn) => obsidianAppEnvWrites(this).writeFrontmatter(path, fn),
+      writeNote: (path, fn) => obsidianWrites(this.app).writeFrontmatter(path, fn),
     });
     this.registerEvent(this.app.workspace.on("quit", (tasks) => tasks.add(() => this.dataLayer.flushSnapshots())));
     this.registerView(VIEW_TYPE, (leaf) => new AppView(leaf, this));

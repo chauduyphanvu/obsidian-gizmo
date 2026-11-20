@@ -7,15 +7,19 @@ import { rowsAreNotes } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
-/** A panel that acts needs something to do; opening a note, or running another app's shortcut, alone is enough. */
+/** What a panel does when it acts: save, add a line, tell, open a note; a form or button may also run another app's shortcut (`then`), which rows don't take. Any one is enough. */
+const DOES = ["save", "append", "notify", "open"] as const;
+const PANEL_DOES = [...DOES, "then"] as const;
+
+/** A panel that acts needs something to do. */
 export function needsAction(view: string, p: Panel): string[] {
-  return p.save || p.append || p.notify || p.open || p.then ? [] : [`${view} needs at least one of save, append, notify`];
+  return PANEL_DOES.some((k) => p[k] !== undefined) ? [] : [`${view} needs at least one of ${PANEL_DOES.join(", ")}`];
 }
 
 /** On a list or table, the action keys need `action` (the button each row gets), and it needs one of them. */
 export function rowActionErrors(view: string, p: Panel): string[] {
   if (!p.action) return ACTION_KEYS.filter((k) => p[k] !== undefined).map((k) => `"${k}" needs "action" on a ${view}`);
-  return p.save || p.append || p.notify || p.open ? [] : ['"action" needs at least one of save, append, notify, open'];
+  return DOES.some((k) => p[k] !== undefined) ? [] : [`"action" needs at least one of ${DOES.join(", ")}`];
 }
 
 /**
