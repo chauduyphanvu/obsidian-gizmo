@@ -10,6 +10,7 @@ import { policyHash, type Policy } from "../../src/policy.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
 import { storeTarget } from "../../src/store.ts";
 import { parseYaml } from "./yaml.ts";
+import { stampOf, toTime } from "../../src/time.ts";
 
 /** A web response sent as written, with its content type. */
 class Raw {
@@ -298,6 +299,14 @@ function noteTextOf(note: { fm?: Record<string, unknown>; body?: string }): stri
  * they were opened and allowed, as in Obsidian. What it notifies goes to `notices`; the commands
  * and status items it publishes, and the apps it opens, are kept.
  */
+/**
+ * The stamp a save writes for a local time typed as `2026-11-18T12:00`: that clock with this zone's
+ * offset, so tests pass in any zone they run in.
+ */
+export function savedAt(local: string): string {
+  return stampOf(new Date(toTime(local)!));
+}
+
 export function fakeBackground(
   notes: Notes = {}, responses: Record<string, unknown> = {}, opts: { seen?: boolean; triggers?: { text: string | undefined }; policy?: Policy } = {},
 ) {
@@ -338,6 +347,8 @@ export function fakeBackground(
   const device = { background: true };
   /** The data policy applied, if any; change `rules`, then call `bg.policyChanged()`, as Apply does. */
   const policy = { rules: opts.policy };
+  /** Where the person is, as the beats say: the zone rhythms' deadlines are worked out in; this machine's own when undefined. */
+  const where = { zone: undefined as string | undefined };
   const bg = new Background({
     data: t.data,
     frontmatter: t.env.frontmatter,
@@ -377,6 +388,7 @@ export function fakeBackground(
     },
     logSent: (entry) => void t.activity.add(entry),
     runsBackground: () => device.background,
+    zone: () => where.zone,
     sink: {
       notify: t.env.notify,
       setCommands: (list) => { out.commands = list; },
@@ -405,6 +417,7 @@ export function fakeBackground(
     captureKeys,
     device,
     policy,
+    where,
     triggers,
     others,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },

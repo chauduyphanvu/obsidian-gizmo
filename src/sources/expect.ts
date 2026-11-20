@@ -1,4 +1,5 @@
-import { rowsOf, toTime, getPath } from "../data.ts";
+import { rowsOf, getPath } from "../data.ts";
+import { toTime } from "../time.ts";
 import { fileDep, folderDep } from "../deps.ts";
 import { areRules, expectRows, readExpect } from "../expect.ts";
 import { logFolder } from "../ledger.ts";

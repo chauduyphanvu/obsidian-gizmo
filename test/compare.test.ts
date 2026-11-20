@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { compareWindows, splitByWindow, widenForCompare } from "../src/compare.ts";
-import { stampParts } from "../src/data.ts";
+import { stampParts } from "../src/time.ts";
 import { compilePipeline } from "../src/pipeline.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { bar, line, renderChart } from "../src/views/chart.ts";

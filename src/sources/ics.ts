@@ -1,4 +1,5 @@
 import type { Row } from "../data.ts";
+import { minuteIn } from "../time.ts";
 
 const DAY = 86_400_000;
 /** Rows one repeating event may add, and how many candidate dates are tried to find them. */
@@ -199,11 +200,6 @@ function dateText(day: number): string {
   return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}`;
 }
 
-function localText(t: number): string {
-  const d = new Date(t);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-}
-
 /** `20261224`, `20261224T180000`, `20261224T180000Z`, with TZID and VALUE=DATE as parameters. */
 function parseWhen(value: string, params: Record<string, string>): When | undefined {
   const m = value.trim().match(/^(\d{4})(\d{2})(\d{2})(?:T(\d{2})(\d{2})(\d{2})?(Z)?)?$/i);
@@ -276,7 +272,7 @@ function rowOf(ev: Ev, w: When): Row {
   const rest = { location: ev.location, description: ev.description, uid: ev.uid };
   if (w.allday) return { ...base, start: dateText(w.day), end: dateText(w.day + ev.length - 1), allday: true, ...rest };
   const t = instant(w);
-  return { ...base, start: localText(t), end: localText(t + ev.length), allday: false, ...rest };
+  return { ...base, start: minuteIn(t), end: minuteIn(t + ev.length), allday: false, ...rest };
 }
 
 // ---- Recurrence -------------------------------------------------------------------------------

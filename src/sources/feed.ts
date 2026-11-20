@@ -1,8 +1,8 @@
 import type { Row } from "../data.ts";
+import { minuteIn } from "../time.ts";
 
 const SUMMARY_MAX = 500;
 
-const pad = (n: number) => String(n).padStart(2, "0");
 
 const NAMED = new Map([["amp", "&"], ["lt", "<"], ["gt", ">"], ["quot", '"'], ["apos", "'"], ["nbsp", " "]]);
 
@@ -236,8 +236,7 @@ function dateOf(raw: string): string {
   if (/^\d{4}-\d{2}-\d{2}$/.test(text)) return `${text}T00:00`;
   const t = Date.parse(text);
   if (Number.isNaN(t)) return text;
-  const d = new Date(t);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return minuteIn(t);
 }
 
 function firstOf(body: string, names: string[]): string | undefined {

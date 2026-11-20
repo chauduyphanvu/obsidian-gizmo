@@ -17,6 +17,10 @@ export interface Beat {
   priority: number;
   /** Milliseconds since 1970. */
   seen: number;
+  /** The device's time zone (an IANA name), for deadlines that mean "where you are". */
+  zone?: string;
+  /** When the person last used it (ms); a phone or desktop only, never gizmod. */
+  used?: number;
 }
 
 /** How much each kind of device should be the one running background work. */
@@ -56,10 +60,25 @@ export function readBeat(text: string): Beat | undefined {
     // A beat from before devices agreed on one runner: that device decides for itself, and beats
     // too seldom to be counted as there, so it is left out.
     if (typeof b.priority !== "number") return undefined;
-    return { id: b.id, name: b.name, host: typeof b.host === "string" ? b.host : "", priority: b.priority, seen: b.seen };
+    return {
+      id: b.id, name: b.name, host: typeof b.host === "string" ? b.host : "", priority: b.priority, seen: b.seen,
+      ...(typeof b.zone === "string" && b.zone && { zone: b.zone }),
+      ...(typeof b.used === "number" && { used: b.used }),
+    };
   } catch {
     return undefined;
   }
+}
+
+/**
+ * Where the person is, for a deadline that says "by 10:00": the zone of the phone or desktop they
+ * used last, however long ago, since a phone abroad may not have been heard from since. Undefined
+ * when no device says, and the runner's own clock decides.
+ */
+export function whereYouAre(beats: readonly Beat[]): string | undefined {
+  let latest: Beat | undefined;
+  for (const b of beats) if (b.used !== undefined && b.zone && b.priority < PRIORITY.gizmod && (!latest || b.used > latest.used!)) latest = b;
+  return latest?.zone;
 }
 
 /** Obsidian's Platform, as far as naming a device and choosing its default goes. */

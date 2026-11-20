@@ -5,7 +5,7 @@ import { bodyOf, fileName, fillBody, fillRow, runActions, type ActionDeps } from
 import { AppController } from "../src/app.ts";
 import { checkPanel, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
 import { askersOf, describePermission, permissionsOf } from "../src/permissions.ts";
-import { fakeEnv } from "./support/fakes.ts";
+import { fakeEnv, savedAt } from "./support/fakes.ts";
 
 const NOW = new Date(2026, 10, 18, 12, 0);
 const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -49,7 +49,7 @@ test("append, save to a list, notify: in that order, as before", async () => {
   const p = panel({ view: "form", fields: { weight: "number" }, save: "weights", append: "Daily", notify: "Logged {weight} at {time}" });
   assert.deepEqual(await runActions(p, { weight: 80 }, d), { ok: true, path: undefined });
   assert.deepEqual(log, ["append Daily.md: - 2026-11-18 12:00 weight: 80", "write Apps/X data.md", "notify Logged 80 at 12:00"]);
-  assert.deepEqual(data, { weights: [{ weight: 80, at: "2026-11-18T12:00" }] });
+  assert.deepEqual(data, { weights: [{ weight: 80, at: savedAt("2026-11-18T12:00") }] });
 
   const failing = deps();
   failing.d.writeFrontmatter = async () => { throw new Error("disk full"); };
@@ -75,7 +75,7 @@ test("row: shapes what is saved; one whole placeholder keeps the value's type", 
   const { d, data, log } = deps();
   const p = panel({ view: "list", source: "s", action: "Keep", save: "picks", row: { title: "{title}", year: "{first_publish_year}", on: "{date}" }, notify: "Kept {title}" });
   await runActions(p, doc, d);
-  assert.deepEqual(data, { picks: [{ title: "Dune", year: 1965, on: "2026-11-18", at: "2026-11-18T12:00" }] });
+  assert.deepEqual(data, { picks: [{ title: "Dune", year: 1965, on: "2026-11-18", at: savedAt("2026-11-18T12:00") }] });
   assert.equal(log.at(-1), "notify Kept Dune");
 });
 
@@ -99,7 +99,7 @@ test("row: a value that is exactly one $reference keeps the referenced value's t
   assert.deepEqual(p.row, { amount: -489.99, paid: false, who: "Apple", id: "7", text: "-489.99 units", count: 3, literal: "5", why: "{why}" });
   const { d, data } = deps();
   await runActions(p, { why: "too much" }, d);
-  assert.deepEqual(data, { flagged: [{ amount: -489.99, paid: false, who: "Apple", id: "7", text: "-489.99 units", count: 3, literal: "5", why: "too much", at: "2026-11-18T12:00" }] });
+  assert.deepEqual(data, { flagged: [{ amount: -489.99, paid: false, who: "Apple", id: "7", text: "-489.99 units", count: 3, literal: "5", why: "too much", at: savedAt("2026-11-18T12:00") }] });
 
   // A row or a list where one value is expected is still the error it was.
   const only = r.spec!.panels[2];
@@ -118,7 +118,7 @@ test("save to a folder creates a note named from the row, never over an existing
   assert.deepEqual(await runActions(p, doc, d), { ok: true, path: "Books/Dune Messiah.md" });
   assert.deepEqual(log, ["read [[Book template]]", "create Books/Dune Messiah.md", "notify Added Books/Dune Messiah.md", "open Books/Dune Messiah.md from Apps/X.md"]);
   assert.deepEqual(notes.get("Books/Dune Messiah.md"), {
-    fm: { title: "Dune: Messiah?", author: "Frank Herbert", year: 1969, at: "2026-11-18T12:00" },
+    fm: { title: "Dune: Messiah?", author: "Frank Herbert", year: 1969, at: savedAt("2026-11-18T12:00") },
     body: "Notes on Dune: Messiah? by Frank Herbert.\n",
   });
 
@@ -143,11 +143,11 @@ test("a note's name: name:, else the row's name (then not kept as a property), i
     const r = await runActions(panel({ view: "form", fields: { x: "text" }, save: "Ideas/", ...raw }), row, d);
     return [r.path, r.path && notes.get(r.path)!.fm];
   };
-  assert.deepEqual(await save({}, { name: "Tea [2]", note: "green" }), ["Ideas/Tea 2.md", { note: "green", at: "2026-11-18T12:00" }]);
-  assert.deepEqual(await save({}, { title: "#1 idea", note: "x" }), ["Ideas/1 idea.md", { title: "#1 idea", note: "x", at: "2026-11-18T12:00" }]);
-  assert.deepEqual(await save({}, { note: "x" }), ["Ideas/2026-11-18 12.00.md", { note: "x", at: "2026-11-18T12:00" }]);
-  assert.deepEqual(await save({ name: "{note}" }, { note: "///" }), ["Ideas/2026-11-18 12.00.md", { note: "///", at: "2026-11-18T12:00" }]);
-  assert.deepEqual(await save({ name: "../{note}" }, { note: "up" }), ["Ideas/up.md", { note: "up", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(await save({}, { name: "Tea [2]", note: "green" }), ["Ideas/Tea 2.md", { note: "green", at: savedAt("2026-11-18T12:00") }]);
+  assert.deepEqual(await save({}, { title: "#1 idea", note: "x" }), ["Ideas/1 idea.md", { title: "#1 idea", note: "x", at: savedAt("2026-11-18T12:00") }]);
+  assert.deepEqual(await save({}, { note: "x" }), ["Ideas/2026-11-18 12.00.md", { note: "x", at: savedAt("2026-11-18T12:00") }]);
+  assert.deepEqual(await save({ name: "{note}" }, { note: "///" }), ["Ideas/2026-11-18 12.00.md", { note: "///", at: savedAt("2026-11-18T12:00") }]);
+  assert.deepEqual(await save({ name: "../{note}" }, { note: "up" }), ["Ideas/up.md", { note: "up", at: savedAt("2026-11-18T12:00") }]);
   assert.equal(fileName(' a\\b/c:d*e?f"g<h>i|j#k^l[m]n '), "a b c d e f g h i j k l m n");
 });
 
@@ -250,7 +250,7 @@ test("a row's Add button saves it as a note, and a notes panel on that folder sh
   assert.equal(buttons[1].disabled, true);
   await settle();
   assert.equal(buttons[1].disabled, false);
-  assert.deepEqual(f.files.get("Books/Emma.md"), { fm: { title: "Emma", author: "Austen", at: "2026-11-18T12:00" }, body: "" });
+  assert.deepEqual(f.files.get("Books/Emma.md"), { fm: { title: "Emma", author: "Austen", at: savedAt("2026-11-18T12:00") }, body: "" });
   assert.deepEqual(notices, ["Added Emma"]);
   assert.deepEqual([...root.querySelectorAll(".gz-view-table tbody tr")].map((tr) => text(tr)), ["MiddlemarchEliot", "EmmaAusten"]);
   buttons[1].click();
@@ -300,7 +300,7 @@ test("row: a value that is exactly one param keeps the param's type, as a whole 
   assert.deepEqual(resolvePanel(beside, { k: 7 }).panel!.row, { count: 7, note: "x" });
   const { d, data } = deps();
   await runActions(fixed.panel, {}, d);
-  assert.deepEqual(data, { tally: [{ count: 5, paid: false, who: "Ann", text: "5 items", literal: "5", at: "2026-11-18T12:00" }] });
+  assert.deepEqual(data, { tally: [{ count: 5, paid: false, who: "Ann", text: "5 items", literal: "5", at: savedAt("2026-11-18T12:00") }] });
 });
 
 test("a save whose row another runner already saved under the same id writes nothing and logs nothing", async () => {

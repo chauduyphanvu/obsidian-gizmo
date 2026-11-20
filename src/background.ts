@@ -1,4 +1,4 @@
-import { metIn, refusal, windowsDue, type Rhythm, type Window } from "./expect.ts";
+import { metIn, refusal, windowDay, windowsDue, type Rhythm, type Window } from "./expect.ts";
 import { panelKey, violationText } from "./flows.ts";
 import { rowId as ledgerRowId } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
@@ -7,7 +7,8 @@ import { describeAhead, type Actor, type LogStore, type NewEntry } from "./activ
 import { captureTargets, parseLine, type CaptureIndex, type Parsed } from "./capture.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
-import { compileWhere, matches, parseDuration, rowsOf, stampParts, toTime, type Row } from "./data.ts";
+import { compileWhere, matches, parseDuration, rowsOf, type Row } from "./data.ts";
+import { stampOf, toTime } from "./time.ts";
 import type { DataLayer } from "./datalayer.ts";
 import { fileDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
@@ -140,6 +141,11 @@ export interface BackgroundEnv {
   runsBackground(): boolean;
   /** Whether alert notices are left to another program on this computer (gizmod), so none is told twice. */
   quietAlerts?(): boolean;
+  /**
+   * The zone a rhythm's "by 10:00" means: where the person is, from the zone of the phone or desktop
+   * they used last; this device's own when undefined.
+   */
+  zone?(): string | undefined;
 }
 
 /** How running a shortcut went: whether it ran, why not (as the notice told it), and the activity log's entry for what it changed. */
@@ -428,6 +434,7 @@ export class Background {
   private async decide(entry: AppEntry, rules: Rhythm[]): Promise<void> {
     const fired = await this.firedState();
     const now = this.env.now();
+    const zone = this.env.zone?.();
     for (const rule of rules) {
       const key = `${entry.path}\nexpect:${rule.id}`;
       const before = fired[key];
@@ -436,7 +443,7 @@ export class Background {
         this.saveFired();
         continue;
       }
-      const due = windowsDue(rule, before.decided, now.getTime());
+      const due = windowsDue(rule, before.decided, now.getTime(), zone);
       if (!due.length) continue;
       const ps = entry.spec.expected[rule.id];
       const r = ps && (await this.evaluate(entry.path, ps, true));
@@ -446,7 +453,7 @@ export class Background {
       const misses = due.filter((w) => !metIn(rows, rule, w, now));
       for (const [i, w] of misses.entries()) {
         const whilePaused = entry.pausedSince !== undefined && w.deadline >= entry.pausedSince;
-        await this.missed(entry, rule, w, i >= misses.length - MAX_CATCH_UP, whilePaused);
+        await this.missed(entry, rule, w, zone, i >= misses.length - MAX_CATCH_UP, whilePaused);
       }
       fired[key] = { decided: due.at(-1)!.deadline };
       this.saveFired();
@@ -454,11 +461,12 @@ export class Background {
     entry.pausedSince = undefined;
   }
 
-  private async missed(entry: AppEntry, rule: Rhythm, w: Window, tell: boolean, whilePaused: boolean): Promise<void> {
-    const seed = `miss\n${entry.path}\n${rule.id}\n${w.start}`;
-    const window = stampParts(new Date(w.start)).date;
+  private async missed(entry: AppEntry, rule: Rhythm, w: Window, zone: string | undefined, tell: boolean, whilePaused: boolean): Promise<void> {
+    // Named by its date where the person is, so two devices, or one that moved zone, keep it once.
+    const window = windowDay(w, zone);
+    const seed = `miss\n${entry.path}\n${rule.id}\n${window}`;
     const deps = this.env.actionDeps(entry.path, entry.dataPath);
-    const { already } = await storeOf(deps).add(EXPECT_MISSED, { rule: rule.id, window, at: stampParts(this.env.now()).at }, { id: ledgerRowId(seed) });
+    const { already } = await storeOf(deps).add(EXPECT_MISSED, { rule: rule.id, window, at: stampOf(this.env.now()) }, { id: ledgerRowId(seed) });
     if (already || !tell) return;
     const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}${whilePaused ? ` (${window}, missed while paused)` : ""}`;
     this.say(text);
@@ -1325,7 +1333,7 @@ export class Background {
       if (!("panel" in r)) return;
       const row = oneRow(r.rows);
       if (!row) return this.problem(entry, `data.${job.block}: record needs one row; add limit: 1 or pick`, opened);
-      const at = stampParts(now).at;
+      const at = stampOf(now);
       const sample: Row = { at, ...row };
       sample.at = at;
       const refused = refusal(entry.spec.expect, job.list, sample, now);

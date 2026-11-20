@@ -7,7 +7,7 @@ import { HostedApp } from "../src/hosted.ts";
 import { dropGrants, isAllowed, moveGrants, setGrant } from "../src/grants.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { isComponent } from "../src/store.ts";
-import { fakeBackground, fakeEnv } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv, savedAt } from "./support/fakes.ts";
 
 // Data that comes from the web, a link or a typed value must never become what makes a note run.
 
@@ -58,7 +58,7 @@ test("a web row saved as a note keeps its data but none of the keys that make a 
   (root.querySelector(".gz-row-action") as HTMLButtonElement).click();
   await settle();
   const fm = t.f.files.get("Books/Dune.md")!.fm!;
-  assert.deepEqual(fm, { title: "Dune", author: "Frank Herbert", text: "Vault locked", pin: "status", at: "2026-11-18T12:00" });
+  assert.deepEqual(fm, { title: "Dune", author: "Frank Herbert", text: "Vault locked", pin: "status", at: savedAt("2026-11-18T12:00") });
   assert.equal(readSpec(fm), undefined);
   assert.equal(isComponent(fm), false);
 });

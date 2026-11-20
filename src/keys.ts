@@ -1,4 +1,4 @@
-import { stampParts } from "./data.ts";
+import { stampParts } from "./time.ts";
 import { checkFormat } from "./format.ts";
 import type { Panel } from "./spec.ts";
 

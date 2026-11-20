@@ -1,4 +1,5 @@
-import { extent, getPath, periodStart, rowsOf, stampParts, toTime, type Row } from "../data.ts";
+import { extent, getPath, rowsOf, type Row } from "../data.ts";
+import { periodStart, stampParts, toTime } from "../time.ts";
 import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";

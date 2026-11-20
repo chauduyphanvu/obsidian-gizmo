@@ -1,6 +1,7 @@
 import { parseFeed } from "./sources/feed.ts";
 import { parseICS } from "./sources/ics.ts";
 import type { Panel } from "./spec.ts";
+import { dateWindow, inWindow, shownStamp, toTime } from "./time.ts";
 
 export const AGGS = ["count", "sum", "avg", "min", "max", "first", "last", "streak", "share"] as const;
 export type Agg = (typeof AGGS)[number];
@@ -48,59 +49,6 @@ export function toNumber(v: unknown): number | undefined {
   return undefined;
 }
 
-/** Epoch seconds, epoch ms, or a date string; anything else is not a time. */
-export function toTime(v: unknown): number | undefined {
-  if (v instanceof Date) return v.getTime();
-  if (typeof v === "number") {
-    if (v > 1e11) return v;
-    if (v > 1e8) return v * 1000;
-    return undefined;
-  }
-  if (typeof v === "string") {
-    const local = localStamp(v);
-    if (local !== undefined) return local;
-    if (!/^\d{4}-\d{2}-\d{2}/.test(v)) return undefined;
-    const t = Date.parse(v.length === 10 ? `${v}T00:00` : v);
-    return Number.isNaN(t) ? undefined : t;
-  }
-  return undefined;
-}
-
-/** The UTC date of a time as YYYY-MM-DD; undefined outside years 0 to 9999, which that can't write. */
-function utcDay(t: number): string | undefined {
-  if (!(Math.abs(t) <= 8.64e15)) return undefined;
-  const iso = new Date(t).toISOString();
-  return iso.length === 24 ? iso.slice(0, 10) : undefined;
-}
-
-/** Whether text is shaped like a stamp, YYYY-MM-DD or YYYY-MM-DDTHH:MM, whatever its numbers. */
-function stampShape(v: string): boolean {
-  if (v.length !== 10 && v.length !== 16) return false;
-  if (twoDigits(v, 0) < 0 || twoDigits(v, 2) < 0 || v.charCodeAt(4) !== 45 || twoDigits(v, 5) < 0 || v.charCodeAt(7) !== 45 || twoDigits(v, 8) < 0) return false;
-  return v.length === 10 || (v.charCodeAt(10) === 84 && twoDigits(v, 11) >= 0 && v.charCodeAt(13) === 58 && twoDigits(v, 14) >= 0);
-}
-
-/** The two digits at i as a number, or -1. */
-function twoDigits(s: string, i: number): number {
-  const a = s.charCodeAt(i) - 48, b = s.charCodeAt(i + 1) - 48;
-  return a >= 0 && a <= 9 && b >= 0 && b <= 9 ? a * 10 + b : -1;
-}
-
-/**
- * `YYYY-MM-DD` and `YYYY-MM-DDTHH:MM`, the forms saving writes, read as Date.parse reads them (local
- * time, a day past the month's end rolling over) without its general parser. Undefined for any
- * other text, and for years below 100 or an hour of 24, which Date.parse is left to read.
- */
-function localStamp(v: string): number | undefined {
-  if (v.length !== 10 && v.length !== 16) return undefined;
-  const century = twoDigits(v, 0), year = twoDigits(v, 2), month = twoDigits(v, 5), day = twoDigits(v, 8);
-  if (century < 1 || year < 0 || v.charCodeAt(4) !== 45 || v.charCodeAt(7) !== 45 || month < 1 || month > 12 || day < 1 || day > 31) return undefined;
-  if (v.length === 10) return new Date(century * 100 + year, month - 1, day).getTime();
-  const hour = twoDigits(v, 11), minute = twoDigits(v, 14);
-  if (v.charCodeAt(10) !== 84 || v.charCodeAt(13) !== 58 || hour < 0 || hour > 23 || minute < 0 || minute > 59) return undefined;
-  return new Date(century * 100 + year, month - 1, day, hour, minute).getTime();
-}
-
 /** Milliseconds in `30s`, `5m`, `1h`, `1d`; a bare number is minutes. */
 export function parseDuration(value: unknown): number | undefined {
   if (typeof value === "number") return value * 60_000;
@@ -133,67 +81,6 @@ export function seriesOf(data: unknown, x: string, y: string): Point[] {
   return out;
 }
 
-const DAY = 86_400_000;
-
-function startOfDay(d: Date): number {
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
-}
-
-export const PERIODS = ["day", "week", "month", "year"] as const;
-export type Per = (typeof PERIODS)[number];
-
-/** Start of the local day, week (from Monday), month or year containing t. */
-export function periodStart(t: number, per: Per): number {
-  const d = new Date(t);
-  const [y, m, day] = [d.getFullYear(), d.getMonth(), d.getDate()];
-  switch (per) {
-    case "day": return new Date(y, m, day).getTime();
-    case "week": return new Date(y, m, day - ((d.getDay() + 6) % 7)).getTime();
-    case "month": return new Date(y, m, 1).getTime();
-    case "year": return new Date(y, 0, 1).getTime();
-  }
-}
-
-/** The start of the period n periods away, counted in calendar units so clock changes don't matter. */
-export function shiftPeriod(start: number, per: Per, n: number): number {
-  const d = new Date(start);
-  const [y, m, day] = [d.getFullYear(), d.getMonth(), d.getDate()];
-  switch (per) {
-    case "day": return new Date(y, m, day + n).getTime();
-    case "week": return new Date(y, m, day + 7 * n).getTime();
-    case "month": return new Date(y, m + n, 1).getTime();
-    case "year": return new Date(y + n, 0, 1).getTime();
-  }
-}
-
-/** The [from, to) times a date condition covers, or undefined when it isn't one. */
-export function dateWindow(cond: string, now: Date): [number, number] | undefined {
-  const c = cond.trim().toLowerCase();
-  const t = now.getTime();
-  const today = periodStart(t, "day");
-  const span = (per: Per, back: number): [number, number] => {
-    const current = periodStart(t, per);
-    return [shiftPeriod(current, per, -back), shiftPeriod(current, per, 1)];
-  };
-  if (c === "today") return span("day", 0);
-  if (c === "yesterday") return [shiftPeriod(today, "day", -1), today];
-  let m = c.match(/^this (week|month|year)$/);
-  if (m) return span(m[1] as Per, 0);
-  m = c.match(/^last (\d+) (day|week|month|year)s?$/);
-  if (m) return span(m[2] as Per, Number(m[1]) - 1);
-  m = c.match(/^next (\d+) days?$/);
-  if (m) return [today, shiftPeriod(today, "day", Number(m[1]) + 1)];
-  // A bare date is that whole day, so it matches timestamps on it.
-  m = c.match(/^(\d{4})-(\d{2})-(\d{2})$/);
-  if (m) {
-    const day = new Date(Number(m[1]), Number(m[2]) - 1, Number(m[3])).getTime();
-    return [day, shiftPeriod(day, "day", 1)];
-  }
-  if (c === "past") return [-Infinity, t];
-  if (c === "upcoming") return [today, Infinity];
-  return undefined;
-}
-
 type Test = (value: unknown) => boolean;
 
 /** Turns one `where` condition into a test, parsing its date window or comparison once. */
@@ -204,17 +91,8 @@ function compileCondition(cond: string | number | boolean, now: Date): Test {
   }
   const window = dateWindow(cond, now);
   if (window) {
-    const [from, to] = window;
-    // A stamp dated a week or more outside the window can't be in it in any time zone (an offset is
-    // under a day; a day past the month's end, day 00 or hour 24 moves it three days at most), so
-    // most rows of a long list are ruled out by their text, without being read as a time.
-    const before = utcDay(from - 7 * DAY) ?? "";
-    const after = `${utcDay(to + 7 * DAY) ?? "~"}T~`;
-    return (v) => {
-      if (typeof v === "string" && (v < before || v > after) && stampShape(v)) return false;
-      const t = toTime(v);
-      return t !== undefined && t >= from && t < to;
-    };
+    const c = cond.trim().toLowerCase();
+    return inWindow(window, c === "past" || c === "upcoming");
   }
   const range = cond.match(/^\s*between\s+(.+?)\s+and\s+(.+?)\s*$/i);
   const [lo, hi] = range ? [range[1], range[2]].map((x) => toNumber(x) ?? toTime(x)) : [];
@@ -334,7 +212,7 @@ export function formatValue(v: unknown, decimals?: number, group = true): string
   }
   if (Array.isArray(v)) return v.map((x) => formatValue(x, decimals, group)).join(", ");
   if (typeof v === "object") return JSON.stringify(v);
-  return String(v);
+  return typeof v === "string" ? shownStamp(v) : String(v);
 }
 
 /** The names a template's {placeholders} read, by their first part ({row.amount} reads row). */
@@ -354,22 +232,6 @@ export function fillWith(template: string, ctx: unknown, show: (path: string, va
 /** Fills {path} placeholders from ctx. Numbers stay free of thousands separators. */
 export function fillTemplate(template: string, ctx: unknown, decimals?: number): string {
   return fillWith(template, ctx, (_, v) => formatValue(v, decimals, false));
-}
-
-function pad(n: number): string {
-  return String(n).padStart(2, "0");
-}
-
-export function stampParts(d: Date): { at: string; date: string; time: string } {
-  const date = `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-  const time = `${pad(d.getHours())}:${pad(d.getMinutes())}`;
-  return { at: `${date}T${time}`, date, time };
-}
-
-/** Whole calendar days from now until the date (negative when past). */
-export function daysUntil(to: string, now: Date): number {
-  const t = toTime(to) ?? Date.parse(to);
-  return Math.round((startOfDay(new Date(t)) - startOfDay(now)) / DAY);
 }
 
 export function parseCSV(text: string): Row[] {

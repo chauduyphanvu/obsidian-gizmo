@@ -1,4 +1,5 @@
-import { getPath, rowsOf, stampParts, toNumber, type Row } from "../data.ts";
+import { getPath, rowsOf, toNumber, type Row } from "../data.ts";
+import { stampParts } from "../time.ts";
 import { display, formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { svg } from "./chart.ts";

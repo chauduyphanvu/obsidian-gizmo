@@ -1,4 +1,5 @@
-import { copyRow, getPath, stampParts, toNumber, toTime, type Row } from "./data.ts";
+import { copyRow, getPath, toNumber, type Row } from "./data.ts";
+import { stampParts, toTime, wallTime } from "./time.ts";
 
 /**
  * Formulas for `compute`: a small, pure expression language over one row. Text is tokenized,
@@ -284,12 +285,16 @@ function arithmetic(f: (a: number, b: number) => number): (a: unknown, b: unknow
   };
 }
 
-/** Numbers compare as numbers, text as text; anything else, or a missing value, doesn't compare. */
+/** Numbers compare as numbers, dates as times (a stamp's offset counts), text as text; anything else, or a missing value, doesn't compare. */
 function compare(a: unknown, b: unknown): number | undefined {
   if (missing(a) || missing(b)) return undefined;
   const x = num(a), y = num(b);
   if (x !== undefined && y !== undefined) return x - y;
-  if (typeof a === "string" && typeof b === "string") return a < b ? -1 : a > b ? 1 : 0;
+  if (typeof a === "string" && typeof b === "string") {
+    const ta = toTime(a), tb = toTime(b);
+    if (ta !== undefined && tb !== undefined) return ta - tb;
+    return a < b ? -1 : a > b ? 1 : 0;
+  }
   return undefined;
 }
 
@@ -336,9 +341,10 @@ function onText(f: (s: string, ...rest: string[]) => unknown) {
   return (args: unknown[]) => (args.some(missing) ? null : f(...(args.map(str) as [string, ...string[]])));
 }
 
+/** A date's parts as lived: a stamp saved abroad has the date and hour it had there. */
 function onTime(f: (d: Date) => unknown) {
   return ([x]: unknown[]) => {
-    const t = toTime(x);
+    const t = wallTime(x);
     return t === undefined ? null : f(new Date(t));
   };
 }
@@ -391,7 +397,7 @@ const FUNCTIONS: Record<string, (args: unknown[]) => unknown> = {
   weekday: onTime((d) => ((d.getDay() + 6) % 7) + 1),
   hour: onTime((d) => d.getHours()),
   days: ([a, b]) => {
-    const ta = toTime(a), tb = toTime(b);
+    const ta = wallTime(a), tb = wallTime(b);
     if (ta === undefined || tb === undefined) return null;
     const start = (t: number) => { const d = new Date(t); return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime(); };
     return Math.round((start(tb) - start(ta)) / DAY);

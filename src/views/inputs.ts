@@ -1,4 +1,5 @@
-import { stampParts, type Row } from "../data.ts";
+import { type Row } from "../data.ts";
+import { stampParts } from "../time.ts";
 import type { Panel } from "../spec.ts";
 import { THIS } from "../template.ts";
 import { labelOf } from "../format.ts";

@@ -1,4 +1,5 @@
-import { aggregate, compileWhere, dateWindow, getPath, periodStart, shiftPeriod, sortRows, stampParts, toTime, type Agg, type Per, type Row } from "./data.ts";
+import { aggregate, compileWhere, getPath, sortRows, type Agg, type Row } from "./data.ts";
+import { dateWindow, type Per, periodStart, shiftPeriod, stampParts, toTime, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
 
 /** The key for rows whose group field is empty. */
@@ -55,7 +56,8 @@ export function groupRows(rows: unknown[], p: GroupKeys, now: Date): Row[] {
   for (const row of rows) {
     const v = getPath(row, field);
     if (p.per) {
-      const t = toTime(v);
+      // The day, week or month it was lived in, wherever it was saved.
+      const t = wallTime(v);
       if (t !== undefined) add(periodStart(t, p.per), row);
     } else if (Array.isArray(v)) {
       for (const item of v) add(item ?? NONE, row);
@@ -99,7 +101,7 @@ export function streak(rows: unknown[], field: string, per: Per, now: Date): num
   const current = periodStart(now.getTime(), per);
   const seen = new Set<number>();
   for (const row of rows) {
-    const t = toTime(getPath(row, field));
+    const t = wallTime(getPath(row, field));
     if (t === undefined) continue;
     const start = periodStart(t, per);
     if (start <= current) seen.add(start);

@@ -13,7 +13,8 @@ import type { Actor } from "../activity.ts";
 import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../background.ts";
 import { DataLayer, type Host } from "../datalayer.ts";
 import { ledgerStore } from "../datastore.ts";
-import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, startsOver, type Beat } from "../device.ts";
+import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, startsOver, whereYouAre, type Beat } from "../device.ts";
+import { localZone } from "../time.ts";
 import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
 import { clearance, isPolicyPath, rank, type AppliedPolicy } from "../policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../responses.ts";
@@ -214,7 +215,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     onStartOver: () => {},
     async beat(force = false): Promise<void> {
       const t = now();
-      const me: Beat = { id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t };
+      const me: Beat = { id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() };
       // A folder a sync is rewriting is read next time: who runs stays as it was, and nothing starts over.
       const all = await beats().catch(() => undefined);
       if (!all) return;
@@ -295,6 +296,8 @@ export function gizmodEnv(opts: GizmodOptions) {
     allowDestination: () => {},
     logSent: (entry: NewEntry) => void activity.add(entry),
     runsBackground: () => beat.isRunner(),
+    // Deadlines mean where the person is: the zone of the phone or desktop they used last.
+    zone: () => whereYouAre(beat.seen),
     quietAlerts: () => false,
   };
   // Only the device running background work writes data notes' snapshots: gizmod, when it's there.

@@ -7,7 +7,7 @@ import type { NoteReader } from "../src/expand.ts";
 import { LensIndex, LensStack } from "../src/lenses.ts";
 import { readComponentPreview, readSpec } from "../src/spec.ts";
 import { askersOf, permissionsOf } from "../src/permissions.ts";
-import { fakeBackground, fakeEnv } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv, savedAt } from "./support/fakes.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 // The Decision journal written short (Apps/Decisions), the same app as a kit (Components/Decision
@@ -237,7 +237,7 @@ test("Decisions: the form writes a decision note with a number, outcome open and
   form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();
   assert.deepEqual(app.f.files.get("Decisions/Walk to work in winter.md")!.fm, {
-    expect: "I keep it up through January", confidence: 70, review: "2027-02-01", outcome: "open", made: "2026-11-18", at: "2026-11-18T12:00",
+    expect: "I keep it up through January", confidence: 70, review: "2027-02-01", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
   assert.ok(app.notices.includes("Written down. Come back on 2027-02-01 to score it."), app.notices.join("; "));
   app.tab("Waiting");
@@ -283,7 +283,7 @@ test("Decisions: the decide shortcut writes a note from a link, with the default
   await bg.bg.runUri({ app: "Decisions", do: "decide", name: "Fix the bike myself", expect: "It rides by Saturday", confidence: "90", review: "2026-11-21" });
   await settle();
   assert.deepEqual(bg.f.files.get("Decisions/Fix the bike myself.md")!.fm, {
-    expect: "It rides by Saturday", confidence: 90, review: "2026-11-21", outcome: "open", made: "2026-11-18", at: "2026-11-18T12:00",
+    expect: "It rides by Saturday", confidence: 90, review: "2026-11-21", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
   assert.ok(bg.notices.includes("Written down. Come back on 2026-11-21 to score it."), bg.notices.join("; "));
   bg.bg.stop();
@@ -306,7 +306,7 @@ test("Bets: the kit runs on Bets, counts and writes there, and leaves Decisions 
   form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();
   assert.deepEqual(app.f.files.get("Bets/Alex is late to the party.md")!.fm, {
-    expect: "Alex turns up after nine", confidence: 60, review: "2026-11-18", outcome: "open", made: "2026-11-18", at: "2026-11-18T12:00",
+    expect: "Alex turns up after nine", confidence: 60, review: "2026-11-18", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
   assert.ok(![...app.f.files.keys()].some((p) => p.startsWith("Decisions/Alex")));
   // Due today, it is ready to score.

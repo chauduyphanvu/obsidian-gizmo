@@ -9,6 +9,7 @@ import { mapCanvas } from "./map-canvas.ts";
 import { ASK_GROUPS, buildMap, gizmoBlocks, writersOf, type Ask, type MapApp, type MapEmbed, type MapLens, type VaultMap } from "./map.ts";
 import { describePermission } from "./permissions.ts";
 import { basename } from "./store.ts";
+import { dayIn } from "./time.ts";
 
 export const MAP_VIEW = "gizmo-map";
 
@@ -390,8 +391,7 @@ class DryRunModal extends Modal {
 export async function saveMapCanvas(plugin: GizmoPlugin): Promise<void> {
   const vault = plugin.app.vault;
   const data = mapCanvas(plugin.background?.list() ?? [], (path) => !!vault.getFileByPath(path));
-  const d = new Date();
-  const day = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+  const day = dayIn(Date.now());
   let path = `Gizmo map ${day}.canvas`;
   for (let n = 2; vault.getAbstractFileByPath(path); n++) path = `Gizmo map ${day} ${n}.canvas`;
   const file = await vault.create(path, JSON.stringify(data, null, "\t"));

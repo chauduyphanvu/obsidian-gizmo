@@ -9,6 +9,7 @@ import { ledgerStore } from "./datastore.ts";
 import { PAST } from "./ledger-store.ts";
 import type { AppSpec } from "./spec.ts";
 import { sourceDef } from "./sources/registry.ts";
+import { minuteIn } from "./time.ts";
 
 /** `back` shows the app as it is now again, from the banner. */
 export function pastEnv(env: AppEnv, at: number, back?: () => void): AppEnv {
@@ -47,11 +48,9 @@ export function shownAsNow(spec: AppSpec): string[] {
   return out;
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
-
 /** `Tue 17 Nov 2026, 09:30`: a past time as the app's banner says it. */
 export function pastText(at: number): string {
   const d = new Date(at);
   const day = d.toLocaleDateString(undefined, { weekday: "short", day: "numeric", month: "short", year: "numeric" });
-  return `${day}, ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+  return `${day}, ${minuteIn(at).slice(11)}`;
 }

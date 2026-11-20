@@ -1,4 +1,5 @@
-import { AGGS, PERIODS } from "./data.ts";
+import { AGGS } from "./data.ts";
+import { PERIODS } from "./time.ts";
 import { BLOCK_KEYS } from "./expand.ts";
 import { APP_KEYS, COMPONENT_KEYS } from "./store.ts";
 import { COMMON_KEYS, FIELD_TYPES } from "./keys.ts";

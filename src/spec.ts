@@ -1,6 +1,7 @@
 import { readExpect, type Expectation, areRules } from "./expect.ts";
 import { POLICY_PATH, isPolicyPath } from "./policy.ts";
-import { PERIODS, parseDuration, stampParts, type Agg, type Per } from "./data.ts";
+import { parseDuration, type Agg } from "./data.ts";
+import { PERIODS, stampParts, type Per } from "./time.ts";
 import { computeErrors } from "./formula.ts";
 import { fnv1a, stableJson } from "./hash.ts";
 import { rowsAreNotes, sourceDef } from "./sources/registry.ts";

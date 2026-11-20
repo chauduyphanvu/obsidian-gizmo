@@ -1,4 +1,4 @@
-import { periodStart, shiftPeriod } from "../data.ts";
+import { periodStart, shiftPeriod } from "../time.ts";
 
 export interface TimeTick { at: number; label: string }
 

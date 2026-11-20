@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { AGGS, PERIODS } from "../src/data.ts";
+import { AGGS } from "../src/data.ts";
+import { PERIODS } from "../src/time.ts";
 import { BLOCK_KEYS, BLOCK_ONLY } from "../src/expand.ts";
 import { sourceDef } from "../src/sources/registry.ts";
 import { SOURCE_WORDS } from "../src/store.ts";

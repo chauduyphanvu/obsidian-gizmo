@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { captureDate, captureLine, captureTargets, captureTime, completed, parseLine, receipt, type CaptureApp } from "../src/capture.ts";
 import { readSpec } from "../src/spec.ts";
-import { fakeBackground } from "./support/fakes.ts";
+import { fakeBackground, savedAt } from "./support/fakes.ts";
 
 // Thursday 19 November 2026, 10:00.
 const NOW = new Date(2026, 10, 19, 10, 0);
@@ -175,7 +175,7 @@ test("the background previews a line with a dry run, then runs it as the shortcu
   assert.equal(t.f.files.get("Apps/Budget data.md"), undefined, "a preview writes nothing");
   const ran = await t.bg.capture("spend 14.5 food lunch");
   assert.equal(ran.ok, true);
-  assert.deepEqual(t.f.files.get("Apps/Budget data.md")?.fm?.spend, [{ amount: 14.5, category: "food", note: "lunch", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Budget data.md")?.fm?.spend, [{ amount: 14.5, category: "food", note: "lunch", at: savedAt("2026-11-18T12:00") }]);
   const [entry] = await t.activity.list("Apps/Budget.md");
   assert.equal(ran.entryId, entry.id);
   const wrong = await t.bg.capture("spend lots");
@@ -209,7 +209,7 @@ test("a capture link with a key made for its name runs unattended; without one, 
   await t.bg.start();
   await t.bg.runCaptureLink({ key: "ck1", line: "spend 6 parking", "x-success": "shortcuts://x-callback-url/done" });
   assert.equal(t.out.asked.length, 0);
-  assert.deepEqual(t.f.files.get("Apps/Budget data.md")?.fm?.spend, [{ amount: 6, note: "parking", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Budget data.md")?.fm?.spend, [{ amount: 6, note: "parking", at: savedAt("2026-11-18T12:00") }]);
   // Word goes back to an app it hasn't sent to yet only once allowed, as for a shortcut's keyed link.
   assert.equal(t.out.chose.length, 1);
   t.ask.answer = false;

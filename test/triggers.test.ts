@@ -6,7 +6,7 @@ import { AppController } from "../src/app.ts";
 import { MAX_RUNS_PER_HOUR } from "../src/background.ts";
 import { readSpec } from "../src/spec.ts";
 import { describePermission, permissionsOf } from "../src/permissions.ts";
-import { fakeBackground } from "./support/fakes.ts";
+import { fakeBackground, savedAt } from "./support/fakes.ts";
 import { vaultNote } from "./support/yaml.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -57,7 +57,7 @@ test("a shortcut's then fills the other app's form from the row it saved, and bo
   });
   await t.bg.start();
   await t.bg.runUri({ app: "Calls", do: "call", who: "Mom" });
-  assert.deepEqual(tasks(t), [{ task: "Call Mom back", due: "2026-11-18", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(tasks(t), [{ task: "Call Mom back", due: "2026-11-18", at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(t.notices, ["Calls: call done", "Inbox: Add done for Calls"]);
   const log = await t.activity.list();
   assert.deepEqual(log.map((e) => [e.app, describeActor(e.actor)]), [["Apps/Calls.md", "A link"], ["Apps/Inbox.md", "Triggered by Calls"]].reverse());
@@ -123,11 +123,11 @@ test("a row alert's then runs once for each row that newly matches, never for wh
   assert.deepEqual(t.notices, ["Renewals: Due soon (1 row)"]);
 
   const fm = t.f.files.get("Apps/Renewals data.md")!.fm!;
-  const insurance = { what: "insurance", due: "2026-11-30", at: "2026-11-18T12:00" };
+  const insurance = { what: "insurance", due: "2026-11-30", at: savedAt("2026-11-18T12:00") };
   fm.deadlines = [...fm.deadlines as unknown[], insurance];
   t.changed("Apps/Renewals data.md");
   await settle();
-  assert.deepEqual(tasks(t), [{ task: "Renew insurance", due: "2026-11-30", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(tasks(t), [{ task: "Renew insurance", due: "2026-11-30", at: savedAt("2026-11-18T12:00") }]);
 
   // Checked again, with nothing new: nothing runs.
   t.changed("Apps/Renewals data.md");
@@ -234,7 +234,7 @@ test("a form in an open app runs its then once it has saved", async () => {
   root.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();
   c.dispose();
-  assert.deepEqual(t.f.files.get("Apps/Calls data.md")?.fm?.calls, [{ who: "Sam", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Calls data.md")?.fm?.calls, [{ who: "Sam", at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(tasks(t)!.map((r) => r.task), ["Call Sam back"]);
 });
 

@@ -5,7 +5,7 @@ import { AppController } from "../src/app.ts";
 import { MAX_SAMPLES } from "../src/background.ts";
 import { readSpec } from "../src/spec.ts";
 import { askersOf, permissionsOf } from "../src/permissions.ts";
-import { fakeBackground } from "./support/fakes.ts";
+import { fakeBackground, savedAt } from "./support/fakes.ts";
 
 const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
 const READINGS = [
@@ -28,13 +28,13 @@ function kpApp(block: Record<string, unknown> = { source: KP, sort: "-time_tag",
 test("a recorded block is sampled at its interval, as {at, …the row}", async () => {
   const t = kpApp();
   await t.bg.start();
-  assert.deepEqual(t.log(), [{ at: "2026-11-18T12:00", time_tag: "2026-11-18T11:59:00", kp_index: 4, estimated_kp: 4.33 }]);
+  assert.deepEqual(t.log(), [{ at: savedAt("2026-11-18T12:00"), time_tag: "2026-11-18T11:59:00", kp_index: 4, estimated_kp: 4.33 }]);
   t.advance(30 * MIN);
   await t.bg.tick();
   assert.equal(t.log()!.length, 1, "younger than the interval: skipped");
   t.advance(31 * MIN);
   await t.bg.tick();
-  assert.deepEqual(t.log()!.map((r) => r.at), ["2026-11-18T12:00", "2026-11-18T13:01"]);
+  assert.deepEqual(t.log()!.map((r) => r.at), [savedAt("2026-11-18T12:00"), savedAt("2026-11-18T13:01")]);
   assert.equal(t.f.requests.length, 2);
 });
 
@@ -78,7 +78,7 @@ test("at most 10,000 rows are kept, the newest", async () => {
   const log = t.log()!;
   assert.equal(log.length, MAX_SAMPLES);
   assert.equal(log[0].n, 1);
-  assert.equal(log.at(-1)!.at, "2026-11-18T12:00");
+  assert.equal(log.at(-1)!.at, savedAt("2026-11-18T12:00"));
 });
 
 test("an app that isn't allowed is never fetched for", async () => {
@@ -177,5 +177,5 @@ test("a recorded block may read $this, the app note, as the app's panels do", as
   const t = fakeBackground({ "Apps/Kp.md": { fm } }, { [KPC]: { current: { kp: 4 } } });
   await t.bg.start();
   assert.deepEqual(t.f.requests, [`${KPC}?city=Oslo`]);
-  assert.deepEqual(t.f.files.get("Apps/Kp data.md")!.fm!.kp_log, [{ at: "2026-11-18T12:00", kp: 4 }]);
+  assert.deepEqual(t.f.files.get("Apps/Kp data.md")!.fm!.kp_log, [{ at: savedAt("2026-11-18T12:00"), kp: 4 }]);
 });

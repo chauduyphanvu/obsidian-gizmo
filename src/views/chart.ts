@@ -1,4 +1,5 @@
-import { extent, formatValue, getPath, seriesOf, toTime, type Per, type Point, type Row } from "../data.ts";
+import { extent, formatValue, getPath, seriesOf, type Point, type Row } from "../data.ts";
+import { toTime, type Per } from "../time.ts";
 import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";

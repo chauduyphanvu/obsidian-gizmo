@@ -7,13 +7,10 @@ import { pastText } from "./replay.ts";
 import { readSpec, type AppSpec } from "./spec.ts";
 import { basename, dataPathOf, devicesFolder } from "./store.ts";
 import { VIEW_TYPE } from "./view.ts";
+import { minuteIn } from "./time.ts";
 
 const DAY = 86_400_000;
-const pad = (n: number) => String(n).padStart(2, "0");
-const localInput = (t: number) => {
-  const d = new Date(t);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
-};
+const localInput = (t: number) => minuteIn(t);
 
 /** Opens an app in a new tab as it was at a past time, beside the app as it is now. */
 export async function openAppAt(plugin: GizmoPlugin, path: string, at: number): Promise<void> {

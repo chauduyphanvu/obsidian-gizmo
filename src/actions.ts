@@ -1,6 +1,7 @@
 import { refusal, type Expectation } from "./expect.ts";
 import { textHash, type Change } from "./activity.ts";
-import { fillTemplate, fillWith, formatValue, getPath, stampParts, type Row } from "./data.ts";
+import { fillTemplate, fillWith, formatValue, getPath, type Row } from "./data.ts";
+import { stampOf, stampParts } from "./time.ts";
 import { saveTarget, type Panel } from "./spec.ts";
 import { notePath, withoutDefinition } from "./store.ts";
 import { frontmatterStore, type DataStore } from "./datastore.ts";
@@ -161,8 +162,7 @@ function defaultsBeyond(p: Panel, now: Date): Row {
  */
 async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps, changes: Change[]): Promise<string | undefined> {
   const template = p.name ?? (filled(ctx.name) ? "{name}" : filled(ctx.title) ? "{title}" : "");
-  const at = String(saved.at);
-  const name = fileName(template ? fillLine(template, ctx) : "") || at.replace("T", " ").replace(":", ".");
+  const name = fileName(template ? fillLine(template, ctx) : "") || `${ctx.date} ${String(ctx.time).replace(":", ".")}`;
   // A row's name that only names the file isn't kept as a property too; nor is anything that would make the note run.
   const frontmatter = withoutDefinition(template === "{name}" ? Object.fromEntries(Object.entries(saved).filter(([k]) => k !== "name")) : saved);
   const body = p.template ? fillBody(await deps.readBody(p.template), ctx) : "";
@@ -202,7 +202,8 @@ export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promis
  */
 export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promise<ActionResult> {
   const now = deps.now();
-  const stamp = stampParts(now);
+  // `date` and `time` as typed in notes; `at`, what the row is stamped with, carries its offset.
+  const stamp = { ...stampParts(now), at: stampOf(now) };
   const unshown = p.view === "form" ? defaultsBeyond(p, now) : {};
   const given = p.row ? fillRow(p.row, { ...stamp, ...unshown, ...input }) : input;
   // What `row` (or the form) gives wins key by key; the defaults come after it.

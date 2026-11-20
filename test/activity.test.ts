@@ -5,7 +5,7 @@ import {
   ActivityLog, MAX_PER_APP, describeActor, describeChange, eventsOf, undoEntry, undoMessage, undoneIn, type Entry,
 } from "../src/activity.ts";
 import { AppController } from "../src/app.ts";
-import { fakeBackground, fakeEnv } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv, savedAt } from "./support/fakes.ts";
 
 const APP = "Apps/W.md";
 const DATA = "Apps/W data.md";
@@ -46,7 +46,7 @@ test("a form's save is kept as what you did, in words, and undoing it takes the 
   (t.root.querySelector("input") as HTMLInputElement).value = "79.4";
   submit(t.root.querySelector("form")!);
   await settle();
-  assert.deepEqual(data(t.f, "weights"), [{ kg: 80, at: "2026-11-17T08:00" }, { kg: 79.4, at: "2026-11-18T12:00" }]);
+  assert.deepEqual(data(t.f, "weights"), [{ kg: 80, at: "2026-11-17T08:00" }, { kg: 79.4, at: savedAt("2026-11-18T12:00") }]);
   const [entry] = await t.entries();
   assert.equal(entry.actor, "you");
   assert.equal(entry.what, "Weigh in");
@@ -75,7 +75,7 @@ test("an undo after the data note was edited by hand takes the row out of the ap
   assert.deepEqual(r, { undone: 1, total: 1 });
   assert.deepEqual((await t.data.ledger!.state(DATA)).lists.get("cups")!.rows, []);
   assert.equal(t.writes.length, writes, "the note isn't rewritten over the hand edit, which waits for Import or Discard");
-  assert.deepEqual(data(t.f, "cups"), [{ at: "2026-11-18T12:00", note: "decaf" }]);
+  assert.deepEqual(data(t.f, "cups"), [{ at: savedAt("2026-11-18T12:00"), note: "decaf" }]);
 });
 
 test("a run that added a line and saved a row is undone newest first, and stops where the vault changed", async () => {
@@ -215,7 +215,7 @@ test("shortcuts and links are kept as theirs; what record samples isn't kept", a
   await t.bg.start();
   await t.bg.runCommand("Apps/Meds.md:took");
   await t.bg.runUri({ action: "gizmo", app: "Meds", do: "took" });
-  assert.deepEqual(t.f.files.get("Apps/Kp data.md")?.fm?.kp_log, [{ at: "2026-11-18T12:00", v: 3 }]);
+  assert.deepEqual(t.f.files.get("Apps/Kp data.md")?.fm?.kp_log, [{ at: savedAt("2026-11-18T12:00"), v: 3 }]);
   const all = await t.activity.list();
   assert.deepEqual(all.map((e) => [e.app, describeActor(e.actor), e.what]), [["Apps/Meds.md", "A link", "Took meds"], ["Apps/Meds.md", "A shortcut", "Took meds"]]);
 });

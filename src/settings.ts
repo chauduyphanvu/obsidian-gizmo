@@ -1,6 +1,7 @@
 import { Platform, PluginSettingTab, Setting, normalizePath, type App } from "obsidian";
 import { when } from "./activity-view.ts";
-import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, saveDevice, startsOver, type Beat } from "./device.ts";
+import { BEAT_EVERY_MS, PRIORITY, UNSEEN_MS, readBeat, runnerOf, saveDevice, startsOver, whereYouAre, type Beat } from "./device.ts";
+import { localZone } from "./time.ts";
 import { pluginFile, pluginFolder } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 import { openMap } from "./map-view.ts";
@@ -38,14 +39,20 @@ export class DeviceBeat {
   runner: Beat | undefined;
   /** Whether this session has read every device's beat yet. */
   private heard = false;
+  /** When the person last touched Obsidian here; said with each beat, so a phone opened abroad moves deadlines there. */
+  private used = Date.now();
+  private zoneSaid = "";
 
   constructor(plugin: GizmoPlugin) {
     this.plugin = plugin;
+    const touched = () => { this.used = Date.now(); };
+    plugin.registerDomEvent(document, "pointerdown", touched, { passive: true });
+    plugin.registerDomEvent(document, "keydown", touched, { passive: true });
   }
 
   private mine(now: number): Beat {
     const d = this.plugin.device;
-    return { id: d.id, name: d.name, host: this.host, priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now };
+    return { id: d.id, name: d.name, host: this.host, priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now, zone: localZone(), used: this.used };
   }
 
   async beat(force = false): Promise<void> {
@@ -56,9 +63,11 @@ export class DeviceBeat {
     if (!all) return;
     // This device's word from its last session, read before this one is written over it.
     const last = this.heard ? undefined : all.find((b) => b.id === me.id)?.seen;
-    if (!this.heard || force || me.name !== this.said || now - this.saidAt >= BEAT_EVERY_MS) {
+    // A new zone (a phone landed abroad) is said at once.
+    if (!this.heard || force || me.name !== this.said || me.zone !== this.zoneSaid || now - this.saidAt >= BEAT_EVERY_MS) {
       await pluginFile(this.plugin, `devices/${me.id}.json`).write(JSON.stringify(me)).catch(() => {});
       this.said = me.name;
+      this.zoneSaid = me.zone ?? "";
       this.saidAt = now;
     }
     const others = all.filter((b) => b.id !== me.id);
@@ -67,6 +76,11 @@ export class DeviceBeat {
     this.runner = runnerOf(this.beats, now);
     if (startsOver(me.id, this.runner?.id, was, !this.heard, last, others)) this.plugin.background?.startOver();
     this.heard = true;
+  }
+
+  /** The zone a rhythm's deadline means: that of the phone or desktop used last. */
+  whereYouAre(): string | undefined {
+    return whereYouAre(this.beats);
   }
 
   /** Whether this device runs background work; not until it has read every device's beat. */

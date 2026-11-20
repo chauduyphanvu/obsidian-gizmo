@@ -11,8 +11,9 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
  * `dir` must be a new folder inside the work dir; `fill(vault)` puts the notes in. The built plugin
  * (main.js, manifest.json, styles.css in `repo`) is installed and turned on. With `vault`, a second
  * instance opens that vault (one another launch made) as another device would, with its own user data.
+ * With `tz` (an IANA name), that instance runs in that time zone.
  */
-export async function launch({ repo, dir, port, fill, vault: shared }) {
+export async function launch({ repo, dir, port, fill, vault: shared, tz }) {
   const vault = shared ?? join(dir, "vault");
   const userData = join(dir, "userdata");
   mkdirSync(userData, { recursive: true });
@@ -30,7 +31,7 @@ export async function launch({ repo, dir, port, fill, vault: shared }) {
 
   // The window sits in the background, where Chromium would otherwise slow timers to about one
   // wake-up a minute after five minutes and stretch every wait in a run.
-  spawn("open", ["-g", "-n", "-a", "Obsidian", "--args", `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`,
+  spawn("open", ["-g", "-n", ...(tz ? ["--env", `TZ=${tz}`] : []), "-a", "Obsidian", "--args", `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`,
     "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
   /** Stops only the instance this launch started, found by its own user-data dir. */
   const quit = () => {

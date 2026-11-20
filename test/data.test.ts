@@ -1,8 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import {
-  aggregate, daysUntil, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf,
-} from "../src/data.ts";
+import { aggregate, extent, fillTemplate, filterRows, getPath, matches, parseBody, parseCSV, seriesOf, sortRows, valueOf } from "../src/data.ts";
+import { daysUntil } from "../src/time.ts";
 import { compilePipeline } from "../src/pipeline.ts";
 
 /** valueOf and parseBody take the time they read at; these read at a fixed one. */

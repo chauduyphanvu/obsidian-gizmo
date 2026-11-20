@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { HostedApp } from "../src/hosted.ts";
 import { LensIndex, LensStack } from "../src/lenses.ts";
 import { readComponentPreview } from "../src/spec.ts";
-import { fakeEnv, listsIn } from "./support/fakes.ts";
+import { fakeEnv, listsIn, savedAt } from "./support/fakes.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -90,7 +90,7 @@ test("Today: my day at a glance, logging meds and water from the note itself", a
   assert.equal(text(water.querySelector(".gz-view-number .gz-big")), "0of 8");
   (water.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
-  assert.deepEqual(listsIn(t.f.files.get("Today data.md")!.fm), { water: [{ at: "2026-11-18T12:00" }] });
+  assert.deepEqual(listsIn(t.f.files.get("Today data.md")!.fm), { water: [{ at: savedAt("2026-11-18T12:00") }] });
   assert.equal(text(water.querySelector(".gz-view-number .gz-big")), "1of 8");
   assert.deepEqual(t.writes, ["Daily.md", "Apps/Meds data.md", "Today data.md"]);
 });

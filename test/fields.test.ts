@@ -5,7 +5,7 @@ import { runActions, type ActionDeps } from "../src/actions.ts";
 import { AppController } from "../src/app.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
-import { fakeBackground, fakeEnv } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv, savedAt } from "./support/fakes.ts";
 
 // Fields that carry their own label, format and default, a form that lists fields by name, and the
 // table defaults a block's fields give. The fake clock reads 2026-11-18 12:00.
@@ -162,13 +162,13 @@ test("saving a form saves the schema's defaults for the fields it doesn't show; 
   first.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();
   assert.deepEqual(app.f.files.get("Decisions/Take the train.md")!.fm, {
-    expect: "I keep it up", confidence: 70, outcome: "open", made: "2026-11-18", at: "2026-11-18T12:00",
+    expect: "I keep it up", confidence: 70, outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
   assert.ok(app.notices.includes("Saved Take the train, open"), app.notices.join("; "));
   (second.querySelector("input") as HTMLInputElement).value = "Plant seeds";
   second.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();
-  assert.deepEqual(app.f.files.get("Decisions/Plant seeds.md")!.fm, { outcome: "wrong", made: "2026-11-18", at: "2026-11-18T12:00" });
+  assert.deepEqual(app.f.files.get("Decisions/Plant seeds.md")!.fm, { outcome: "wrong", made: "2026-11-18", at: savedAt("2026-11-18T12:00") });
 });
 
 test("a choice list of numbers saves a number from a form, and from its shortcut link", async () => {
@@ -190,8 +190,8 @@ test("a choice list of numbers saves a number from a form, and from its shortcut
   await bg.bg.runUri({ app: "Sure", do: "sure" });
   await settle();
   assert.deepEqual(bg.f.files.get("Apps/Sure data.md")!.fm!.log, [
-    { confidence: 60, at: "2026-11-18T12:00" },
-    { confidence: 80, at: "2026-11-18T12:00" },
+    { confidence: 60, at: savedAt("2026-11-18T12:00") },
+    { confidence: 80, at: savedAt("2026-11-18T12:00") },
   ]);
   bg.bg.stop();
 });

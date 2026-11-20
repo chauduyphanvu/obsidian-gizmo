@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { getPath, matches, periodStart, shiftPeriod, stampParts } from "../src/data.ts";
+import { getPath, matches } from "../src/data.ts";
+import { periodStart, shiftPeriod, stampParts } from "../src/time.ts";
 import { groupRows, streak } from "../src/group.ts";
 import { compilePipeline } from "../src/pipeline.ts";
 import { readSpec } from "../src/spec.ts";

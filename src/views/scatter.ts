@@ -1,4 +1,5 @@
-import { extent, fillWith, formatValue, getPath, rowsOf, toNumber, toTime, type Row } from "../data.ts";
+import { extent, fillWith, formatValue, getPath, rowsOf, toNumber, type Row } from "../data.ts";
+import { toTime } from "../time.ts";
 import { display, formatErrors, formatFor, formatWith, labelOf, mapped } from "../format.ts";
 import { rowsFromArrays } from "../group.ts";
 import type { Panel } from "../spec.ts";

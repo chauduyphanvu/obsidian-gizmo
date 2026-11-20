@@ -1,4 +1,5 @@
-import { formatValue, localeNumber, periodStart, toNumber, toTime } from "./data.ts";
+import { formatValue, localeNumber, toNumber } from "./data.ts";
+import { periodStart, toTime, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
 
 const DAY = 86_400_000;
@@ -106,7 +107,8 @@ function bytes(n: number): string {
 function apply(value: unknown, format: string, now: Date): string | undefined {
   switch (format) {
     case "date": case "time": case "datetime": {
-      const t = toTime(value);
+      // The clock where it was saved, as it was lived.
+      const t = wallTime(value);
       return t === undefined ? undefined : clock(t, format);
     }
     case "relative": case "until": {

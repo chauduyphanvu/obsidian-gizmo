@@ -8,7 +8,7 @@ import { HostedApp, parseHosted } from "../src/hosted.ts";
 import { LensIndex, LensStack } from "../src/lenses.ts";
 import { pickPanels, readComponentPreview, readSpec } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
-import { fakeBackground, fakeEnv, listsIn, raw } from "./support/fakes.ts";
+import { fakeBackground, fakeEnv, listsIn, raw, savedAt } from "./support/fakes.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 // The notes under gallery/, proved: each reads without errors and asks for exactly the permissions
@@ -258,7 +258,7 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   submit(form.querySelector("form")!);
   await settle();
   const saved = f.files.get("Apps/Weight data.md")!.fm!.weight as Record<string, unknown>[];
-  assert.deepEqual(saved.at(-1), { value: 79.4, note: "after the trip", at: "2026-11-18T12:00" });
+  assert.deepEqual(saved.at(-1), { value: 79.4, note: "after the trip", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(latest.querySelector(".gz-big")), "79.4kg");
   assert.equal(text(week.querySelector(".gz-big")), "80.1kg");
   assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.9 kg (1%) vs previous");
@@ -288,7 +288,7 @@ test("Sleep: the same kit for hours slept, against a goal of eight", async () =>
   (form.querySelector("input") as HTMLInputElement).value = "8.5";
   submit(form.querySelector("form")!);
   await settle();
-  assert.deepEqual((f.files.get("Apps/Sleep data.md")!.fm!.sleep as unknown[]).at(-1), { value: 8.5, note: "", at: "2026-11-18T12:00" });
+  assert.deepEqual((f.files.get("Apps/Sleep data.md")!.fm!.sleep as unknown[]).at(-1), { value: 8.5, note: "", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(latest.querySelector(".gz-big")), "8.5hours");
   assert.equal(text(week.querySelector(".gz-big")), "7.2hours");
   assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "sleep", "note"]);
@@ -315,7 +315,7 @@ test("Tracker kit: one app may use it twice; each thing it tracks keeps its own 
     await settle();
   }
   const data = f.files.get("Apps/Health data.md")!.fm!;
-  assert.deepEqual([data.weight, data.sleep], [[{ value: 80, note: "", at: "2026-11-18T12:00" }], [{ value: 7.5, note: "", at: "2026-11-18T12:00" }]]);
+  assert.deepEqual([data.weight, data.sleep], [[{ value: 80, note: "", at: savedAt("2026-11-18T12:00") }], [{ value: 7.5, note: "", at: savedAt("2026-11-18T12:00") }]]);
 });
 
 test("Budget: log an expense, see the month against last, the stacked weeks and a notice at the limit", async () => {
@@ -349,7 +349,7 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   submit(form.querySelector("form")!);
   await settle();
   const saved = t.f.files.get("Apps/Budget data.md")!.fm!.spend as Record<string, unknown>[];
-  assert.deepEqual(saved.at(-1), { amount: 1350, category: "transport", note: "flights", at: "2026-11-18T12:00" });
+  assert.deepEqual(saved.at(-1), { amount: 1350, category: "transport", note: "flights", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(month.querySelector(".gz-big")), "$2,050.00");
   assert.equal(text(limit.querySelector(".gz-big")), "$2,050/ $2,000");
   assert.deepEqual(t.notices, ["Budget: Against my limit $2,050"]);
@@ -402,7 +402,7 @@ test("Book finder: search, read about a pick, add it to Books, then set its stat
   await settle();
   assert.deepEqual(notices, ["Added Dune to Books", "Added Piranesi to Books"]);
   assert.deepEqual(f.files.get("Books/Dune.md")!.fm,
-    { title: "Dune", author: "Frank Herbert", year: 1965, pages: 412, cover: 11481354, status: "to read", at: "2026-11-18T12:00" });
+    { title: "Dune", author: "Frank Herbert", year: 1965, pages: 412, cover: 11481354, status: "to read", at: savedAt("2026-11-18T12:00") });
   // Saving the same book twice is refused, not overwritten.
   click(items[0].querySelector("button.gz-row-action")!);
   await settle();
@@ -505,7 +505,7 @@ test("Project board: add a project, drag it along, pick it for its dates, and op
   due.value = "2027-06-30";
   submit(form.querySelector("form")!);
   await settle();
-  assert.deepEqual(f.files.get("Projects/Learn piano.md")!.fm, { status: "idea", area: "learning", start: "2026-12-01", due: "2027-06-30", at: "2026-11-18T12:00" });
+  assert.deepEqual(f.files.get("Projects/Learn piano.md")!.fm, { status: "idea", area: "learning", start: "2026-12-01", due: "2027-06-30", at: savedAt("2026-11-18T12:00") });
   assert.deepEqual(cards("idea"), ["Learn Rust · learning", "Tax return · money", "Learn piano · learning"]);
 
   // Move it along: its note's status is what changes.
@@ -556,7 +556,7 @@ test("Decision journal: one decision is due; write one down, score the due one, 
   submit(form.querySelector("form")!);
   await settle();
   assert.deepEqual(t.f.files.get("Decisions/Walk to work through the winter.md")!.fm, {
-    expect: "I keep it up until March", confidence: 80, review: "2027-03-01", outcome: "open", made: "2026-11-18", at: "2026-11-18T12:00",
+    expect: "I keep it up until March", confidence: 80, review: "2027-03-01", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
   assert.ok(t.notices.includes("Written down. Come back on 2027-03-01 to score it."), t.notices.join("; "));
 
@@ -703,7 +703,7 @@ test("Trip planner: days to go, packing, the itinerary from a calendar file, exp
   local.value = "3000";
   submit(form.querySelector("form")!);
   await settle();
-  assert.deepEqual((f.files.get("Apps/Trip planner data.md")!.fm!.spend as unknown[]), [{ item: "Ramen", local: 3000, at: "2026-11-18T12:00" }]);
+  assert.deepEqual((f.files.get("Apps/Trip planner data.md")!.fm!.spend as unknown[]), [{ item: "Ramen", local: 3000, at: savedAt("2026-11-18T12:00") }]);
   assert.equal(text(total.querySelector(".gz-big")), "$20.00");
   assert.deepEqual([...expenses.querySelectorAll("th")].map(text), ["item", "Yen", "Dollars"]);
   assert.deepEqual([...expenses.querySelectorAll("tbody tr")[0].querySelectorAll("td")].map(text).slice(2), ["$20.00"]);
@@ -752,9 +752,9 @@ test("Watchlist: pick a symbol, see its move, record a buy, and pick a position 
   await record("AAPL", "2026-11-17", "5", "200");
   assert.deepEqual(f.files.get("Apps/Watchlist data.md")!.fm!.buys,
     [
-      { symbol: "SPY", date: "2026-11-10", shares: 10, price: 500, at: "2026-11-18T12:00" },
-      { symbol: "SPY", date: "2026-11-12", shares: 5, price: 510, at: "2026-11-18T12:00" },
-      { symbol: "AAPL", date: "2026-11-17", shares: 5, price: 200, at: "2026-11-18T12:00" },
+      { symbol: "SPY", date: "2026-11-10", shares: 10, price: 500, at: savedAt("2026-11-18T12:00") },
+      { symbol: "SPY", date: "2026-11-12", shares: 5, price: 510, at: savedAt("2026-11-18T12:00") },
+      { symbol: "AAPL", date: "2026-11-17", shares: 5, price: 200, at: savedAt("2026-11-18T12:00") },
     ]);
   assert.equal(text(panels(root)[0].querySelector(".gz-big")), "210.00USD");
 
@@ -797,7 +797,7 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   const t = await background({ [path]: { fm: fm(path) } }, { [KP]: KP_READINGS, [KP_FORECAST]: FORECAST });
   // With the app closed: the record, the status bar, and a notice for each alert, told once.
   const data = () => t.f.files.get("Apps/Aurora watch data.md")!.fm!;
-  assert.deepEqual(data().kp_log, [{ at: "2026-11-18T12:00", time_tag: "2026-11-18T10:59:00", kp_index: 5, estimated_kp: 5.33, kp: "5P" }]);
+  assert.deepEqual(data().kp_log, [{ at: savedAt("2026-11-18T12:00"), time_tag: "2026-11-18T10:59:00", kp_index: 5, estimated_kp: 5.33, kp: "5P" }]);
   assert.deepEqual(t.notices, ["Aurora watch: Kp now 5.33", "Aurora watch: Expected to reach Kp 5 (1 row)"]);
   assert.deepEqual(t.out.status, [{ appPath: path, text: "Kp now: 5.33", title: "Aurora watch" }]);
   assert.deepEqual(t.out.commands, [{ id: `${path}:saw-aurora`, name: "Aurora watch: Saw aurora" }]);
@@ -814,10 +814,10 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   // Saw one: the button, then a note on it in the table; and one more from a link with the app closed.
   click(root.querySelector("button.gz-button")!);
   await settle();
-  assert.deepEqual((data().sightings as { at: string }[]).map((s) => s.at), ["2026-11-18T12:00"]);
+  assert.deepEqual((data().sightings as { at: string }[]).map((s) => s.at), [savedAt("2026-11-18T12:00")]);
   type(sightings.querySelector("tbody input.gz-edit")!, "green arc to the north");
   await settle();
-  assert.deepEqual(data().sightings, [{ at: "2026-11-18T12:00", note: "green arc to the north" }]);
+  assert.deepEqual(data().sightings, [{ at: savedAt("2026-11-18T12:00"), note: "green arc to the north" }]);
   await t.bg.runUri({ app: "Aurora watch", do: "saw-aurora" });
   await settle();
   assert.equal((data().sightings as unknown[]).length, 2);
@@ -857,7 +857,7 @@ test("Read later: save an article from a feed as a note, then tick it off when r
   await settle();
   assert.deepEqual(notices, ["Saved A robot learns to fold to Reading", "Saved Markets close higher to Reading", "“A robot learns to fold” already exists"]);
   assert.deepEqual(f.files.get("Reading/A robot learns to fold.md")!.fm,
-    { link: "https://www.bbc.co.uk/news/2", date: "2026-11-18T08:00", via: "BBC technology", at: "2026-11-18T12:00" });
+    { link: "https://www.bbc.co.uk/news/2", date: "2026-11-18T08:00", via: "BBC technology", at: savedAt("2026-11-18T12:00") });
   assert.equal(f.files.get("Reading/Markets close higher.md")!.fm!.via, "NPR news");
 
   assert.equal(text(unread.querySelector(".gz-big")), "2");
@@ -904,7 +904,7 @@ test("Today: the medication button and a water counter work from inside a plain 
   assert.equal(text(water.querySelector(".gz-view-progress .gz-big")), "0/ 8 glasses");
   click(water.querySelector("button.gz-button")!);
   await settle();
-  assert.deepEqual(listsIn(t.f.files.get("Today data.md")!.fm), { water: [{ at: "2026-11-18T12:00" }] });
+  assert.deepEqual(listsIn(t.f.files.get("Today data.md")!.fm), { water: [{ at: savedAt("2026-11-18T12:00") }] });
   assert.equal(text(water.querySelector(".gz-view-progress .gz-big")), "1/ 8 glasses");
 });
 
@@ -933,7 +933,7 @@ test("Movers (test vault): pick one of the biggest moves, note why it happened, 
   submit(form.querySelector("form")!);
   await settle();
   assert.deepEqual(f.files.get("Apps/Movers data.md")!.fm!.reasons,
-    [{ symbol: "SPY", session: 5, close: 99, change: -3.41, reason: "Rate decision", at: "2026-11-18T12:00" }]);
+    [{ symbol: "SPY", session: 5, close: 99, change: -3.41, reason: "Rate decision", at: savedAt("2026-11-18T12:00") }]);
   assert.equal(text(why.querySelector("li")), "SPY session 5, -3.41%: Rate decision");
 });
 
@@ -951,6 +951,6 @@ test("the gallery's capture names each reach one shortcut, and a line for each r
     const r = await t.bg.capture(line);
     assert.equal(r.ok, true, `${line}: ${r.error ?? ""}`);
   }
-  assert.deepEqual(t.f.files.get("Apps/Weight data.md")?.fm?.weight, [{ value: 81.2, note: "", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Weight data.md")?.fm?.weight, [{ value: 81.2, note: "", at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(t.f.files.get("Apps/Trip planner data.md")?.fm?.packed, ["Chargers"]);
 });

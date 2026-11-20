@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { linkNotice } from "../src/links.ts";
-import { fakeBackground } from "./support/fakes.ts";
+import { fakeBackground, savedAt } from "./support/fakes.ts";
 
 const MEDS = {
   app: "Log when I take my meds",
@@ -35,7 +35,7 @@ test("a button's command runs its actions without opening the app", async () => 
   const t = meds();
   await t.bg.start();
   await t.bg.runCommand("Apps/Meds.md:took-meds");
-  assert.deepEqual(t.data("doses"), [{ at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.data("doses"), [{ at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(t.notices, ["Meds: Took meds done"]);
   assert.deepEqual(t.out.apps, []);
 });
@@ -53,10 +53,10 @@ test("a link fills a form's fields by type; fields not given save as an untouche
   const t = meds();
   await t.bg.start();
   await t.bg.runUri({ action: "gizmo", app: "Meds", do: "effects", note: "headache", severity: "bad", dizzy: "yes", hours: "2.5", when: "08:30", extra: "ignored" });
-  assert.deepEqual(t.data("effects"), [{ note: "headache", severity: "bad", dizzy: true, hours: 2.5, on: "2026-11-18", when: "08:30", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.data("effects"), [{ note: "headache", severity: "bad", dizzy: true, hours: 2.5, on: "2026-11-18", when: "08:30", at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(t.notices, ["Logged bad: headache"]);
   await t.bg.runUri({ action: "gizmo", app: "Apps/Meds", do: "effects" });
-  assert.deepEqual(t.data("effects")![1], { note: "", severity: "mild", dizzy: false, hours: null, on: "2026-11-18", when: "", at: "2026-11-18T12:00" });
+  assert.deepEqual(t.data("effects")![1], { note: "", severity: "mild", dizzy: false, hours: null, on: "2026-11-18", when: "", at: savedAt("2026-11-18T12:00") });
 });
 
 test("a value that doesn't fit its field refuses the whole action, naming the field", async () => {
@@ -115,7 +115,7 @@ test("a link names its app by path or name; none or several is said so", async (
   await t.bg.runUri({ app: "Vitamins", do: "took-meds" });
   assert.deepEqual(t.notices, ["Several apps are called “Meds”; use its path", "No app called “Vitamins”"]);
   await t.bg.runUri({ app: "Old/Meds.md", do: "took-meds" });
-  assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: savedAt("2026-11-18T12:00") }]);
   assert.equal(t.data("doses"), undefined);
 });
 
@@ -132,8 +132,8 @@ test("a shortcut reading $this runs with the app note as $this, as its panel doe
   await t.bg.runCommand("Apps/Walk.md:walked");
   await t.bg.runUri({ app: "Walk", do: "leg", km: "3" });
   const data = t.f.files.get("Apps/Walk data.md")?.fm;
-  assert.deepEqual(data?.walks, [{ city: "Oslo", at: "2026-11-18T12:00" }]);
-  assert.deepEqual(data?.legs, [{ km: 3, city: "Oslo", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(data?.walks, [{ city: "Oslo", at: savedAt("2026-11-18T12:00") }]);
+  assert.deepEqual(data?.legs, [{ km: 3, city: "Oslo", at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(t.notices, ["Walked in Oslo", "Walk: leg done"]);
   assert.deepEqual(t.out.apps, [], "nothing opened the app");
 });
@@ -162,7 +162,7 @@ test("each shortcut has the link that runs it, and copying one says how a form's
 
   await t.bg.runUri(paramsOf(links[1].link));
   await t.bg.runUri(paramsOf(`${links[0].link}&note=${encodeURIComponent("a bit sick")}&severity=mild`));
-  assert.deepEqual(t.data("doses"), [{ at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.data("doses"), [{ at: savedAt("2026-11-18T12:00") }]);
   assert.equal(t.data("effects")![0].note, "a bit sick");
 });
 
@@ -176,8 +176,8 @@ test("a shortcut's link names its app by path when another app has its name, and
   assert.equal(link("Apps/Med log.md"), `obsidian://gizmo?app=Med%20log&do=took-meds${key("Apps/Med log.md")}`);
   await t.bg.runUri(paramsOf(link("Old/Meds.md")));
   await t.bg.runUri(paramsOf(link("Apps/Med log.md")));
-  assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
-  assert.deepEqual(t.f.files.get("Apps/Med log data.md")?.fm?.doses, [{ at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Old/Meds data.md")?.fm?.doses, [{ at: savedAt("2026-11-18T12:00") }]);
+  assert.deepEqual(t.f.files.get("Apps/Med log data.md")?.fm?.doses, [{ at: savedAt("2026-11-18T12:00") }]);
   assert.equal(t.data("doses"), undefined);
 });
 
@@ -187,7 +187,7 @@ test("a link's own parameters (action, app, do) never fill a form's fields of th
   await t.bg.start();
   await t.bg.runUri({ action: "gizmo", app: "Jobs", do: "job", who: "me" });
   const jobs = t.f.files.get("Apps/Jobs data.md")?.fm?.jobs as Record<string, unknown>[];
-  assert.deepEqual(jobs, [{ do: "", app: "", action: "", who: "me", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(jobs, [{ do: "", app: "", action: "", who: "me", at: savedAt("2026-11-18T12:00") }]);
   const [link] = t.bg.shortcutLinks();
   assert.equal(linkNotice(link), "Copied the link to “job” in Jobs. Add &who=… to fill the form. A link can't fill do, app, action; rename those fields to fill them.");
 });
@@ -261,7 +261,7 @@ test("a link's key is the link's own, never a form field called key", async () =
   const [link] = t.bg.shortcutLinks();
   assert.equal(linkNotice(link), "Copied the link to “job” in Jobs. Add &who=… to fill the form. A link can't fill key; rename that field to fill it.");
   await t.bg.runUri({ ...paramsOf(link.link), who: "me" });
-  assert.deepEqual(t.f.files.get("Apps/Jobs data.md")?.fm?.jobs, [{ key: "", who: "me", at: "2026-11-18T12:00" }]);
+  assert.deepEqual(t.f.files.get("Apps/Jobs data.md")?.fm?.jobs, [{ key: "", who: "me", at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(t.out.asked, []);
 });
 

@@ -1,4 +1,5 @@
-import { dateWindow, getPath, periodStart, shiftPeriod, stampParts, toTime } from "./data.ts";
+import { getPath } from "./data.ts";
+import { dateWindow, periodStart, shiftPeriod, stampParts, toTime, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
 
 const DAY = 86_400_000;
@@ -56,7 +57,7 @@ export function splitByWindow(p: Pick<Panel, "where" | "compare">, data: unknown
   const windows = p.compare && Array.isArray(data) ? compareWindows(p.where, now) : undefined;
   if (!windows || !Array.isArray(data)) return { current: data };
   const within = ([from, to]: [number, number]) => (row: unknown) => {
-    const t = toTime(getPath(row, windows.field));
+    const t = wallTime(getPath(row, windows.field));
     return t !== undefined && t >= from && t < to;
   };
   return { current: data.filter(within(windows.current)), previous: data.filter(within(windows.previous)) };

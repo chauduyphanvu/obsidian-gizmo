@@ -1,4 +1,4 @@
-import { stampParts } from "./data.ts";
+import { stampParts } from "./time.ts";
 import type { PanelSpec } from "./spec.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */

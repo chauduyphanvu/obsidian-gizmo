@@ -1,5 +1,6 @@
 import { compareWindows, splitByWindow } from "../compare.ts";
-import { AGGS, daysUntil, fillWith, formatValue, rowsOf, toNumber, valueOf, type Row } from "../data.ts";
+import { AGGS, fillWith, formatValue, rowsOf, toNumber, valueOf, type Row } from "../data.ts";
+import { daysUntil } from "../time.ts";
 import { display, formatErrors, formatFor, mapped } from "../format.ts";
 import { streak } from "../group.ts";
 import type { Panel } from "../spec.ts";

@@ -3,10 +3,12 @@
  * - a rhythm: a row by a time each day, week or month (`every`, `by`), told when it's missed;
  * - a value rule: every row written must hold (`check`), or the write is refused;
  * - a state rule: no row may come to match (`none`), told when one does, as an alert is.
- * Periods are calendar days, Monday weeks and months in local time. A rhythm's window runs from
- * its period's start to the next period's start, and it is met by a row in it before the deadline.
+ * Periods are calendar days, Monday weeks and months, in local time or the zone given (the runner
+ * uses the zone of the device the person used last). A rhythm's window runs from its period's start
+ * to the next period's start, and it is met by a row in it before the deadline.
  */
-import { compileWhere, getPath, periodStart, shiftPeriod, toTime, type Row } from "./data.ts";
+import { compileWhere, getPath, type Row } from "./data.ts";
+import { calendarOf, dayIn, daysInMonth, minuteIn, periodStart, shiftPeriod, toTime } from "./time.ts";
 import type { Then } from "./spec.ts";
 
 export type Every = "day" | "week" | "month";
@@ -123,29 +125,33 @@ export interface Window {
   end: number;
 }
 
-function deadlineIn(start: number, rule: Rhythm): number {
-  const d = new Date(start);
-  const day = rule.every === "month"
-    ? Math.min(rule.by.day, new Date(d.getFullYear(), d.getMonth() + 1, 0).getDate() - 1)
-    : rule.every === "week" ? rule.by.day : 0;
+function deadlineIn(start: number, rule: Rhythm, zone?: string): number {
+  const cal = calendarOf(zone);
+  const { y, m, d } = cal.fields(start);
+  const day = rule.every === "month" ? Math.min(rule.by.day, daysInMonth(y, m) - 1) : rule.every === "week" ? rule.by.day : 0;
   // Counted in calendar days and clock time, so a clock change on the way doesn't move it.
-  return new Date(d.getFullYear(), d.getMonth(), d.getDate() + day, Math.floor(rule.by.minutes / 60), rule.by.minutes % 60).getTime();
+  return cal.at(y, m, d + day, Math.floor(rule.by.minutes / 60), rule.by.minutes % 60);
 }
 
-export function windowAt(t: number, rule: Rhythm): Window {
-  const start = periodStart(t, rule.every);
-  return { start, deadline: deadlineIn(start, rule), end: shiftPeriod(start, rule.every, 1) };
+export function windowAt(t: number, rule: Rhythm, zone?: string): Window {
+  const start = periodStart(t, rule.every, zone);
+  return { start, deadline: deadlineIn(start, rule, zone), end: shiftPeriod(start, rule.every, 1, zone) };
 }
 
 /** The windows whose deadline passed after `from` and by `to`, oldest first. */
-export function windowsDue(rule: Rhythm, from: number, to: number): Window[] {
+export function windowsDue(rule: Rhythm, from: number, to: number, zone?: string): Window[] {
   const out: Window[] = [];
-  let w = windowAt(from, rule);
+  let w = windowAt(from, rule, zone);
   for (let i = 0; i < 1000 && w.start <= to; i++) {
     if (w.deadline > from && w.deadline <= to) out.push(w);
-    w = windowAt(w.end, rule);
+    w = windowAt(w.end, rule, zone);
   }
   return out;
+}
+
+/** A window's date in the zone it was worked out in: what names it in `expect_missed`, the same on every device. */
+export function windowDay(w: Window, zone?: string): string {
+  return dayIn(w.start, zone);
 }
 
 /** Whether a row in the window (and matching the rule's where) came by its deadline; rows of later windows never count. */
@@ -172,28 +178,18 @@ export function refusal(rules: readonly Expectation[], list: string, row: Row, n
 }
 
 /** Each rhythm's windows from `from` to now, met or not, as rows: what `source: expect` reads. */
-export function expectRows(rules: readonly Expectation[], rowsOf: (list: string) => readonly unknown[], from: number, now: Date): Row[] {
+export function expectRows(rules: readonly Expectation[], rowsOf: (list: string) => readonly unknown[], from: number, now: Date, zone?: string): Row[] {
   const out: Row[] = [];
   for (const rule of rules) {
     if (rule.kind !== "rhythm") continue;
     const rows = rowsOf(rule.source);
-    let w = windowAt(from, rule);
+    let w = windowAt(from, rule, zone);
     for (let i = 0; i < 1000 && w.start <= now.getTime(); i++) {
       // The window still running counts once it's met or its deadline passed.
       const met = metIn(rows, rule, w, now);
-      if (met || w.deadline <= now.getTime()) out.push({ rule: rule.id, window: stampDay(w.start), at: stampDay(w.start), met, due: stampTime(w.deadline) });
-      w = windowAt(w.end, rule);
+      if (met || w.deadline <= now.getTime()) out.push({ rule: rule.id, window: windowDay(w, zone), at: windowDay(w, zone), met, due: minuteIn(w.deadline, zone) });
+      w = windowAt(w.end, rule, zone);
     }
   }
   return out;
-}
-
-const pad = (n: number) => String(n).padStart(2, "0");
-function stampDay(t: number): string {
-  const d = new Date(t);
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}`;
-}
-function stampTime(t: number): string {
-  const d = new Date(t);
-  return `${stampDay(t)}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }

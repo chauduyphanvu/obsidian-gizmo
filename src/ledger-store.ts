@@ -3,6 +3,7 @@ import { DEFINITION_KEYS } from "./store.ts";
 import { areRules } from "./expect.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import type { Row } from "./data.ts";
+import { toTime } from "./time.ts";
 import {
   Clock, Folder, baseIds, compareEvents, eventId, eventLine, eventsAt, fold, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp, undoneEvents,
   type Conflict, type FoldBase, type LedgerEvent, type Op,
@@ -538,8 +539,8 @@ function withDevices(base: FoldBase, devices: Record<string, unknown>[]): FoldBa
   const names = new Set([...Object.keys(base.lists), ...devices.flatMap((d) => Object.keys(listsOf(d).lists))]);
   for (const name of names) {
     const rows = [...(base.lists[name]?.rows ?? []), ...devices.flatMap((d) => listsOf(d).lists[name]?.rows ?? [])];
-    const savedAt = (r: Row) => (typeof r.at === "string" ? r.at : "");
-    const sorted = rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => savedAt(a).localeCompare(savedAt(b)) || i - j).map(([r]) => r);
+    const savedAt = (r: Row) => toTime(r.at) ?? 0;
+    const sorted = rows.map((r, i) => [r, i] as const).sort(([a, i], [b, j]) => savedAt(a) - savedAt(b) || i - j).map(([r]) => r);
     lists[name] = { rows: sorted, ids: baseIds(sorted) };
   }
   return { lists, ticked: base.ticked };

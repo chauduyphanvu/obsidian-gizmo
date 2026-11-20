@@ -1,6 +1,7 @@
 import { Ledger } from "./ledger-store.ts";
 import type { ResponseHistory } from "./responses.ts";
-import { parseBody, stampParts, type Row } from "./data.ts";
+import { parseBody, type Row } from "./data.ts";
+import { stampParts } from "./time.ts";
 import { fileDep, folderDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
 import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";

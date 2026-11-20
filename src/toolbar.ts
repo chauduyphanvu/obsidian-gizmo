@@ -1,4 +1,4 @@
-import { periodStart, shiftPeriod, stampParts } from "./data.ts";
+import { periodStart, shiftPeriod, stampParts } from "./time.ts";
 import type { InputDef, InputValue } from "./template.ts";
 
 /** A YYYY-MM-DD date n days away. */

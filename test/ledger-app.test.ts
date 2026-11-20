@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { Ledger, rowIdOf } from "../src/ledger-store.ts";
-import { fakeEnv, listsIn } from "./support/fakes.ts";
+import { fakeEnv, listsIn, savedAt } from "./support/fakes.ts";
 
 const APP = "Apps/Chores.md";
 const DATA = "Apps/Chores data.md";
@@ -47,7 +47,7 @@ test("a data note edited by hand shows a card; Import takes the edit in, as even
   await t.add("dishes");
   assert.equal(t.root.querySelector(".gz-hand-edit"), null);
   const fm = t.f.files.get(DATA)!.fm!;
-  fm.chores = [{ task: "bins", at: "2026-11-18T12:00" }, { task: "laundry", at: "2026-11-18T12:00" }];
+  fm.chores = [{ task: "bins", at: savedAt("2026-11-18T12:00") }, { task: "laundry", at: savedAt("2026-11-18T12:00") }];
   t.changed(DATA);
   await settle();
   assert.equal(text(t.root.querySelector(".gz-hand-edit .gz-title")), "Chores data was edited by hand");

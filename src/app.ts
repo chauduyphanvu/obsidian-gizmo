@@ -7,7 +7,8 @@ import { editWords, renderBlocked, renderEmpty, renderErrors, renderHandEdit, re
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./responses.ts";
-import { stampParts, type Row } from "./data.ts";
+import { type Row } from "./data.ts";
+import { stampParts } from "./time.ts";
 import type { AppFiles, DataLayer } from "./datalayer.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";

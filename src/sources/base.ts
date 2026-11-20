@@ -1,4 +1,5 @@
-import { toNumber, toTime } from "../data.ts";
+import { toNumber } from "../data.ts";
+import { toTime } from "../time.ts";
 import { nameDep, notesDep } from "../deps.ts";
 import type { SourceDef } from "./types.ts";
 
@@ -82,6 +83,9 @@ function order(v: unknown, lit: Literal): number | undefined {
   if (typeof lit.value === "boolean") return v === lit.value ? 0 : undefined;
   if (typeof v !== "string" && typeof v !== "number") return undefined;
   const s = String(v);
+  // Two dates written as text compare as times, so a stamp's offset counts.
+  const [ts, tl] = [toTime(s), toTime(lit.value)];
+  if (ts !== undefined && tl !== undefined && typeof v === "string") return Math.sign(ts - tl);
   return s === lit.value ? 0 : s < lit.value ? -1 : 1;
 }
 
