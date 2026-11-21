@@ -73,9 +73,9 @@ export default async function fresh(t) {
       const block = na.embeds(today)[0];
       const shown = { buttons: [...block.querySelectorAll("button")].map((b) => b.textContent), panels: block.querySelectorAll(".gz-panel").length, text: na.text(block) };
       const statusBefore = na.status();
-      const mark = na.notices.length;
       na.button("Took meds", block).click();
-      const notices = await na.noticesSince(mark, "Logged");
+      // Composed, the notify is said under the button, in place of a notice.
+      const notices = [await na.until(() => block.querySelector(".gz-notice-text")?.textContent, 3000)];
       await na.until(() => na.fm("Apps/Meds data.md")?.doses?.length === 1);
       await na.sleep(800);
       meds.detach();

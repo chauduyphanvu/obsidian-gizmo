@@ -83,14 +83,16 @@ export default async function sources(t) {
     const r = await run(`
       await na.open("Apps/Week");
       const el = na.view().contentEl;
-      const [agenda, , done] = el.querySelectorAll(".gz-panel");
-      const items = () => [...agenda.querySelectorAll("li")].map((li) => li.textContent);
+      // Composed, the panels are not in author order: take them by title.
+      const panel = (title) => [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title);
+      const agenda = panel("Next 7 days"), done = panel("Done this week");
+      const items = () => [...agenda.querySelectorAll("li:not(.gz-ledger-group)")].map((li) => li.textContent);
       const first = items();
       // Bins out is every Thursday except 26 November (EXDATE), so some weeks it has none to show.
       const today = new Date(); today.setHours(0, 0, 0, 0);
       const days = [...Array(7).keys()].map((i) => new Date(today.getFullYear(), today.getMonth(), today.getDate() + i));
       const binsDue = days.some((d) => d.getDay() === 4 && !(d.getFullYear() === 2026 && d.getMonth() === 10 && d.getDate() === 26));
-      const swim = [...agenda.querySelectorAll("li")].find((li) => li.textContent.includes("Swim practice"));
+      const swim = [...agenda.querySelectorAll("li:not(.gz-ledger-group)")].find((li) => li.textContent.includes("Swim practice"));
       const mark = na.notices.length;
       na.button("Done", swim).click();
       const notices = await na.noticesSince(mark, "Logged");
