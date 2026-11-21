@@ -1,6 +1,6 @@
 {
   "name": "gizmo",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "description": "Turn a note's frontmatter into a working app.",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -18,5 +18,6 @@
     "typescript": "^7.0.2",
     "yaml": "^2.9.1"
   },
-  "private": true
+  "private": true,
+  "license": "MIT"
 }

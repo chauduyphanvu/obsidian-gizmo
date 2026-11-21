@@ -115,9 +115,35 @@ Gizmo also adds board, calendar, timeline, chart and number views to Obsidian Ba
 
 A `Gizmo policy` note tells which notes are private and where their data can go. The activity log can undo each change, and **As of…** shows an app at a past time.
 
+## Network and files
+
+Gizmo makes no network requests of its own. It has no telemetry, no account and no update check. In Obsidian, it reads and writes only the notes of your vault and its own plugin folder.
+
+An app goes online only if its note names a web address: a `source`, a feed, an image in a cell, or a request that sends data. It does so only after you allow that app, and the permission card names each address. The automation map lists them all. These gallery apps use public services:
+
+| App | Service |
+| --- | --- |
+| Aurora watch | NOAA Space Weather Prediction Center |
+| Book finder | Open Library |
+| Read later | NPR and BBC news feeds |
+| Trip planner | Frankfurter (exchange rates) and Open-Meteo (weather) |
+| Watchlist | Yahoo Finance |
+
+**Install an app from a link or text** downloads the app from the address that you give, for example a GitHub Gist.
+
+### gizmod
+
+`gizmod` is optional, and it is not part of the plugin. It is a separate Node.js program in each release, and it runs only if you start it. It works outside Obsidian:
+
+- It reads and writes the vault folder on disk while Obsidian is closed.
+- It keeps its state in `~/.config/gizmod`.
+- `gizmod install` adds a launchd agent (macOS) that starts it at each login and writes a log to `~/Library/Logs`. `gizmod uninstall` removes the agent.
+- It answers HTTP on port 7468, on this computer and on its Tailscale address, so that a phone shortcut can run an app. A request without the key of that shortcut does nothing.
+- It sends alerts to your phone through [ntfy](https://ntfy.sh) only if you set `GIZMOD_NTFY_URL`.
+
 ## Install
 
-Gizmo 0.1.0 operates with Obsidian 1.11.4 or later, on desktop and on mobile.
+Gizmo 0.2.0 operates with Obsidian 1.11.4 or later, on desktop and on mobile.
 
 1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/chauduyphanvu/obsidian-gizmo/releases/latest).
 2. Put the three files in the folder `.obsidian/plugins/gizmo` of your vault.
