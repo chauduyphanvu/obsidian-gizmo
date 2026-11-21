@@ -68,10 +68,9 @@ export default async function display(t) {
       const el = na.view().contentEl;
       const week = () => el.querySelector(".gz-view-number");
       const before = { value: week().querySelector(".gz-big").textContent, compare: week().querySelector(".gz-compare")?.textContent, bars: ${LAST_WEEK_BARS} };
+      // Composed, the form is an add line: the number is the amount, the choice its category, the quoted text its note.
       const form = el.querySelector(".gz-view-form");
-      na.fill(form.querySelector('input[type="number"]'), "80");
-      na.choose(form.querySelector("select"), "food");
-      na.fill(form.querySelector('input[type="text"]'), "dinner out");
+      na.fill(form.querySelector(".gz-addline-input"), '80 food "dinner out"');
       na.button("Add", form).click();
       await na.until(() => week().querySelector(".gz-big").textContent !== before.value, 3000);
       await na.sleep(500);

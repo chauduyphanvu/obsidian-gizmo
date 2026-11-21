@@ -5,7 +5,6 @@
 /** In the page: the panel of the active app titled so. */
 const PANEL = `const panel = (title) => [...na.view().contentEl.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title);
 const tab = async (name) => { [...na.view().contentEl.querySelectorAll("button.gz-tab")].find((b) => b.textContent === name).click(); await na.sleep(400); };
-const field = (form, label) => [...form.querySelectorAll("label.gz-field")].find((l) => l.querySelector("span").textContent === label).querySelector("input, select, textarea");
 const day = (d) => d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");`;
 
 /** In the page: for each dropdown in an element, its longest choice's text width and the room it has for text. */
@@ -86,17 +85,16 @@ export default async function concise(t) {
   await check("the form writes a decision note: confidence a number, outcome open, made today", async () => {
     const r = await run(`
       ${PANEL}
-      const form = panel("A decision I'm making").querySelector("form");
-      const labels = [...form.querySelectorAll(".gz-field > span")].map((s) => s.textContent);
-      na.fill(field(form, "Decision"), "Walk to work in winter");
-      na.fill(field(form, "I expected"), "I keep it up through January");
-      na.choose(field(form, "% sure"), "70");
-      na.fill(field(form, "Due"), "2027-06-01");
-      const mark = na.notices.length;
+      const form = panel("A decision I'm making");
+      // Composed, the form is an add line: each quoted text fills the next text field, then the choice and the day.
+      na.fill(form.querySelector(".gz-addline-input"), '"Walk to work in winter" "I keep it up through January" 70 2027-06-01');
+      const labels = [...form.querySelectorAll(".gz-pv-label")].map((s) => s.textContent);
       na.button("Write it down", form).click();
       const path = "Decisions/Walk to work in winter.md";
       const fm = await na.until(() => na.fm(path)?.made && na.fm(path), 5000);
-      return { labels, fm, today: day(new Date()), notices: await na.noticesSince(mark, "Written down") };`);
+      // Its notify is said under the line, in place of a notice.
+      const notices = [await na.until(() => form.querySelector(".gz-notice-text")?.textContent, 3000)];
+      return { labels, fm, today: day(new Date()), notices };`);
     expect(r.labels.join("|") === "Decision|I expected|% sure|Due", r);
     expect(r.fm && r.fm.confidence === 70 && r.fm.outcome === "open" && r.fm.made === r.today && r.fm.review === "2027-06-01" && r.fm.expect === "I keep it up through January", r);
     expect(r.notices.includes("Written down. Come back on 2027-06-01 to score it."), r);

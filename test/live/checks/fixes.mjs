@@ -145,8 +145,9 @@ export default async function fixes(t) {
       await na.write("Scratch/Jotter.md", ${JSON.stringify(JOTTER)});
       await na.sleep(500);
       await na.open("Scratch/Jotter");
-      const form = na.view().contentEl.querySelector(".gz-form");
-      na.fill(form.querySelector("input"), "---");
+      // Composed, the form is an add line: the whole line is the text.
+      const form = na.view().contentEl.querySelector("form.gz-addline");
+      na.fill(form.querySelector(".gz-addline-input"), "---");
       na.button("Jot", form).click();
       const text = await na.until(() => na.read("Scratch/Jottings.md"), 3000);
       await na.sleep(500);
