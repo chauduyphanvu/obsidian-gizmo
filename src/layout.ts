@@ -86,3 +86,15 @@ export function isNarrow(appWidth: number): boolean {
 export function composedWidth(appWidth: number, pad = isNarrow(appWidth) ? NARROW_PAD : COLUMN_PAD, max = COLUMN_MAX): number {
   return Math.min(appWidth || COLUMN_MAX, max) - pad;
 }
+
+/**
+ * The side sheet of an app in its own tab, kept in step with styles.css (`.gz-sheet`): 380 px wide
+ * less its 1 px border, with 24 px padding each side; once the app is narrow, a bottom sheet as wide
+ * as the app. A panel in it is drawn at the width inside that padding.
+ */
+export const SHEET_MAX = 380, SHEET_PAD = 48;
+
+/** The drawing width of a panel in the side sheet of an app this wide; not laid out yet (0) is wide. */
+export function sheetWidth(appWidth: number): number {
+  return isNarrow(appWidth) ? appWidth - SHEET_PAD : SHEET_MAX - 1 - SHEET_PAD;
+}

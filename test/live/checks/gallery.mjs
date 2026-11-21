@@ -78,7 +78,7 @@ export default async function gallery(t) {
     return `${r.before.status} → ${r.after}`;
   });
 
-  await check("Project board: Move to… moves a card; picking it shows its dates under the board and Open opens its note", async () => {
+  await check("Project board: Move to… moves a card; picking it shows its dates in the sheet and Open opens its note", async () => {
     const r = await run(`
       await na.open("Apps/Project board");
       const el = na.view().contentEl;
@@ -95,20 +95,20 @@ export default async function gallery(t) {
       await na.sleep(300);
       const line = card().querySelector(".gz-board-text").getBoundingClientRect();
       const title = card().querySelector(".gz-board-text a").getBoundingClientRect();
-      return { from, to, status: na.fm("Projects/Tax return.md")?.status, neighbours, at: [Math.min(title.right + 8, line.right - 2), line.top + line.height / 2], waiting: !board.querySelector(".gz-detail") };`);
+      return { from, to, status: na.fm("Projects/Tax return.md")?.status, neighbours, at: [Math.min(title.right + 8, line.right - 2), line.top + line.height / 2], waiting: !board.querySelector(".gz-detail") && !el.querySelector(".gz-sheet.is-open") };`);
     expect(r.status === r.to && r.waiting, r);
     // A real click on the card, beside its title (the title itself is a link to the note).
     await t.click(r.at);
     const after = await run(`
-      const board = (${PANEL})("Projects");
-      const detail = await na.until(() => board.querySelector(".gz-detail"), 3000);
-      const picked = detail?.querySelector(".gz-detail-text")?.textContent;
-      const link = detail?.querySelector("a");
+      const sheet = await na.until(() => na.view().contentEl.querySelector(".gz-sheet.is-open"), 3000);
+      const picked = sheet?.querySelector(".gz-sheet-line")?.textContent;
+      const inline = !!(${PANEL})("Projects").querySelector(".gz-detail");
+      const link = sheet?.querySelector(".gz-sheet-actions a");
       const label = link?.textContent;
       link?.click();
       await na.sleep(1000);
-      return { picked, label, state: na.state() };`);
-    expect(after.picked?.startsWith(`Tax return is ${r.to}, due `) && after.label === "Open" && after.state === "markdown:Projects/Tax return.md", { ...r, ...after });
+      return { picked, inline, label, state: na.state() };`);
+    expect(after.picked?.startsWith(`Tax return is ${r.to}, due `) && !after.inline && after.label === "Open" && after.state === "markdown:Projects/Tax return.md", { ...r, ...after });
     return `${r.from} → ${r.to} (${r.neighbours} in that column); ${after.picked}; opened ${after.state}`;
   });
 

@@ -157,7 +157,7 @@ export const board: ViewDef = {
           if (picked !== "") void move(card, row, others[Number(picked)]);
         });
         // A moved card comes back as a new row; a selection of it takes the new values.
-        selectable(card, own, ctx, row, text)(row);
+        selectable(card, own, ctx, row, text, true)(row);
         if (key !== undefined && String(key) === refocus) moveTo.focus();
       };
       for (const column of columns) {

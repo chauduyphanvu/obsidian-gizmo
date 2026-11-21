@@ -89,8 +89,8 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
       cls: [kind, ...(end !== undefined && end < today ? ["gz-tl-done"] : []), ...(start >= tomorrow ? ["gz-tl-future"] : [])],
       attr: { style: end === undefined ? left(start) : `${left(start)}; width: ${(((end - start) / (to - from)) * 100).toFixed(3)}%`, title: detail, tabindex: 0 },
     });
-    if (picks(p)) {
-      selectable(mark, p, ctx, row, detail);
+    if (picks(p, ctx, true)) {
+      selectable(mark, p, ctx, row, detail, true);
     } else {
       mark.setAttribute("role", "img");
       mark.setAttribute("aria-label", detail);

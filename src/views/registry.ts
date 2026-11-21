@@ -18,6 +18,19 @@ export interface TimerState {
   endsAt?: number;
 }
 
+/** What a pick shows in the app's side sheet: the row, the element picked, and how to take the pick back. */
+export interface SheetPick {
+  row: Row;
+  /** The element picked, which gets the focus back when the sheet closes. */
+  el: Element;
+  /** What the element says it is, when the view gave it a label. */
+  label?: string;
+  /** A record (a table row, list item, card or timeline mark), whose fields the sheet shows; not a day, bar, slice or dot. */
+  record: boolean;
+  /** Takes the pick back, as picking the element again would. */
+  clear(): void;
+}
+
 /** What a mounted panel may ask of the app around it. */
 export interface PanelCtx {
   now: Date;
@@ -38,6 +51,12 @@ export interface PanelCtx {
   /** Sets the selection `name` (a panel's `select`) to a row, or clears it; panels reading it follow. */
   select(name: string, row: Row | undefined): void;
   selected(name: string): Row | undefined;
+  /**
+   * In an app's own tab, shows what was picked in this panel in the side sheet beside the app, or
+   * closes the sheet (undefined); `redrawn`: the panel was drawn again, and this is its pick as it
+   * shows it now. Absent elsewhere (the grid, embeds, lenses), where a pick stays in its panel.
+   */
+  open?(pick: SheetPick | undefined, redrawn?: boolean): void;
   /**
    * Writes one field of a row this panel shows back where the row came from: the note's
    * frontmatter (a notes row), or its place in the saved list. Problems are notified, not thrown;

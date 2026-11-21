@@ -1,4 +1,4 @@
-import { FileView, Scope, type Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { FileView, Scope, setIcon, type Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { eventsOf, undoneIn } from "./activity.ts";
 import { AppController } from "./app.ts";
 import { EditSession } from "./backtest.ts";
@@ -47,8 +47,11 @@ export class AppView extends FileView {
     this.scope = new Scope(this.app.scope);
     this.scope.register([], "[", (evt) => this.railKey(evt, -1));
     this.scope.register([], "]", (evt) => this.railKey(evt, 1));
+    // Escape closes an open side sheet first, and only then goes back to now.
     this.scope.register([], "Escape", (evt) => {
-      if (typing(evt) || !this.rail.el.isConnected || !this.rail.past) return true;
+      if (typing(evt)) return true;
+      if (this.controller?.closeSheet()) return false;
+      if (!this.rail.el.isConnected || !this.rail.past) return true;
       this.rail.back();
       return false;
     });
@@ -169,6 +172,7 @@ export class AppView extends FileView {
     const env = this.past === undefined ? live : pastEnv(live, this.past, () => this.showAt(undefined));
     this.shownPast = this.past;
     this.controller = new AppController(this.contentEl, file.path, env);
+    this.controller.openInPlace(setIcon);
     this.controller.load();
     this.controller.railSlot()?.appendChild(this.rail.el);
     this.rail.sync(this.past);
