@@ -103,7 +103,7 @@ export interface RunResult {
 
 export interface PanelHandle {
   update(data: unknown): void;
-  resize?(width: number): void;
+  resize?: (width: number) => void;
   destroy?(): void;
 }
 

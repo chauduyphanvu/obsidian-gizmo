@@ -81,13 +81,13 @@ export class Recorder {
 
 /** When a list's last row was saved, from its `at`. */
 function lastSample(list: unknown): number | undefined {
-  const last = Array.isArray(list) ? list[list.length - 1] : undefined;
+  const last: unknown = Array.isArray(list) ? list[list.length - 1] : undefined;
   return last !== null && typeof last === "object" ? toTime((last as Row).at) : undefined;
 }
 
 /** A block's output as one row: an object, or a list holding exactly one. */
 function oneRow(data: unknown): Row | undefined {
-  const row = Array.isArray(data) ? (data.length === 1 ? data[0] : undefined) : data;
+  const row: unknown = Array.isArray(data) ? (data.length === 1 ? data[0] : undefined) : data;
   return row !== null && typeof row === "object" && !Array.isArray(row) ? { ...(row as Row) } : undefined;
 }
 

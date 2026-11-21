@@ -50,7 +50,7 @@ interface Element {
 }
 
 /** Every element of these names in order, none inside another found before it; `lower` is `text` in lower case. */
-function* elements(text: string, lower: string, names: string[]): Generator<Element> {
+function* elements(text: string, lower: string, names: string[]): Generator<Element, void> {
   /** Names with no end after some start: no later start of them can end either. */
   const unended = new Set<string>();
   for (let at = lower.indexOf("<"); at !== -1; at = lower.indexOf("<", at + 1)) {

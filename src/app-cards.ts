@@ -1,3 +1,4 @@
+import { handler } from "./handler.ts";
 import type { AppEnv } from "./app.ts";
 import type { Op } from "./ledger.ts";
 import { describePermission } from "./permissions.ts";
@@ -36,10 +37,10 @@ export function renderPermissionPrompt(header: HTMLElement, wanted: string[], as
   if (covered) card.createDiv({ cls: "gz-label gz-covered", text: `Your data policy covers ${covered} more.` });
   if (app.scope) card.createDiv({ cls: "gz-label gz-scope", text: `It shows on every note in ${app.scope}; this OK covers all of them.` });
   const row = card.createDiv({ cls: "gz-actions" });
-  row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", async () => {
+  row.createEl("button", { cls: "mod-cta", text: "Allow" }).addEventListener("click", handler(async () => {
     await app.env.grant(app.grantKey, wanted);
     app.load();
-  });
+  }));
   // In an embed or a lens `$this` is a real note, which a try must not read; there it isn't offered.
   if (!app.hosted && app.env.tryFirst) row.createEl("button", { text: "Try it first" }).addEventListener("click", () => app.env.tryFirst?.());
   // An embed's keys are in the note it is drawn in, and a lens's in its component.
@@ -66,7 +67,7 @@ export function renderBlocked(header: HTMLElement, violations: string[], pending
  * The data note was edited by hand since the app last wrote it: the app shows what its log holds,
  * and nothing in the note is taken in until the person says so.
  */
-export function renderHandEdit(header: HTMLElement, note: string, changes: string[], act: { import(): Promise<void>; discard(): Promise<void> }): HTMLElement {
+export function renderHandEdit(header: HTMLElement, note: string, changes: string[], act: { import: () => Promise<void>; discard: () => Promise<void> }): HTMLElement {
   const card = header.createDiv({ cls: "gz-card gz-hand-edit" });
   card.createDiv({ cls: "gz-title", text: `${note} was edited by hand` });
   card.createDiv({ cls: "gz-muted", text: "The app shows its data as it keeps it, not as the note says now. The note differs by:" });
@@ -75,10 +76,10 @@ export function renderHandEdit(header: HTMLElement, note: string, changes: strin
   const row = card.createDiv({ cls: "gz-actions" });
   const button = (text: string, cta: boolean, run: () => Promise<void>) => {
     const b = row.createEl("button", { text, ...(cta && { cls: "mod-cta" }) });
-    b.addEventListener("click", async () => {
-      for (const x of row.querySelectorAll("button")) (x as HTMLButtonElement).disabled = true;
+    b.addEventListener("click", handler(async () => {
+      for (const x of row.querySelectorAll("button")) x.disabled = true;
       await run();
-    });
+    }));
   };
   button("Import the edit", true, act.import);
   button("Discard it", false, act.discard);
@@ -148,7 +149,7 @@ export function renderUsage(header: HTMLElement, c: ComponentPreview, app: CardA
   copy.addEventListener("click", () => {
     app.env.copy(c.usage);
     copy.setText("Copied");
-    setTimeout(() => copy.setText("Copy"), 1000);
+    window.setTimeout(() => copy.setText("Copy"), 1000);
   });
   if (c.lens) card.createDiv({ cls: "gz-label", text: `It is also a lens: it shows above every note in ${c.lens}.` });
   else if (c.missing.length) card.createDiv({ cls: "gz-label", text: "Give every param a default to preview it here." });

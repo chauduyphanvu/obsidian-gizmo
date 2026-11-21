@@ -1,4 +1,5 @@
 import { Modal, parseYaml, type TFile } from "obsidian";
+import { handler } from "./handler.ts";
 import { AppController } from "./app.ts";
 import { frontmatterOf, type BundleNote } from "./bundle.ts";
 import { copyText, vaultNotes } from "./host.ts";
@@ -86,10 +87,10 @@ class TryModal extends Modal {
     row.createEl("button", { text: "Close" }).addEventListener("click", () => this.close());
     if (this.done) {
       const { label, run } = this.done;
-      row.createEl("button", { cls: "mod-cta", text: label }).addEventListener("click", async () => {
+      row.createEl("button", { cls: "mod-cta", text: label }).addEventListener("click", handler(async () => {
         this.close();
         await run();
-      });
+      }));
     }
     this.controller = new AppController(body, this.appPath, box.env);
     this.controller.load();

@@ -216,7 +216,7 @@ function drawNumber(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, 
   const { current, previous } = splitByWindow(p, data, now);
   const { value, text, unit } = panelValue(p, current, now);
   const windows = previous && compareWindows(p.where, now);
-  const change = windows ? changeOf(p, now, value, previous!, windows, slot === "fact") : undefined;
+  const change = windows ? changeOf(p, now, value, previous, windows, slot === "fact") : undefined;
   // A fact has one line under its figure: the change when there is one, else the label.
   const fig = drawFigure(el, slot, text, unit, slot === "fact" && change ? undefined : p.label);
   if (change) drawChangeLine(el, change, slot === "fact" ? "gz-fact-note" : "gz-ans-sub");

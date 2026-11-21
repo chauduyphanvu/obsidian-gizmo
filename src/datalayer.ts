@@ -3,7 +3,7 @@ import type { ResponseHistory } from "./responses.ts";
 import { SnapshotWriter, type Snapshots } from "./snapshots.ts";
 import { parseBody, type Row } from "./data.ts";
 import { stampParts } from "./time.ts";
-import { fileDep, folderDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
+import { fileDep, nameDep, notesDep, scopeOfDep, urlDep } from "./deps.ts";
 import { compilePipeline } from "./pipeline.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { LoadOpts } from "./sources/types.ts";
@@ -38,13 +38,13 @@ export interface Host {
   /** Web responses as they came, kept on this device: the newest for a restart or no network, and the past for replay. */
   responses?: Pick<ResponseHistory, "latest" | "record" | "at" | "times" | "changed">;
   /** The files directly in a folder, of any kind: with append and writeFile, what an app's ledger is kept in. */
-  filesIn?(folder: string): string[];
+  filesIn?: (folder: string) => string[];
   /** Adds text at the end of a file, making it and its folders when there's none. */
-  append?(path: string, text: string): Promise<void>;
+  append?: (path: string, text: string) => Promise<void>;
   /** Writes a whole file, making it and its folders when there's none. */
-  writeFile?(path: string, text: string): Promise<void>;
+  writeFile?: (path: string, text: string) => Promise<void>;
   /** A file's size in bytes, known without reading it: a log a checkpoint holds all of is then left unread. */
-  fileSize?(path: string): number | undefined;
+  fileSize?: (path: string) => number | undefined;
   /** This device's id, which its ledger files are named for. */
   device?(): string;
 }
@@ -263,7 +263,7 @@ export class DataLayer {
   private post(body: string | Record<string, unknown>, headers: Record<string, string>): { method: string; body: string } {
     if (typeof body === "string") return { method: "POST", body: this.withSecrets(body) };
     if (!Object.keys(headers).some((k) => k.toLowerCase() === "content-type")) headers["content-type"] = "application/json";
-    return { method: "POST", body: JSON.stringify(body, (_, v) => (typeof v === "string" ? this.withSecrets(v) : v)) };
+    return { method: "POST", body: JSON.stringify(body, (_, v: unknown) => (typeof v === "string" ? this.withSecrets(v) : v)) };
   }
 
   /** What a request answered at a past time, as kept; never the network. */
@@ -362,7 +362,7 @@ export class DataLayer {
    */
   parseNote<T>(path: string, parse: (text: string) => T): Promise<T> {
     let byParse = this.parsed.get(path);
-    if (!byParse) this.parsed.set(path, (byParse = new Map()));
+    if (!byParse) this.parsed.set(path, (byParse = new Map<unknown, Promise<unknown>>()));
     const hit = byParse.get(parse) as Promise<T> | undefined;
     if (hit) return hit;
     const promise = this.host.readFile(path).then(parse);

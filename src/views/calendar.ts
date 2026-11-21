@@ -78,7 +78,7 @@ function arrowKeys(root: Element, across: number, down: number): void {
     const from = (e.target as Element).closest?.("[data-date]")?.getAttribute("data-date");
     if (!from || !(key in KEYS)) return;
     const horizontal = key === "ArrowLeft" || key === "ArrowRight";
-    const next = root.querySelector(`[data-date="${shiftDay(from, KEYS[key] * (horizontal ? across : down))}"]`) as HTMLElement | null;
+    const next = root.querySelector<HTMLElement>(`[data-date="${shiftDay(from, KEYS[key] * (horizontal ? across : down))}"]`);
     if (!next) return;
     e.preventDefault();
     next.focus();

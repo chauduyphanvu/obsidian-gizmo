@@ -1,3 +1,5 @@
+import { textOf } from "./text.ts";
+import { handler } from "./handler.ts";
 import { PolicyModal } from "./policy-command.ts";
 import { ItemView, MarkdownView, Modal, Notice, parseYaml, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { dryLines } from "./background-shortcuts.ts";
@@ -128,10 +130,10 @@ export class MapView extends ItemView {
       const card = el.createDiv({ cls: "gz-card gz-map-app" });
       const head = card.createDiv({ cls: "gz-map-app-head" });
       head.createSpan({ cls: "gz-title", text: `Key ${key.slice(0, 4)}…` });
-      head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", async () => {
+      head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", handler(async () => {
         await this.plugin.revokeCaptureKey(key);
         new Notice("That capture link's lines now ask before they run");
-      });
+      }));
       card.createDiv({ cls: "gz-muted", text: names.length ? `Runs without asking: ${names.join(", ")}` : "Every line it sends asks first" });
     }
   }
@@ -193,10 +195,10 @@ export class MapView extends ItemView {
     const actions = head.createDiv({ cls: "gz-map-actions" });
     actions.createEl("button", { text: "Activity" }).addEventListener("click", () => openActivity(this.plugin, a.path));
     if (a.state !== "not-opened") {
-      actions.createEl("button", { text: "Revoke" }).addEventListener("click", async () => {
+      actions.createEl("button", { text: "Revoke" }).addEventListener("click", handler(async () => {
         await this.plugin.revoke(a.path);
         new Notice(`${a.name} is stopped; open it to allow it again`);
-      });
+      }));
     }
     if (a.description) card.createDiv({ cls: "gz-muted gz-map-desc", text: a.description });
     if (a.policy?.violations.length) {
@@ -224,10 +226,10 @@ export class MapView extends ItemView {
         const link = this.plugin.background?.shortcutLinks().find((l) => l.path === a.path && l.shortcut === s.id);
         if (link) copyShortcutLink(link);
       });
-      row.createEl("button", { text: "New link key" }).addEventListener("click", async () => {
+      row.createEl("button", { text: "New link key" }).addEventListener("click", handler(async () => {
         await this.plugin.resetLinkKey(a.path, s.id);
         new Notice(`Links to “${s.label}” copied before now ask before they run`);
-      });
+      }));
     }
     for (const line of a.acts) ul.createEl("li", { text: line });
     for (const r of a.runBy) {
@@ -273,7 +275,7 @@ export class MapView extends ItemView {
       actions.createEl("button", { text: "Remove" }).addEventListener("click", () => void this.plugin.revoke(embed.key));
       return;
     }
-    let what = "";
+    let what: string;
     try {
       const block = parseHosted(parseYaml(source));
       what = "kind" in block && block.kind === "app" ? `Shows [[${block.link}]]` : "Runs its own keys";
@@ -350,7 +352,7 @@ class DryRunModal extends Modal {
         const label = form.createEl("label", { cls: "gz-input" });
         label.createSpan({ cls: "gz-input-name", text: field });
         const value = start.row[field];
-        if (value !== null && value !== undefined) this.values[field] = String(value);
+        if (value !== null && value !== undefined) this.values[field] = textOf(value);
         if (Array.isArray(type)) {
           const select = label.createEl("select", { cls: "dropdown" });
           for (const option of type) select.createEl("option", { text: String(option), value: String(option) });

@@ -1,3 +1,5 @@
+import { textOf } from "../text.ts";
+import { handler } from "../handler.ts";
 import { fillWith, type Row } from "../data.ts";
 import { display } from "../format.ts";
 import { ACTION_KEYS } from "../keys.ts";
@@ -60,10 +62,10 @@ export function noteLink(el: HTMLElement, text: string, path: string, ctx: Panel
 
 /** Disables the button while its work runs, so a double click doesn't save twice. */
 export function busy(button: HTMLButtonElement, work: () => Promise<unknown>): void {
-  button.addEventListener("click", async () => {
+  button.addEventListener("click", handler(async () => {
     button.disabled = true;
     try { await work(); } finally { button.disabled = false; }
-  });
+  }));
 }
 
 /** Rows drawn at first; the rest wait behind a "Show all" button so big queries stay cheap. */
@@ -370,7 +372,7 @@ export function fieldControl(
   });
   return (v) => {
     if (input.ownerDocument.activeElement === input || input.value !== saved) return;
-    saved = v === undefined || v === null ? "" : String(v);
+    saved = v === undefined || v === null ? "" : textOf(v);
     input.value = saved;
   };
 }

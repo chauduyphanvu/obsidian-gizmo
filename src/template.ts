@@ -384,7 +384,8 @@ export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>,
         out.push(text(t));
       }
     }
-    if (!out.some((p) => p instanceof InputRef)) return out.join("");
+    const texts = out.filter((p): p is string => !(p instanceof InputRef));
+    if (texts.length === out.length) return texts.join("");
     const merged: (string | InputRef)[] = [];
     for (const p of out) {
       const last = merged[merged.length - 1];

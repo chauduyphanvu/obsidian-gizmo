@@ -12,7 +12,8 @@ import { fakeEnv, listsIn } from "./support/fakes.ts";
 
 // Thursday 19 November 2026, 10:00.
 const NOW = new Date(2026, 10, 19, 10, 0);
-const MAC = /mac|iphone|ipad/i.test(navigator.platform ?? "");
+/** Obsidian marks its body `mod-macos` on a Mac and on iOS, where Undo is ⌘Z. */
+const mac = () => document.body.classList.contains("mod-macos");
 const settle = async () => { for (let i = 0; i < 6; i++) await new Promise((r) => setTimeout(r, 10)); };
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
 const click = (el: Element) => el.dispatchEvent(new window.Event("click", { bubbles: true, cancelable: true }));
@@ -22,7 +23,7 @@ const press = (key: string, mods: { meta?: boolean; ctrl?: boolean } = {}) => {
   document.dispatchEvent(e);
   return e.defaultPrevented;
 };
-const undoKey = () => press("z", MAC ? { meta: true } : { ctrl: true });
+const undoKey = () => press("z", mac() ? { meta: true } : { ctrl: true });
 /** linkedom reads a select's value from its selected option only, so pick one as a person would. */
 const choose = (select: Element, label: string) => {
   for (const o of select.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === label);
@@ -218,7 +219,7 @@ test("Enter saves the row typed as the form types it, clears the line, and says 
   assert.ok(notice.querySelector("svg"), "a check");
   assert.equal(said(el), "Added $2.90 to spend");
   assert.equal(text(notice.querySelector("button.gz-undo")), "Undo");
-  assert.equal(text(notice.querySelector("kbd")), MAC ? "⌘Z" : "Ctrl Z");
+  assert.equal(text(notice.querySelector("kbd")), "Ctrl Z", "off a Mac");
   // Typing again shows the preview; an empty line brings back what was said.
   typeLine(el, "3");
   assert.equal(el.querySelector(".gz-notice"), null);
@@ -297,11 +298,16 @@ test("Escape clears the line and leaves it", () => {
   assert.equal(el.querySelector(".gz-chip.is-on"), null, "the chip picked is let go too");
 });
 
-test("⌘Z (Ctrl Z) takes the latest Undo while nothing editable has focus, only in the active app's own tab", async () => {
+test("⌘Z (Ctrl Z) takes the latest Undo while nothing editable has focus, only in the active app's own tab", async (t) => {
+  // On a Mac (or iOS): ⌘Z, and the notice says so; Ctrl Z does nothing there.
+  document.body.classList.add("mod-macos");
+  t.after(() => document.body.classList.remove("mod-macos"));
   const { ctx, undone } = fakeCtx();
   const { el } = mount(SPEND, ctx);
   addLine(el, "4 coffee");
   await settle();
+  assert.equal(text(el.querySelector(".gz-notice kbd")), "⌘Z");
+  assert.equal(press("z", { ctrl: true }), false);
   const input = lineIn(el);
   input.focus();
   assert.equal(undoKey(), false, "the line's own undo while it has focus");

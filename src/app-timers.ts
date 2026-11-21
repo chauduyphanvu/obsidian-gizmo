@@ -19,7 +19,7 @@ export interface TimerSite {
 export class Timers {
   private states: Map<string, TimerState>;
   private site: TimerSite;
-  private tickHandle: ReturnType<typeof setInterval> | undefined;
+  private tickHandle: number | undefined;
 
   constructor(states: Map<string, TimerState>, site: TimerSite) {
     this.states = states;
@@ -58,12 +58,12 @@ export class Timers {
   }
 
   stop(): void {
-    if (this.tickHandle) clearInterval(this.tickHandle);
+    if (this.tickHandle) window.clearInterval(this.tickHandle);
     this.tickHandle = undefined;
   }
 
   private startTicking(): void {
-    this.tickHandle ??= setInterval(() => this.tick(), 1000);
+    this.tickHandle ??= window.setInterval(() => this.tick(), 1000);
   }
 
   private tick(): void {

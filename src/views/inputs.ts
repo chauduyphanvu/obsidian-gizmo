@@ -1,3 +1,5 @@
+import { textOf } from "../text.ts";
+import { handler } from "../handler.ts";
 import { type Row } from "../data.ts";
 import { stampParts } from "../time.ts";
 import type { Panel } from "../spec.ts";
@@ -167,22 +169,22 @@ function fieldsForm(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: (() => voi
       }
     } else if (type === "textarea") {
       input = label.createEl("textarea");
-      if (start !== undefined) input.textContent = String(start);
+      if (start !== undefined) input.textContent = textOf(start);
     } else {
       input = label.createEl("input", { type: type === "number" ? "number" : type });
       if (type === "number") input.setAttr("step", "any");
       if (type === "checkbox") {
         if (start === true) input.setAttr("checked", "");
       } else if (start !== undefined) {
-        input.setAttr("value", String(start));
-        input.value = String(start);
+        input.setAttr("value", textOf(start));
+        input.value = textOf(start);
       }
     }
     inputs.push([name, type, input]);
   }
   const submit = f.createEl("button", { cls: "mod-cta", text: p.label ?? "Save", type: "submit" });
   const said = other !== undefined ? underFields(el, p, ctx, other ?? undefined) : undefined;
-  f.addEventListener("submit", async (e) => {
+  f.addEventListener("submit", handler(async (e) => {
     e.preventDefault();
     const row: Row = {};
     for (const [name, type, input] of inputs) {
@@ -205,7 +207,7 @@ function fieldsForm(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: (() => voi
     } finally {
       submit.disabled = false;
     }
-  });
+  }));
   return { update() {}, destroy: () => said?.destroy() };
 }
 

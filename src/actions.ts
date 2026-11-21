@@ -1,3 +1,4 @@
+import { textOf } from "./text.ts";
 import { refusal, type Expectation } from "./expect.ts";
 import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, type Row } from "./data.ts";
@@ -155,7 +156,7 @@ export function fillRow(templates: Record<string, string | number | boolean>, ct
   }));
 }
 
-const filled = (v: unknown) => v !== undefined && v !== null && String(v).trim() !== "";
+const filled = (v: unknown) => v !== undefined && v !== null && textOf(v).trim() !== "";
 
 /** The schema's fields with a `default` that a form doesn't show, each with its value now: saved beside the form's own. */
 function defaultsBeyond(p: Panel, now: Date): Row {
@@ -172,7 +173,7 @@ function defaultsBeyond(p: Panel, now: Date): Row {
  */
 async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps, changes: Change[]): Promise<string | undefined> {
   const template = p.name ?? (filled(ctx.name) ? "{name}" : filled(ctx.title) ? "{title}" : "");
-  const name = fileName(template ? fillLine(template, ctx) : "") || `${ctx.date} ${String(ctx.time).replace(":", ".")}`;
+  const name = fileName(template ? fillLine(template, ctx) : "") || `${textOf(ctx.date)} ${textOf(ctx.time).replace(":", ".")}`;
   // A row's name that only names the file isn't kept as a property too; nor is anything that would make the note run.
   const frontmatter = withoutDefinition(template === "{name}" ? Object.fromEntries(Object.entries(saved).filter(([k]) => k !== "name")) : saved);
   const body = p.template ? fillBody(await deps.readBody(p.template), ctx) : "";

@@ -1,0 +1,12 @@
+{
+  "name": "gizmo-lint",
+  "private": true,
+  "type": "module",
+  "description": "Obsidian's own lint rules, as the community directory's review applies them; `npm install` here once, then `npm run lint` at the repo root. Kept apart because typescript-eslint can't run on the TypeScript 7 the build uses.",
+  "devDependencies": {
+    "eslint": "^10.15.0",
+    "eslint-plugin-obsidianmd": "^0.6.0",
+    "typescript": "^6.0.3",
+    "typescript-eslint": "^8.73.0"
+  }
+}

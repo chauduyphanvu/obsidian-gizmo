@@ -1,3 +1,4 @@
+import { handler } from "./handler.ts";
 import { openAppAt } from "./past-views.ts";
 import { Modal, Notice } from "obsidian";
 import { describeActor, describeChange, describeSent, doneAt, eventsOf, undoMessage, undoneIn, type Entry } from "./activity.ts";
@@ -94,12 +95,12 @@ class ActivityModal extends Modal {
       return;
     }
     const button = head.createEl("button", { cls: "gz-activity-undo", text: entry.undone ? "Undo the rest" : "Undo" });
-    button.addEventListener("click", async () => {
+    button.addEventListener("click", handler(async () => {
       button.disabled = true;
       const result = await this.plugin.undo(entry);
       new Notice(undoMessage(result));
       await this.render();
-    });
+    }));
   }
 }
 

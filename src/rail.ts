@@ -172,15 +172,14 @@ export class TimeRail {
   private at: number | undefined;
   private hover: Tick | undefined;
   private dragging = false;
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private timer: number | undefined;
   private metaFor = "";
   private show: (at: number | undefined) => void;
 
   constructor(show: (at: number | undefined) => void, now = Date.now()) {
     this.show = show;
     this.model = railModel([], now);
-    this.el = document.createElement("div");
-    this.el.className = "gz-rail";
+    this.el = createDiv({ cls: "gz-rail" });
     const top = this.el.createDiv({ cls: "gz-rail-top" });
     this.label = top.createSpan({ cls: "gz-rail-label" });
     this.meta = top.createSpan({ cls: "gz-rail-meta" });
@@ -218,7 +217,7 @@ export class TimeRail {
     this.at = step(this.model, this.at, dir);
     this.paint();
     this.cancel();
-    this.timer = setTimeout(() => this.commit(), STEP_MS);
+    this.timer = window.setTimeout(() => this.commit(), STEP_MS);
   }
 
   /** Shows the app as it is now. */
@@ -237,7 +236,7 @@ export class TimeRail {
   }
 
   private cancel(): void {
-    if (this.timer !== undefined) clearTimeout(this.timer);
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
     this.timer = undefined;
   }
 

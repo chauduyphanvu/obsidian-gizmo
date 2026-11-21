@@ -1,3 +1,5 @@
+import { textOf } from "./text.ts";
+import { hasControl } from "./control.ts";
 import { parseDuration } from "./data.ts";
 import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
@@ -36,8 +38,11 @@ export type Blocks = Map<string, Record<string, unknown>>;
 /** Checked blocks, as a map or as `AppSpec.blocks`. */
 export type BlockSet = ReadonlyMap<string, Record<string, unknown>> | Readonly<Record<string, Record<string, unknown>>>;
 
+const isMap = (blocks: BlockSet): blocks is ReadonlyMap<string, Record<string, unknown>> => blocks instanceof Map;
+
 function blockIn(blocks: BlockSet, name: string): Record<string, unknown> | undefined {
-  return blocks instanceof Map ? blocks.get(name) : Object.hasOwn(blocks, name) ? (blocks as Record<string, Record<string, unknown>>)[name] : undefined;
+  if (isMap(blocks)) return blocks.get(name);
+  return Object.hasOwn(blocks, name) ? blocks[name] : undefined;
 }
 
 /** The block a block reads, when its source names another block rather than a list of its own name. */
@@ -344,7 +349,7 @@ export interface Entry {
  * names with lists of panels.
  */
 export function panelEntries(fm: Record<string, unknown>, errors: string[]): Entry[] {
-  const out: Entry[] = Array.isArray(fm.panels) ? fm.panels.map((raw, i) => ({ raw, label: `panel ${i + 1}` })) : [];
+  const out: Entry[] = Array.isArray(fm.panels) ? (fm.panels as unknown[]).map((raw, i) => ({ raw, label: `panel ${i + 1}` })) : [];
   if (fm.tabs === undefined || fm.tabs === null) return out;
   if (!isPlainObject(fm.tabs)) {
     errors.push("tabs must be tab names, each with a list of panels, e.g. tabs: {Score: [{view: table, source: due}]}");
@@ -404,7 +409,7 @@ function readComponent(fm: Record<string, unknown> | undefined, name: string, er
     errors.push(`${name} needs panels`);
     return undefined;
   }
-  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map(), data: fm.data, panels };
+  return { description: fm.component === true ? "" : String(fm.component), params: params ?? new Map<string, unknown>(), data: fm.data, panels };
 }
 
 /** Why a param, input or selection can't be called `this`. */
@@ -421,7 +426,7 @@ export function readFor(value: unknown): { scope: string } | { error: string } {
   if (name) return { error: `$${name[1]} can't be used in "for"` };
   const parts = text.split(",").map((s) => s.trim());
   // A scope is named in a lens's prompt, so a line break or other control character can't hide in it.
-  const ok = parts.every((s) => (s.startsWith("#") ? /^#[^\s#,]+$/.test(s) : /^[^#[\]|^:*?"<>\\/\u0000-\u001f\u007f][^#[\]|^:*?"<>\\\u0000-\u001f\u007f]*$/.test(s) && s.replace(/\/+$/, "") !== ""));
+  const ok = parts.every((s) => (s.startsWith("#") ? /^#[^\s#,]+$/.test(s) : /^[^#[\]|^:*?"<>\\/][^#[\]|^:*?"<>\\]*$/.test(s) && !hasControl(s) && s.replace(/\/+$/, "") !== ""));
   if (!text.trim() || !ok) return { error: "for must be a folder or #tag, e.g. for: Books/" };
   return { scope: parts.map((s) => (s.startsWith("#") ? s : s.replace(/\/+$/, ""))).join(", ") };
 }
@@ -567,7 +572,7 @@ export class Expander {
       at('use must be a link to a note, e.g. use: "[[Ticker]]"');
       return [];
     }
-    if (/^https?:\/\//i.test(String(raw.use))) {
+    if (/^https?:\/\//i.test(textOf(raw.use))) {
       at("components come from notes in this vault; copy the note in");
       return [];
     }

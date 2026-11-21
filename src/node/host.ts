@@ -97,7 +97,7 @@ export interface GizmodOptions {
 /** gizmod's vault, data layer, activity log, beat and the Background's env, put together. */
 export function gizmodEnv(opts: GizmodOptions) {
   const now = opts.now ?? Date.now;
-  const log = opts.log ?? ((line: string) => console.log(line));
+  const log = opts.log ?? ((line: string) => void process.stdout.write(`${line}\n`));
   const doFetch = opts.fetch ?? fetch;
   const vault = new NodeVault(opts.vault, opts.configDir);
   const pluginDir = join(opts.vault, opts.configDir ?? ".obsidian", "plugins", "gizmo");

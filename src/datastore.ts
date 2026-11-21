@@ -70,9 +70,9 @@ export function frontmatterStore(
       let result: SetResult = { refused: "changed" };
       await write(dataPath, (fm) => {
         const rows = resolveList(list, fm, appFm());
-        const stored = Array.isArray(rows) && ref.index !== undefined ? rows[ref.index] : undefined;
+        const stored: unknown = Array.isArray(rows) && ref.index !== undefined ? rows[ref.index] : undefined;
         if (!Array.isArray(rows) || !holds(stored, ref.shown, field)) return;
-        const next = [...rows];
+        const next: unknown[] = [...(rows as unknown[])];
         next[ref.index!] = { ...stored, [field]: value };
         fm[list] = next;
         result = { row: next[ref.index!] as Row };

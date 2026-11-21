@@ -187,7 +187,7 @@ export async function backtest(job: BacktestJob): Promise<BacktestResult | undef
     }
     job.progress?.(i + 1, order.length);
     // Lets a window draw its progress and a Cancel be pressed.
-    if (i % 50 === 49) await new Promise((r) => setTimeout(r, 0));
+    if (i % 50 === 49) await new Promise((r) => window.setTimeout(r, 0));
   }
 
   const id = (f: Fire) => `${f.at}\n${f.key}`;

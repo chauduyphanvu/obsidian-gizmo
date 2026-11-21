@@ -30,9 +30,9 @@ export const file: SourceDef = {
     return layer.parsedFile(path, (text) => {
       try {
         // Spreadsheet exports often start with a byte order mark, which would stick to the first column's name.
-        return parseBody(text.replace(/^﻿/, ""), type, opts.now);
+        return parseBody(text.replace(/^\uFEFF/, ""), type, opts.now);
       } catch (e) {
-        throw new Error(`Can't read ${path}: ${(e as Error).message}`);
+        throw new Error(`Can't read ${path}: ${(e as Error).message}`, { cause: e });
       }
     });
   },

@@ -1,3 +1,4 @@
+import { textOf } from "../text.ts";
 import { formatValue, getPath, rowsOf, toNumber } from "../data.ts";
 import { display, formatErrors, formatFor, labelFor, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
@@ -16,7 +17,7 @@ export interface Slice { name: string; value: number; colour: string }
 /** Slices largest first, values of zero or less dropped, the smallest folded into "Other". */
 export function slicesOf(rows: unknown[], nameField: string, valueField: string): Slice[] {
   const raw = rows
-    .map((r) => ({ name: String(getPath(r, nameField) ?? NONE), value: toNumber(getPath(r, valueField)) ?? 0 }))
+    .map((r) => ({ name: textOf(getPath(r, nameField) ?? NONE), value: toNumber(getPath(r, valueField)) ?? 0 }))
     .filter((s) => s.value > 0)
     .sort((a, b) => b.value - a.value);
   const shown = raw.length > MAX_SLICES ? raw.slice(0, MAX_SLICES - 1) : raw;
@@ -98,7 +99,7 @@ export const pie: ViewDef = {
       shapes[i].addEventListener("pointerenter", () => readout.setText(`${name} · ${fmt(s.value)} · ${share(s.value)}`));
       shapes[i].addEventListener("pointerleave", showTotal);
       // "Other" folds several rows together, so there is no one row to pick.
-      const row = s.colour === "gz-other" ? undefined : rows.find((r) => String(getPath(r, nameField) ?? NONE) === s.name);
+      const row = s.colour === "gz-other" ? undefined : rows.find((r) => textOf(getPath(r, nameField) ?? NONE) === s.name);
       if (row) {
         selectable(shapes[i], p, ctx, row, name);
         selectable(item, p, ctx, row);

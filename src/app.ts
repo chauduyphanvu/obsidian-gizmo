@@ -1,3 +1,4 @@
+import { textOf } from "./text.ts";
 import { pastText, shownAsNow } from "./replay.ts";
 import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
@@ -98,7 +99,7 @@ export interface AppEnv {
   /** Tells the background service the app was opened, so what it records is sampled if due. */
   opened?(appPath: string): void;
   /** In an app shown as it was: shows it as it is now again. */
-  backToNow?(): void;
+  backToNow?: () => void;
   /** Alerts true now across the vault, from the background service. */
   alerts?: AlertFeed;
   /** A try before Allow: nothing it draws may reach out of Obsidian (pictures are drawn as their address). */
@@ -209,8 +210,8 @@ export class AppController {
   private timers: Timers;
   private writes: AppWrites;
   private cards: CardApp;
-  private refreshHandle: ReturnType<typeof setInterval> | undefined;
-  private resizeHandle: ReturnType<typeof setTimeout> | undefined;
+  private refreshHandle: number | undefined;
+  private resizeHandle: number | undefined;
   private width = 0;
   private columns = MAX_COLUMNS;
   private tabs: HTMLElement | undefined;
@@ -255,10 +256,10 @@ export class AppController {
     this.readHost();
     this.shell = root.createDiv({ cls: "gizmo" });
     if (!hosting) this.rail = this.shell.createDiv({ cls: "gz-rail-slot" });
-    const self = this;
+    const current = () => this.env;
     this.ctx = {
-      get now() { return self.env.now(); },
-      get readOnly() { return self.env.data.at !== undefined; },
+      get now() { return current().now(); },
+      get readOnly() { return current().data.at !== undefined; },
       width: (key) => this.widthOf(key),
       runActions: (p, row, how) => this.writes.runActions(p, row, how),
       ...(env.undo && { undo: (entry: string) => this.env.undo!(entry) }),
@@ -305,8 +306,8 @@ export class AppController {
     this.removeBar();
     this.destroyPanels();
     this.timers.stop();
-    if (this.refreshHandle) clearInterval(this.refreshHandle);
-    if (this.resizeHandle) clearTimeout(this.resizeHandle);
+    if (this.refreshHandle) window.clearInterval(this.refreshHandle);
+    if (this.resizeHandle) window.clearTimeout(this.resizeHandle);
     this.shell.remove();
   }
 
@@ -391,8 +392,8 @@ export class AppController {
   }
 
   resize(): void {
-    if (this.resizeHandle) clearTimeout(this.resizeHandle);
-    this.resizeHandle = setTimeout(() => {
+    if (this.resizeHandle) window.clearTimeout(this.resizeHandle);
+    this.resizeHandle = window.setTimeout(() => {
       const width = this.shell.clientWidth;
       if (Math.abs(width - this.width) < 8) return;
       this.width = width;
@@ -529,7 +530,7 @@ export class AppController {
       else if (h.kind === "app") header.createDiv({ cls: "gz-card", text: `[[${basename(this.appPath)}]] isn't an app (it has no app: line)` });
       return this.showOnly(header);
     }
-    const description = this.spec?.description ?? String(fm.app ?? "");
+    const description = this.spec?.description ?? textOf(fm.app ?? "");
     let railAfter: HTMLElement | undefined;
     if (composed && !h) {
       // In its own tab the app reads as a page: its name and what it's for, then the time rail.
@@ -819,7 +820,7 @@ export class AppController {
     this.sheet?.reset();
     this.shell.removeClass("gz-sheet-open");
     this.tabs = undefined;
-    if (this.refreshHandle) clearInterval(this.refreshHandle);
+    if (this.refreshHandle) window.clearInterval(this.refreshHandle);
     this.refreshHandle = undefined;
   }
 
@@ -860,7 +861,7 @@ export class AppController {
     if (this.dataPath !== dataPath) return;
     this.handEdit?.remove();
     this.handEdit = undefined;
-    const header = this.shell.querySelector(".gz-header") as HTMLElement | null;
+    const header = this.shell.querySelector<HTMLElement>(".gz-header");
     if (!state.handEdited || !header) return;
     this.handEdit = renderHandEdit(header, basename(dataPath), editWords(ops).length ? editWords(ops) : ["its layout only"], {
       import: async () => {
@@ -872,9 +873,9 @@ export class AppController {
   }
 
   private setRefresh(spec: AppSpec): void {
-    if (this.refreshHandle) clearInterval(this.refreshHandle);
+    if (this.refreshHandle) window.clearInterval(this.refreshHandle);
     // The past doesn't change: nothing to fetch again.
-    this.refreshHandle = spec.refreshMs && this.env.data.at === undefined ? setInterval(() => this.reload(), spec.refreshMs) : undefined;
+    this.refreshHandle = spec.refreshMs && this.env.data.at === undefined ? window.setInterval(() => this.reload(), spec.refreshMs) : undefined;
   }
 
   // ---- Panels -------------------------------------------------------------------------------
@@ -924,7 +925,7 @@ export class AppController {
     const fromDisk = () => this.env.data.cachedPanelData(m.source, m.p, this.files(), now);
     let answered = false;
     // A web response slow to come (memory is cold after a restart) is painted from disk meanwhile.
-    setTimeout(() => {
+    window.setTimeout(() => {
       if (!answered && current()) void fromDisk().then((copy) => { if (copy && !answered && current()) this.show(m, copy.data, copy.at); });
     }, DISK_FIRST_MS);
     try {

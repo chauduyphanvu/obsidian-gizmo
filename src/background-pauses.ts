@@ -13,12 +13,12 @@ export const PAUSE_TELL_MS = 10 * 60_000;
 /** What pausing apps needs of the Background. */
 export interface PausesHost {
   fired: FiredStore;
-  verdictNow(entry: AppEntry): Verdict | undefined;
+  verdictNow: (entry: AppEntry) => Verdict | undefined;
   /** Takes an app's status items and alerts off the screen, keeping what it was doing. */
-  hide(path: string): void;
+  hide: (path: string) => void;
   /** Drops what was kept for an app, which starts over when allowed. */
-  forget(path: string): void;
-  say(message: string): void;
+  forget: (path: string) => void;
+  say: (message: string) => void;
 }
 
 /** Apps that were allowed and stopped matching their grant: paused, told of once, and resumed when allowed again. */

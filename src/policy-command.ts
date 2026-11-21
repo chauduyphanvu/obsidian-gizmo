@@ -1,4 +1,5 @@
 import { Modal, Notice } from "obsidian";
+import { handler } from "./handler.ts";
 import { violationText } from "./flows.ts";
 import type GizmoPlugin from "./main.ts";
 import { describePermission } from "./permissions.ts";
@@ -74,11 +75,11 @@ export class PolicyModal extends Modal {
   private buttons(next: AppliedPolicy | undefined, canApply: boolean): void {
     const row = this.contentEl.createDiv({ cls: "gz-actions" });
     if (canApply) {
-      row.createEl("button", { cls: "mod-cta", text: next ? "Apply" : "Stop using a policy" }).addEventListener("click", async () => {
+      row.createEl("button", { cls: "mod-cta", text: next ? "Apply" : "Stop using a policy" }).addEventListener("click", handler(async () => {
         await this.plugin.applyPolicy(next);
         new Notice(next ? "Your data policy is applied" : "No data policy is used now");
         this.close();
-      });
+      }));
     }
     row.createEl("button", { text: canApply ? "Cancel" : "Close" }).addEventListener("click", () => this.close());
   }

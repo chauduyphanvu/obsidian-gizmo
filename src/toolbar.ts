@@ -16,17 +16,17 @@ function searchBox(field: HTMLElement, name: string, value: InputValue | undefin
   const input = field.createEl("input", { type: "search", cls: "gz-search" });
   input.setAttr("aria-label", name);
   input.value = value === undefined ? "" : String(value);
-  let pending: ReturnType<typeof setTimeout> | undefined;
+  let pending: number | undefined;
   const apply = () => {
-    if (pending) clearTimeout(pending);
+    if (pending) window.clearTimeout(pending);
     pending = undefined;
     onChange(name, input.value);
   };
   input.addEventListener("input", () => {
-    if (pending) clearTimeout(pending);
-    pending = setTimeout(apply, TYPING_PAUSE_MS);
+    if (pending) window.clearTimeout(pending);
+    pending = window.setTimeout(apply, TYPING_PAUSE_MS);
   });
-  input.addEventListener("keydown", (e) => { if ((e as KeyboardEvent).key === "Enter") apply(); });
+  input.addEventListener("keydown", (e) => { if (e.key === "Enter") apply(); });
 }
 
 /** The bar above an app's panels: a dropdown per list of choices, a ‹ date › Today bar per date, a search box per text. */

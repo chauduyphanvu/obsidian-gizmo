@@ -1,3 +1,4 @@
+import { textOf } from "../text.ts";
 import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
 import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
@@ -98,7 +99,7 @@ export const board: ViewDef = {
     const own: Panel = { ...p, group: undefined };
     const draw = (rows: Row[]) => {
       const refocus = focusedKey(el);
-      const scrolled = (el.querySelector(".gz-board") as HTMLElement | null)?.scrollLeft;
+      const scrolled = el.querySelector<HTMLElement>(".gz-board")?.scrollLeft;
       el.empty();
       heading(el, p, p.label);
       const columns = columnsOf(p, rows);
@@ -121,7 +122,7 @@ export const board: ViewDef = {
         const text = itemText(p, row, ctx.now);
         const key = rowKey(row);
         const card = parent.createDiv({ cls: "gz-board-card" });
-        if (key !== undefined) card.setAttribute("data-key", String(key));
+        if (key !== undefined) card.setAttribute("data-key", textOf(key));
         const title = card.createDiv({ cls: "gz-board-text" });
         const [name, rest] = splitItem(text);
         const nameEl = title.createDiv({ cls: "gz-card-name" });
@@ -144,7 +145,7 @@ export const board: ViewDef = {
           dragging = { row, from: column, card };
           card.classList.add("gz-dragging");
           // Firefox starts no drag without some data.
-          (e as DragEvent).dataTransfer?.setData("text/plain", text);
+          e.dataTransfer?.setData("text/plain", text);
         });
         card.addEventListener("dragend", () => {
           dragging = undefined;
@@ -162,7 +163,7 @@ export const board: ViewDef = {
           if (picked !== "") void move(card, row, others[Number(picked)]);
         });
         repick(row);
-        if (key !== undefined && String(key) === refocus) moveTo.focus();
+        if (key !== undefined && textOf(key) === refocus) moveTo.focus();
       };
       for (const column of columns) {
         const col = root.createDiv({ cls: column.done ? "gz-board-col gz-board-done" : "gz-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });
@@ -178,7 +179,7 @@ export const board: ViewDef = {
           col.classList.add("gz-over");
         });
         col.addEventListener("dragleave", (e) => {
-          if (!col.contains((e as DragEvent).relatedTarget as Node | null)) col.classList.remove("gz-over");
+          if (!col.contains(e.relatedTarget as Node | null)) col.classList.remove("gz-over");
         });
         col.addEventListener("drop", (e) => {
           col.classList.remove("gz-over");

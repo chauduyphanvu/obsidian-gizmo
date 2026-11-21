@@ -20,7 +20,7 @@ const TASK = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+\[)(.)\][ \t](.*)$/u;
 /** A code fence; a run of backticks followed by another backtick on its line is inline code instead. */
 const FENCE = /^[ \t]*(`{3,}(?!.*`)|~{3,})/;
 const DUE = /📅\s*(\d{4}-\d{2}-\d{2})|due::\s*(\d{4}-\d{2}-\d{2})/u;
-const TAG = /(?<!\S)#([\p{L}\p{N}_/-]+)/gu;
+const TAG = /(?:^|\s)#([\p{L}\p{N}_/-]+)/gu;
 
 interface Found {
   line: number;

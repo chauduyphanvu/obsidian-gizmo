@@ -52,13 +52,13 @@ export class AppWrites {
     const done = ticked ?? (await store.untick(key, item));
     if (!done) return;
     const event = done.event;
-    this.log(this.site.checklistName(key), [{ kind: "checklist", path: store.dataPath, list: key, item, checked: !!ticked, ...(event && { event }) }]);
+    void this.log(this.site.checklistName(key), [{ kind: "checklist", path: store.dataPath, list: key, item, checked: !!ticked, ...(event && { event }) }]);
   }
 
   async clearChecked(key: string): Promise<void> {
     const store = this.store();
     const { items, event } = await store.clear(key);
-    if (items.length) this.log(this.site.checklistName(key), [{ kind: "cleared", path: store.dataPath, list: key, items, ...(event && { event }) }]);
+    if (items.length) void this.log(this.site.checklistName(key), [{ kind: "cleared", path: store.dataPath, list: key, items, ...(event && { event }) }]);
   }
 
   /** Where the app's lists are kept. */
@@ -85,7 +85,7 @@ export class AppWrites {
       change = { kind: "property", path, field, from: fm[field], to: value, had: Object.hasOwn(fm, field) };
       fm[field] = value;
     });
-    if (written && change) this.log(what, [change]);
+    if (written && change) void this.log(what, [change]);
     return written;
   }
 
@@ -135,7 +135,7 @@ export class AppWrites {
       }
       const r = await store.set(name, { id, index: typeof index === "number" ? index : undefined, shown: row }, field, value);
       if ("row" in r) {
-        this.log(m.p.title ?? field, [{ kind: "row-edited", path: store.dataPath, list: name, row: r.row, field, from: row[field], to: value, ...(r.event && { event: r.event }) }]);
+        void this.log(m.p.title ?? field, [{ kind: "row-edited", path: store.dataPath, list: name, row: r.row, field, from: row[field], to: value, ...(r.event && { event: r.event }) }]);
         return;
       }
       this.env.notify(r.refused === "gone" ? "That row is gone; reload" : "That row has changed; reload");
@@ -152,7 +152,7 @@ export class AppWrites {
     if (typeof path !== "string" || typeof line !== "number" || typeof text !== "string" || typeof done !== "boolean") return;
     if (!this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
     if (await this.env.setTaskDone(path, line, text, done)) {
-      this.log(m.p.title ?? "tasks", [{ kind: "task", path, line, text, done }]);
+      void this.log(m.p.title ?? "tasks", [{ kind: "task", path, line, text, done }]);
       return;
     }
     this.env.notify("That task has changed; reload");

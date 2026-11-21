@@ -18,7 +18,8 @@ import {
 import type { PipelineKeys } from "./pipeline.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey } from "./keys.ts";
 import { editErrors, editableSource } from "./edit.ts";
-import { CONTROL_PROBLEM, controlKey, hasControl } from "./permissions.ts";
+import { hasControl } from "./control.ts";
+import { CONTROL_PROBLEM, controlKey } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { aliasShortcut, backgroundKeyErrors } from "./views/alerts.ts";
 

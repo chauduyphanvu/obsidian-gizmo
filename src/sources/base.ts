@@ -267,7 +267,7 @@ export const base: SourceDef = {
     try {
       config = layer.host.parseYaml(await layer.host.readFile(path));
     } catch (e) {
-      throw new Error(`can't read ${source}: ${(e as Error).message}`);
+      throw new Error(`can't read ${source}: ${(e as Error).message}`, { cause: e });
     }
     const keep = compileBase(config, source);
     return layer.allNotes().filter((r) => {

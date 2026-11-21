@@ -1,5 +1,5 @@
-import { aggregate, compileWhere, getPath, sortRows, type Agg, type Row } from "./data.ts";
-import { dateWindow, type Per, periodStart, shiftPeriod, stampParts, toTime, wallTime } from "./time.ts";
+import { aggregate, compileWhere, getPath, sortRows, type Row } from "./data.ts";
+import { dateWindow, type Per, periodStart, shiftPeriod, stampParts, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
 
 /** The key for rows whose group field is empty. */
@@ -45,7 +45,7 @@ export function rowsFromEqualArrays(data: unknown): Row[] | undefined {
 export function groupRows(rows: unknown[], p: GroupKeys, now: Date): Row[] {
   const field = p.group!;
   const totals = totalFields(p);
-  const agg = (p.agg ?? "count") as Agg;
+  const agg = p.agg ?? "count";
   const of = p.of && compileWhere(p.of, now);
   const groups = new Map<unknown, unknown[]>();
   const add = (key: unknown, row: unknown) => {

@@ -230,7 +230,7 @@ interface Arrivals {
 /** Remembers which rows were shown, so the next draw can tell the new ones; its timers end with `stop`. */
 function rowMemory() {
   let seen: Set<unknown> | undefined;
-  const timers = new Set<ReturnType<typeof setTimeout>>();
+  const timers = new Set<number>();
   return {
     arrive(rows: Row[]): Arrivals {
       const keys = rows.map(rowKey);
@@ -241,7 +241,7 @@ function rowMemory() {
         fresh: new Set(before ? keys.filter((k) => k !== undefined && !before.has(k)) : []),
         mark(el) {
           el.classList.add("gz-fresh");
-          const timer = setTimeout(() => {
+          const timer = window.setTimeout(() => {
             el.classList.remove("gz-fresh");
             timers.delete(timer);
           }, FRESH_MS);
@@ -249,8 +249,8 @@ function rowMemory() {
         },
       };
     },
-    stop() {
-      for (const timer of timers) clearTimeout(timer);
+    stop: () => {
+      for (const timer of timers) window.clearTimeout(timer);
       timers.clear();
     },
   };

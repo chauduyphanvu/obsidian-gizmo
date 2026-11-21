@@ -1,3 +1,4 @@
+import { textOf } from "./text.ts";
 import { parseFeed } from "./sources/feed.ts";
 import { parseICS } from "./sources/ics.ts";
 import type { Panel } from "./spec.ts";
@@ -67,7 +68,7 @@ export function seriesOf(data: unknown, x: string, y: string): Point[] {
   const ys = getPath(data, y);
   let points: { x: unknown; y: unknown }[];
   if (Array.isArray(xs) && Array.isArray(ys)) {
-    points = xs.map((xv, i) => ({ x: xv, y: ys[i] }));
+    points = (xs as unknown[]).map((xv, i) => ({ x: xv, y: (ys as unknown[])[i] }));
   } else if (Array.isArray(data)) {
     points = data.map((row) => ({ x: getPath(row, x), y: getPath(row, y) }));
   } else {
@@ -109,7 +110,7 @@ function compileCondition(cond: string | number | boolean, now: Date): Test {
   const m = cond.match(/^\s*(>=|<=|!=|>|<)\s*(.+)$/);
   if (m) {
     const [, op, rhs] = m;
-    if (op === "!=") return (v) => String(v ?? "") !== rhs;
+    if (op === "!=") return (v) => textOf(v ?? "") !== rhs;
     const b = toNumber(rhs) ?? toTime(rhs);
     if (b === undefined) return () => false;
     const holds = op === ">" ? (a: number) => a > b
@@ -121,7 +122,7 @@ function compileCondition(cond: string | number | boolean, now: Date): Test {
       return a !== undefined && holds(a);
     };
   }
-  return (v) => (Array.isArray(v) ? v.some((x) => String(x) === cond) : String(v ?? "") === cond);
+  return (v) => (Array.isArray(v) ? v.some((x) => textOf(x) === cond) : textOf(v ?? "") === cond);
 }
 
 export function matches(value: unknown, cond: string | number | boolean, now: Date): boolean {
@@ -138,7 +139,7 @@ export function filterRows(rows: unknown[], where: Panel["where"], now: Date): u
 }
 
 function sortKey(v: unknown): number | string {
-  return toTime(v) ?? toNumber(v) ?? (v === undefined || v === null ? "" : String(v).toLowerCase());
+  return toTime(v) ?? toNumber(v) ?? (v === undefined || v === null ? "" : textOf(v).toLowerCase());
 }
 
 /** Sorts on keys worked out once per row, not once per comparison. */
@@ -212,7 +213,7 @@ export function formatValue(v: unknown, decimals?: number, group = true): string
   }
   if (Array.isArray(v)) return v.map((x) => formatValue(x, decimals, group)).join(", ");
   if (typeof v === "object") return JSON.stringify(v);
-  return typeof v === "string" ? shownStamp(v) : String(v);
+  return typeof v === "string" ? shownStamp(v) : textOf(v);
 }
 
 /** The names a template's {placeholders} read, by their first part ({row.amount} reads row). */

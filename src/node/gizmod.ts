@@ -34,7 +34,9 @@ const MAX_BODY = 64 * 1024;
 
 const homeDir = () => process.env.GIZMOD_HOME ?? join(homedir(), ".config", "gizmod");
 const stamp = () => new Date().toISOString().slice(0, 19).replace("T", " ");
-const say = (line: string) => console.log(`${stamp()} ${line}`);
+// A command line program: what it says goes to standard output.
+const print = (line: string) => void process.stdout.write(`${line}\n`);
+const say = (line: string) => print(`${stamp()} ${line}`);
 
 /** This vault's gizmod id, made once and kept, so its ledger files and beat stay its own. */
 async function deviceId(home: string, vault: string): Promise<string> {
@@ -311,9 +313,9 @@ async function install(vault: string, label: string): Promise<void> {
   await fs.writeFile(agent, plist({ label, script, log: join(homedir(), "Library", "Logs", `${label}.log`) }));
   await run("launchctl", ["bootout", `${domain()}/${label}`]).catch(() => {});
   await run("launchctl", ["bootstrap", domain(), agent]);
-  console.log(`Installed ${label}: it starts now and at each login. Logs: ~/Library/Logs/${label}.log`);
+  print(`Installed ${label}: it starts now and at each login. Logs: ~/Library/Logs/${label}.log`);
   if (resolve(vault).includes("Mobile Documents")) {
-    console.log(`The vault is in iCloud Drive: give ${process.execPath} access to files in System Settings → Privacy & Security, or gizmod can't read it.`);
+    print(`The vault is in iCloud Drive: give ${process.execPath} access to files in System Settings → Privacy & Security, or gizmod can't read it.`);
   }
 }
 
@@ -321,7 +323,7 @@ async function uninstall(label: string): Promise<void> {
   await run("launchctl", ["bootout", `${domain()}/${label}`]).catch(() => {});
   await fs.rm(agentPath(label), { force: true });
   await fs.rm(join(homeDir(), `${label}.sh`), { force: true });
-  console.log(`Removed ${label}.`);
+  print(`Removed ${label}.`);
 }
 
 // ---- The command line ---------------------------------------------------------------------------
@@ -344,7 +346,7 @@ async function client(method: string, path: string, body?: unknown): Promise<num
     console.error(`gizmod isn't answering on port ${port}`);
     return 1;
   }
-  console.log(JSON.stringify(await res.json(), null, 2));
+  print(JSON.stringify(await res.json(), null, 2));
   return res.ok ? 0 : 1;
 }
 
@@ -379,7 +381,7 @@ export async function main(args: string[]): Promise<number> {
       await uninstall(flag(rest, "label") ?? DEFAULT_LABEL);
       return 0;
     default:
-      console.log("gizmod serve --vault <path> | run <app> <shortcut> [field=value…] | get <app> <shortcut> | do <line> | dry <app> <shortcut> | status | install --vault <path> [--label L] | uninstall [--label L]");
+      print("gizmod serve --vault <path> | run <app> <shortcut> [field=value…] | get <app> <shortcut> | do <line> | dry <app> <shortcut> | status | install --vault <path> [--label L] | uninstall [--label L]");
       return cmd ? 1 : 0;
   }
 }

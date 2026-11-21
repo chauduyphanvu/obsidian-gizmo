@@ -1,6 +1,7 @@
 import {
   EditorSuggest, Modal, Notice, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo,
 } from "obsidian";
+import { handler } from "./handler.ts";
 import { undoMessage } from "./activity.ts";
 import { copyText } from "./host.ts";
 import { captureLine, completed, parseLine, receipt, type Parsed } from "./capture.ts";
@@ -12,12 +13,12 @@ export function capturedNotice(plugin: GizmoPlugin, line: string, entryId: strin
   const frag = createFragment((f) => {
     f.createSpan({ text: `Ran “${line}”. ` });
     const undo = f.createEl("a", { text: "Undo", href: "#" });
-    undo.addEventListener("click", async (e) => {
+    undo.addEventListener("click", handler(async (e) => {
       e.preventDefault();
       const entry = await plugin.activity.get(entryId);
       if (!entry) return void new Notice("That change is no longer in the activity log");
       new Notice(undoMessage(await plugin.undo(entry)));
-    });
+    }));
   });
   new Notice(frag, 8000);
 }
@@ -262,11 +263,11 @@ class CaptureLinkModal extends Modal {
       label.createSpan({ cls: "gz-muted", text: ` · ${t.app}: ${t.label}` });
     }
     const row = el.createDiv({ cls: "modal-button-container" });
-    row.createEl("button", { cls: "mod-cta", text: "Copy link" }).addEventListener("click", async () => {
+    row.createEl("button", { cls: "mod-cta", text: "Copy link" }).addEventListener("click", handler(async () => {
       const key = await this.plugin.newCaptureKey(targets.filter((t) => picked.has(t.name)));
       copyText(captureLinkOf(key), () => { new Notice(`Copied a capture link for ${picked.size ? [...picked].sort().join(", ") : "no names (every line asks)"}. Revoke it on the automation map.`); });
       this.close();
-    });
+    }));
   }
 
   onClose(): void {

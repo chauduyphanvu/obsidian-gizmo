@@ -226,11 +226,12 @@ export default class GizmoPlugin extends Plugin {
    * setViewState, so app notes are routed to the app view there.
    */
   private routeAppNotes(): void {
-    const plugin = this;
+    const wantsApp = (leaf: WorkspaceLeaf, state: ViewState) => this.wantsApp(leaf, state);
     const proto = WorkspaceLeaf.prototype;
-    const original = proto.setViewState;
+    // Taken off the prototype unbound, as it is there: the wrapper calls it on each leaf.
+    const original = Object.getOwnPropertyDescriptor(proto, "setViewState")!.value as WorkspaceLeaf["setViewState"];
     const wrapper = function (this: WorkspaceLeaf, state: ViewState, eState?: unknown) {
-      const next = plugin.wantsApp(this, state) ? { ...state, type: VIEW_TYPE } : state;
+      const next = wantsApp(this, state) ? { ...state, type: VIEW_TYPE } : state;
       return original.call(this, next, eState);
     };
     proto.setViewState = wrapper;

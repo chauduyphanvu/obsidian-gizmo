@@ -80,6 +80,12 @@ for (const target of [window.Element.prototype, window.HTMLElement.prototype] as
   });
 }
 
-Object.assign(globalThis, { window, document });
+// Obsidian's globals: the document in front (one window here) and a detached div.
+const createDiv = (o?: Info | string) => {
+  const el = document.createElement("div");
+  apply(el, o);
+  return el;
+};
+Object.assign(globalThis, { window, document, activeDocument: document, createDiv });
 
 export { document };

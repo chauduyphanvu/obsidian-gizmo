@@ -11,13 +11,13 @@ import type { AlertFeed, AlertItem } from "./views/alerts.ts";
 export interface WatchHost {
   apps: ReadonlyMap<string, AppEntry>;
   fired: FiredStore;
-  granted(entry: AppEntry): boolean;
-  verdictNow(entry: AppEntry): Verdict | undefined;
+  granted: (entry: AppEntry) => boolean;
+  verdictNow: (entry: AppEntry) => Verdict | undefined;
   evaluate: Background["evaluate"];
   runThen: Background["runThen"];
   /** An app that isn't allowed now: paused or forgotten (see background-pauses.ts). */
-  pauseOrForget(entry: AppEntry): Promise<void>;
-  say(message: string): void;
+  pauseOrForget: (entry: AppEntry) => Promise<void>;
+  say: (message: string) => void;
 }
 
 /**

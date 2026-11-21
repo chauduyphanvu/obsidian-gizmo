@@ -61,7 +61,7 @@ export interface OptionDef {
   choices?: Record<string, string>;
   placeholder?: string;
   /** Whether the other options make this one meaningless, so Bases hides it. */
-  hidden?(value: OptionValue): boolean;
+  hidden?: (value: OptionValue) => boolean;
 }
 
 const AGGS = { count: "Count", sum: "Sum", avg: "Average", min: "Min", max: "Max" };

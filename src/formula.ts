@@ -521,6 +521,6 @@ export function compileCompute(compute: Record<string, string | number>, vars: R
     if (isRow(data)) return add(data, undefined);
     if (!Array.isArray(data)) return data;
     let prev: Row | undefined;
-    return data.map((r) => (isRow(r) ? (prev = add(r, prev)) : r));
+    return (data as unknown[]).map((r) => (isRow(r) ? (prev = add(r, prev)) : r));
   };
 }

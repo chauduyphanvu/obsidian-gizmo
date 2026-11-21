@@ -1,3 +1,4 @@
+import { textOf } from "./text.ts";
 import { formatValue, localeNumber, toNumber } from "./data.ts";
 import { periodStart, toTime, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
@@ -153,7 +154,7 @@ export function formatFor(p: Pick<Panel, "format">, field: string | undefined): 
 export function mapped(p: Pick<Panel, "values">, field: string | undefined, value: unknown): string | undefined {
   if (field === undefined || value === undefined || value === null || !p.values || !Object.hasOwn(p.values, field)) return undefined;
   const map = p.values[field];
-  const key = String(value);
+  const key = textOf(value);
   return Object.hasOwn(map, key) ? map[key] : undefined;
 }
 

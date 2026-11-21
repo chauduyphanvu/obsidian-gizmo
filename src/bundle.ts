@@ -1,3 +1,5 @@
+import { textOf } from "./text.ts";
+import { hasControl, maskControl } from "./control.ts";
 import { violationText, type Verdict } from "./flows.ts";
 import type { NoteReader } from "./expand.ts";
 import { planCopy, type Plan } from "./gallery.ts";
@@ -22,8 +24,8 @@ export const MAX_BUNDLE_BYTES = 1_000_000;
 /** Why a name can't be a note's name, so a bundle can't write outside the folder it installs into. */
 export function nameProblem(name: string): string | undefined {
   if (!name.trim()) return "a note in it has no name";
-  if (name !== name.trim() || name.startsWith(".") || /[\\/:*?"<>|#^[\]\u0000-\u001f\u007f]/.test(name)) {
-    return `“${name.replace(/[\u0000-\u001f\u007f]/g, "?")}” can't be a note's name`;
+  if (name !== name.trim() || name.startsWith(".") || /[\\/:*?"<>|#^[\]]/.test(name) || hasControl(name)) {
+    return `“${maskControl(name, "?")}” can't be a note's name`;
   }
   return undefined;
 }
@@ -108,7 +110,7 @@ export interface InstallTarget {
   /** The text of every note already in the vault under each of these names, in any folder or case. */
   existing(name: string): string[];
   notes: NoteReader;
-  parse(yaml: string): unknown;
+  parse: (yaml: string) => unknown;
   /** What the applied data policy says of the app at `path`, its links read as `notes` reads them; undefined with no policy. */
   judge?(spec: AppSpec, path: string, notes: NoteReader): Verdict | undefined;
 }
@@ -156,7 +158,7 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
   const extras = notes.slice(1).flatMap((n) => {
     const other = fms.get(pathOf(n.name));
     if (isApp(other)) return [`${n.name} is an app of its own`];
-    if (other && isComponent(other) && other.for !== undefined && other.for !== null) return [`${n.name} shows on every note in ${String(other.for)}`];
+    if (other && isComponent(other) && other.for !== undefined && other.for !== null) return [`${n.name} shows on every note in ${textOf(other.for)}`];
     return [];
   });
   for (const t of thenTargets(result.spec?.panels ?? [])) {
@@ -166,7 +168,7 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
   const asGallery = (n: BundleNote) => ({ path: `${n.name}.md`, text: n.text });
   return {
     name: first.name,
-    about: String((component ? fm.component : fm.app) ?? ""),
+    about: textOf((component ? fm.component : fm.app) ?? ""),
     kind: preview?.lens ? "lens" : component ? "component" : "app",
     plan: planCopy(asGallery(first), notes.slice(1).map(asGallery), existing),
     errors: result.errors,

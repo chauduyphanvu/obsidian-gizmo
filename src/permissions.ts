@@ -1,3 +1,4 @@
+import { hasControl } from "./control.ts";
 import { editableSource } from "./edit.ts";
 import { typedName } from "./expand.ts";
 import { isPlainObject } from "./keys.ts";
@@ -29,15 +30,8 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   return out;
 }
 
-/** A line break, tab or other control character: it would make one permission read as several lines of a prompt. */
-const CONTROL = /[\u0000-\u001f\u007f]/;
-
+/** Why a key can't hold a control character: it would make one permission read as several lines of a prompt. */
 export const CONTROL_PROBLEM = "can't hold a line break or other control character";
-
-/** Whether text holds a control character (see CONTROL). */
-export function hasControl(text: string): boolean {
-  return CONTROL.test(text);
-}
 
 /** The key that asks for a permission holding a control character, if any: such a panel isn't drawn. */
 export function controlKey(p: Panel, selfPath: string): keyof Panel | undefined {

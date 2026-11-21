@@ -37,7 +37,7 @@ export interface Sandbox {
 export function makeSandbox(opts: {
   appPath: string;
   notes: Map<string, SandboxNote>;
-  parseYaml(text: string): unknown;
+  parseYaml: (text: string) => unknown;
   now(): Date;
   /** The web, for requests to an allowed host. */
   fetch: Host["fetch"];
@@ -85,7 +85,7 @@ export function makeSandbox(opts: {
     tags: () => [],
     secret: () => { throw new Error("A try never uses your saved secrets"); },
     now: () => opts.now().getTime(),
-    schedule: (cb) => { setTimeout(cb, 30); },
+    schedule: (cb) => { window.setTimeout(cb, 30); },
     async readFile(path) {
       const text = await overlay.text(path);
       if (text === undefined) throw new Error(`Can't find ${path}`);

@@ -74,12 +74,12 @@ function answers(p: Panel): boolean {
 export interface ShortcutsHost {
   apps: ReadonlyMap<string, AppEntry>;
   /** An app by its path: as known, else read into the index while the background runs. */
-  lookup(path: string): AppEntry | undefined;
-  granted(entry: AppEntry): boolean;
-  valuesOf(appPath: string, spec: AppSpec, now: Date): Record<string, unknown>;
+  lookup: (path: string) => AppEntry | undefined;
+  granted: (entry: AppEntry) => boolean;
+  valuesOf: (appPath: string, spec: AppSpec, now: Date) => Record<string, unknown>;
   evaluate: Background["evaluate"];
-  verdictNow(entry: AppEntry): Verdict | undefined;
-  say(message: string): void;
+  verdictNow: (entry: AppEntry) => Verdict | undefined;
+  say: (message: string) => void;
 }
 
 /**

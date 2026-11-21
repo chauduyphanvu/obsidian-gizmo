@@ -1,3 +1,4 @@
+import { textOf } from "../text.ts";
 import { extent, toNumber, type Row } from "../data.ts";
 import { display } from "../format.ts";
 import type { Panel } from "../spec.ts";
@@ -79,7 +80,7 @@ function linkCell(td: HTMLElement, value: unknown, ctx: PanelCtx, shown: (v: unk
 function imageCell(td: HTMLElement, value: unknown, row: Row): void {
   const url = typeof value === "string" ? httpsUrl(value.trim()) : undefined;
   if (!url) return;
-  const alt = String(row.name ?? row.title ?? "");
+  const alt = textOf(row.name ?? row.title ?? "");
   td.createEl("img", { cls: "gz-cell-img", attr: { src: url.href, alt, loading: "lazy", referrerpolicy: "no-referrer" } });
 }
 

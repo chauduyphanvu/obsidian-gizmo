@@ -1,3 +1,5 @@
+import { textOf } from "../text.ts";
+import { handler } from "../handler.ts";
 import { parseFields, type FieldValues } from "../capture.ts";
 import type { Row } from "../data.ts";
 import { display, formatFor, labelOf } from "../format.ts";
@@ -17,8 +19,8 @@ import type { PanelCtx, PanelHandle, RunResult } from "./registry.ts";
 /** How long what was saved is said, and then how long what Undo did is. */
 const SAID_MS = 6000;
 const UNDONE_MS = 3000;
-const MAC = typeof navigator !== "undefined" && /mac|iphone|ipad/i.test(navigator.platform ?? "");
-const UNDO_KEY = MAC ? "⌘Z" : "Ctrl Z";
+/** Whether Undo is ⌘Z where `el` is shown: Obsidian marks its body `mod-macos` on a Mac and on iOS. */
+const mac = (el: Element) => el.ownerDocument.body.classList.contains("mod-macos");
 /** A choice with more options than this is shown as its value, not as a row of chips. */
 const MAX_CHIPS = 6;
 
@@ -61,7 +63,7 @@ function icon(parent: Element, name: keyof typeof ICONS, size: number): void {
 // ---- Said in place, with Undo -------------------------------------------------------------------
 
 /** The latest thing said with Undo in any app: the one ⌘Z undoes. */
-let latest: Said | undefined;
+const latest: { said?: Said } = {};
 
 /**
  * What a panel's last run did, said under it for six seconds with Undo when the run kept an entry
@@ -71,7 +73,7 @@ let latest: Said | undefined;
 export class Said {
   private text: string | undefined;
   private entry: string | undefined;
-  private timer: ReturnType<typeof setTimeout> | undefined;
+  private timer: number | undefined;
   private shown: HTMLElement | undefined;
   private ctx: PanelCtx;
   readonly changed: () => void;
@@ -87,14 +89,14 @@ export class Said {
 
   /** Whether Undo is on screen now, so ⌘Z may take it. */
   get undoable(): boolean {
-    return this.entry !== undefined && latest === this && !!this.shown?.isConnected && !this.shown.closest(".gz-off");
+    return this.entry !== undefined && latest.said === this && !!this.shown?.isConnected && !this.shown.closest(".gz-off");
   }
 
   /** Says `text`; `entry`, the activity log's, gives it Undo where the app can undo. */
   say(text: string, entry: string | undefined): void {
     this.text = text;
     this.entry = this.ctx.undo ? entry : undefined;
-    latest = this;
+    latest.said = this;
     this.hideIn(SAID_MS);
     this.changed();
   }
@@ -123,21 +125,21 @@ export class Said {
     box.createSpan({ cls: "gz-notice-text", text: this.text });
     if (this.entry !== undefined) {
       box.createEl("button", { cls: "gz-undo", type: "button", text: "Undo" }).addEventListener("click", () => void this.undo());
-      box.createEl("kbd", { text: UNDO_KEY });
+      box.createEl("kbd", { text: mac(box) ? "⌘Z" : "Ctrl Z" });
     }
     this.shown = box;
   }
 
   clear(): void {
-    if (this.timer !== undefined) clearTimeout(this.timer);
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
     this.timer = undefined;
     this.text = this.entry = undefined;
-    if (latest === this) latest = undefined;
+    if (latest.said === this) latest.said = undefined;
   }
 
   private hideIn(ms: number): void {
-    if (this.timer !== undefined) clearTimeout(this.timer);
-    this.timer = setTimeout(() => {
+    if (this.timer !== undefined) window.clearTimeout(this.timer);
+    this.timer = window.setTimeout(() => {
       this.clear();
       this.changed();
     }, ms);
@@ -182,7 +184,7 @@ function listen(el: HTMLElement, said: Said, input?: HTMLInputElement): () => vo
       if (firstLine(el) !== input) return;
       e.preventDefault();
       input.focus();
-    } else if (e.key.toLowerCase() === "z" && (MAC ? e.metaKey : e.ctrlKey) && !e.shiftKey && !e.altKey && said.undoable) {
+    } else if (e.key.toLowerCase() === "z" && (mac(el) ? e.metaKey : e.ctrlKey) && !e.shiftKey && !e.altKey && said.undoable) {
       e.preventDefault();
       void said.undo();
     }
@@ -204,8 +206,8 @@ interface Value {
 /** A field's default, as the form shows it: its own `default`, today for a date, the first choice. */
 function defaultOf(p: Panel, [name, type]: Field, now: Date): string | undefined {
   const start = startOf(p.fieldInfo?.[name], now) ?? (type === "date" ? stampParts(now).date : undefined);
-  if (Array.isArray(type)) return String(type.find((o) => String(o) === String(start)) ?? type[0]);
-  return start === undefined || start === null ? undefined : String(start);
+  if (Array.isArray(type)) return textOf(type.find((o) => textOf(o) === textOf(start)) ?? type[0]);
+  return start === undefined || start === null ? undefined : textOf(start);
 }
 
 const wordsOf = (text: string) => text.toLowerCase().split(/[^\p{L}\p{N}']+/u).filter((w) => w.length >= 3);
@@ -261,7 +263,7 @@ function shown(p: Panel, [name, type]: Field, value: string, now: Date): string 
 /** What a form saved, as it is said: its first field's value, and where it went. */
 function addedText(p: Panel, value: unknown, now: Date): string {
   const field = fieldsOf(p)[0];
-  const v = value === undefined || value === null ? "" : String(value);
+  const v = value === undefined || value === null ? "" : textOf(value);
   const what = !field || v === "" ? "" : isText(field[1]) ? ` “${v}”` : ` ${shown(p, field, v, now)}`;
   return `Added${what} to ${whereOf(p) ?? verbOf(p)}`;
 }
@@ -508,7 +510,7 @@ export function verbButton(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandl
     said.draw(under);
   });
   const unlisten = listen(el, said);
-  b.addEventListener("click", async () => {
+  b.addEventListener("click", handler(async () => {
     b.disabled = true;
     try {
       const r = await ctx.runActions(p, {}, { inPlace: true });
@@ -516,7 +518,7 @@ export function verbButton(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandl
     } finally {
       b.disabled = false;
     }
-  });
+  }));
   return {
     update() {},
     destroy() {

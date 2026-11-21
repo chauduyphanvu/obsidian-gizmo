@@ -58,11 +58,11 @@ export function mergeSettings(base: StoredData, disk: StoredData, local: StoredD
     const v = (MAPS as readonly string[]).includes(key)
       ? mergeMap(b[key] as Record<string, unknown>, d[key] as Record<string, unknown>, l[key] as Record<string, unknown>,
         // Two devices allowing different things for one app: both were allowed.
-        key === "grants" ? (x, y) => (Array.isArray(x) && Array.isArray(y) ? [...new Set([...y, ...x])] : y) : undefined)
+        key === "grants" ? (x, y) => (Array.isArray(x) && Array.isArray(y) ? [...new Set([...(y as unknown[]), ...(x as unknown[])])] : y) : undefined)
       : pick(b[key], d[key], l[key]);
     if (v !== undefined) out[key] = v;
   }
-  return { ...out, grants: (out.grants as StoredData["grants"] | undefined) ?? {} } as StoredData;
+  return { ...out, grants: (out.grants as StoredData["grants"] | undefined) ?? {} };
 }
 
 /** The key a shortcut's copied link carries; undefined when none was made. */

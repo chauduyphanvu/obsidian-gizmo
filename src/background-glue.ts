@@ -1,4 +1,4 @@
-import { Notice, Platform, type WorkspaceLeaf } from "obsidian";
+import { Notice, Platform } from "obsidian";
 import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
 import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherTriggers, whereYouAre } from "./device.ts";
@@ -24,7 +24,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
   // An env without a tab: actions never ask for the source view, the only thing a leaf is for.
   const envFor = (path: string) => {
     const file = app.vault.getFileByPath(path);
-    return file ? obsidianAppEnv(plugin, undefined as unknown as WorkspaceLeaf, file) : undefined;
+    return file ? obsidianAppEnv(plugin, undefined, file) : undefined;
   };
   const openApp = (path: string) => void app.workspace.openLinkText(path, "", false);
   /** Command id (without the plugin's prefix) → name, as registered. */
@@ -193,8 +193,8 @@ export class DeviceBeat extends Heartbeat {
     });
     this.onStartOver = () => plugin.background?.startOver();
     const touched = () => { used.at = Date.now(); };
-    plugin.registerDomEvent(document, "pointerdown", touched, { passive: true });
-    plugin.registerDomEvent(document, "keydown", touched, { passive: true });
+    plugin.registerDomEvent(activeDocument, "pointerdown", touched, { passive: true });
+    plugin.registerDomEvent(activeDocument, "keydown", touched, { passive: true });
   }
 
   /** The zone a rhythm's deadline means: that of the phone or desktop used last. */

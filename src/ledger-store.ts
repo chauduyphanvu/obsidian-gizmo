@@ -57,7 +57,7 @@ export const ROW_CONFLICTS = Symbol("row conflicts");
 
 export function conflictsOf(row: unknown): { field: string; value: unknown; by: string }[] {
   const c = row && typeof row === "object" ? (row as Record<symbol, unknown>)[ROW_CONFLICTS] : undefined;
-  return Array.isArray(c) ? c : [];
+  return Array.isArray(c) ? (c as { field: string; value: unknown; by: string }[]) : [];
 }
 
 export function rowIdOf(row: unknown): string | undefined {
@@ -75,7 +75,7 @@ export function listsOf(fm: Record<string, unknown> | undefined, kept: Record<st
   for (const [k, v] of Object.entries(fm ?? {})) {
     // An empty list could be either kind; events say which it is.
     if (META_KEYS.includes(k) || !Array.isArray(v) || !v.length) continue;
-    if (v.every((x) => typeof x === "string")) base.ticked[k] = v as string[];
+    if (v.every((x) => typeof x === "string")) base.ticked[k] = v;
     else if (v.every((x) => x !== null && typeof x === "object" && !Array.isArray(x))) {
       const ids = kept[k];
       base.lists[k] = { rows: v as Row[], ids: Array.isArray(ids) && ids.length === v.length ? ids.map(String) : baseIds(v) };
@@ -595,7 +595,7 @@ export class Ledger {
     const n = await this.refresh(dataPath);
     const now = this.now();
     const d = this.device();
-    const events = ops.map((op) => ({ ...op, t: this.clock.next(now), d }) as LedgerEvent);
+    const events = ops.map((op) => ({ ...op, t: this.clock.next(now), d }));
     const path = logFile(dataPath, d, new Date(now));
     // The file appended to is read first, so what's kept of it goes on from all it holds.
     if (n.skipped.delete(path)) await this.read(n, path);

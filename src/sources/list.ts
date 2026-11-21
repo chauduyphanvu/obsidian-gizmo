@@ -1,5 +1,4 @@
 import type { Row } from "../data.ts";
-import type { DataLayer } from "../datalayer.ts";
 import { fileDep, folderDep } from "../deps.ts";
 import { RESERVED, resolveList } from "../store.ts";
 import { copyRow } from "../data.ts";

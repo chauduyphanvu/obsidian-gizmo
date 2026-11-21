@@ -541,10 +541,12 @@ npm install
 npm run build                          # type check, then bundle main.js and gizmod.mjs
 npm test                               # unit and DOM tests
 npm run test:tz                        # the same tests in two more time zones
+npm install --prefix tools/lint        # once, for the lint
+npm run lint                           # Obsidian's lint rules, as the community directory applies them
 node test/live/smoke.mjs <empty-dir>   # live checks in an isolated Obsidian
 ```
 
-Gizmo has no runtime dependencies. `npm run build` puts the gallery into `main.js`. The live checks start Obsidian with copies of `test/vault` and the gallery, so Obsidian must be on the computer. Run `npm run build` before the live checks.
+Gizmo has no runtime dependencies. The lint has its own folder, `tools/lint`, because its TypeScript rules run on TypeScript 6 and the build uses TypeScript 7. `npm run build` puts the gallery into `main.js`. The live checks start Obsidian with copies of `test/vault` and the gallery, so Obsidian must be on the computer. Run `npm run build` before the live checks.
 
 | Folder | What it has |
 | --- | --- |

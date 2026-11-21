@@ -56,14 +56,14 @@ function preview(value: unknown): { text: string; cls: string } {
 /** Puts "Copied" beside a key for a moment. */
 function flashing(row: HTMLElement, key: HTMLElement): () => void {
   let badge: HTMLElement | undefined;
-  let timer: ReturnType<typeof setTimeout> | undefined;
+  let timer: number | undefined;
   return () => {
     if (!badge) {
       badge = row.createSpan({ cls: "gz-copied", text: "Copied", attr: { role: "status" } });
       row.insertBefore(badge, key.nextSibling);
     }
-    clearTimeout(timer);
-    timer = setTimeout(() => {
+    window.clearTimeout(timer);
+    timer = window.setTimeout(() => {
       badge?.remove();
       badge = undefined;
     }, COPIED_MS);

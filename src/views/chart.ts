@@ -1,3 +1,4 @@
+import { textOf } from "../text.ts";
 import { extent, formatValue, getPath, seriesOf, type Point, type Row } from "../data.ts";
 import { periodStart, shiftPeriod, toTime, type Per } from "../time.ts";
 import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
@@ -16,10 +17,11 @@ export const MAX_SERIES = 6;
 /** Bars are at most this wide, with a gap between neighbours and rounded data ends. */
 const BAR_MAX = 46, GAP = 2, RADIUS = 4;
 
-export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent?: Element): SVGElementTagNameMap[K] {
-  const el = document.createElementNS(NS, tag);
+export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent: Element): SVGElementTagNameMap[K] {
+  // In the parent's own document: a pop-out window has its own.
+  const el = parent.ownerDocument.createElementNS(NS, tag);
   for (const [k, v] of Object.entries(attrs)) el.setAttribute(k, String(v));
-  parent?.appendChild(el);
+  parent.appendChild(el);
   return el;
 }
 
@@ -104,7 +106,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   }
   // One shared x axis: times in order, or categories in the order they first appear.
   const isTime = all.every((p) => toTime(p.x) !== undefined);
-  const keyOf = (x: unknown) => (isTime ? toTime(x)! : String(x ?? ""));
+  const keyOf = (x: unknown) => (isTime ? toTime(x)! : textOf(x ?? ""));
   const keys: (number | string)[] = [];
   const label = new Map<number | string, unknown>();
   for (const p of all) {
@@ -153,7 +155,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   const pos = (i: number) => (isTime ? (keys[i] as number) - (keys[0] as number) : i);
   const sx = (i: number) => !isLine || span === 0 ? L + bandW * (i + 0.5) : L + (pos(i) / span) * (W - L - right);
   const sy = (y: number) => T + (1 - (y - yMin) / (yMax - yMin)) * (H - T - B);
-  const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : opts.category?.(label.get(keys[i])) ?? String(label.get(keys[i]) ?? ""));
+  const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : opts.category?.(label.get(keys[i])) ?? textOf(label.get(keys[i]) ?? ""));
   const name = (s: number) => series[s].label ?? series[s].name;
   // Several series take the chart palette in a fixed order; one is drawn in ink and pencil.
   const colour = (s: number) => (series.length === 1 ? "" : `gz-s${s + 1}`);
@@ -335,8 +337,9 @@ function createDivBefore(parent: HTMLElement, before: Element, cls: string): HTM
 
 /** The row behind a bar: the data (or group) row whose x is `at`, else one made of the series' values there. */
 function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
-  const found = Array.isArray(data) ? data.find((r) => r !== null && typeof r === "object" && String(getPath(r, x)) === String(at)) : undefined;
-  return (found as Row | undefined) ?? Object.fromEntries([[x, at], ...series.map((s) => [s.name, s.points.find((pt) => pt.x === at)?.y ?? null])]);
+  const found: unknown = Array.isArray(data) ? (data as unknown[]).find((r) => r !== null && typeof r === "object" && String(getPath(r, x)) === String(at)) : undefined;
+  const values = series.map((s): [string, unknown] => [s.name, s.points.find((pt) => pt.x === at)?.y ?? null]);
+  return (found as Row | undefined) ?? Object.fromEntries<unknown>([[x, at], ...values]);
 }
 
 function chartView(kind: "line" | "bar"): ViewDef {
@@ -398,7 +401,7 @@ function chartView(kind: "line" | "bar"): ViewDef {
           const f = formatFor(p, series[s].name);
           return f === undefined ? undefined : formatWith(v, f, ctx.now);
         };
-        const category = (at: unknown) => mapped(p, x, at) ?? String(at ?? "");
+        const category = (at: unknown) => mapped(p, x, at) ?? textOf(at ?? "");
         renderChart(el, series, {
           kind, unit: p.unit, decimals: p.decimals, format, category, width: width ?? ctx.width(key), per: p.per, mark, goal: p.goal, stack: p.stack, now: ctx.now,
         });

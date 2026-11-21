@@ -7,6 +7,7 @@
  * uses the zone of the device the person used last). A rhythm's window runs from its period's start
  * to the next period's start, and it is met by a row in it before the deadline.
  */
+import { textOf } from "./text.ts";
 import { compileWhere, getPath, type Row } from "./data.ts";
 import { calendarOf, dayIn, daysInMonth, minuteIn, periodStart, shiftPeriod, toTime } from "./time.ts";
 import type { Then } from "./spec.ts";
@@ -87,7 +88,7 @@ export function readExpect(raw: unknown, errors: string[]): Expectation[] {
     const at = `expect ${i + 1}`;
     const bad = (m: string) => void errors.push(`${at}: ${m}`);
     if (!isMap(r)) return bad("must be a map, e.g. {every: day, by: \"10:00\", source: doses}");
-    const id = r.id === undefined ? `expect-${i + 1}` : String(r.id);
+    const id = r.id === undefined ? `expect-${i + 1}` : textOf(r.id);
     if (!ID.test(id)) return bad("id must be lowercase letters, digits and -");
     if (ids.has(id)) return bad(`another rule is already called ${id}`);
     ids.add(id);
@@ -106,13 +107,13 @@ export function readExpect(raw: unknown, errors: string[]): Expectation[] {
       const by = readBy(r.by, every);
       if (typeof by === "string") return bad(by);
       if (r.where !== undefined && !conditions(r.where)) return bad("where must be a map of conditions");
-      out.push({ kind: "rhythm", id, source: r.source, every, by, byText: r.by, ...(r.where !== undefined && { where: r.where as Rhythm["where"] }), ...(r.say !== undefined && { say: r.say as string }), ...(r.then !== undefined && { then: r.then as unknown as Then }) });
+      out.push({ kind: "rhythm", id, source: r.source, every, by, byText: r.by, ...(r.where !== undefined && { where: r.where }), ...(r.say !== undefined && { say: r.say }), ...(r.then !== undefined && { then: r.then as unknown as Then }) });
     } else if (kinds[0] === "check") {
       if (!conditions(r.check) || !Object.keys(r.check).length) return bad("check must be a map of conditions each row must hold, e.g. check: {weight: between 30 and 250}");
       out.push({ kind: "value", id, source: r.source, check: r.check });
     } else {
       if (!conditions(r.none) || !Object.keys(r.none).length) return bad("none must be a map of conditions no row may match, e.g. none: {due: past}");
-      out.push({ kind: "state", id, source: r.source, none: r.none, ...(r.say !== undefined && { say: r.say as string }), ...(r.then !== undefined && { then: r.then as unknown as Then }) });
+      out.push({ kind: "state", id, source: r.source, none: r.none, ...(r.say !== undefined && { say: r.say }), ...(r.then !== undefined && { then: r.then as unknown as Then }) });
     }
   });
   return out;
@@ -170,7 +171,7 @@ export function refusal(rules: readonly Expectation[], list: string, row: Row, n
     for (const [field, cond] of Object.entries(r.check)) {
       if (!compileWhere({ [field]: cond }, now)(row)) {
         const v = getPath(row, field);
-        return v === undefined || v === "" ? `${field} is empty, and must be ${String(cond)}` : `${field} ${String(v)} isn't ${String(cond)}`;
+        return v === undefined || v === "" ? `${field} is empty, and must be ${textOf(cond)}` : `${field} ${textOf(v)} isn't ${textOf(cond)}`;
       }
     }
   }

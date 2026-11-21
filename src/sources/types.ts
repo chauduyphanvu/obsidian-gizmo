@@ -19,5 +19,5 @@ export interface SourceDef {
   /** Dependency keys (url:…, notes:…, file:…) the data layer invalidates on. */
   deps(p: Panel, files: AppFiles): string[];
   /** The raw data, before the pipeline. */
-  load(p: Panel, files: AppFiles, layer: DataLayer, opts: LoadOpts): Promise<unknown> | unknown;
+  load(p: Panel, files: AppFiles, layer: DataLayer, opts: LoadOpts): unknown;
 }
