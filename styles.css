@@ -199,32 +199,103 @@
    so its text lines up with the panel's title; hosted, it stays inside the note's text. */
 .gizmo .gz-table-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--size-4-2)); }
 .gz-embed .gizmo .gz-table-wrap, .gz-lens .gizmo .gz-table-wrap, .gizmo.gz-bases .gz-table-wrap { margin: 0; }
-.gizmo .gz-table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small); }
-.gizmo .gz-table th {
-  text-align: left;
-  color: var(--text-muted);
-  font-weight: var(--font-medium);
-  font-size: var(--font-ui-smaller);
-  padding: 0 var(--size-4-2) var(--size-4-1);
-  border-bottom: 1px solid var(--background-modifier-border);
-}
-.gizmo .gz-table th::first-letter { text-transform: uppercase; }
-.gizmo .gz-table td {
-  padding: var(--size-4-1) var(--size-4-2);
-  border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
-}
-.gizmo .gz-table tbody tr:last-child td { border-bottom: none; }
-.gizmo .gz-table tr.gz-selectable:hover td,
-.gizmo .gz-table tr:has(.gz-edit):hover td { background: var(--background-modifier-hover); }
-.gizmo .gz-table td.gz-num { text-align: right; font-variant-numeric: tabular-nums; }
-.gizmo .gz-table th.gz-num { text-align: right; }
 .gizmo .gz-list, .gizmo .gz-checklist { margin: 0; padding-left: var(--size-4-5); }
 .gizmo .gz-checklist { list-style: none; padding-left: 0; }
 .gizmo .gz-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }
 .gizmo .gz-checklist input:checked + span { color: var(--text-faint); text-decoration: line-through; }
 
 /* == ledger: tables and lists as ledgers, grouped by day or week == */
-/* (reserved) */
+/* A table reads as text: no lines between cells, a row about 38px tall that lights under the pointer,
+   its first text column plain, the others quieter, numbers on the right. A ledger (rows in date order)
+   adds a heading per day or week, with a line under it and a total at its end. */
+.gizmo .gz-table { width: 100%; border-collapse: separate; border-spacing: 0; font-size: 14px; }
+.gizmo .gz-table th {
+  text-align: left;
+  color: var(--text-faint);
+  font-weight: 500;
+  font-size: 11.5px;
+  padding: 0 var(--size-4-2) var(--size-4-1);
+  border-bottom: 1px solid var(--background-modifier-border);
+  white-space: nowrap;
+}
+.gizmo .gz-table thead th::first-letter { text-transform: uppercase; }
+.gizmo .gz-table th.gz-num { text-align: right; }
+.gizmo .gz-table.gz-ledger thead th { padding-bottom: 8px; border-bottom: 0; }
+.gizmo .gz-table td { height: 38px; padding: 5px var(--size-4-2); color: var(--text-muted); font-size: 13px; transition: background-color 150ms, color 600ms; }
+.gizmo .gz-table td:first-child { border-radius: 7px 0 0 7px; }
+.gizmo .gz-table td:last-child { border-radius: 0 7px 7px 0; }
+.gizmo .gz-table td.gz-lead { color: var(--text-normal); font-size: 14px; }
+.gizmo .gz-table td.gz-num { width: 1%; color: var(--text-normal); font-size: 14px; font-weight: 500; text-align: right; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gizmo .gz-table td.gz-ledger-time { width: 1%; color: var(--text-faint); font-size: 12.5px; font-weight: 400; font-variant-numeric: tabular-nums; white-space: nowrap; }
+.gizmo .gz-table tbody tr:not(.gz-ledger-group):hover td { background: var(--background-modifier-hover); }
+.gizmo .gz-table tbody tr.gz-selected:not(.gz-ledger-group) td { background: color-mix(in srgb, var(--interactive-accent) 14%, transparent); color: var(--text-normal); }
+
+/* A group's heading: its when at the start, its total at the end, the line under both. */
+.gizmo .gz-table tr.gz-ledger-group th { padding: 18px 0 0; border: 0; color: var(--text-muted); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
+.gizmo .gz-table tbody > tr.gz-ledger-group:first-child th { padding-top: 0; }
+.gizmo .gz-ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--size-4-3); margin: 0 var(--size-4-2); padding-bottom: 6px; border-bottom: 1px solid var(--background-modifier-border); }
+
+/* A list that is a ledger: the same headings, items as rows without bullets. */
+.gizmo .gz-list.gz-ledger { list-style: none; padding-left: 0; font-size: 14px; }
+.gizmo .gz-list.gz-ledger > li { display: flex; align-items: center; gap: var(--size-4-3); min-height: 38px; margin: 0 calc(-1 * var(--size-4-2)); padding: 0 var(--size-4-2); border-radius: 7px; transition: background-color 150ms, color 600ms; }
+.gizmo .gz-list.gz-ledger > li.gz-ledger-group {
+  min-height: 0;
+  margin: 0;
+  padding: 18px 0 6px;
+  align-items: baseline;
+  justify-content: space-between;
+  border-radius: 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-list.gz-ledger > li.gz-ledger-group:first-child { padding-top: 0; }
+.gizmo .gz-list.gz-ledger > li:not(.gz-ledger-group):hover { background: var(--background-modifier-hover); }
+.gizmo .gz-list.gz-ledger > li.gz-selected:not(.gz-ledger-group) { background: color-mix(in srgb, var(--interactive-accent) 14%, transparent); }
+.gizmo .gz-list.gz-ledger > li > .gz-row-action { margin-left: auto; }
+
+/* An edited cell reads as text, in its column's colour and size; under the pointer its row outlines
+   the fields, and the one pointed at (or with focus) is a field. Its text lines up with the column's, the field's edge reaching into the
+   cell's padding. */
+.gizmo .gz-table input.gz-edit:not([type="checkbox"]),
+.gizmo .gz-table textarea.gz-edit { width: calc(100% + 2 * var(--size-4-2)); min-width: 4em; margin: 0 calc(-1 * var(--size-4-2)); }
+.gizmo .gz-table select.gz-edit { margin-left: calc(-1 * var(--size-4-2)); }
+.gizmo .gz-table .gz-edit:not([type="checkbox"]),
+.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]) { background-color: transparent; border-color: transparent; box-shadow: none; }
+.gizmo .gz-table .gz-edit:not([type="checkbox"]) { height: 28px; font-family: inherit; font-size: inherit; font-weight: inherit; color: inherit; }
+.gizmo .gz-table td.gz-num .gz-edit { text-align: right; }
+.gizmo .gz-table tr:hover .gz-edit:not([type="checkbox"]),
+.gizmo .gz-rowcard:hover .gz-edit:not([type="checkbox"]) { border-color: var(--background-modifier-border); }
+.gizmo .gz-table .gz-edit:not([type="checkbox"]):hover,
+.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]):hover { background-color: var(--background-modifier-form-field); }
+.gizmo .gz-table .gz-edit:not([type="checkbox"]):focus,
+.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]):focus {
+  border-color: var(--background-modifier-border-focus);
+  background-color: var(--background-modifier-form-field);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+  color: var(--text-normal);
+}
+.gizmo .gz-table input.gz-edit[type="number"]::-webkit-inner-spin-button,
+.gizmo .gz-table input.gz-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+.gizmo .gz-table input.gz-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
+
+/* Cards: quiet surfaces; a picked one wears the accent and a soft ring. */
+.gizmo .gz-cards .gz-rowcard { gap: 4px; padding: 12px 14px; border: 1px solid transparent; border-radius: 10px; background: var(--background-secondary); font-size: 13px; }
+.gizmo .gz-cards .gz-rowcard.gz-selected { border-color: var(--interactive-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 22%, transparent); }
+.gizmo .gz-cards .gz-rowcard-title { color: var(--text-normal); font-size: 14px; font-weight: 500; }
+.gizmo .gz-cards .gz-rowcard-label { color: var(--text-muted); }
+
+/* A row that just arrived slides in; its numbers wear the accent, then settle back. */
+@keyframes gz-row-in { from { opacity: 0; transform: translateY(-6px); } to { opacity: 1; transform: none; } }
+.gizmo .gz-fresh { animation: gz-row-in 220ms cubic-bezier(0.2, 0, 0, 1); }
+.gizmo .gz-table tr.gz-fresh td.gz-num, .gizmo .gz-rowcard.gz-fresh .gz-num { color: var(--interactive-accent); }
+.gizmo .gz-rowcard .gz-num { transition: color 600ms; }
+@media (prefers-reduced-motion: reduce) {
+  .gizmo .gz-fresh { animation: none; }
+  .gizmo .gz-table td, .gizmo .gz-rowcard .gz-num { transition: none; }
+}
 /* == /ledger == */
 
 /* Forms: fields share the row and wrap; a name typed in lowercase is shown with a capital. */
@@ -303,7 +374,7 @@
 .gizmo .gz-selectable { cursor: pointer; }
 .gizmo .gz-selectable:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .gizmo li.gz-selectable { border-radius: var(--radius-s); padding: 1px var(--size-4-1); }
-.gizmo li.gz-selected, .gizmo tr.gz-selected td, .gizmo .gz-legend-item.gz-selected {
+.gizmo li.gz-selected, .gizmo .gz-legend-item.gz-selected {
   background: var(--background-modifier-hover);
   color: var(--text-normal);
 }
@@ -320,26 +391,6 @@
 .gizmo .gz-rowcard:hover button.gz-row-action:not(.mod-cta),
 .gizmo button.gz-row-action:not(.mod-cta):focus-visible { background: var(--interactive-normal); color: var(--text-normal); }
 .gizmo td.gz-row-actions { text-align: right; white-space: nowrap; }
-/* An edited cell reads as text; its field shows under the pointer and while it has focus. Its text
-   lines up with the column's, the field's edge reaching into the cell's padding. */
-.gizmo .gz-table input.gz-edit:not([type="checkbox"]),
-.gizmo .gz-table textarea.gz-edit { width: calc(100% + 2 * var(--size-4-2)); min-width: 4em; margin: 0 calc(-1 * var(--size-4-2)); }
-.gizmo .gz-table select.gz-edit { margin-left: calc(-1 * var(--size-4-2)); }
-.gizmo .gz-table .gz-edit:not([type="checkbox"]),
-.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]) { background-color: transparent; border-color: transparent; box-shadow: none; }
-.gizmo .gz-table tr:hover .gz-edit:not([type="checkbox"]),
-.gizmo .gz-rowcard:hover .gz-edit:not([type="checkbox"]) { border-color: var(--background-modifier-border); background-color: var(--background-modifier-form-field); }
-.gizmo .gz-table .gz-edit:not([type="checkbox"]):focus,
-.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]):focus {
-  border-color: var(--background-modifier-border-focus);
-  background-color: var(--background-modifier-form-field);
-  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
-}
-.gizmo .gz-table .gz-edit:not([type="checkbox"]) { height: 28px; }
-.gizmo .gz-table td.gz-num .gz-edit { text-align: right; }
-.gizmo .gz-table input.gz-edit[type="number"]::-webkit-inner-spin-button,
-.gizmo .gz-table input.gz-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
-.gizmo .gz-table input.gz-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
 
 /* Views: calendar, board, scatter, timeline */
 /* A five-step single-hue scale: the first chart colour mixed into the page; an empty day is a faint

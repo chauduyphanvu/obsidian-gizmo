@@ -200,7 +200,7 @@ test("a panel waiting for a pick waits in the sheet slot, out of sight, and show
   assert.equal(waiting.childNodes.length, 0);
   assert.equal(root.querySelector(".gz-waiting"), null);
 
-  const row = root.querySelectorAll(".gz-view-table tbody tr")[1];
+  const row = root.querySelectorAll(".gz-view-table tbody tr:not(.gz-ledger-group)")[1];
   click(row);
   await settle();
   assert.equal(root.querySelector(".gz-sheet-slot .gz-panel"), waiting);

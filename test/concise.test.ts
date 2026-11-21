@@ -268,9 +268,9 @@ test("Decisions: the track record charts what I said against how often I was rig
   assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["I said", "I was right"]);
   assert.equal(chart.querySelectorAll("path.gz-bar").length, 8, "four levels of sure, each with what I said and how often I was right");
   const scored = app.panel("Scored");
-  assert.deepEqual([...scored.querySelectorAll("th")].map(text), ["Decision", "% sure", "It went", "What I learned"]);
-  assert.equal(scored.querySelectorAll("tbody tr").length, 7);
-  const book = [...scored.querySelectorAll("tbody tr")].find((tr) => text(tr.querySelector("td")) === "Book the flights four months ahead")!;
+  assert.deepEqual([...scored.querySelectorAll("thead th")].map(text), ["Decision", "% sure", "It went", "What I learned"]);
+  assert.equal(scored.querySelectorAll("tbody tr:not(.gz-ledger-group)").length, 7);
+  const book = [...scored.querySelectorAll("tbody tr:not(.gz-ledger-group)")].find((tr) => text(tr.querySelector("td")) === "Book the flights four months ahead")!;
   assert.equal(book.querySelectorAll("select").length, 2, "edit: true edits confidence and outcome");
   type(book.querySelector("input")!, "Book earlier still");
   await settle();
@@ -351,7 +351,7 @@ function shown(el: Element): string {
 }
 
 /** The cells of a table panel, row by row, with fields as values. */
-const cells = (el: Element) => [...el.querySelectorAll("tr")].map((tr) => [...tr.querySelectorAll("th, td")].map(shown));
+const cells = (el: Element) => [...el.querySelectorAll("tr:not(.gz-ledger-group)")].map((tr) => [...tr.querySelectorAll("th, td")].map(shown));
 
 test("the short Decisions draws what the long Decision journal draws, over the same notes", async () => {
   const notes = vault();
