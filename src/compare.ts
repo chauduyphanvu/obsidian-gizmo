@@ -1,38 +1,65 @@
 import { getPath } from "./data.ts";
-import { dateWindow, periodStart, shiftPeriod, stampParts, toTime, wallTime } from "./time.ts";
+import { dateWindow, daysInMonth, periodStart, shiftPeriod, stampParts, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
 
 const DAY = 86_400_000;
+
+/** How a window steps back to the one before it: by `n` calendar months, whole weeks or days. */
+export interface Step {
+  per: "month" | "week" | "day";
+  n: number;
+}
 
 /** The date condition a `compare` panel measures, and the window just before it. Times are [from, to). */
 export interface Windows {
   field: string;
   current: [number, number];
   previous: [number, number];
+  step: Step;
 }
 
 /**
- * The window of the same length just before this one. Whole months or years step back by calendar
- * months, whole weeks by weeks, anything else by days, so `this month` compares with last month
- * whatever their lengths.
+ * The step to the window before: whole months or years step back by calendar months, whole weeks
+ * by weeks, anything else by days, so `this month` compares with last month whatever their lengths.
  */
-function previousWindow(from: number, to: number): [number, number] {
+function stepOf(from: number, to: number): Step {
   const [a, b] = [new Date(from), new Date(to)];
   if (periodStart(from, "month") === from && periodStart(to, "month") === to) {
-    const months = (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth();
-    return [shiftPeriod(from, "month", -months), from];
+    return { per: "month", n: (b.getFullYear() - a.getFullYear()) * 12 + b.getMonth() - a.getMonth() };
   }
   const weeks = Math.round((to - from) / (7 * DAY));
-  if (weeks > 0 && periodStart(from, "week") === from && shiftPeriod(from, "week", weeks) === to) return [shiftPeriod(from, "week", -weeks), from];
-  return [shiftPeriod(from, "day", -Math.max(1, Math.round((to - from) / DAY))), from];
+  if (weeks > 0 && periodStart(from, "week") === from && shiftPeriod(from, "week", weeks) === to) return { per: "week", n: weeks };
+  return { per: "day", n: Math.max(1, Math.round((to - from) / DAY)) };
 }
 
-/** The first `where` condition that is a date window with both ends (`this week`, `last 7 days`), if any. */
+/**
+ * The same clock one step back: that many days or weeks before, or months before on the same day of
+ * the month, kept to the last day of a shorter month (Mar 31 steps back to Feb 28 or 29).
+ */
+function stepBack(t: number, { per, n }: Step): number {
+  const d = new Date(t);
+  const [y, m, day] = [d.getFullYear(), d.getMonth(), d.getDate()];
+  const clock = [d.getHours(), d.getMinutes(), d.getSeconds(), d.getMilliseconds()] as const;
+  if (per === "month") return new Date(y, m - n, Math.min(day, daysInMonth(y, m - n)), ...clock).getTime();
+  return new Date(y, m, day - (per === "week" ? 7 : 1) * n, ...clock).getTime();
+}
+
+/**
+ * The first `where` condition that is a date window with both ends (`this week`, `last 7 days`), if
+ * any, and the window before it. A window still running at `now` is compared like with like: the
+ * window before ends as far into itself as now is into this one, so the 20th of a month is set
+ * against the 1st to the 20th of the last, not all of it. A look ahead (`next 3 days`) holds what is
+ * coming rather than what has happened, so it is compared whole.
+ */
 export function compareWindows(where: Panel["where"], now: Date): Windows | undefined {
+  const t = now.getTime();
   for (const [field, cond] of Object.entries(where ?? {})) {
-    const window = typeof cond === "string" ? dateWindow(cond, now) : undefined;
+    if (typeof cond !== "string") continue;
+    const window = dateWindow(cond, now);
     if (window && Number.isFinite(window[0]) && Number.isFinite(window[1])) {
-      return { field, current: window, previous: previousWindow(window[0], window[1]) };
+      const step = stepOf(window[0], window[1]);
+      const running = window[0] <= t && t < window[1] && !/^next /.test(cond.trim().toLowerCase());
+      return { field, current: window, previous: [stepBack(window[0], step), running ? stepBack(t, step) : window[0]], step };
     }
   }
   return undefined;

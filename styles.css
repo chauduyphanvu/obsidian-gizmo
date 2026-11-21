@@ -294,7 +294,162 @@
 }
 
 /* == answer: number, progress, countdown in the answer band == */
-/* (reserved) */
+/* The answer as one band (src/views/value.ts): the headline's eyebrow, its figure large with the unit
+   and caption on one line, then the change in words; a fact the same, smaller; a progress over the
+   headline's value is its meter, with a tick at even pace. Data is ink and grey: colour only where a
+   line was crossed, the fill past max. Every digit is tabular. */
+.gizmo .gz-role-answer .gz-title.gz-eyebrow,
+.gizmo .gz-role-answer .gz-title.gz-fact-title {
+  margin: 0 0 8px;
+  font-size: 12.5px;
+  font-weight: 600;
+  line-height: 1.3;
+  color: var(--text-muted);
+}
+.gizmo .gz-role-answer .gz-title.gz-fact-title { margin-bottom: 6px; }
+.gizmo .gz-role-answer .gz-fig-row { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 12px; }
+.gizmo .gz-role-answer .gz-big.gz-fig {
+  font-size: 56px;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: -0.04em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+  overflow-wrap: anywhere;
+}
+.gizmo.gz-narrow .gz-role-answer .gz-big.gz-fig { font-size: 46px; }
+.gizmo.gz-narrow .gz-answer .gz-facts { column-gap: 28px; }
+.gizmo .gz-role-answer .gz-fig .gz-unit {
+  margin-left: 6px;
+  font-size: 24px;
+  font-weight: 600;
+  letter-spacing: -0.02em;
+  color: var(--text-normal);
+}
+/* A progress's `/ max` is what the figure is out of, so it sits back. */
+.gizmo .gz-role-answer.gz-view-progress .gz-big .gz-unit { color: var(--text-muted); font-weight: 500; }
+.gizmo .gz-role-answer .gz-big .gz-none { color: var(--text-faint); }
+.gizmo .gz-role-answer .gz-label.gz-fig-cap { margin: 0; font-size: 15px; line-height: 1.3; color: var(--text-muted); }
+.gizmo .gz-role-answer .gz-compare.gz-ans-sub {
+  margin-top: 12px;
+  font-size: 14px;
+  line-height: 1.4;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-faint { color: var(--text-faint); }
+.gizmo .gz-role-answer .gz-big.gz-fact-fig {
+  font-size: 26px;
+  line-height: 1;
+  font-weight: 650;
+  letter-spacing: -0.03em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.gizmo .gz-role-answer .gz-fact-fig .gz-unit {
+  margin-left: 5px;
+  font-size: 14px;
+  font-weight: 500;
+  letter-spacing: 0;
+  color: var(--text-muted);
+}
+.gizmo .gz-role-answer .gz-fact-note {
+  margin-top: 6px;
+  font-size: 12.5px;
+  line-height: 1.35;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-text.gz-ans-text {
+  font-size: 40px;
+  line-height: 1.1;
+  font-weight: 600;
+  letter-spacing: -0.03em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-text.gz-fact-text {
+  font-size: 20px;
+  line-height: 1.2;
+  font-weight: 600;
+  letter-spacing: -0.01em;
+  color: var(--text-normal);
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-label.gz-ans-label { margin-top: 8px; font-size: 14px; color: var(--text-muted); }
+.gizmo .gz-role-answer.gz-fact .gz-label.gz-ans-label { margin-top: 6px; font-size: 12.5px; }
+/* The meter: an ink fill on an 8 px track, room above it for the even-pace label. */
+.gizmo .gz-role-answer .gz-meter-track {
+  position: relative;
+  height: 8px;
+  margin-top: 24px;
+  border-radius: 4px;
+  background: var(--background-modifier-border);
+}
+.gizmo .gz-role-answer .gz-meter-fill {
+  position: absolute;
+  top: 0;
+  bottom: 0;
+  left: 0;
+  border-radius: 4px;
+  background: var(--text-normal);
+  transition: width 240ms cubic-bezier(0.33, 1, 0.68, 1), background-color 150ms;
+}
+.gizmo .gz-role-answer .gz-meter-fill.gz-over { background: var(--text-error); }
+.gizmo .gz-role-answer .gz-meter-pace {
+  position: absolute;
+  top: -5px;
+  width: 2px;
+  height: 18px;
+  margin-left: -1px;
+  border-radius: 1px;
+  background: var(--text-normal);
+  box-shadow: 0 0 0 2px var(--background-primary);
+}
+.gizmo .gz-role-answer .gz-meter-pace-label {
+  position: absolute;
+  bottom: 24px;
+  left: 50%;
+  transform: translateX(-50%);
+  font-size: 11px;
+  line-height: 1;
+  color: var(--text-muted);
+  white-space: nowrap;
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-pace-start .gz-meter-pace-label { transform: translateX(-6px); }
+.gizmo .gz-role-answer .gz-pace-end .gz-meter-pace-label { transform: translateX(calc(-100% + 6px)); }
+.gizmo .gz-role-answer .gz-meter-legend {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 4px 16px;
+  margin-top: 9px;
+  font-size: 13px;
+  color: var(--text-muted);
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-meter-legend b { font-weight: 600; color: var(--text-normal); }
+.gizmo .gz-role-answer .gz-meter-status {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  margin-top: 8px;
+  font-size: 13px;
+  font-weight: 500;
+  color: var(--text-error);
+  font-variant-numeric: tabular-nums;
+}
+.gizmo .gz-role-answer .gz-meter-icon { flex: none; width: 15px; height: 15px; }
+/* The headline and the facts beside it line up on the baselines of their last lines. */
+.gizmo .gz-answer > .gz-slot > .gz-headline,
+.gizmo .gz-answer > .gz-facts { align-self: last baseline; }
+/* A progress among the facts has no figure wide enough to give its bar a length. */
+.gizmo .gz-role-answer.gz-fact.gz-view-progress { min-width: 200px; }
+@media (prefers-reduced-motion: reduce) {
+  .gizmo .gz-role-answer .gz-meter-fill { transition: none; }
+}
 /* == /answer == */
 
 /* Selection, row actions, edit in place */

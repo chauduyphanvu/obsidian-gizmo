@@ -16,7 +16,9 @@ const NOW = new Date(2026, 10, 18, 12, 0);
 const ctx = { now: NOW, width: () => 600 } as unknown as PanelCtx;
 const text_ = (el: Element | null | undefined) => el?.textContent ?? "";
 const day = (t: number) => stampParts(new Date(t)).date;
+const minute = (t: number) => stampParts(new Date(t)).at;
 const span = (w: [number, number] | undefined) => w && [day(w[0]), day(w[1])];
+const spanAt = (w: [number, number] | undefined) => w && [minute(w[0]), minute(w[1])];
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
 
 function draw(def: ViewDef, keys: Record<string, unknown>, data: unknown): HTMLElement {
@@ -29,21 +31,54 @@ function draw(def: ViewDef, keys: Record<string, unknown>, data: unknown): HTMLE
 
 // ---- compare --------------------------------------------------------------------------------------
 
-test("the previous window is the same length just before; calendar windows step by calendar units", () => {
+test("the window before steps back by calendar units; one still running is compared up to the same point in it", () => {
   const w = (cond: string) => {
     const r = compareWindows({ at: cond }, NOW);
-    return r && [span(r.current), span(r.previous)];
+    return r && [span(r.current), spanAt(r.previous)];
   };
-  assert.deepEqual(w("this week"), [["2026-11-16", "2026-11-23"], ["2026-11-09", "2026-11-16"]]);
-  assert.deepEqual(w("this month"), [["2026-11-01", "2026-12-01"], ["2026-10-01", "2026-11-01"]]);
-  assert.deepEqual(w("this year"), [["2026-01-01", "2027-01-01"], ["2025-01-01", "2026-01-01"]]);
-  assert.deepEqual(w("today"), [["2026-11-18", "2026-11-19"], ["2026-11-17", "2026-11-18"]]);
-  assert.deepEqual(w("yesterday"), [["2026-11-17", "2026-11-18"], ["2026-11-16", "2026-11-17"]]);
-  assert.deepEqual(w("last 7 days"), [["2026-11-12", "2026-11-19"], ["2026-11-05", "2026-11-12"]]);
-  assert.deepEqual(w("last 3 months"), [["2026-09-01", "2026-12-01"], ["2026-06-01", "2026-09-01"]]);
-  assert.deepEqual(w("last 2 weeks"), [["2026-11-09", "2026-11-23"], ["2026-10-26", "2026-11-09"]]);
-  assert.deepEqual(w("next 3 days"), [["2026-11-18", "2026-11-22"], ["2026-11-14", "2026-11-18"]]);
-  assert.deepEqual(w("2026-11-10"), [["2026-11-10", "2026-11-11"], ["2026-11-09", "2026-11-10"]]);
+  // Running at Wednesday noon: the window before ends as far into itself as now is into this one.
+  assert.deepEqual(w("this week"), [["2026-11-16", "2026-11-23"], ["2026-11-09T00:00", "2026-11-11T12:00"]]);
+  assert.deepEqual(w("this month"), [["2026-11-01", "2026-12-01"], ["2026-10-01T00:00", "2026-10-18T12:00"]]);
+  assert.deepEqual(w("this year"), [["2026-01-01", "2027-01-01"], ["2025-01-01T00:00", "2025-11-18T12:00"]]);
+  assert.deepEqual(w("today"), [["2026-11-18", "2026-11-19"], ["2026-11-17T00:00", "2026-11-17T12:00"]]);
+  assert.deepEqual(w("last 7 days"), [["2026-11-12", "2026-11-19"], ["2026-11-05T00:00", "2026-11-11T12:00"]]);
+  assert.deepEqual(w("last 3 months"), [["2026-09-01", "2026-12-01"], ["2026-06-01T00:00", "2026-08-18T12:00"]]);
+  assert.deepEqual(w("last 2 weeks"), [["2026-11-09", "2026-11-23"], ["2026-10-26T00:00", "2026-11-04T12:00"]]);
+  // Finished, the window before is the whole one of the same length just before.
+  assert.deepEqual(w("yesterday"), [["2026-11-17", "2026-11-18"], ["2026-11-16T00:00", "2026-11-17T00:00"]]);
+  assert.deepEqual(w("2026-11-10"), [["2026-11-10", "2026-11-11"], ["2026-11-09T00:00", "2026-11-10T00:00"]]);
+  // A look ahead is compared whole.
+  assert.deepEqual(w("next 3 days"), [["2026-11-18", "2026-11-22"], ["2026-11-14T00:00", "2026-11-18T00:00"]]);
+});
+
+test("like with like: the middle of a month against the same days of the last, and the middle of a week the same", () => {
+  const previous = (cond: string, now: Date) => spanAt(compareWindows({ at: cond }, now)!.previous);
+  // Friday 20 November, 19:42: not all of October, but October 1 to the 20th at 19:42.
+  assert.deepEqual(previous("this month", new Date(2026, 10, 20, 19, 42)), ["2026-10-01T00:00", "2026-10-20T19:42"]);
+  // Wednesday at 10:00: last week from Monday to Wednesday at 10:00.
+  assert.deepEqual(previous("this week", new Date(2026, 10, 18, 10, 0)), ["2026-11-09T00:00", "2026-11-11T10:00"]);
+  // The current window keeps its end: rows after now aren't there to count.
+  assert.deepEqual(span(compareWindows({ at: "this month" }, new Date(2026, 10, 20, 19, 42))!.current), ["2026-11-01", "2026-12-01"]);
+});
+
+test("a day of the month past the end of a shorter month steps back to its last day", () => {
+  const previous = (now: Date) => spanAt(compareWindows({ at: "this month" }, now)!.previous);
+  assert.deepEqual(previous(new Date(2027, 2, 31, 9, 15)), ["2027-02-01T00:00", "2027-02-28T09:15"]);
+  assert.deepEqual(previous(new Date(2028, 2, 31, 9, 15)), ["2028-02-01T00:00", "2028-02-29T09:15"]);
+  assert.deepEqual(previous(new Date(2026, 9, 31, 23, 59)), ["2026-09-01T00:00", "2026-09-30T23:59"]);
+  // A year back from a leap day is February 28.
+  assert.deepEqual(spanAt(compareWindows({ at: "this year" }, new Date(2028, 1, 29, 8, 0))!.previous), ["2027-01-01T00:00", "2027-02-28T08:00"]);
+});
+
+test("a finished window is compared with the whole window before it", () => {
+  const windows = (cond: string) => {
+    const r = compareWindows({ at: cond }, NOW)!;
+    return [spanAt(r.current), spanAt(r.previous)];
+  };
+  assert.deepEqual(windows("2026-10-31"), [["2026-10-31T00:00", "2026-11-01T00:00"], ["2026-10-30T00:00", "2026-10-31T00:00"]]);
+  assert.deepEqual(windows("yesterday"), [["2026-11-17T00:00", "2026-11-18T00:00"], ["2026-11-16T00:00", "2026-11-17T00:00"]]);
+  // One that hasn't started yet is compared whole too.
+  assert.deepEqual(windows("2026-12-01"), [["2026-12-01T00:00", "2026-12-02T00:00"], ["2026-11-30T00:00", "2026-12-01T00:00"]]);
 });
 
 test("only a date window with both ends can be compared; the first one in where is used", () => {
@@ -96,7 +131,8 @@ test("the pipeline loads both windows, nothing older; rows split back by window"
   assert.deepEqual(rows.map((r) => r.amount), [100, 50, 90, 72, 5]);
   const { current, previous } = splitByWindow(p, rows, NOW);
   assert.deepEqual((current as typeof SPEND).map((r) => r.amount), [90, 72]);
-  assert.deepEqual(previous!.map((r) => (r as typeof SPEND[0]).amount), [100, 50]);
+  // At Wednesday noon last week counts up to Wednesday noon: Sunday's 50 is past that point.
+  assert.deepEqual(previous!.map((r) => (r as typeof SPEND[0]).amount), [100]);
   // Without compare the pipeline and the split leave the rows alone.
   const plain = checkPanel({ view: "number", source: "s", field: "amount", agg: "sum", where: { at: "this week" } }, true).panel as Panel;
   assert.deepEqual((compilePipeline(plain, NOW)(SPEND) as typeof SPEND).map((r) => r.amount), [90, 72]);
@@ -111,8 +147,8 @@ const note = (el: Element) => el.querySelector(".gz-compare");
 test("number compare: the value is this window's, with an arrow, the difference and the percent", () => {
   const up = compare();
   assert.equal(text_(up.querySelector(".gz-big")), "162");
-  assert.equal(text_(note(up)), "▲ 12 (8%) vs previous");
-  assert.equal(note(up)!.getAttribute("aria-label"), "up 12, 8 percent, versus previous");
+  assert.equal(text_(note(up)), "▲ 62 (62%) vs previous");
+  assert.equal(note(up)!.getAttribute("aria-label"), "up 62, 62 percent, versus previous");
   assert.equal(note(up)!.getAttribute("role"), "img");
 
   const down = compare({}, [{ at: "2026-11-10", amount: 150 }, { at: "2026-11-17", amount: 147 }]);
@@ -142,9 +178,9 @@ test("number compare: no previous data, and a change from nothing has no percent
 test("number compare: the difference reads in the panel's format or unit; counts compare too", () => {
   const money = compare({ format: "$0,0.00" });
   assert.equal(text_(money.querySelector(".gz-big")), "$162.00");
-  assert.equal(text_(note(money)), "▲ $12.00 (8%) vs previous");
-  assert.equal(note(money)!.getAttribute("aria-label"), "up $12.00, 8 percent, versus previous");
-  assert.equal(text_(note(compare({ unit: "USD" }))), "▲ 12 USD (8%) vs previous");
+  assert.equal(text_(note(money)), "▲ $62.00 (62%) vs previous");
+  assert.equal(note(money)!.getAttribute("aria-label"), "up $62.00, 62 percent, versus previous");
+  assert.equal(text_(note(compare({ unit: "USD" }))), "▲ 62 USD (62%) vs previous");
   const count = draw(number, { source: "s", where: { at: "last 7 days" }, compare: "previous" }, SPEND);
   assert.equal(text_(count.querySelector(".gz-big")), "3");
   assert.equal(text_(note(count)), "▲ 2 (200%) vs previous");
@@ -164,7 +200,8 @@ test("an app loads one window's data once and compares it with the one before", 
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
   assert.equal(text_(root.querySelector(".gz-big")), "$162.00");
-  assert.equal(text_(root.querySelector(".gz-compare")), "▲ $12.00 (8%) vs previous");
+  // The app lays its number out as the headline, which names the window before: Monday to Wednesday noon.
+  assert.equal(text_(root.querySelector(".gz-compare")), "↑ $62.00 more than Nov 9–11 · $100.00");
   assert.deepEqual(t.f.requests, []);
 });
 
