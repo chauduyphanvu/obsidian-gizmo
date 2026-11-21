@@ -24,9 +24,10 @@ import { renderInputBar } from "./toolbar.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, composedWidth, isNarrow, rowTracks, spanOn, widthFor } from "./layout.ts";
 import { compose, type Placement, type Scope } from "./compose.ts";
+import { Sheet, type DrawIcon } from "./sheet.ts";
 import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
-import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
+import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./views/alerts.ts";
 
 const CACHE_MS = 5 * 60_000;
@@ -183,6 +184,10 @@ export class AppController {
   /** In the composed layout, each panel's place, by id, and each tab's pane; empty on the grid. */
   private placements = new Map<string, Placement>();
   private panes = new Map<string, HTMLElement>();
+  /** In the composed layout, the sheet slot each panel that waits for a pick belongs in, by id, in the order written. */
+  private slots = new Map<string, HTMLElement>();
+  /** In an app's own tab, the side sheet a pick opens in (see openInPlace); undefined anywhere else. */
+  private sheet: Sheet | undefined;
   /** In an app's own tab, where the time rail goes; the same element while the app is open. */
   private rail: HTMLElement | undefined;
   private mounted = new Map<string, Mounted>();
@@ -340,6 +345,20 @@ export class AppController {
     return this.rail;
   }
 
+  /**
+   * Opens what is picked in the app in a side sheet beside it, as an app does in its own tab, in the
+   * composed layout; `icon` draws an Obsidian icon. Call it before `load`. A hosted app keeps a pick
+   * in its panel.
+   */
+  openInPlace(icon: DrawIcon): void {
+    if (!this.hosting) this.sheet ??= new Sheet(this.shell.ownerDocument, icon, () => this.closeSheet());
+  }
+
+  /** Closes the side sheet, taking its pick back and the focus to what was picked; false when it wasn't open. */
+  closeSheet(): boolean {
+    return this.shut(true);
+  }
+
   /** Whether the inspector is showing. */
   get inspectorShown(): boolean {
     return this.inspector !== undefined;
@@ -375,14 +394,18 @@ export class AppController {
       this.width = width;
       this.layout(false);
       for (const [id, m] of this.mounted) m.handle.resize?.(this.widthOf(id));
+      this.sheet?.keepUnderHeader();
     }, 150);
   }
 
   /** The drawing width inside a panel, from the layout's arithmetic rather than measuring it. */
   private widthOf(id: string): number {
     const width = this.shell.clientWidth;
-    if (this.composed) return this.hosting ? composedWidth(width, HOSTED_PAD, HOSTED_MAX) : composedWidth(width);
     const m = this.mounted.get(id);
+    if (this.composed) {
+      if (m && this.sheet?.holds(m.el)) return this.sheet.innerWidth(width);
+      return this.hosting ? composedWidth(width, HOSTED_PAD, HOSTED_MAX) : composedWidth(width);
+    }
     return widthFor(m?.tracks ?? this.ownTracks(m?.span ?? MAX_COLUMNS), width, ...this.shellBox());
   }
 
@@ -480,7 +503,7 @@ export class AppController {
     this.shell.classList.toggle("gz-composed", composed);
     this.shell.classList.toggle("gz-narrow", composed && isNarrow(this.shell.clientWidth));
 
-    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
+    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector && el !== this.sheet?.el) el.remove();
     this.rail?.remove();
     const header = createDivIn(this.shell, "gz-header");
     this.shell.prepend(header);
@@ -540,6 +563,7 @@ export class AppController {
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
     if (!this.grid) this.grid = this.shell.createDiv({ cls: composed ? "gz-body" : "gz-grid" });
+    this.sheet?.place(composed ? this.shell : undefined);
     this.gridLayout = spec.layout;
     this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     this.syncInputs(spec);
@@ -588,6 +612,9 @@ export class AppController {
     this.layout();
     this.subscribe();
     if (moved) this.refillHostReaders();
+    // Laid out again, the panels the sheet holds are back in their slots.
+    if (this.sheet?.from !== undefined && !this.mounted.has(this.sheet.from)) this.closeSheet();
+    else this.seat();
   }
 
   /**
@@ -599,6 +626,7 @@ export class AppController {
     const body = this.grid!;
     body.empty();
     this.panes.clear();
+    this.slots.clear();
     for (const m of order) placeClasses(m.el, this.placements.get(m.id)!);
     const el = (i: number) => order[i].el;
     for (const scope of scopes) {
@@ -633,7 +661,10 @@ export class AppController {
         for (const i of scope.flow) flow.appendChild(el(i));
         if (scope.sheet.length) {
           const sheet = createDivIn(flow, "gz-sheet-slot");
-          for (const i of scope.sheet) sheet.appendChild(el(i));
+          for (const i of scope.sheet) {
+            sheet.appendChild(el(i));
+            this.slots.set(order[i].id, sheet);
+          }
         }
       }
     }
@@ -771,6 +802,9 @@ export class AppController {
     this.grid = undefined;
     this.gridLayout = undefined;
     this.panes.clear();
+    this.slots.clear();
+    this.sheet?.reset();
+    this.shell.removeClass("gz-sheet-open");
     this.tabs = undefined;
     if (this.refreshHandle) clearInterval(this.refreshHandle);
     this.refreshHandle = undefined;
@@ -940,6 +974,8 @@ export class AppController {
     m.deps = [];
     m.remount = true;
     m.seq++;
+    // A panel that stops shows none of its rows, so none of them stays open in the sheet.
+    if (this.sheet?.from === m.id) this.closeSheet();
     if (waiting === undefined) return this.showPanelError(m, errors.join("; "));
     this.markAsOf(m);
     m.el.removeClass("gz-loading", "gz-error", "gz-stale");
@@ -979,7 +1015,102 @@ export class AppController {
       place: () => this.placements.get(id),
       editRow: (row: Row, field: string, value: unknown) => this.editRow(id, row, field, value),
       setProperty: (field: string, value: unknown) => this.setProperty(id, field, value),
+      // A panel that waits for a pick is shown in the sheet, and keeps its own picks there.
+      ...(this.sheet && this.composed && this.placements.get(id)?.slot !== "sheet" && {
+        open: (pick: SheetPick | undefined, redrawn?: boolean) => this.openSheet(id, pick, redrawn),
+      }),
     });
+  }
+
+  // ---- The side sheet -----------------------------------------------------------------------
+
+  /**
+   * What a pick in a panel does to the sheet: opens it, switching it from another panel's pick (which
+   * goes, unless both panels pick into the same selection), or closes it when the pick was taken
+   * back. A panel drawn again refreshes the sheet showing its pick, or closes it when the row isn't
+   * shown any more.
+   */
+  private openSheet(id: string, pick: SheetPick | undefined, redrawn = false): void {
+    const sheet = this.sheet!;
+    const m = this.mounted.get(id);
+    if (!m) return;
+    const opened = { key: id, p: m.p, ctx: this.ctxFor(id) };
+    if (redrawn) {
+      if (sheet.from !== id) return;
+      if (pick) sheet.refresh({ ...opened, pick });
+      else this.closeSheet();
+      return;
+    }
+    if (!pick) {
+      if (sheet.from === id) this.shut(false);
+      return;
+    }
+    const before = sheet.opened;
+    if (before && before.key !== id && (before.p.select === undefined || before.p.select !== m.p.select)) {
+      before.pick.clear();
+      this.dropInnerPicks();
+    }
+    sheet.open({ ...opened, pick });
+    this.shell.addClass("gz-sheet-open");
+    this.seat();
+  }
+
+  /** Closes the sheet; `clear` takes its pick back (picking the element again already has). */
+  private shut(clear: boolean): boolean {
+    const sheet = this.sheet;
+    const opened = sheet?.close();
+    if (!sheet || !opened) return false;
+    this.shell.removeClass("gz-sheet-open");
+    if (clear) opened.pick.clear();
+    this.dropInnerPicks();
+    this.seat();
+    const el = opened.pick.el as HTMLElement;
+    if (el.isConnected) el.focus();
+    return true;
+  }
+
+  /** Picks made in the panels the sheet holds go with the pick they read. */
+  private dropInnerPicks(): void {
+    for (const m of [...this.mounted.values()]) if (this.sheet!.holds(m.el) && m.p.select !== undefined) this.setSelection(m.p.select, undefined);
+  }
+
+  /**
+   * Puts each panel that waits for a pick where it belongs: in the sheet when it reads what the sheet
+   * shows, or what a panel already there selects; else in its slot at the end of the flow. Panels go
+   * in the order written, and one that moves is drawn again at its new width.
+   */
+  private seat(): void {
+    const sheet = this.sheet;
+    const slots = [...this.slots].filter(([id]) => this.mounted.has(id));
+    if (!sheet || !slots.length) return;
+    const names = new Set<string>();
+    const shown = sheet.opened?.p.select;
+    if (shown !== undefined) names.add(shown);
+    const inSheet = new Set<string>();
+    for (let grew = true; grew;) {
+      grew = false;
+      for (const [id] of slots) {
+        const m = this.mounted.get(id)!;
+        if (inSheet.has(id) || !m.ps.inputs.some((n) => names.has(n))) continue;
+        inSheet.add(id);
+        if (m.p.select !== undefined) names.add(m.p.select);
+        grew = true;
+      }
+    }
+    const into = new Map<HTMLElement, Mounted[]>();
+    for (const [id, slot] of slots) {
+      const parent = inSheet.has(id) ? sheet.panels : slot;
+      into.set(parent, [...(into.get(parent) ?? []), this.mounted.get(id)!]);
+    }
+    const moved = slots.filter(([id, slot]) => this.mounted.get(id)!.el.parentElement !== (inSheet.has(id) ? sheet.panels : slot));
+    for (const [parent, ms] of into) {
+      const children = [...parent.children];
+      if (ms.length !== children.length || ms.some((m, i) => m.el !== children[i])) for (const m of ms) parent.appendChild(m.el);
+    }
+    for (const [id] of moved) {
+      const m = this.mounted.get(id)!;
+      if (!m.idle) m.handle.resize?.(this.widthOf(id));
+    }
   }
 
   /** A panel's edits go through only while it is drawn and loaded; a changed row reloads it. */

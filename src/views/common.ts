@@ -5,7 +5,7 @@ import { ROW_INDEX } from "../sources/list.ts";
 import { conflictsOf, rowIdOf } from "../ledger-store.ts";
 import { rowsAreNotes } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
-import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
+import type { PanelCtx, PanelHandle, SheetPick, ViewDef } from "./registry.ts";
 
 /** What a panel does when it acts: save, add a line, tell, open a note; a form or button may also run another app's shortcut (`then`), which rows don't take. Any one is enough. */
 const DOES = ["save", "append", "notify", "open"] as const;
@@ -83,7 +83,7 @@ export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void):
 
 /**
  * What each selectable element picks, so picking one can mark the others in its panel again;
- * `root` is the element of its panel when that panel shows `detail`.
+ * `root` is the element of its panel when that panel keeps its own pick (see OWN).
  */
 const PICKS = new WeakMap<Element, Picker>();
 
@@ -92,27 +92,46 @@ interface Picker {
   ctx: PanelCtx;
   row: Row;
   root?: Element;
+  label?: string;
+  record: boolean;
 }
 
-/** A panel drawn with `detail`, and the row picked in it when it has no `select` to keep that in. */
-interface Detailed {
+/** A panel that keeps the row picked in it when it has no `select` to keep that in. */
+interface Own {
   p: Panel;
   ctx: PanelCtx;
   pick?: Row;
 }
 
-/** Panels that show `detail`, by the element the panel is drawn in. */
-const DETAILED = new WeakMap<Element, Detailed>();
+/**
+ * Panels that keep their own pick, by the element the panel is drawn in: those that show `detail`,
+ * and in an app with a side sheet every panel, since a record opens there without either key.
+ */
+const OWN = new WeakMap<Element, Own>();
 
-/** The element of the panel `el` is drawn in, when that panel shows `detail`. */
-function detailedOf(el: Element): Element | undefined {
-  for (let x: Element | null = el; x; x = x.parentElement) if (DETAILED.has(x)) return x;
+/** The element of the panel `el` is drawn in, when that panel keeps its own pick. */
+function ownerOf(el: Element): Element | undefined {
+  for (let x: Element | null = el; x; x = x.parentElement) if (OWN.has(x)) return x;
   return undefined;
 }
 
-/** The row picked in a panel: its selection, or with `detail` and no `select`, the panel's own pick. */
+/** The row picked in a panel: its selection, or with no `select`, the panel's own pick. */
 function pickedIn(p: Panel, ctx: PanelCtx, root: Element | undefined): Row | undefined {
-  return p.select !== undefined ? ctx.selected(p.select) : root ? DETAILED.get(root)?.pick : undefined;
+  return p.select !== undefined ? ctx.selected(p.select) : root ? OWN.get(root)?.pick : undefined;
+}
+
+/** The selectable element in a panel that shows `want`, as each compares as it was made selectable: a board's cards are rows of their own, not its groups. */
+function shownIn(root: Element, want: Row | undefined): Element | undefined {
+  if (!want) return undefined;
+  return [...root.querySelectorAll(".gz-selectable")].find((item) => {
+    const pick = PICKS.get(item);
+    return pick && sameRow(pick.p, want, pick.row);
+  });
+}
+
+/** A panel's `detail` sentence filled in for a row, its values shown as the panel shows them. */
+export function detailText(p: Panel, row: Row, now: Date): string {
+  return fillWith(p.detail!, row, (path, v) => display(p, path, v, now, "text"));
 }
 
 /**
@@ -121,41 +140,65 @@ function pickedIn(p: Panel, ctx: PanelCtx, root: Element | undefined): Row | und
  * an Open link.
  */
 function drawDetail(root: Element): void {
-  const d = DETAILED.get(root)!;
+  const d = OWN.get(root)!;
   for (const old of [...root.children]) if (old.classList.contains("gz-detail")) old.remove();
-  const want = pickedIn(d.p, d.ctx, root);
-  // Each element compares as it was made selectable: a board's cards are rows of their own, not its groups.
-  const picks = [...root.querySelectorAll(".gz-selectable")].map((item) => PICKS.get(item));
-  const row = want && picks.find((pick) => pick && sameRow(pick.p, want, pick.row))?.row;
+  const shown = shownIn(root, pickedIn(d.p, d.ctx, root));
+  const row = shown && PICKS.get(shown)!.row;
   if (!row) {
     d.pick = undefined;
     return;
   }
   const area = (root as HTMLElement).createDiv({ cls: "gz-detail", attr: { role: "status" } });
-  area.createSpan({ cls: "gz-detail-text", text: fillWith(d.p.detail!, row, (path, v) => display(d.p, path, v, d.ctx.now, "text")) });
+  area.createSpan({ cls: "gz-detail-text", text: detailText(d.p, row, d.ctx.now) });
   const note = rowNote(d.p, row);
   if (note) noteLink(area, "Open", note, d.ctx);
+}
+
+/** What the side sheet is given for the element `el` picks: its row as it is now, and how to take the pick back. */
+function sheetPick(el: Element, pick: Picker): SheetPick {
+  const { p, ctx, root } = pick;
+  return {
+    row: pick.row, el, label: pick.label, record: pick.record,
+    clear() {
+      if (p.select !== undefined) ctx.select(p.select, undefined);
+      else if (root) OWN.get(root)!.pick = undefined;
+      markAll(root ?? el);
+    },
+  };
+}
+
+/**
+ * After a panel is drawn again, the side sheet showing its pick shows the row as the panel shows it
+ * now, or closes when the panel doesn't show it any more (deleted, filtered out).
+ */
+function reopen(root: Element): void {
+  const d = OWN.get(root)!;
+  const shown = shownIn(root, pickedIn(d.p, d.ctx, root));
+  d.ctx.open!(shown && sheetPick(shown, PICKS.get(shown)!), true);
 }
 
 /**
  * Mounts a view in its panel's element. A panel with `detail` gets its detail area drawn again,
  * under the rows, each time the view draws them; a row it picked stays picked across those draws.
+ * In an app with a side sheet, the detail is the sheet's, and the sheet follows each draw instead.
  */
 export function mountView(def: ViewDef, el: HTMLElement, p: Panel, ctx: PanelCtx, key: string): PanelHandle {
-  if (p.detail === undefined) {
-    DETAILED.delete(el);
+  const sheet = ctx.open !== undefined;
+  if (p.detail === undefined && !sheet) {
+    OWN.delete(el);
     return def.mount(el, p, ctx, key);
   }
-  DETAILED.set(el, { p, ctx, pick: DETAILED.get(el)?.pick });
+  OWN.set(el, { p, ctx, pick: OWN.get(el)?.pick });
   const handle = def.mount(el, p, ctx, key);
+  const after = () => (sheet ? reopen(el) : drawDetail(el));
   const resize = handle.resize;
   return {
     ...handle,
     update(data) {
       handle.update(data);
-      drawDetail(el);
+      after();
     },
-    ...(resize ? { resize(width: number) { resize.call(handle, width); drawDetail(el); } } : {}),
+    ...(resize ? { resize(width: number) { resize.call(handle, width); after(); } } : {}),
   };
 }
 
@@ -216,9 +259,13 @@ function markAll(el: Element): void {
   }
 }
 
-/** Whether a panel's rows can be picked: it names a selection, or shows a detail of the picked row. */
-export function picks(p: Panel): boolean {
-  return p.select !== undefined || p.detail !== undefined;
+/**
+ * Whether a panel's rows can be picked: it names a selection, or shows a detail of the picked row.
+ * In an app with a side sheet (`ctx.open`), a `record` (a table row, list item, card or timeline
+ * mark) can always be picked, to open it there.
+ */
+export function picks(p: Panel, ctx?: PanelCtx, record = false): boolean {
+  return p.select !== undefined || p.detail !== undefined || (record && ctx?.open !== undefined);
 }
 
 /**
@@ -226,15 +273,17 @@ export function picks(p: Panel): boolean {
  * `select`, and for its `detail`: a button for the mouse and keyboard (Enter or Space), marked
  * `gz-selected` while its row is the one picked. Picking it again clears the pick. Every element
  * of the panel is marked again in place, so the panel isn't redrawn; its detail area is drawn
- * again. Does nothing when the panel has neither `select` nor `detail`.
+ * again. Does nothing when the panel has neither `select` nor `detail`, unless `el` is a `record`
+ * in an app with a side sheet. There, a pick opens the sheet (with `label` as the element's name)
+ * instead of drawing the detail, and picking it again closes it.
  * Returns what a view that updates rows in place calls with the row's new values: the element then
  * picks those, and a selection of this row takes them too.
  */
-export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string): (row: Row) => void {
-  if (!picks(p)) return () => {};
+export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string, record = false): (row: Row) => void {
+  if (!picks(p, ctx, record)) return () => {};
   const name = p.select;
-  const root = detailedOf(el);
-  const pick: Picker = { p, ctx, row, root };
+  const root = ownerOf(el);
+  const pick: Picker = { p, ctx, row, root, label, record };
   PICKS.set(el, pick);
   el.classList.add("gz-selectable");
   el.setAttribute("role", "button");
@@ -244,9 +293,10 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
   const toggle = () => {
     const next = sameRow(p, pickedIn(p, ctx, root), pick.row) ? undefined : pick.row;
     if (name !== undefined) ctx.select(name, next);
-    else if (root) DETAILED.get(root)!.pick = next;
+    else if (root) OWN.get(root)!.pick = next;
     markAll(el);
-    if (root) drawDetail(root);
+    if (ctx.open) ctx.open(next && sheetPick(el, pick));
+    else if (root) drawDetail(root);
   };
   el.addEventListener("click", (e) => { if (!fromControl(e, el)) toggle(); });
   el.addEventListener("keydown", (e) => {

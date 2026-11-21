@@ -70,12 +70,12 @@ export default async function views(t) {
     return `doing: ${r.doing.join(", ")}`;
   });
 
-  await check("Projects: a timeline bar picks the project; picking it again clears it", async () => {
+  await check("Projects: a timeline bar picks the project and opens it in the sheet; picking it again clears it", async () => {
     const r = await run(`
       await na.open("Apps/Projects");
       const el = na.view().contentEl;
-      const schedule = [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "Schedule");
-      const picked = () => schedule.querySelector(".gz-detail") ? na.text(schedule.querySelector(".gz-detail")) : "";
+      const sheet = () => el.querySelector(".gz-sheet.is-open");
+      const picked = () => (sheet()?.querySelector(".gz-sheet-kicker")?.textContent === "Schedule" ? na.text(sheet().querySelector(".gz-sheet-body")) : "");
       const before = picked();
       const bar = () => [...el.querySelectorAll(".gz-tl-bar")].find((b) => (b.getAttribute("aria-label") ?? b.closest(".gz-tl-row").textContent).includes("Kitchen remodel"));
       bar().click();
@@ -84,7 +84,7 @@ export default async function views(t) {
       bar().click();
       await na.sleep(500);
       return { before, after, cleared: picked() };`);
-    // The project's due date shows under the schedule, with a link to its note.
+    // The project's due date shows in the sheet, with a link to its note.
     expect(r.before === "" && r.after.includes("Kitchen remodel is due 2026-12-15") && r.after.includes("Open") && r.cleared === "", r);
     return r.after;
   });
@@ -148,7 +148,7 @@ export default async function views(t) {
     return `streak ${r.before.streak} → ${r.streak}; ${r.label}; ${r.cls}; ${Math.round(r.svg)} px in a ${r.panel} px panel`;
   });
 
-  await check("calendar keys: Tab reaches the first day, arrows move by day and week, Enter picks the day", async () => {
+  await check("calendar keys: Tab reaches the first day, arrows move by day and week, Enter opens the day in the sheet, Escape comes back to it", async () => {
     const month = await run(`const d = new Date(); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0");`);
     await run(`
       await na.write("Scratch/Journal.md", ${JSON.stringify(JOURNAL("__MONTH__"))}.replaceAll("__MONTH__", ${JSON.stringify(month)}));
@@ -168,10 +168,14 @@ export default async function views(t) {
     const r = await run(`
       await na.sleep(500);
       const el = na.view().contentEl;
-      const list = [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "That day");
-      return { list: na.text(list), selected: el.querySelector(".gz-cal-day.gz-selected")?.getAttribute("data-date"), focus: document.activeElement?.getAttribute("data-date") };`);
+      const list = [...el.querySelectorAll(".gz-sheet.is-open .gz-sheet-panels > .gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "That day");
+      return { list: list ? na.text(list) : "", selected: el.querySelector(".gz-cal-day.gz-selected")?.getAttribute("data-date"), inSheet: !!document.activeElement?.closest(".gz-sheet") };`);
+    // Escape closes the sheet and gives the focus back to the day.
+    await press("Escape");
+    const back = await run(`await na.sleep(400); return { focus: document.activeElement?.getAttribute("data-date"), open: !!na.view().contentEl.querySelector(".gz-sheet.is-open") };`);
     expect(first === `${month}-01` && right === `${month}-02` && down === `${month}-09`, { first, right, down });
-    expect(r.selected === `${month}-09` && r.focus === `${month}-09` && r.list.includes("Long walk by the river") && r.list.includes("Called my sister") && !r.list.includes("notebook"), r);
-    return `Tab → ${first}, → ${right}, ↓ ${down}, Enter picks it: ${r.list}`;
+    expect(r.selected === `${month}-09` && r.inSheet && r.list.includes("Long walk by the river") && r.list.includes("Called my sister") && !r.list.includes("notebook"), r);
+    expect(back.focus === `${month}-09` && !back.open, back);
+    return `Tab → ${first}, → ${right}, ↓ ${down}, Enter opens it: ${r.list}; Escape comes back to ${back.focus}`;
   });
 }

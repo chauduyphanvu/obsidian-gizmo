@@ -13,7 +13,7 @@ import type { PanelCtx, ViewDef } from "./registry.ts";
 const HIDDEN_COLUMNS = new Set(["path", "mtime", "ctime", "tags", "position"]);
 
 /** A row's own button, running the panel's actions with that row. */
-function rowAction(parent: HTMLElement, p: Panel, ctx: PanelCtx, row: () => Row): void {
+export function rowAction(parent: HTMLElement, p: Panel, ctx: PanelCtx, row: () => Row): void {
   if (!p.action) return;
   const b = parent.createEl("button", { cls: "gz-small gz-row-action", text: p.action });
   busy(b, () => ctx.runActions(p, row()));
@@ -345,6 +345,33 @@ function column(box: HTMLElement, env: RowEnv, c: string, i: number, title = fal
   };
 }
 
+/**
+ * The fields a record of this panel shows, for the side sheet, each the panel edits in place with
+ * how it is typed in: a table's columns and its edited ones; a board's fields, with the one its
+ * cards move between; a list's or a timeline's fields, less a note's file details.
+ */
+export function rowFields(p: Panel, row: Row): [field: string, type?: string | string[]][] {
+  const fields = p.view === "table" ? columnsOf(p, [row]) : Object.keys(row).filter((k) => !HIDDEN_COLUMNS.has(k));
+  if (p.view === "board" && p.group && !fields.includes(p.group)) fields.push(p.group);
+  const edited = p.view === "board" ? [p.group] : p.view === "table" ? p.edit ?? [] : [];
+  return fields.map((f) => (edited.includes(f) ? [f, editType(p, f, [row])] : [f]));
+}
+
+/**
+ * One field of a row in `box`, for the side sheet: the control an edited cell gets when `type` is
+ * given, writing through the panel's editRow, else the value as its cell draws it. Returns what
+ * shows the row's new values, which leaves a field being typed in alone.
+ */
+export function fieldBox(box: HTMLElement, p: Panel, ctx: PanelCtx, row: Row, field: string, type?: string | string[]): (row: Row) => void {
+  const env: RowEnv = { p, ctx, columns: [field], edited: new Map(type === undefined ? [] : [[field, type]]), current: [row] };
+  const show = column(box, env, field, 0);
+  show(row);
+  return (next) => {
+    env.current[0] = next;
+    show(next);
+  };
+}
+
 function tableRow(body: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
   const tr = body.createEl("tr");
   const cells = env.columns.map((c) => column(tr.createEl("td"), env, c, i));
@@ -409,7 +436,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: A
     groups?.enter(i);
     const drawn = (cards ? card : tableRow)(parent, env, r, i);
     if (news.fresh.has(news.keys[i])) news.mark(drawn.el);
-    const repick = selectable(drawn.el, p, ctx, r);
+    const repick = selectable(drawn.el, p, ctx, r, undefined, true);
     updates.push((row) => {
       drawn.show(row);
       repick(row);
@@ -506,6 +533,12 @@ function plainItem(p: Panel, r: Row, now: Date): string {
   return mapped(p, field, r[field]) ?? (formatFor(p, field) !== undefined ? display(p, field, r[field], now, "text") : String(r[field]));
 }
 
+/** A list item's text: its `item` filled in, a group's key and count, or the row's name, title or value. */
+export function listItem(p: Panel, r: Row, now: Date): string {
+  const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
+  return item ? fillWith(item, r, (path, v) => display(p, path, v, now, "text")) + countLabel(p) : plainItem(p, r, now);
+}
+
 export const list: ViewDef = {
   id: "list",
   keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "detail", "action", ...ACTION_KEYS, "alert"],
@@ -548,15 +581,14 @@ export const list: ViewDef = {
         let i = 0;
         shownRows(el, rows, (r) => {
           groups?.enter(i);
-          const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
-          const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) + countLabel(p) : plainItem(p, r, ctx.now);
+          const text = listItem(p, r, ctx.now);
           const li = ul.createEl("li");
           if (news.fresh.has(news.keys[i++])) news.mark(li);
           const note = rowNote(p, r);
           if (note) noteLink(li, text, note, ctx);
           else li.setText(text);
           rowAction(li, p, ctx, () => r);
-          selectable(li, p, ctx, r);
+          selectable(li, p, ctx, r, undefined, true);
         });
         news.fresh.clear();
       },

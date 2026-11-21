@@ -103,7 +103,7 @@ export default async function concise(t) {
     return `${JSON.stringify(r.fm)}`;
   });
 
-  await check("picking a bar on the Waiting timeline shows what I expected under it, with an Open link to the note", async () => {
+  await check("picking a bar on the Waiting timeline shows what I expected in the sheet, with an Open link to the note", async () => {
     const r = await run(`
       ${PANEL}
       await tab("Waiting");
@@ -112,18 +112,18 @@ export default async function concise(t) {
       const row = [...line.querySelectorAll(".gz-tl-row")].find((r) => r.querySelector(".gz-tl-label").textContent === "Start running three mornings a week");
       row.querySelector(".gz-tl-bar").click();
       await na.sleep(400);
-      const detail = line.querySelector(".gz-detail");
-      const shown = { text: detail?.querySelector(".gz-detail-text")?.textContent, link: detail?.querySelector("a")?.textContent };
+      const sheet = na.view().contentEl.querySelector(".gz-sheet.is-open");
+      const shown = { text: sheet?.querySelector(".gz-sheet-line")?.textContent, link: sheet?.querySelector(".gz-sheet-actions a")?.textContent, inline: !!line.querySelector(".gz-detail") };
       return { labels, shown };`);
     await t.shot("concise-Decisions-waiting-picked.png");
     const opened = await run(`
       ${PANEL}
-      panel("Still waiting to find out").querySelector(".gz-detail a").click();
+      na.view().contentEl.querySelector(".gz-sheet.is-open .gz-sheet-actions a").click();
       await na.until(() => app.workspace.getActiveFile()?.path === "Decisions/Start running three mornings a week.md", 3000);
       await na.sleep(800);
       return { file: app.workspace.getActiveFile()?.path, type: na.view().getViewType(), lens: na.view().contentEl.querySelector(".gz-lens .gz-lens-name")?.textContent };`);
     expect(r.labels.includes("Start running three mornings a week") && r.labels.includes("Walk to work in winter") && !r.labels.includes(DUE), r);
-    expect(r.shown.text === "Start running three mornings a week. I expected: I'm still doing it in February (60% sure). I'll know by 2027-02-09." && r.shown.link === "Open", r);
+    expect(r.shown.text === "Start running three mornings a week. I expected: I'm still doing it in February (60% sure). I'll know by 2027-02-09." && r.shown.link === "Open" && !r.shown.inline, r);
     expect(opened.file === "Decisions/Start running three mornings a week.md" && opened.type === "markdown" && opened.lens === "Decision review", opened);
     return `"${r.shown.text}"; Open → ${opened.file} (${opened.type}, lens ${opened.lens})`;
   });

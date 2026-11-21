@@ -35,7 +35,7 @@ export default async function interaction(t) {
   /** Whether the Library search got its results; the check that adds from them needs them. */
   let searched = false;
 
-  await check("Library: typing and Enter searches, keeping the caret in the box; picking a result fills About", async () => {
+  await check("Library: typing and Enter searches, keeping the caret in the box; picking a result fills About in the sheet, and Escape closes it", async () => {
     await run(`await na.open("Apps/Library");`);
     const before = await run(`
       const el = na.view().contentEl;
@@ -59,14 +59,26 @@ export default async function interaction(t) {
     await press("Tab");
     const tabbed = await run(`return { cls: document.activeElement?.className, text: document.activeElement?.textContent?.slice(0, 40) };`);
     await press("Enter");
-    const after = await run(`
+    // About opens in the sheet beside the results, with the focus.
+    const opened = await run(`
       await na.sleep(800);
-      const about = [...na.view().contentEl.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "About this book");
-      return na.text(about);`);
+      const sheet = na.view().contentEl.querySelector(".gz-sheet.is-open");
+      const about = [...(sheet?.querySelectorAll(".gz-sheet-panels > .gz-panel") ?? [])].find((p) => p.querySelector(".gz-title")?.textContent === "About this book");
+      return { text: about ? na.text(about) : "", kicker: sheet?.querySelector(".gz-sheet-kicker")?.textContent, focused: !!document.activeElement?.closest(".gz-sheet") };`);
+    const after = opened.text;
+    await press("Escape");
+    const closed = await run(`
+      await na.sleep(400);
+      const el = na.view().contentEl;
+      const about = el.querySelector(".gz-sheet-slot > .gz-panel");
+      return { open: !!el.querySelector(".gz-sheet.is-open"), waits: !!about && about.classList.contains("gz-collapsed") && !about.textContent, focus: document.activeElement?.className };`);
     expect(before.focused && before.waits, before);
     expect(r.results && r.focused && r.caret === 4 && r.value === "dune", r);
     expect(/gz-selectable/.test(tabbed.cls ?? ""), { tabbed, note: "Tab from the search box should reach the first result" });
     expect(/, by .+First published in \d{4}; \d+ editions\./.test(after), after);
+    expect(opened.kicker === "Search results" && opened.focused, opened);
+    // Escape closes the sheet: About waits out of sight again and the focus is back on the result.
+    expect(!closed.open && closed.waits && /gz-selectable/.test(closed.focus ?? ""), closed);
     return `${r.items[0]} … caret ${r.caret}; About: ${after.slice(0, 70)}`;
   }, { net: OPENLIBRARY });
 
@@ -182,11 +194,12 @@ export default async function interaction(t) {
       const panel = (title) => [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title);
       const row = await na.until(() => panel("The ten strongest")?.querySelector("tbody tr"), 10000);
       const [mag, place] = [...row.querySelectorAll("td")].map((td) => td.textContent);
-      // Composed, the picked quake waits out of sight, in the sheet slot.
-      const sheet = el.querySelector(".gz-sheet-slot > .gz-panel");
-      const waiting = sheet.classList.contains("gz-collapsed") && !sheet.textContent;
+      // Composed, the picked quake waits out of sight, in the sheet slot; picked, it shows in the sheet.
+      const waiter = el.querySelector(".gz-sheet-slot > .gz-panel");
+      const waiting = waiter.classList.contains("gz-collapsed") && !waiter.textContent;
       row.click();
-      const card = await na.until(() => sheet.querySelector(".gz-rowcard"), 3000);
+      const card = await na.until(() => waiter.querySelector(".gz-rowcard"), 3000);
+      const inSheet = !!waiter.closest(".gz-sheet.is-open .gz-sheet-panels");
       const link = card?.querySelector("a")?.getAttribute("href");
       const mark = na.notices.length;
       na.button("Follow", row).click();
@@ -196,14 +209,17 @@ export default async function interaction(t) {
       const followed = [...panel("Quakes I'm following").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td").textContent === saved?.quake);
       na.fill(followed.querySelector("input"), "Near family");
       const note = await na.until(() => na.fm("Apps/Planet Earth data.md")?.following?.find((f) => f.quake === saved.quake)?.note, 3000);
-      return { mag, place, waiting, title: card?.querySelector(".gz-rowcard-title")?.textContent, link, saved, notices, note, errors: na.errors() };`);
-    expect(r.waiting && /^\d+\.\d$/.test(r.mag) && r.title === r.place, r);
+      el.querySelector(".gz-sheet.is-open .gz-sheet-close").click();
+      await na.sleep(300);
+      const closed = !el.querySelector(".gz-sheet.is-open") && waiter.parentElement.classList.contains("gz-sheet-slot") && waiter.classList.contains("gz-collapsed");
+      return { mag, place, waiting, inSheet, closed, title: card?.querySelector(".gz-rowcard-title")?.textContent, link, saved, notices, note, errors: na.errors() };`);
+    expect(r.waiting && r.inSheet && r.closed && /^\d+\.\d$/.test(r.mag) && r.title === r.place, r);
     expect(/^https:\/\/earthquake\.usgs\.gov\/earthquakes\/eventpage\/\w+$/.test(r.link ?? "") && r.saved?.page === r.link && r.saved.quake.startsWith("M ") && typeof r.saved.when === "number", r);
     expect(r.notices.includes(`Following ${r.place}`) && r.note === "Near family" && r.errors === 0, r);
     return `picked M${r.mag} ${r.place}; followed with a note`;
   }, { net: USGS });
 
-  await check("a bar chart with select: clicking a bar dims the others and filters the list; again clears it", async () => {
+  await check("a bar chart with select: clicking a bar dims the others and opens the list in the sheet; again clears it", async () => {
     const r = await run(`
       await na.write("Scratch/Rooms.md", ${JSON.stringify(ROOMS)});
       await na.sleep(800);
@@ -219,12 +235,50 @@ export default async function interaction(t) {
       const opacity = bars().map((b) => b.getAttribute("aria-label") + " " + getComputedStyle(b).opacity);
       const picked = list();
       const shown = !hidden();
+      const sheet = el.querySelector(".gz-sheet.is-open");
+      const opened = { inSheet: !!el.querySelector(".gz-sheet.is-open .gz-sheet-panels > .gz-view-list"), kicker: sheet?.querySelector(".gz-sheet-kicker")?.textContent, title: sheet?.querySelector(".gz-sheet-title")?.textContent, line: sheet?.querySelector(".gz-sheet-line")?.textContent };
       bars().find((b) => b.classList.contains("gz-selected")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await na.sleep(600);
-      return { waiting, opacity, picked, shown, cleared: hidden(), after: bars().map((b) => getComputedStyle(b).opacity) };`);
+      return { waiting, opacity, picked, shown, opened, closed: !el.querySelector(".gz-sheet.is-open"), cleared: hidden(), after: bars().map((b) => getComputedStyle(b).opacity) };`);
     expect(r.waiting && r.shown, r);
+    expect(r.opened.inSheet && r.opened.kicker === "Chores per room" && r.opened.title === "kitchen" && r.opened.line === "2 entries" && r.closed, r);
     expect(r.opacity.filter((o) => o === "kitchen 1").length === 1 && r.opacity.filter((o) => o.endsWith(" 0.35")).length === 2 && r.picked.includes("Wipe the counters") && r.picked.includes("Mop") && !r.picked.includes("Weed"), r);
     expect(r.cleared && r.after.every((o) => o === "1"), r);
     return `opacity ${r.opacity.join(",")}; list: ${r.picked}`;
+  });
+
+  await check("Library: a shelf row, with neither select nor detail, opens in the sheet with its fields; Escape closes it and the focus goes back to the row", async () => {
+    const r = await run(`
+      await na.open("Apps/Library");
+      const el = na.view().contentEl;
+      const row = await na.until(() => [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Dune")), 3000);
+      row.querySelectorAll("td")[1].click();
+      const sheet = await na.until(() => el.querySelector(".gz-sheet.is-open"), 3000);
+      await na.sleep(300);
+      const fields = [...sheet.querySelectorAll(".gz-sheet-field")].map((f) => [f.querySelector(".gz-sheet-label").textContent, f.querySelector("select")?.selectedOptions[0]?.textContent ?? f.querySelector("input")?.value ?? f.querySelector(".gz-sheet-value").textContent]);
+      const box = sheet.getBoundingClientRect(), view = el.getBoundingClientRect(), leaf = na.view().containerEl.getBoundingClientRect();
+      // The app scrolls under the sheet; the sheet stays where it is.
+      el.scrollTop = 200;
+      await na.sleep(100);
+      const scrolled = sheet.getBoundingClientRect().top;
+      el.scrollTop = 0;
+      return {
+        kicker: sheet.querySelector(".gz-sheet-kicker").textContent, title: sheet.querySelector(".gz-sheet-title").textContent, fields,
+        actions: [...sheet.querySelectorAll(".gz-sheet-actions > *")].map((a) => a.textContent), selected: row.classList.contains("gz-selected"), status: na.fm("Books/Dune.md")?.status,
+        focused: document.activeElement === sheet, top: Math.round(box.top - view.top), right: Math.round(leaf.right - box.right), width: Math.round(box.width), bottom: Math.round(leaf.bottom - box.bottom), scrolled: Math.round(scrolled - box.top),
+      };`);
+    await press("Escape");
+    const after = await run(`
+      await na.sleep(400);
+      const el = na.view().contentEl;
+      const row = [...el.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.textContent.startsWith("Dune"));
+      return { open: !!el.querySelector(".gz-sheet.is-open"), focused: document.activeElement === row, selected: row.classList.contains("gz-selected") };`);
+    expect(r.kicker === "My shelf" && r.title === "Dune" && r.selected && r.focused, r);
+    expect(JSON.stringify(r.fields.map(([label]) => label)) === '["Book","Author","Status","Finished"]' && r.fields[0][1] === "Dune" && r.fields[2][1] === r.status, r);
+    expect(JSON.stringify(r.actions) === '["Open"]', r.actions);
+    // Flush right under the tab's header, as tall as the tab's content, and still while the app scrolls.
+    expect(r.top === 0 && r.right === 0 && r.bottom === 0 && r.width === 380 && r.scrolled === 0, r);
+    expect(!after.open && after.focused && !after.selected, after);
+    return `${r.title}: ${r.fields.map(([k, v]) => `${k} ${v}`).join(", ")}; Escape closed it`;
   });
 }

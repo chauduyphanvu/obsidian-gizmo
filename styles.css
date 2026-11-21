@@ -856,7 +856,143 @@ button.gz-lens-toggle {
 .gizmo .gz-detail-text { flex: 1 1 16em; }
 
 /* == sheet: the side sheet a row, bar, day or card opens in == */
-/* (reserved) */
+/* One sheet beside the app (src/sheet.ts). It sits in the shell but is placed against the tab's
+   content box (.workspace-leaf-content, the first positioned box around it), so it stays put while
+   the app scrolls under it, below the tab's header (--gz-sheet-top), and never leaves the tab. There
+   is no scrim: the app stays usable beside it. Closed, it is out of sight only once it has slid away,
+   so no shadow is left at the edge. src/layout.ts keeps its width and padding. */
+.gizmo > .gz-sheet {
+  --gz-sheet-shadow: rgba(0, 0, 0, 0.45);
+  position: absolute;
+  top: var(--gz-sheet-top, 0px);
+  right: 0;
+  bottom: 0;
+  z-index: 5;
+  box-sizing: border-box;
+  width: min(380px, 92%);
+  display: flex;
+  flex-direction: column;
+  background: var(--background-primary);
+  border-left: 1px solid var(--background-modifier-border);
+  box-shadow: -18px 0 44px var(--gz-sheet-shadow);
+  transform: translateX(104%);
+  visibility: hidden;
+  transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), visibility 0s linear 220ms;
+}
+.theme-light .gizmo > .gz-sheet { --gz-sheet-shadow: rgba(20, 20, 30, 0.08); }
+.gizmo > .gz-sheet.is-open { transform: none; visibility: visible; transition: transform 220ms cubic-bezier(0.2, 0, 0, 1), visibility 0s; }
+.gizmo > .gz-sheet:focus { outline: none; }
+/* Under 600 px it is a bottom sheet over most of the tab. */
+.gizmo.gz-narrow > .gz-sheet {
+  top: auto;
+  left: 0;
+  width: auto;
+  height: calc((100% - var(--gz-sheet-top, 0px)) * 0.74);
+  border-left: 0;
+  border-top: 1px solid var(--background-modifier-border);
+  border-radius: 18px 18px 0 0;
+  box-shadow: 0 -18px 44px var(--gz-sheet-shadow);
+  transform: translateY(104%);
+}
+.gizmo.gz-narrow > .gz-sheet.is-open { transform: none; }
+@media (prefers-reduced-motion: reduce) { .gizmo > .gz-sheet { transition-duration: 0s; } }
+
+.gizmo .gz-sheet-top {
+  flex: none;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 8px;
+  padding: 12px 12px 0 24px;
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--text-muted);
+}
+.gizmo .gz-sheet-kicker { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gizmo .gz-sheet-close { flex: none; width: 30px; height: 30px; padding: 0; border-radius: 7px; color: var(--text-muted); }
+.gizmo .gz-sheet-close:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.gizmo .gz-sheet-body { flex: 1; min-height: 0; overflow: auto; overscroll-behavior: contain; padding: 6px 24px 30px; }
+.gizmo .gz-sheet-title {
+  margin: 4px 0 0;
+  font-size: 22px;
+  line-height: 1.3;
+  font-weight: 650;
+  letter-spacing: -0.02em;
+  color: var(--text-normal);
+  text-wrap: balance;
+  overflow-wrap: anywhere;
+}
+.gizmo .gz-sheet-line { margin-top: 6px; font-size: 14px; line-height: 1.45; color: var(--text-muted); font-variant-numeric: tabular-nums; text-wrap: pretty; }
+
+/* Fields: a column of labels and the values beside them, each line ruled off. */
+.gizmo .gz-sheet-fields { margin-top: 18px; border-top: 1px solid var(--background-modifier-border); }
+.gizmo .gz-sheet-field {
+  display: grid;
+  grid-template-columns: 76px minmax(0, 1fr);
+  align-items: center;
+  gap: 10px;
+  min-height: 40px;
+  box-sizing: border-box;
+  padding: 9px 0;
+  border-bottom: 1px solid var(--background-modifier-border);
+  font-size: 13.5px;
+}
+.gizmo .gz-sheet-label { font-size: 12.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+.gizmo .gz-sheet-value { min-width: 0; color: var(--text-normal); font-variant-numeric: tabular-nums; overflow-wrap: anywhere; }
+.gizmo .gz-sheet-value a.internal-link { color: inherit; text-decoration: none; }
+.gizmo .gz-sheet-value a.internal-link:hover { text-decoration: underline; }
+/* An edited field reads as its value until it is pointed at or focused, its text in line with the others. */
+.gizmo .gz-sheet-field:has(.gz-edit:not([type="checkbox"])) { padding: 4px 0; }
+.gizmo .gz-sheet-value .gz-edit:not([type="checkbox"]) {
+  width: calc(100% + 8px);
+  max-width: none;
+  height: 30px;
+  margin: 0 0 0 -8px;
+  padding: 5px 8px;
+  border: 1px solid transparent;
+  border-radius: 6px;
+  background-color: transparent;
+  box-shadow: none;
+  font: inherit;
+  color: inherit;
+}
+.gizmo .gz-sheet-value select.gz-edit.dropdown { width: auto; max-width: calc(100% + 8px); padding-right: 28px; }
+.gizmo .gz-sheet-value .gz-edit:not([type="checkbox"]):hover { border-color: var(--background-modifier-border); }
+.gizmo .gz-sheet-value .gz-edit:not([type="checkbox"]):focus {
+  border-color: var(--interactive-accent);
+  background-color: var(--background-modifier-form-field);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 22%, transparent);
+}
+.gizmo .gz-sheet-value input.gz-edit[type="number"]::-webkit-inner-spin-button,
+.gizmo .gz-sheet-value input.gz-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
+
+/* The panels that wait for the pick, at the sheet's width; none waiting, no gap for them. */
+.gizmo .gz-sheet-panels { display: flex; flex-direction: column; gap: 26px; margin-top: 26px; }
+.gizmo .gz-sheet-panels:not(:has(> :not(.gz-collapsed))) { display: none; }
+.gizmo .gz-sheet-title + .gz-sheet-panels,
+.gizmo .gz-sheet-line + .gz-sheet-panels { margin-top: 22px; }
+
+/* Actions: quiet buttons, last. */
+.gizmo .gz-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
+.gizmo .gz-sheet-actions > button.gz-row-action:not(.mod-cta),
+.gizmo .gz-sheet-actions > a.internal-link {
+  display: inline-flex;
+  align-items: center;
+  box-sizing: border-box;
+  height: 32px;
+  padding: 0 12px;
+  border: 1px solid var(--background-modifier-border);
+  border-radius: 8px;
+  background: var(--background-primary);
+  box-shadow: none;
+  color: var(--text-normal);
+  font-size: 13px;
+  font-weight: 500;
+  text-decoration: none;
+  cursor: pointer;
+}
+.gizmo .gz-sheet-actions > button.gz-row-action:not(.mod-cta):hover,
+.gizmo .gz-sheet-actions > a.internal-link:hover { background: var(--background-modifier-hover); }
 /* == /sheet == */
 
 /* Edit in place: a dropdown in an edited column is as wide as its longest choice, never cut short. */
