@@ -26,7 +26,16 @@ function apply(el: Element, o?: Info | string): void {
 }
 
 const split = (cls: string[]) => cls.flatMap((c) => c.split(/\s+/)).filter(Boolean);
+// Obsidian adds them to every node; elements and fragments are the ones tests make them on.
 const proto = window.Element.prototype as unknown as Record<string, unknown>;
+Object.assign(window.DocumentFragment.prototype, {
+  createEl(this: DocumentFragment, tag: string, o?: Info | string) {
+    const el = this.ownerDocument.createElement(tag);
+    apply(el, o);
+    this.appendChild(el);
+    return el;
+  },
+});
 Object.assign(proto, {
   createEl(this: Element, tag: string, o?: Info | string) {
     const el = this.ownerDocument.createElement(tag);

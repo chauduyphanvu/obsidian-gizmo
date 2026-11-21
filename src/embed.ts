@@ -23,7 +23,7 @@ class EmbedChild extends MarkdownRenderChild {
   onload(): void {
     // Out of sight the block has no size; it gets one when its mode is shown. The observer is the
     // block's own window's, which in a pop-out isn't the main one.
-    const win = this.containerEl.win as Window & typeof globalThis;
+    const win = this.containerEl.win as Window & { ResizeObserver: typeof ResizeObserver };
     const shown = new win.ResizeObserver((entries) => {
       if (this.started || !entries.some((e) => e.contentRect.width > 0)) return;
       shown.disconnect();

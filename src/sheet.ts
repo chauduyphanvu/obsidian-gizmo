@@ -46,9 +46,8 @@ export class Sheet {
 
   /** `close` is what the close button does. */
   constructor(doc: Document, icon: DrawIcon, close: () => void) {
-    this.el = doc.createElement("aside");
-    this.el.className = "gz-sheet";
-    for (const [k, v] of [["role", "dialog"], ["aria-modal", "false"], ["tabindex", "-1"]]) this.el.setAttribute(k, v);
+    // Made in the app's own document (a pop-out has its own), and mounted later.
+    this.el = doc.createDocumentFragment().createEl("aside", { cls: "gz-sheet", attr: { role: "dialog", "aria-modal": "false", tabindex: "-1" } });
     const top = this.el.createDiv({ cls: "gz-sheet-top" });
     this.kicker = top.createSpan({ cls: "gz-sheet-kicker" });
     const button = top.createEl("button", { cls: "gz-sheet-close clickable-icon", attr: { type: "button", "aria-label": "Close", title: "Close (Esc)" } });
@@ -179,8 +178,7 @@ export class Sheet {
     let line = s.title.nextElementSibling?.classList.contains("gz-sheet-line") ? s.title.nextElementSibling as HTMLElement : undefined;
     if (!text) return line?.remove();
     if (!line) {
-      line = s.title.ownerDocument.createElement("div");
-      line.className = "gz-sheet-line";
+      line = s.title.parentElement!.createDiv({ cls: "gz-sheet-line" });
       s.title.after(line);
     }
     line.setText(text);
