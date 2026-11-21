@@ -53,6 +53,7 @@ const DAYS = [
   { at: "2026-11-17", count: 3 },
 ];
 const cell = (el: Element, date: string) => el.querySelector(`[data-date="${date}"]`) as HTMLElement;
+const fire = (el: Element, type: string) => el.dispatchEvent(new window.Event(type, { bubbles: true }));
 const step = (el: Element | null) => /gz-step-(\d)/.exec(el?.getAttribute("class") ?? "")?.[1];
 
 test("shades are five steps by where a value sits among the non-zero ones; zero has none", () => {
@@ -201,10 +202,10 @@ test("year layout: 53 week columns of 7 days, month names on top, each day label
 test("year cells fit the panel width, never below 8px, and scroll when they can't", () => {
   const widest = (el: Element) => Number(el.querySelector("rect")!.getAttribute("width"));
   const { el, handle } = mount({ layout: "year" }, [], fakeCtx(600).ctx);
-  assert.equal(widest(el), 9);
+  assert.equal(widest(el), 8);
   assert.ok(Number(el.querySelector("svg")!.getAttribute("width")) <= 600);
   handle.resize!(900);
-  assert.equal(widest(el), 15);
+  assert.equal(widest(el), 14);
   handle.resize!(300);
   assert.equal(widest(el), 8);
   assert.ok(Number(el.querySelector("svg")!.getAttribute("width")) > 300);
@@ -214,8 +215,8 @@ test("year cells fit the panel width, never below 8px, and scroll when they can'
 test("a year too wide for its panel opens scrolled to today; a whole year that fits doesn't scroll", () => {
   const narrow = mount({ layout: "year" }, [], fakeCtx(300).ctx).el;
   const scroller = narrow.querySelector(".gz-cal-scroll") as HTMLElement;
-  // 18 November 2026 is in column 46 of 10 px columns: up to its end and four weeks more, less the 300 px shown.
-  assert.equal(scroller.scrollLeft, (47 + 4) * 10 - 300);
+  // 18 November 2026 is in column 46 of 11 px columns (8 px cells, 3 px gaps): up to its end and four weeks more, less the 300 px shown.
+  assert.equal(scroller.scrollLeft, (47 + 4) * 11 - 300);
   const wide = mount({ layout: "year" }, [], fakeCtx(600).ctx).el;
   assert.equal((wide.querySelector(".gz-cal-scroll") as HTMLElement).scrollLeft, 0);
 });
@@ -259,4 +260,78 @@ test("format and values show in each day's value and in its tooltip and label", 
   assert.deepEqual(checkPanel({ view: "calendar", source: "s", group: "at", format: "dollars" }, true).errors, [
     'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
   ]);
+});
+
+test("in the month grid today's ring and a pick are classes that go together, and no day is faded or styled inline", () => {
+  const { ctx } = fakeCtx();
+  const { el } = mount({ select: "day" }, DAYS, ctx);
+  assert.deepEqual([...el.querySelectorAll(".gz-today")], [cell(el, "2026-11-18")]);
+  cell(el, "2026-11-18").click();
+  assert.ok(cell(el, "2026-11-18").classList.contains("gz-today") && cell(el, "2026-11-18").classList.contains("gz-selected"));
+  cell(el, "2026-11-04").click();
+  assert.ok(cell(el, "2026-11-04").classList.contains("gz-selected") && !cell(el, "2026-11-04").classList.contains("gz-today"));
+  assert.deepEqual([...el.querySelectorAll(".gz-selected")], [cell(el, "2026-11-04")]);
+  assert.equal(el.querySelectorAll(".gz-future").length, 0);
+  assert.equal(el.querySelector(".gz-heat-cap"), null);
+  for (const day of el.querySelectorAll(".gz-cal-day")) assert.equal(day.getAttribute("style"), null);
+});
+
+test("in the year today is outlined and a pick marked by class; an empty day still to come is faded", () => {
+  const { ctx } = fakeCtx();
+  const { el } = mount({ layout: "year", select: "day" }, [{ at: "2026-11-17", count: 3 }, { at: "2026-12-24", count: 1 }], ctx);
+  assert.deepEqual([...el.querySelectorAll(".gz-today")], [cell(el, "2026-11-18")]);
+  assert.equal(el.querySelectorAll(".gz-selected").length, 0);
+  fire(cell(el, "2026-11-04"), "click");
+  assert.deepEqual([...el.querySelectorAll(".gz-selected")], [cell(el, "2026-11-04")]);
+  fire(cell(el, "2026-11-18"), "click");
+  assert.ok(cell(el, "2026-11-18").classList.contains("gz-today") && cell(el, "2026-11-18").classList.contains("gz-selected"));
+  const faded = (date: string) => cell(el, date).classList.contains("gz-future");
+  assert.deepEqual(["2026-11-19", "2026-12-31", "2026-12-24", "2026-11-18", "2026-11-10"].map(faded), [true, true, false, false, false]);
+  assert.equal(step(cell(el, "2026-12-24")), "2");
+  for (const day of el.querySelectorAll("rect")) assert.equal(day.getAttribute("style"), null);
+});
+
+test("under the year a caption names the day pointed at, else today, with what it came to", () => {
+  const rows = [{ at: "2026-11-18", count: 2 }, { at: "2026-11-04", count: 1 }];
+  const { el } = mount({ layout: "year", select: "day" }, rows);
+  const caption = () => text(el.querySelector(".gz-heat-at"));
+  assert.equal(caption(), "Wed Nov 18 · 2 entries");
+  assert.equal(text(el.querySelector(".gz-heat-at b")), "Wed Nov 18");
+  fire(cell(el, "2026-11-04"), "mouseover");
+  assert.equal(caption(), "Wed Nov 4 · 1 entry");
+  fire(cell(el, "2026-11-10"), "mouseover");
+  assert.equal(caption(), "Tue Nov 10 · 0 entries");
+  fire(el.querySelector("svg")!, "mouseleave");
+  assert.equal(caption(), "Wed Nov 18 · 2 entries");
+  // Keyboard focus says the same as the pointer.
+  fire(cell(el, "2026-11-04"), "focusin");
+  assert.equal(caption(), "Wed Nov 4 · 1 entry");
+  fire(cell(el, "2026-11-04"), "focusout");
+  assert.equal(caption(), "Wed Nov 18 · 2 entries");
+  // The caption is under the grid, outside what scrolls.
+  assert.equal(el.querySelector(".gz-heat-cap")!.previousElementSibling, el.querySelector(".gz-cal-scroll"));
+});
+
+test("the caption's noun is the panel's label, else entry or entries; a total reads as it is shown", () => {
+  const counted = mount({ layout: "year", label: "doses" }, [{ at: "2026-11-18", count: 2 }]).el;
+  assert.equal(text(counted.querySelector(".gz-heat-at")), "Wed Nov 18 · 2 doses");
+  const spent = mount({ layout: "year", y: "amount", agg: "sum", format: "$0,0", label: "spent" }, [{ at: "2026-11-18", count: 1, amount: 40 }]).el;
+  assert.equal(text(spent.querySelector(".gz-heat-at")), "Wed Nov 18 · $40 spent");
+  const plain = mount({ layout: "year", y: "amount", agg: "sum" }, [{ at: "2026-11-18", count: 1, amount: 40 }]).el;
+  assert.equal(text(plain.querySelector(".gz-heat-at")), "Wed Nov 18 · 40");
+  const none = mount({ layout: "year", y: "mood", agg: "avg" }, []).el;
+  assert.equal(text(none.querySelector(".gz-heat-at")), "Wed Nov 18 · no data");
+});
+
+test("the key under the year has three swatches: none, a light shade and a dark one", () => {
+  const key = (el: Element) => {
+    const k = el.querySelector(".gz-heat-key")!;
+    return { words: [...k.querySelectorAll("span")].map((s) => text(s)), swatches: [...k.querySelectorAll("i")].map((i) => i.getAttribute("class")) };
+  };
+  assert.deepEqual(key(mount({ layout: "year" }, []).el), {
+    words: ["none", "1", "2+"],
+    swatches: ["gz-heat-swatch", "gz-heat-swatch gz-step-2", "gz-heat-swatch gz-step-5"],
+  });
+  // A total has no "1" to point at, so the key speaks of less and more.
+  assert.deepEqual(key(mount({ layout: "year", y: "amount", agg: "sum" }, []).el).words, ["none", "less", "more"]);
 });

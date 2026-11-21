@@ -10,7 +10,7 @@ import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 /** Shades a day can have besides none; the classes are gz-step-1 to gz-step-5. */
 const SHADES = 5;
 /** Year heatmap: gap between cells, smallest cell (narrower panels scroll), room for month names. */
-const GAP = 2, MIN_CELL = 8, TOP = 16;
+const GAP = 3, MIN_CELL = 8, TOP = 18;
 const KEYS = { ArrowLeft: -1, ArrowRight: 1, ArrowUp: -1, ArrowDown: 1 } as const;
 
 /**
@@ -45,6 +45,8 @@ interface Days {
   show(date: string): string;
   step(date: string): number;
   label(date: string): string;
+  /** What the day came to, for the line under the heatmap: "2 entries", "$40 spent", or "no data". */
+  tally(date: string): string;
 }
 
 function daysOf(p: Panel, data: unknown, now: Date): Days {
@@ -61,6 +63,11 @@ function daysOf(p: Panel, data: unknown, now: Date): Days {
     show,
     step: (date) => steps.get(value(date) ?? 0) ?? 0,
     label: (date) => `${date}: ${value(date) === undefined ? "no data" : show(date)}`,
+    tally(date) {
+      if (value(date) === undefined) return "no data";
+      const noun = p.label ?? (y ? undefined : value(date) === 1 ? "entry" : "entries");
+      return noun ? `${show(date)} ${noun}` : show(date);
+    },
   };
 }
 
@@ -76,6 +83,12 @@ function arrowKeys(root: Element, across: number, down: number): void {
     e.preventDefault();
     next.focus();
   });
+}
+
+/** A date as "Fri Nov 20". */
+function dayName(date: string): string {
+  const [y, m, d] = date.split("-").map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" }).replace(",", "");
 }
 
 /** A day's own look and what it picks: its tooltip text, its shade, today's outline, and its row for `select`. */
@@ -132,16 +145,40 @@ function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: nu
   }, scroller);
   const today = stampParts(ctx.now).date;
   for (const c of cells) {
-    if (c.month) svg("text", { x: at(c.col), y: TOP - 5, class: "gz-axis" }, root).textContent = c.month;
+    if (c.month) svg("text", { x: at(c.col), y: TOP - 7, class: "gz-heat-month" }, root).textContent = c.month;
     const rect = svg("rect", { x: at(c.col), y: TOP + at(c.row), width: size, height: size, rx: 2, class: "gz-cal-day" }, root);
     svg("title", {}, rect).textContent = days.label(c.date);
     markDay(rect, p, ctx, days, c.date, today);
+    if (c.date > today && !days.step(c.date)) rect.classList.add("gz-future");
   }
   // Up and down are days here, left and right whole weeks.
   arrowKeys(root, 7, 1);
+  const show = drawCaption(el, p, days, today);
+  const dayOf = (e: Event) => (e.target as Element).closest?.("[data-date]")?.getAttribute("data-date");
+  for (const type of ["mouseover", "focusin"]) root.addEventListener(type, (e) => { const date = dayOf(e); if (date) show(date); });
+  for (const type of ["mouseleave", "focusout"]) root.addEventListener(type, () => show(today));
   // Too narrow for the whole year (a phone), it opens scrolled to show today rather than January.
   const now = cells.find((c) => c.date === today);
   if (now) scroller.scrollLeft = Math.max(0, at(now.col + 1) + 4 * (size + GAP) - width);
+}
+
+/** Under the heatmap: the day pointed at (else today) and what it came to, then what the shades mean. Returns what shows a day there. */
+function drawCaption(el: HTMLElement, p: Panel, days: Days, today: string): (date: string) => void {
+  const cap = el.createDiv({ cls: "gz-heat-cap" });
+  const at = cap.createSpan({ cls: "gz-heat-at" });
+  const show = (date: string) => {
+    at.empty();
+    at.createEl("b", { text: dayName(date) });
+    at.createSpan({ text: ` · ${days.tally(date)}` });
+  };
+  show(today);
+  const key = cap.createSpan({ cls: "gz-heat-key" });
+  const counts = seriesNames(p)[0] === undefined;
+  for (const [step, text] of [[0, "none"], [2, counts ? "1" : "less"], [5, counts ? "2+" : "more"]] as const) {
+    key.createEl("i", { cls: step ? `gz-heat-swatch gz-step-${step}` : "gz-heat-swatch", attr: { "aria-hidden": "true" } });
+    key.createSpan({ text });
+  }
+  return show;
 }
 
 type Nav = "prev" | "next" | "today";

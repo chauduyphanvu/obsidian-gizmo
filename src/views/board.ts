@@ -15,11 +15,16 @@ export function itemText(p: Panel, row: Row, now: Date): string {
   return field === undefined ? "" : display(p, field, row[field], now, "text");
 }
 
+/** Choices that read as the end of a flow; a board's last choice among them is its done column. */
+const DONE = ["done", "complete", "completed", "finished"];
+
 interface Column {
   name: string;
   /** What a card dropped here gets as its group field. */
   value: unknown;
   rows: Row[];
+  /** The group field's last choice, when it reads as done: its cards' names are muted. */
+  done?: boolean;
 }
 
 /**
@@ -40,7 +45,11 @@ export function columnsOf(p: Panel, rows: Row[]): Column[] {
     return c;
   };
   const choices = p.schema?.[p.group!];
-  if (Array.isArray(choices)) choices.forEach(column);
+  if (Array.isArray(choices)) {
+    choices.forEach(column);
+    const last = choices.at(-1);
+    if (last !== undefined && DONE.includes(String(last).toLowerCase())) column(last).done = true;
+  }
   const none: Row[] = [];
   for (const row of rows) {
     const v = getPath(row, p.group);
@@ -53,6 +62,12 @@ export function columnsOf(p: Panel, rows: Row[]): Column[] {
 /** What a column is called: the panel's `values` for its group value, else the value. */
 function columnTitle(p: Panel, c: Column): string {
   return mapped(p, p.group, c.value) ?? c.name;
+}
+
+/** A card's text as its name and, after the first " · ", what goes under it. */
+function splitItem(text: string): [name: string, rest?: string] {
+  const i = text.indexOf(" · ");
+  return i > 0 ? [text.slice(0, i), text.slice(i + 3)] : [text];
 }
 
 /** The card whose controls hold the focus, found again after the board is drawn afresh. */
@@ -108,9 +123,16 @@ export const board: ViewDef = {
         const card = parent.createDiv({ cls: "gz-board-card", attr: { draggable: "true" } });
         if (key !== undefined) card.setAttribute("data-key", String(key));
         const title = card.createDiv({ cls: "gz-board-text" });
+        const [name, rest] = splitItem(text);
+        const nameEl = title.createDiv({ cls: "gz-card-name" });
         const note = rowNote(p, row);
-        if (note) noteLink(title, text, note, ctx);
-        else title.setText(text);
+        if (note) noteLink(nameEl, name, note, ctx);
+        else nameEl.setText(name);
+        if (rest !== undefined) {
+          // Hidden, so the card's text still reads as the item says.
+          title.createSpan({ cls: "gz-card-sep", text: " · ", attr: { "aria-hidden": "true" } });
+          if (rest) title.createDiv({ cls: "gz-card-meta", text: rest });
+        }
         // Moved to two columns at once on two devices: the other column is offered.
         conflictChip(card, row, p.group!, (value) => ctx.editRow(row, p.group!, value));
         card.addEventListener("dragstart", (e) => {
@@ -139,7 +161,7 @@ export const board: ViewDef = {
         if (key !== undefined && String(key) === refocus) moveTo.focus();
       };
       for (const column of columns) {
-        const col = root.createDiv({ cls: "gz-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });
+        const col = root.createDiv({ cls: column.done ? "gz-board-col gz-board-done" : "gz-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });
         const head = col.createDiv({ cls: "gz-board-head" });
         head.createSpan({ cls: "gz-board-name", text: columnTitle(p, column) });
         head.createSpan({ cls: "gz-board-count", text: String(column.rows.length) });
