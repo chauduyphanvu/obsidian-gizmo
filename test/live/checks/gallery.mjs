@@ -202,7 +202,7 @@ export default async function gallery(t) {
       const latest = await na.until(() => (${PANEL})("Latest").querySelector(".gz-big")?.textContent === "7.5hours" && "7.5hours", 3000);
       const row = (${PANEL})("Entries").querySelector("tbody tr");
       return { saved, latest, row: row && [...row.querySelectorAll("td")].map((td) => td.querySelector("input")?.value ?? td.textContent), goal: (${PANEL})("My sleep against my goal").querySelector(".gz-goal-label")?.textContent, errors: na.errors() };`);
-    expect(r.saved?.value === 7.5 && typeof r.saved.at === "string" && r.latest === "7.5hours" && r.row?.[1] === "7.5" && r.goal === "goal 8 hours" && r.errors === 0, r);
+    expect(r.saved?.value === 7.5 && typeof r.saved.at === "string" && r.latest === "7.5hours" && r.row?.[1] === "7.5" && r.goal === "Goal 8 hours" && r.errors === 0, r);
     return `saved ${JSON.stringify(r.saved)}; latest ${r.latest}; ${r.goal}`;
   });
 

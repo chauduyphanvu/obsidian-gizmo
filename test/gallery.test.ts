@@ -250,7 +250,7 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.equal(text(week.querySelector(".gz-big")), "80.4kg");
   assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.6 kg (<1%) vs previous");
   assert.equal(text(latest.querySelector(".gz-big")), "80.2kg");
-  assert.equal(text(chart.querySelector(".gz-goal-label")), "goal 75 kg");
+  assert.equal(text(chart.querySelector(".gz-goal-label")), "Goal 75 kg");
   assert.equal(chart.querySelector(".gz-legend"), null);
   assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "weight", "note"]);
 
@@ -285,7 +285,7 @@ test("Sleep: the same kit for hours slept, against a goal of eight", async () =>
   assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["This week", "Latest", "Log my sleep", "My sleep against my goal", "Entries"]);
   assert.equal(text(week.querySelector(".gz-big")), "6.5hours");
   assert.equal(text(week.querySelector(".gz-compare")), "▲ 0.5 hours (8%) vs previous");
-  assert.equal(text(chart.querySelector(".gz-goal-label")), "goal 8 hours");
+  assert.equal(text(chart.querySelector(".gz-goal-label")), "Goal 8 hours");
 
   (form.querySelector("input") as HTMLInputElement).value = "8.5";
   submit(form.querySelector("form")!);
@@ -340,9 +340,13 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.equal(text(month.querySelector(".gz-big")), "$700.00");
   assert.equal(text(limit.querySelector(".gz-big")), "$700/ $2,000");
   assert.equal(text(month.querySelector(".gz-compare")), "▼ $1,100.00 (61%) vs previous");
-  assert.equal(text(chart.querySelector(".gz-goal-label")), "goal $500");
+  assert.equal(text(chart.querySelector(".gz-goal-label")), "$500 goal");
   assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["Food", "Home", "Transport", "Fun", "Other"]);
-  assert.ok(chart.querySelectorAll("path.gz-bar.gz-stacked").length >= 3);
+  // A bar for each week with spending (1,800 and 700), both past the $500 goal; this week has none yet.
+  assert.equal(chart.querySelectorAll("path.gz-bar").length, 2);
+  assert.equal(chart.querySelectorAll("path.gz-bar.is-over").length, 2);
+  assert.equal(text(chart.querySelector(".gz-stack-head")), "Week of Nov 16$0 of $500");
+  assert.equal(chart.querySelectorAll(".gz-strip span").length, 0);
 
   const [amount, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
   amount.value = "1350";
@@ -808,7 +812,7 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   assert.equal(root.querySelector(".gz-error"), null);
   const [now, , forecast, expected, record, sightings] = panels(root);
   assert.equal(text(now.querySelector(".gz-big")), "5.33");
-  assert.equal(text(forecast.querySelector(".gz-goal-label")), "goal 5");
+  assert.equal(text(forecast.querySelector(".gz-goal-label")), "Goal 5");
   assert.deepEqual([...expected.querySelectorAll("li")].map(text), ["2026-11-18T21:00:00 · Kp 5.67"]);
   assert.ok(record.querySelector(".gz-chart-svg"));
   assert.equal(text(sightings.querySelector(".gz-empty")), "Nothing here yet.");

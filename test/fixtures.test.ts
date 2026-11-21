@@ -439,9 +439,13 @@ test("Spending: log a purchase, see the week against last, the stack against the
   assert.equal(week.querySelector(".gz-compare")!.getAttribute("aria-label"), "down $83.25, 66 percent, versus previous");
 
   // Weekly totals stacked by category, with the budget line.
-  assert.equal(text(chart.querySelector(".gz-goal-label")), "goal $400");
+  assert.equal(text(chart.querySelector(".gz-goal-label")), "$400 goal");
   assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["Food", "Rent", "Transport", "Fun", "Other"]);
-  assert.ok(chart.querySelectorAll("path.gz-bar.gz-stacked").length >= 6);
+  // One bar a week (Nov 2, 9 and 16), the last week's total and parts told above it.
+  assert.equal(chart.querySelectorAll("path.gz-bar").length, 3);
+  assert.equal(chart.querySelectorAll("path.gz-bar.is-now").length, 1);
+  assert.equal(text(chart.querySelector(".gz-stack-head")), "Week of Nov 16$42 of $400");
+  assert.equal(chart.querySelectorAll(".gz-strip span").length, 2, "transport and food; the rest are zero");
   assert.match(text(chart.querySelector(".gz-legend")), /Food\$30.*Transport\$12/);
 
   // Recent purchases, newest first, in the panel's formats; category is a dropdown.
@@ -904,7 +908,7 @@ test("Weather: now, the next hours and the week in words, told when rain is like
   assert.equal(text(rainy.querySelector(".gz-big")), "2hours");
   assert.deepEqual([...hours.querySelectorAll(".gz-legend-name")].map(text), ["Temperature", "Feels like"]);
   assert.equal(hours.querySelectorAll("path.gz-line").length, 2);
-  assert.equal(text(chance.querySelector(".gz-goal-label")), "goal 50 %");
+  assert.equal(text(chance.querySelector(".gz-goal-label")), "50 % goal");
   assert.deepEqual([...week.querySelectorAll("th")].map((th) => text(th)), ["Day", "Sky", "Temperature", "Rain chance"]);
   assert.deepEqual([...week.querySelectorAll("tbody tr")].map(cells),
     [["Wednesday", "overcast", "6 to 9 °C", "85 %"], ["Thursday", "rain", "6 to 11 °C", "100 %"], ["Friday", "clear", "2 to 8 °C", "0 %"]]);

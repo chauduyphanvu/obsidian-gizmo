@@ -1,5 +1,5 @@
 import { extent, formatValue, getPath, seriesOf, type Point, type Row } from "../data.ts";
-import { toTime, type Per } from "../time.ts";
+import { periodStart, shiftPeriod, toTime, type Per } from "../time.ts";
 import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
@@ -9,10 +9,12 @@ import type { PanelHandle, ViewDef } from "./registry.ts";
 const NS = "http://www.w3.org/2000/svg";
 /** The frame of a chart: height, and room left, right, top and bottom for the axes. Scatter shares it. */
 export const H = 220, L = 52, R = 14, T = 14, B = 26;
+/** The room a goal's label gets right of the plot, at least. */
+const GUTTER = 64;
 /** Most series one chart draws: past this, colours stop being told apart. */
 export const MAX_SERIES = 6;
 /** Bars are at most this wide, with a gap between neighbours and rounded data ends. */
-const BAR_MAX = 36, GAP = 2, RADIUS = 4;
+const BAR_MAX = 46, GAP = 2, RADIUS = 4;
 
 export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent?: Element): SVGElementTagNameMap[K] {
   const el = document.createElementNS(NS, tag);
@@ -68,24 +70,21 @@ export interface ChartOptions {
   per?: Per;
   /** The text of a category on the x axis (not a time axis). */
   category?(x: unknown): string;
-  /** Selection hook: called with each bar drawn (each segment, when stacked) and the x value it stands for. */
+  /** Selection hook: called with each bar drawn and the x value it stands for. */
   mark?(el: SVGElement, x: unknown): void;
-  /** A dashed line at this value, labelled, inside the axis range. */
+  /** A dashed line at this value, labelled in a gutter right of the plot, inside the axis range. */
   goal?: number;
-  /** Bars of several series stack instead of sitting side by side. */
+  /** Bars of several series become one bar each, their total, with the parts told above. */
   stack?: boolean;
+  /** The moment it is: the last bar of a time axis is the current one while its period holds this. */
+  now?: Date;
 }
 
-/** The lowest and highest a stack of these series reaches: positive values pile up, negative ones down. */
-function stackRange(values: Map<number, number>[]): [number, number] {
-  const up = new Map<number, number>(), down = new Map<number, number>();
-  for (const byIndex of values) {
-    for (const [i, y] of byIndex) {
-      const total = y < 0 ? down : up;
-      total.set(i, (total.get(i) ?? 0) + y);
-    }
-  }
-  return [extent([0, ...down.values()])[0], extent([0, ...up.values()])[1]];
+/** Each x's total across the series. */
+function totalsOf(values: Map<number, number>[]): Map<number, number> {
+  const totals = new Map<number, number>();
+  for (const byIndex of values) for (const [i, y] of byIndex) totals.set(i, (totals.get(i) ?? 0) + y);
+  return totals;
 }
 
 /** A colour swatch and name; text keeps the text colour, the swatch carries the series colour. */
@@ -122,36 +121,61 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     for (const p of s.points) byIndex.set(index.get(keyOf(p.x))!, p.y);
     return byIndex;
   });
-  const stacked = opts.kind === "bar" && !!opts.stack && series.length > 1;
+  const isLine = opts.kind === "line";
+  const stacked = !isLine && !!opts.stack && series.length > 1;
+  // A bar chart of one series, or a stack, draws one bar per x: the value, or the total.
+  const totals = stacked ? totalsOf(values) : values[0];
+  const oneBar = !isLine && (stacked || series.length === 1);
 
-  let [yMin, yMax] = stacked ? stackRange(values) : extent(all.map((p) => p.y));
+  let [yMin, yMax] = stacked ? extent([0, ...totals.values()]) : extent(all.map((p) => p.y));
   if (opts.goal !== undefined) { yMin = Math.min(yMin, opts.goal); yMax = Math.max(yMax, opts.goal); }
-  if (opts.kind === "bar") { yMin = Math.min(0, yMin); yMax = Math.max(0, yMax); }
+  if (!isLine) { yMin = Math.min(0, yMin); yMax = Math.max(0, yMax); }
   if (yMin === yMax) { yMin -= 1; yMax += 1; }
   const pad = (yMax - yMin) * 0.08;
-  if (opts.kind === "line") { yMin -= pad; yMax += pad; } else { yMax += pad; }
+  if (isLine) { yMin -= pad; yMax += pad; } else { yMax += pad; }
+
+  const fmt = (v: number, s = 0) => opts.format?.(v, s) ?? formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
+  // The last point of each line; the first series' value is written beside it.
+  const ends = isLine ? values.map((byIndex) => {
+    const i = Math.max(...byIndex.keys());
+    const y = byIndex.get(i);
+    return y === undefined ? undefined : { i, y };
+  }) : [];
+  const end = ends[0];
+  const endText = end && fmt(end.y);
+  const goalText = opts.goal === undefined ? undefined : isLine ? `Goal ${fmt(opts.goal)}` : `${fmt(opts.goal)} goal`;
+  // Labels at the end of the plot get a gutter of their own, so they never sit on bars or the line.
+  const room = (text: string | undefined, em: number) => (text ? Math.ceil(text.length * em) + 14 : R);
+  const right = Math.max(goalText ? GUTTER : R, room(goalText, 6.4), room(endText, 7.2));
 
   const span = isTime ? (keys[n - 1] as number) - (keys[0] as number) : n - 1;
-  const bandW = (W - L - R) / n;
+  const bandW = (W - L - right) / n;
   const pos = (i: number) => (isTime ? (keys[i] as number) - (keys[0] as number) : i);
-  const sx = (i: number) => opts.kind === "bar" || span === 0 ? L + bandW * (i + 0.5) : L + (pos(i) / span) * (W - L - R);
+  const sx = (i: number) => !isLine || span === 0 ? L + bandW * (i + 0.5) : L + (pos(i) / span) * (W - L - right);
   const sy = (y: number) => T + (1 - (y - yMin) / (yMax - yMin)) * (H - T - B);
-  const fmt = (v: number, s = 0) => opts.format?.(v, s) ?? formatValue(v, opts.decimals) + (opts.unit ? ` ${opts.unit}` : "");
   const xLabel = (i: number) => (isTime ? formatTime(keys[i] as number, span, opts.per) : opts.category?.(label.get(keys[i])) ?? String(label.get(keys[i]) ?? ""));
   const name = (s: number) => series[s].label ?? series[s].name;
-  // One series wears the theme accent; several take the chart palette in a fixed order.
-  const colour = (s: number) => (series.length === 1 ? "gz-accent" : `gz-s${s + 1}`);
+  // Several series take the chart palette in a fixed order; one is drawn in ink and pencil.
+  const colour = (s: number) => (series.length === 1 ? "" : `gz-s${s + 1}`);
+  const classes = (...cls: (string | false)[]) => cls.filter(Boolean).join(" ");
+  /** Whether the period of the bar at i holds the present: only the last bar of a time axis can. */
+  const current = (i: number) => {
+    if (!isTime || i !== n - 1 || opts.now === undefined) return false;
+    const per = opts.per ?? "day";
+    const start = periodStart(keys[i] as number, per);
+    return +opts.now >= start && +opts.now < shiftPeriod(start, per, 1);
+  };
 
   const wrap = parent.createDiv({ cls: "gz-chart" });
   const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg", role: "img" }, wrap);
 
   for (const t of niceTicks(yMin, yMax)) {
     const y = sy(t);
-    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "gz-gridline" }, root);
+    svg("line", { x1: L, x2: W - right, y1: y, y2: y, class: "gz-gridline" }, root);
     svg("text", { x: L - 8, y: y + 4, class: "gz-axis", "text-anchor": "end" }, root).textContent = opts.format?.(t, 0) ?? formatValue(t);
   }
   // Bars each get a label while they fit (a date needs about 52 px); otherwise the ends and middle.
-  const labelIdx = opts.kind === "bar" && n <= 12 && (!isTime || bandW >= 52) ? keys.map((_, i) => i)
+  const labelIdx = !isLine && n <= 12 && (!isTime || bandW >= 52) ? keys.map((_, i) => i)
     : n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
   const every = labelIdx.length > 3;
   for (const i of new Set(labelIdx)) {
@@ -159,7 +183,8 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     svg("text", { x: sx(i), y: H - 6, class: "gz-axis", "text-anchor": anchor }, root).textContent = xLabel(i);
   }
 
-  if (opts.kind === "line") {
+  const barAt = new Map<number, SVGElement>();
+  if (isLine) {
     values.forEach((byIndex, s) => {
       const pts = [...byIndex].sort((a, b) => a[0] - b[0]);
       if (pts.length === 0) return;
@@ -167,29 +192,20 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       if (series.length === 1) {
         const base = sy(yMin);
         const [first, last] = [pts[0][0], pts[pts.length - 1][0]];
-        svg("path", { d: `${d}L${sx(last).toFixed(1)},${base}L${sx(first).toFixed(1)},${base}Z`, class: `gz-area ${colour(s)}` }, root);
+        svg("path", { d: `${d}L${sx(last).toFixed(1)},${base}L${sx(first).toFixed(1)},${base}Z`, class: "gz-area" }, root);
       }
-      svg("path", { d, class: `gz-line ${colour(s)}` }, root);
-      const [li, ly] = pts[pts.length - 1];
-      svg("circle", { cx: sx(li), cy: sy(ly), r: 4, class: `gz-dot ${colour(s)}` }, root);
+      svg("path", { d, class: classes("gz-line", colour(s)) }, root);
     });
-  } else if (stacked) {
+  } else if (oneBar) {
     const w = Math.max(1, Math.min(BAR_MAX, bandW - GAP));
-    // Only the segment that ends a stack is rounded, at its outer end.
-    const outer = [new Map<number, number>(), new Map<number, number>()];
-    values.forEach((byIndex, s) => { for (const [i, y] of byIndex) if (y !== 0) outer[y > 0 ? 0 : 1].set(i, s); });
-    const run = [new Map<number, number>(), new Map<number, number>()];
-    values.forEach((byIndex, s) => {
-      for (const [i, y] of byIndex) {
-        if (y === 0) continue;
-        const side = y > 0 ? 0 : 1;
-        const from = run[side].get(i) ?? 0;
-        run[side].set(i, from + y);
-        const d = barPath(sx(i) - w / 2, w, sy(from), sy(from + y), outer[side].get(i) === s);
-        const bar = svg("path", { d, class: `gz-bar gz-stacked ${colour(s)}` }, root);
-        opts.mark?.(bar, label.get(keys[i]));
-      }
-    });
+    const zero = sy(0);
+    for (const [i, y] of totals) {
+      if (y === 0) continue;
+      const over = opts.goal !== undefined && y > opts.goal;
+      const bar = svg("path", { d: barPath(sx(i) - w / 2, w, zero, sy(y)), class: classes("gz-bar", current(i) && "is-now", over && "is-over") }, root);
+      barAt.set(i, bar);
+      opts.mark?.(bar, label.get(keys[i]));
+    }
   } else {
     const m = series.length;
     const w = Math.max(1, Math.min(BAR_MAX, (bandW - GAP * m) / m));
@@ -198,7 +214,7 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       for (const [i, y] of byIndex) {
         if (y === 0) continue;
         const x = sx(i) - (m * w + (m - 1) * GAP) / 2 + s * (w + GAP);
-        const bar = svg("path", { d: barPath(x, w, zero, sy(y)), class: `gz-bar ${colour(s)}` }, root);
+        const bar = svg("path", { d: barPath(x, w, zero, sy(y)), class: classes("gz-bar", colour(s)) }, root);
         opts.mark?.(bar, label.get(keys[i]));
       }
     });
@@ -206,16 +222,52 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
 
   if (opts.goal !== undefined) {
     const y = sy(opts.goal);
-    svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "gz-goal" }, root);
-    svg("text", { x: W - R, y: y - 4, class: "gz-goal-label", "text-anchor": "end" }, root).textContent = `goal ${fmt(opts.goal)}`;
+    svg("line", { x1: L, x2: W - right, y1: y, y2: y, class: "gz-goal" }, root);
     root.setAttribute("aria-label", `goal ${fmt(opts.goal)}`);
   }
+  const hoverDots = isLine ? series.map((_, s) => svg("circle", { r: 4, class: classes("gz-hover-dot", colour(s)), visibility: "hidden" }, root)) : [];
+  if (isLine) {
+    ends.forEach((e, s) => e && svg("circle", { cx: sx(e.i), cy: sy(e.y), r: 4.5, class: classes("gz-dot", colour(s)) }, root));
+  }
+  // The end label and the goal's share the gutter; a line ending near its goal parts them around their midpoint.
+  let endY = end ? sy(end.y) + 4 : 0;
+  let goalY = opts.goal === undefined ? 0 : sy(opts.goal) + 4;
+  if (end && goalText && Math.abs(endY - goalY) < 14) {
+    const mid = (endY + goalY) / 2;
+    [endY, goalY] = endY <= goalY ? [mid - 7, mid + 7] : [mid + 7, mid - 7];
+  }
+  if (end) svg("text", { x: sx(end.i) + 9, y: endY, class: "gz-end-label" }, root).textContent = endText!;
+  if (goalText) svg("text", { x: W - right + 8, y: goalY, class: "gz-goal-label" }, root).textContent = goalText;
 
-  // Above the chart, the point shown (the last, or the one under the pointer): several series, or
-  // one the panel names, get a legend that carries each value; one unnamed series, a readout.
-  const cursor = svg("line", { y1: T, y2: H - B, class: "gz-cursor", visibility: "hidden" }, root);
+  // Above the chart, the point shown (the last, or the one under the pointer). A stack tells the
+  // composition of its bar: when and total, a strip of the parts, then each part with its value.
+  // Several series, or one the panel names, get a legend that carries each value; one unnamed
+  // series, a readout.
+  const cursor = isLine || !oneBar ? svg("line", { y1: T, y2: H - B, class: "gz-cursor", visibility: "hidden" }, root) : undefined;
   let showValues: (i: number) => void;
-  if (series.length > 1 || series[0].label !== undefined) {
+  if (stacked) {
+    const head = createDivBefore(wrap, root, "gz-stack-head");
+    const when = head.createSpan({ cls: "gz-stack-when" });
+    const total = head.createSpan({ cls: "gz-stack-total" });
+    const strip = createDivBefore(wrap, root, "gz-strip");
+    const legend = createDivBefore(wrap, root, "gz-legend");
+    const cells = series.map((_, s) => legendItem(legend, colour(s), name(s)).createSpan({ cls: "gz-legend-value" }));
+    showValues = (i) => {
+      const sum = totals.get(i) ?? 0;
+      when.textContent = opts.per === "week" ? `Week of ${xLabel(i)}` : xLabel(i);
+      total.empty();
+      total.createEl("b", { text: fmt(sum) });
+      if (opts.goal !== undefined) total.createSpan({ cls: "gz-stack-of", text: ` of ${fmt(opts.goal)}` });
+      if (opts.goal !== undefined && sum > opts.goal) total.createSpan({ cls: "gz-stack-over", text: ` · ${fmt(sum - opts.goal)} over` });
+      strip.empty();
+      values.forEach((byIndex, s) => {
+        const y = byIndex.get(i);
+        if (y !== undefined && y > 0) strip.createSpan({ cls: colour(s) }).style.flexGrow = String(y);
+        cells[s].textContent = y === undefined ? "–" : fmt(y, s);
+        cells[s].parentElement!.classList.toggle("gz-zero", !y);
+      });
+    };
+  } else if (series.length > 1 || series[0].label !== undefined) {
     const legend = createDivBefore(wrap, root, "gz-legend");
     const at = legend.createSpan({ cls: "gz-legend-at" });
     const cells = series.map((_, s) => legendItem(legend, colour(s), name(s)).createSpan({ cls: "gz-legend-value" }));
@@ -236,24 +288,43 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
       if (y !== undefined) readout.createSpan({ text: ` · ${fmt(y)}` });
     };
   }
-  const showPoint = (i: number) => {
-    showValues(i);
-    cursor.setAttribute("x1", String(sx(i)));
-    cursor.setAttribute("x2", String(sx(i)));
+  let hovered: SVGElement | undefined;
+  /** Shows the point at x position i, as under the pointer; none shows the last one. */
+  const showPoint = (i?: number) => {
+    showValues(i ?? n - 1);
+    hovered?.classList.remove("is-hover");
+    hovered = i === undefined ? undefined : barAt.get(i);
+    hovered?.classList.add("is-hover");
+    cursor?.setAttribute("visibility", i === undefined ? "hidden" : "visible");
+    if (i !== undefined) {
+      cursor?.setAttribute("x1", String(sx(i)));
+      cursor?.setAttribute("x2", String(sx(i)));
+    }
+    hoverDots.forEach((dot, s) => {
+      const y = i === undefined ? undefined : values[s].get(i);
+      dot.setAttribute("visibility", y === undefined ? "hidden" : "visible");
+      if (i !== undefined && y !== undefined) {
+        dot.setAttribute("cx", String(sx(i)));
+        dot.setAttribute("cy", String(sy(y)));
+      }
+    });
   };
-  showPoint(n - 1);
+  showPoint();
   root.addEventListener("pointermove", (e) => {
     const box = root.getBoundingClientRect();
     const px = ((e.clientX - box.left) / box.width) * W;
     let best = 0;
     for (let i = 1; i < n; i++) if (Math.abs(sx(i) - px) < Math.abs(sx(best) - px)) best = i;
-    cursor.setAttribute("visibility", "visible");
     showPoint(best);
   });
-  root.addEventListener("pointerleave", () => {
-    cursor.setAttribute("visibility", "hidden");
-    showPoint(n - 1);
-  });
+  // A bar under the pointer or focused is the point shown, wherever in its band the pointer is.
+  for (const on of ["pointerover", "focusin"]) {
+    root.addEventListener(on, (e) => {
+      const at = [...barAt].find(([, bar]) => bar === e.target);
+      if (at) showPoint(at[0]);
+    });
+  }
+  for (const off of ["pointerleave", "focusout"]) root.addEventListener(off, () => showPoint());
 }
 
 function createDivBefore(parent: HTMLElement, before: Element, cls: string): HTMLElement {
@@ -329,7 +400,7 @@ function chartView(kind: "line" | "bar"): ViewDef {
         };
         const category = (at: unknown) => mapped(p, x, at) ?? String(at ?? "");
         renderChart(el, series, {
-          kind, unit: p.unit, decimals: p.decimals, format, category, width: width ?? ctx.width(key), per: p.per, mark, goal: p.goal, stack: p.stack,
+          kind, unit: p.unit, decimals: p.decimals, format, category, width: width ?? ctx.width(key), per: p.per, mark, goal: p.goal, stack: p.stack, now: ctx.now,
         });
       };
       return {

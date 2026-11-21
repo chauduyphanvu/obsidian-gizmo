@@ -9,7 +9,7 @@ import { heading, picks, selectable, seriesNames } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
-const RADIUS = 4;
+const RADIUS = 3.5;
 /** Most dots drawn; a few thousand are as much as a person can read, and as many as a panel can hold. */
 export const MAX_DOTS = 2000;
 const DAY = 86_400_000;
@@ -75,7 +75,7 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
   const texts = new WeakMap<Element, string>();
   for (const d of shown) {
     const text = p.item ? fillWith(p.item, d.row, (path, v) => display(p, path, v, ctx.now, "text")) : `${fmtX(getPath(d.row, xName))}, ${fmtY(d.y)}`;
-    const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "gz-scatter-dot gz-s1", tabindex: 0 }, root);
+    const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "gz-scatter-dot", tabindex: 0 }, root);
     svg("title", {}, dot).textContent = text;
     texts.set(dot, text);
     if (picks(p)) {

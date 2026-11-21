@@ -151,17 +151,14 @@
 
 /* Charts */
 .gizmo .gz-chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
-.gizmo .gz-gridline { stroke: var(--background-modifier-border); stroke-width: 1; }
-.gizmo .gz-axis { stroke: none; fill: var(--text-faint); font-size: 11px; font-family: var(--font-interface); }
-/* Series colours: one series wears the theme accent; several take a fixed, colour-blind-checked
-   order (validated against Obsidian's default panel colours in both themes). */
+/* Series colours: several series take a fixed, colour-blind-checked order (validated against
+   Obsidian's default panel colours in both themes). */
 .gizmo {
   --gz-s1: #2a78d6; --gz-s2: #eb6834; --gz-s3: #1baf7a; --gz-s4: #eda100; --gz-s5: #e87ba4; --gz-s6: #008300;
 }
 .theme-dark .gizmo {
   --gz-s1: #3987e5; --gz-s2: #d95926; --gz-s3: #199e70; --gz-s4: #c98500; --gz-s5: #d55181; --gz-s6: #0ca30c;
 }
-.gizmo .gz-accent { --gz-c: var(--interactive-accent); }
 .gizmo .gz-s1 { --gz-c: var(--gz-s1); }
 .gizmo .gz-s2 { --gz-c: var(--gz-s2); }
 .gizmo .gz-s3 { --gz-c: var(--gz-s3); }
@@ -169,19 +166,6 @@
 .gizmo .gz-s5 { --gz-c: var(--gz-s5); }
 .gizmo .gz-s6 { --gz-c: var(--gz-s6); }
 .gizmo .gz-other { --gz-c: var(--text-faint); }
-.gizmo .gz-line { fill: none; stroke: var(--gz-c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
-.gizmo .gz-area { fill: var(--gz-c); opacity: 0.1; }
-.gizmo .gz-dot { fill: var(--gz-c); stroke: var(--background-primary); stroke-width: 2; }
-.gizmo .gz-bar { fill: var(--gz-c); }
-/* Above a chart, the point shown: its x, then each series with its value there (the legend), or
-   the one value (the readout). */
-.gizmo .gz-legend { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-bottom: var(--size-4-2); font-size: var(--font-ui-smaller); color: var(--text-muted); font-variant-numeric: tabular-nums; }
-.gizmo .gz-legend-at { min-width: 4.5em; }
-.gizmo .gz-legend-item { display: inline-flex; align-items: center; gap: 6px; }
-.gizmo .gz-legend-value { color: var(--text-normal); }
-.gizmo .gz-legend-item.gz-zero .gz-legend-value { color: var(--text-faint); }
-.gizmo .gz-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--gz-c); flex: none; }
-.gizmo .gz-cursor { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
 .gizmo .gz-readout {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
@@ -192,7 +176,53 @@
 .gizmo .gz-readout span + span { color: var(--text-normal); }
 
 /* == charts: line, bar and pie, in pencil until a line is crossed == */
-/* (reserved) */
+.gizmo {
+  --gz-ink: var(--text-normal);
+  --gz-pencil: color-mix(in srgb, var(--text-normal) 20%, var(--background-primary));
+  --gz-over: var(--color-orange);
+  --gz-grid: var(--background-modifier-border);
+  --gz-axis: var(--text-faint);
+}
+.gizmo .gz-gridline { stroke: var(--gz-grid); stroke-width: 1; }
+.gizmo .gz-axis { stroke: none; fill: var(--gz-axis); font-size: 11px; font-family: var(--font-interface); font-variant-numeric: tabular-nums; }
+/* One series is ink on the page; several keep their palette colour (--gz-c, from the gz-sN class). */
+.gizmo .gz-line { fill: none; stroke: var(--gz-c, var(--gz-ink)); stroke-width: 1.75; stroke-linejoin: round; stroke-linecap: round; }
+.gizmo .gz-area { fill: var(--gz-ink); fill-opacity: 0.05; stroke: none; }
+.gizmo .gz-dot, .gizmo .gz-hover-dot { fill: var(--gz-c, var(--gz-ink)); stroke: var(--background-primary); stroke-width: 2; }
+.gizmo .gz-end-label { fill: var(--gz-ink); font-size: 12px; font-weight: 600; font-family: var(--font-interface); font-variant-numeric: tabular-nums; }
+.gizmo .gz-cursor { stroke: var(--text-muted); stroke-width: 1; }
+/* The goal: a dashed line, its label in the gutter right of the plot. */
+.gizmo .gz-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 4 4; }
+.gizmo .gz-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); font-variant-numeric: tabular-nums; }
+/* Bars: pencil, the current one and the one under the pointer in ink, and one past the goal in amber. */
+.gizmo .gz-bar { fill: var(--gz-c, var(--gz-pencil)); transition: fill 150ms; }
+.gizmo .gz-bar.is-now, .gizmo .gz-bar.is-hover, .gizmo .gz-bar:focus-visible { fill: var(--gz-ink); }
+.gizmo .gz-bar.is-over { fill: var(--gz-over); }
+/* Above a chart, the point shown: its x, then each series with its value there (the legend), or
+   the one value (the readout). A stack tells its bar's total, the parts as a strip, then the legend. */
+.gizmo .gz-legend { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 16px; margin-bottom: var(--size-4-2); font-size: var(--font-ui-smaller); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gizmo .gz-legend-at { min-width: 4.5em; }
+.gizmo .gz-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gizmo .gz-legend-value { color: var(--text-normal); font-weight: var(--font-semibold); }
+.gizmo .gz-legend-item.gz-zero .gz-legend-value { color: var(--text-faint); font-weight: var(--font-normal); }
+.gizmo .gz-swatch { width: 8px; height: 8px; border-radius: 2px; background: var(--gz-c, var(--gz-ink)); flex: none; }
+.gizmo .gz-stack-head { display: flex; flex-wrap: wrap; justify-content: space-between; align-items: baseline; gap: 2px 12px; margin-bottom: 9px; font-size: 13.5px; font-variant-numeric: tabular-nums; }
+.gizmo .gz-stack-when { font-weight: 500; }
+.gizmo .gz-stack-total b { font-size: 15px; font-weight: 650; }
+.gizmo .gz-stack-of { color: var(--text-muted); }
+.gizmo .gz-stack-over { color: var(--gz-over); }
+.gizmo .gz-strip { display: flex; gap: 2px; height: 6px; margin-bottom: 9px; border-radius: 3px; overflow: hidden; background: var(--gz-grid); }
+.gizmo .gz-strip span { min-width: 2px; background: var(--gz-c); }
+.gizmo .gz-strip + .gz-legend { margin-bottom: 14px; }
+/* A pie keeps its palette (the slices are the identity), a ring at most 240 px wide, centred. */
+.gizmo .gz-pie { display: flex; flex-wrap: wrap; align-items: center; justify-content: center; gap: 12px 28px; }
+.gizmo .gz-pie-svg { flex: none; width: min(100%, 240px); height: auto; }
+.gizmo .gz-slice { fill: var(--gz-c); stroke: var(--background-primary); stroke-width: 2px; vector-effect: non-scaling-stroke; }
+.gizmo .gz-ring { fill: none; stroke: var(--gz-c); }
+.gizmo .gz-scatter-dot { fill: var(--gz-ink); fill-opacity: 0.55; stroke: none; }
+.gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
+.gizmo .gz-chart-svg:has(.gz-scatter-dot.gz-selected) .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
 /* == /charts == */
 
 /* Tables and lists. In its own tab a table reaches into the shell's padding by its cells' padding,
@@ -270,10 +300,6 @@
 .gizmo .gz-more { margin-top: var(--size-4-2); }
 .gizmo .gz-loading .gz-empty { font-style: italic; }
 
-.gizmo .gz-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
-.gizmo .gz-pie-svg { flex: none; }
-.gizmo .gz-slice { fill: var(--gz-c); stroke: var(--background-primary); stroke-width: 2; }
-.gizmo .gz-ring { fill: none; stroke: var(--gz-c); }
 .gizmo .gz-pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-ui-small); color: var(--text-normal); }
 .gizmo .gz-pie-value { color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
 
@@ -425,10 +451,6 @@
   .gizmo .gz-board-card:hover select.gz-move,
   .gizmo .gz-board-card:focus-within select.gz-move { opacity: 1; }
 }
-.gizmo .gz-scatter-dot { fill: var(--gz-c); fill-opacity: 0.7; stroke: none; }
-.gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
-.gizmo .gz-chart-svg:has(.gz-scatter-dot.gz-selected) .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
 .gizmo .gz-timeline { --gz-tl-label: 140px; font-size: var(--font-ui-small); }
 .gizmo .gz-tl-axis { position: relative; height: 1.6em; margin-left: var(--gz-tl-label); }
 .gizmo .gz-tl-tick { position: absolute; transform: translateX(-50%); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; }
@@ -491,9 +513,6 @@
 .gizmo .gz-rowcard-value .gz-edit { max-width: 100%; }
 .gizmo .gz-rowcard-actions { margin-top: auto; text-align: right; }
 .gizmo .gz-compare { margin-top: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
-.gizmo .gz-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
-.gizmo .gz-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); }
-.gizmo .gz-stacked:not(.gz-selected) { stroke: var(--background-primary); stroke-width: 1; }
 /* Authoring: suggestions, error links, inspector */
 .suggestion-item .gz-suggest-key { color: var(--text-normal); }
 .suggestion-item .gz-suggest-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); }
