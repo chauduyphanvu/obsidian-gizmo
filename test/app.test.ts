@@ -7,6 +7,7 @@ import { checkPanel, panelIds, type Panel } from "../src/spec.ts";
 import { seriesNames } from "../src/views/common.ts";
 import { VIEW_DEFS, type PanelCtx } from "../src/views/registry.ts";
 import { fakeHost } from "./support/fakes.ts";
+import { typeLine } from "./support/addline.ts";
 
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 10)); };
 
@@ -120,11 +121,11 @@ test("new data updates its panel and leaves typed input alone", async () => {
   app.load();
   await settle();
   assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "80.2");
-  const input = root.querySelector(".gz-form input") as HTMLInputElement;
-  input.value = "77";
+  // Composed, the form is an add line; what is typed in it stays as the list it saves to changes.
+  const input = typeLine(root, "77");
   await edit("Apps/W data.md", (fm) => { fm.weights = [{ weight: 80.2 }, { weight: 79.5 }]; });
   assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "79.5");
-  assert.equal(root.querySelector(".gz-form input"), input);
+  assert.equal(root.querySelector(".gz-addline-input"), input);
   assert.equal(input.value, "77");
 });
 

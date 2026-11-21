@@ -130,10 +130,10 @@ export default async function apps(t) {
         form: el.querySelector(".gz-view-form .gz-title")?.textContent,
         kept: panel("Everything I hold") === everything,
       };
+      // Composed, the form is an add line: the date, then the numbers in the order of their fields.
       const form = el.querySelector(".gz-view-form");
-      const [date, shares, price] = form.querySelectorAll("input");
-      na.fill(date, "2026-11-10"); na.fill(shares, "4"); na.fill(price, "500");
-      na.button("Record", form).click();
+      na.fill(form.querySelector(".gz-addline-input"), "2026-11-10 4 500");
+      form.querySelector("button.gz-addline-go").click();
       await na.until(() => na.fm("Apps/Portfolio data.md")?.buys?.length, 3000);
       await quiet();
       const held = panel("What I hold").querySelector("tbody tr");
@@ -157,20 +157,23 @@ export default async function apps(t) {
       const el = na.view().contentEl;
       const panel = (start) => [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent.startsWith(start));
       const items = (start) => [...panel(start).querySelectorAll("li:not(.gz-ledger-group)")].map((li) => li.textContent);
+      // Composed, the form is an add line; half a booking typed in it stays while the day changes.
       const form = panel("Book an appointment");
-      const [what, date, who] = form.querySelectorAll("input");
-      na.fill(what, "Blood test");
+      const line = form.querySelector(".gz-addline-input");
+      na.fill(line, "Blood test");
       na.fill(el.querySelector('.gz-inputs input[type="date"]'), "2027-01-15");
       await na.until(() => panel("On ")?.querySelector(".gz-title").textContent === "On 2027-01-15" && !el.querySelector(".gz-stale"), 3000);
       await na.sleep(300);
-      const picked = { title: panel("On ").querySelector(".gz-title").textContent, items: items("On "), typed: form.querySelector("input").value };
+      const picked = { title: panel("On ").querySelector(".gz-title").textContent, items: items("On "), typed: form.querySelector(".gz-addline-input").value };
       const d = new Date(); d.setDate(d.getDate() + 1);
       const tomorrow = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-      na.fill(date, tomorrow); na.fill(who, "Dr. Kim");
+      na.fill(line, "Blood test " + tomorrow + ' who="Dr. Kim"');
       const mark = na.notices.length;
-      na.button("Book", form).click();
+      form.querySelector("button.gz-addline-go").click();
       const note = "Health/Blood test " + tomorrow + ".md";
       const fm = await na.until(() => na.fm(note), 3000);
+      // Its notify is said under the line, in place of a notice.
+      const said = await na.until(() => form.querySelector(".gz-notice-text")?.textContent, 3000);
       const notices = await na.noticesSince(mark, "Next appointment", 5000);
       const pinned = await na.until(() => na.status().find((s) => s === "Next appointment: 1 day"), 3000);
       await na.sleep(500);
@@ -179,10 +182,10 @@ export default async function apps(t) {
       row.querySelector('input[type="checkbox"]').click();
       const done = await na.until(() => na.fm(note)?.done === true, 3000);
       await na.sleep(800);
-      return { picked, tomorrow, fm, notices: notices.slice(0), pinned, first, done, after: items("Coming up"), errors: na.errors() };`);
+      return { picked, tomorrow, fm, said, notices: notices.slice(0), pinned, first, done, after: items("Coming up"), errors: na.errors() };`);
     expect(JSON.stringify(r.picked) === JSON.stringify({ title: "On 2027-01-15", items: ["Eye exam with Dr. Patel"], typed: "Blood test" }), r.picked);
     expect(r.fm?.what === "Blood test" && r.fm?.date === r.tomorrow && r.fm?.who === "Dr. Kim" && r.fm?.at, r.fm);
-    expect(r.notices.includes(`Booked Blood test on ${r.tomorrow}`) && r.notices.includes("Appointments: Next appointment (1 row)") && r.pinned, r);
+    expect(r.said === `Booked Blood test on ${r.tomorrow}` && r.notices.includes("Appointments: Next appointment (1 row)") && r.pinned, r);
     expect(r.first === "tomorrow · Blood test with Dr. Kim" && r.done && !r.after.some((i) => i.includes("Blood test")) && r.errors === 0, r);
     return `${r.picked.items[0]} on ${r.picked.title.slice(3)}; booked for ${r.tomorrow}, told and pinned; ticked done`;
   });
@@ -196,10 +199,10 @@ export default async function apps(t) {
       const day = (n) => { const d = new Date(); d.setDate(d.getDate() + n); return d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0"); };
       const empty = { next: panel("Next deadline").querySelector(".gz-big").textContent, coming: na.text(panel("Coming up")) };
       const form = panel("Add a deadline");
+      // Composed, the form is an add line: the words are the deadline, the date is when it's due.
       const add = async (what, due) => {
-        const [a, b] = form.querySelectorAll("input");
-        na.fill(a, what); na.fill(b, due);
-        na.button("Add", form).click();
+        na.fill(form.querySelector(".gz-addline-input"), what + " " + due);
+        form.querySelector("button.gz-addline-go").click();
         await na.until(() => na.fm("Apps/Renewals data.md")?.deadlines?.some((d) => d.what === what), 3000);
         await na.sleep(500);
       };
@@ -289,9 +292,9 @@ export default async function apps(t) {
   await check("Weight form saves a row", async () => {
     const r = await run(`
       await na.open("Apps/Weight");
-      const input = na.view().contentEl.querySelector(".gz-form input");
-      input.value = "79.8";
-      na.view().contentEl.querySelector(".gz-form button").click(); await na.sleep(1500);
+      // Composed, the form is an add line.
+      na.fill(na.view().contentEl.querySelector(".gz-addline-input"), "79.8");
+      na.view().contentEl.querySelector(".gz-addline-go").click(); await na.sleep(1500);
       return na.text();`);
     if (!r.includes("Latest | 79.8")) throw new Error(r.slice(0, 200));
     return "latest 79.8";
@@ -319,12 +322,12 @@ export default async function apps(t) {
   await check("typed form input survives a data change", async () => {
     const r = await run(`
       await na.open("Apps/Weight");
-      const input = na.view().contentEl.querySelector(".gz-form input");
-      input.value = "77";
+      const input = na.view().contentEl.querySelector(".gz-addline-input");
+      na.fill(input, "77");
       const data = app.vault.getFileByPath("Apps/Weight data.md") ?? app.vault.getFileByPath("Apps/Weight.md");
       await app.fileManager.processFrontMatter(data, (fm) => { fm.weights = [...(fm.weights ?? []), { weight: 78, at: "2026-11-18T08:00" }]; });
       await na.sleep(1500);
-      return na.view().contentEl.querySelector(".gz-form input")?.value;`);
+      return na.view().contentEl.querySelector(".gz-addline-input")?.value;`);
     if (r !== "77") throw new Error(`input is now "${r}"`);
     return "kept 77";
   });

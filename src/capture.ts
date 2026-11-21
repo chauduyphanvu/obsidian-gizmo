@@ -78,7 +78,8 @@ export type Parsed =
   | { ok: true; target: CaptureTarget; params?: Record<string, string>; next?: string }
   | { ok: false; error: string; target?: CaptureTarget; completions: string[]; next?: string };
 
-interface Token {
+/** One word of a line, or one `"…"` value. */
+export interface Token {
   text: string;
   /** `name=` before the value, for a value given by its field's name. */
   name?: string;
@@ -86,7 +87,7 @@ interface Token {
 }
 
 /** The words of a line; `"…"` keeps spaces in one value, also after `name=`. */
-function tokenize(line: string): Token[] | { error: string } {
+export function tokenize(line: string): Token[] | { error: string } {
   const out: Token[] = [];
   const re = /\s*(?:([a-z0-9_-]+)=)?(?:"([^"]*)("?)|(\S+))/giy;
   let m: RegExpExecArray | null;
@@ -165,6 +166,8 @@ export function captureTime(word: string): string | undefined {
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
 }
 
+/** A number as a capture line takes it: digits, a point, a sign; no thousands separators. */
+const NUMBER = /^[+-]?(\d+\.?\d*|\.\d+)$/;
 const YES = ["yes", "y", "true"];
 const NO = ["no", "n", "false"];
 
@@ -204,7 +207,7 @@ function readValue(name: string, type: string | string[], words: string[], now: 
   }
   switch (type) {
     case "number":
-      return /^[+-]?(\d+\.?\d*|\.\d+)$/.test(word) ? { value: String(Number(word)), used: 1 } : { error: `${name} must be a number, not “${word}”` };
+      return NUMBER.test(word) ? { value: String(Number(word)), used: 1 } : { error: `${name} must be a number, not “${word}”` };
     case "date": {
       const d = captureDate(word, words[1], now);
       return d ?? { error: `${name} must be a date (today, yday, fri, last mon, 11-03, 2026-11-03), not “${word}”` };
@@ -271,26 +274,99 @@ export function parseLine(line: string, index: CaptureIndex, now: Date): Parsed 
 }
 
 function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
-  const types = new Map(target.fields);
-  const params: Record<string, string> = {};
+  const read = parseFields(tokens, target.fields, now, { name: target.name });
   const fail = (error: string, completions: string[] = [], next?: string): Parsed => ({ ok: false, error, target, completions, next });
+  if (read.errors.length) return fail(read.errors[0], read.completions, read.next);
+  // A form saved with nothing typed would be an empty row made by a slip of the Enter key.
+  if (!Object.keys(read.params).length && target.fields.length) {
+    const [name, type] = target.fields[0];
+    return fail(`type what ${target.name} saves, starting with ${name}`, completionsFor(type, ""), describe(name, type));
+  }
+  const nextField = target.fields.find(([n]) => n === read.missing[0]);
+  return { ok: true, target, params: read.params, next: nextField ? describe(nextField[0], nextField[1]) : undefined };
+}
+
+/** What the values on a line give a form's fields. */
+export interface FieldValues {
+  /**
+   * Each field given a value, as the link text its type reads: a number's digits, `YYYY-MM-DD`,
+   * `HH:MM`, `true` or `false`, a choice as the form lists it.
+   */
+  params: Record<string, string>;
+  /** The fields given nothing, in the order they are declared. */
+  missing: string[];
+  /** Why the line can't be read as it stands; a strict read stops at the first. */
+  errors: string[];
+  /** What could be typed in place of the word the first error is about. */
+  completions: string[];
+  /** What the field the first error is about takes. */
+  next?: string;
+}
+
+type FieldList = readonly (readonly [string, string | string[]])[];
+
+const isText = (type: string | string[]) => type === "text" || type === "textarea";
+
+/**
+ * Reads a line's values into a form's fields; `name` is what the form is called in messages.
+ * `name=value` fills a field by its name, in any case, and `"…"` keeps spaces in a value.
+ *
+ * Strict, as the Do… command reads: the other values fill the fields in the order they are
+ * declared, each read as its type; a text field takes one word, or the rest of the line when it is
+ * the last field left. Nothing is guessed.
+ *
+ * Loose, as an add line reads: each value goes to the first open field it fits, wherever it is on
+ * the line. A choice (written in full, or 3 letters or more of only one), a number, a date or a
+ * time finds its field; a quoted value goes to the next text field; the words left over go to the
+ * first text field, together.
+ */
+export function parseFields(input: string | readonly Token[], fields: FieldList, now: Date, how: { name: string; loose?: boolean }): FieldValues {
+  const out: FieldValues = { params: {}, missing: [], errors: [], completions: [] };
+  const tokens = typeof input === "string" ? tokenize(input) : input;
+  if ("error" in tokens) {
+    out.errors.push(tokens.error);
+    out.missing = fields.map(([n]) => n);
+    return out;
+  }
+  const types = new Map(fields);
+  const params = out.params;
+  const fail = (error: string, completions: string[] = [], next?: string) => {
+    if (!out.errors.length) Object.assign(out, { completions, next });
+    out.errors.push(error);
+  };
   for (const t of tokens) {
     if (t.name === undefined) continue;
     // Typed in any case; kept as the form spells it.
-    const field = target.fields.find(([n]) => n.toLowerCase() === t.name)?.[0];
-    if (field === undefined) return fail(`${target.name} has no field “${t.name}”; its fields are ${target.fields.map(([n]) => n).join(", ")}`);
-    if (Object.hasOwn(params, field)) return fail(`${field} is given twice`);
-    const v = readValue(field, types.get(field)!, [t.text], now);
-    if ("error" in v) return fail(v.error, completionsFor(types.get(field)!, t.text));
-    params[field] = v.value;
+    const field = fields.find(([n]) => n.toLowerCase() === t.name)?.[0];
+    if (field === undefined) fail(`${how.name} has no field “${t.name}”; its fields are ${fields.map(([n]) => n).join(", ")}`);
+    else if (Object.hasOwn(params, field)) fail(`${field} is given twice`);
+    else {
+      const v = readValue(field, types.get(field)!, [t.text], now);
+      if ("error" in v) fail(v.error, completionsFor(types.get(field)!, t.text));
+      else params[field] = v.value;
+    }
+    if (out.errors.length && !how.loose) return done(out, fields);
   }
-  const open = target.fields.filter(([n]) => !Object.hasOwn(params, n));
   const words = tokens.filter((t) => t.name === undefined);
+  if (how.loose) looseValues(words, fields, now, params, fail);
+  else strictValues(words, fields, now, params, fail);
+  return done(out, fields);
+}
+
+function done(out: FieldValues, fields: FieldList): FieldValues {
+  out.missing = fields.map(([n]) => n).filter((n) => !Object.hasOwn(out.params, n));
+  return out;
+}
+
+type Fail = (error: string, completions?: string[], next?: string) => void;
+
+/** The words fill the open fields in the order they are declared. */
+function strictValues(words: Token[], fields: FieldList, now: Date, params: Record<string, string>, fail: Fail): void {
+  const open = fields.filter(([n]) => !Object.hasOwn(params, n));
   let w = 0;
   for (let f = 0; f < open.length && w < words.length; f++) {
     const [name, type] = open[f];
-    const isText = type === "text" || type === "textarea";
-    if (isText && f === open.length - 1 && !words[w].quoted) {
+    if (isText(type) && f === open.length - 1 && !words[w].quoted) {
       params[name] = words.slice(w).map((t) => t.text).join(" ");
       w = words.length;
       break;
@@ -300,14 +376,89 @@ function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
     params[name] = v.value;
     w += v.used;
   }
-  if (w < words.length) return fail(`too many values: ${words.slice(w).map((t) => t.text).join(" ")}`);
-  // A form saved with nothing typed would be an empty row made by a slip of the Enter key.
-  if (!Object.keys(params).length && target.fields.length) {
-    const [name, type] = target.fields[0];
-    return fail(`type what ${target.name} saves, starting with ${name}`, completionsFor(type, ""), describe(name, type));
+  if (w < words.length) fail(`too many values: ${words.slice(w).map((t) => t.text).join(" ")}`);
+}
+
+/** Each word goes to the first open field it fits; the rest go to the first text field. */
+function looseValues(words: Token[], fields: FieldList, now: Date, params: Record<string, string>, fail: Fail): void {
+  const open = (fits: (type: string | string[]) => boolean) => fields.find(([n, type]) => !Object.hasOwn(params, n) && fits(type))?.[0];
+  const choice = (word: string, least: number) => {
+    const w = word.toLowerCase();
+    for (const [n, type] of fields) {
+      if (Object.hasOwn(params, n) || !Array.isArray(type)) continue;
+      const options = type.map(String);
+      const exact = options.find((o) => o.toLowerCase() === w);
+      const starting = w.length >= least ? options.filter((o) => o.toLowerCase().startsWith(w)) : [];
+      const value = exact ?? (starting.length === 1 ? starting[0] : undefined);
+      if (value !== undefined) return { field: n, value };
+    }
+    return undefined;
+  };
+  const left: Token[] = [];
+  for (let i = 0; i < words.length; i++) {
+    const t = words[i];
+    const exact = choice(t.text, Infinity);
+    if (exact) {
+      params[exact.field] = exact.value;
+      continue;
+    }
+    if (t.quoted) {
+      const text = open(isText);
+      if (text !== undefined) params[text] = t.text;
+      else left.push(t);
+      continue;
+    }
+    const number = open((type) => type === "number");
+    if (number !== undefined && NUMBER.test(t.text)) {
+      params[number] = String(Number(t.text));
+      continue;
+    }
+    const date = open((type) => type === "date");
+    const following = words[i + 1]?.quoted === false ? words[i + 1].text : undefined;
+    const d = date === undefined ? undefined : captureDate(t.text, following, now);
+    if (date !== undefined && d) {
+      params[date] = d.value;
+      i += d.used - 1;
+      continue;
+    }
+    const time = open((type) => type === "time");
+    const at = time === undefined ? undefined : captureTime(t.text);
+    if (time !== undefined && at) {
+      params[time] = at;
+      continue;
+    }
+    const prefix = choice(t.text, 3);
+    if (prefix) {
+      params[prefix.field] = prefix.value;
+      continue;
+    }
+    const box = open((type) => type === "checkbox");
+    const yes = YES.includes(t.text.toLowerCase()), no = NO.includes(t.text.toLowerCase());
+    if (box !== undefined && (yes || no)) {
+      params[box] = String(yes);
+      continue;
+    }
+    left.push(t);
   }
-  const nextField = open.find(([n]) => !Object.hasOwn(params, n));
-  return { ok: true, target, params, next: nextField ? describe(nextField[0], nextField[1]) : undefined };
+  if (!left.length) return;
+  const text = open(isText);
+  if (text !== undefined) {
+    params[text] = left.map((t) => t.text).join(" ");
+    return;
+  }
+  // No text field to take them: each word may still be the short start of a choice.
+  for (const [k, t] of left.entries()) {
+    const rest = fields.filter(([n]) => !Object.hasOwn(params, n));
+    if (!rest.length) return fail(`too many values: ${left.slice(k).map((x) => x.text).join(" ")}`);
+    const tries = rest.map(([n, type]) => [n, type, readValue(n, type, [t.text], now)] as const);
+    const fits = tries.find(([, , v]) => "value" in v);
+    if (fits && "value" in fits[2]) {
+      params[fits[0]] = fits[2].value;
+      continue;
+    }
+    const [n, type, v] = tries[0];
+    return fail("error" in v ? v.error : `${n} can't take “${t.text}”`, completionsFor(type, t.text), describe(n, type));
+  }
 }
 
 /**

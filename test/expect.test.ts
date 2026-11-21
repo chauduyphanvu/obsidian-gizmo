@@ -9,6 +9,7 @@ import { expectRows, metIn, readBy, readExpect, refusal, windowAt, windowsDue, t
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
+import { addLine, lineIn } from "./support/addline.ts";
 import { parseYaml } from "./support/yaml.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -224,16 +225,15 @@ test("a value rule refuses a row from every way in: a form keeps what was typed,
   const c = new AppController(root, "Apps/Weight.md", e.env);
   c.load();
   await settle();
-  const input = root.querySelector("form input") as HTMLInputElement;
-  input.value = "812";
-  root.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  // Composed, the form is an add line: refused, the line keeps what was typed and says why under it.
+  addLine(root, "812");
   await settle();
-  assert.equal(root.querySelector(".gz-form-error")?.textContent, "Not saved: weight 812 isn't between 30 and 250");
-  assert.equal((root.querySelector("form input") as HTMLInputElement).value, "812", "what was typed stays");
-  input.value = "81";
-  root.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  assert.equal(root.querySelector(".gz-addline-error")?.textContent, "Not saved: weight 812 isn't between 30 and 250");
+  assert.equal(lineIn(root).value, "812", "what was typed stays");
+  addLine(root, "81");
   await settle();
-  assert.equal(root.querySelector(".gz-form-error"), null);
+  assert.equal(root.querySelector(".gz-addline-error"), null);
+  assert.equal(lineIn(root).value, "");
   // An edit to a row is held to it too.
   const cell = root.querySelector("tbody input") as HTMLInputElement;
   cell.value = "0";

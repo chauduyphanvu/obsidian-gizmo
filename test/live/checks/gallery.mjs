@@ -120,22 +120,22 @@ export default async function gallery(t) {
       const panel = ${PANEL};
       const number = (title) => panel(title).querySelector(".gz-big").textContent;
       const form = panel("A decision I'm making");
-      const name = ${at('input[type="text"]', "form")};
+      const name = ${at("input.gz-addline-input", "form")};
       await na.sleep(200);
-      return { ready: Number(number("Ready to score")), right: number("Right so far"), name, captions: [...form.querySelectorAll(".gz-field > span")].map((s) => s.textContent) };`);
-    expect(JSON.stringify(before.captions) === JSON.stringify(["Decision", "I expected", "% sure", "Due"]), before);
+      return { ready: Number(number("Ready to score")), right: number("Right so far"), name };`);
+    // Composed, the form is an add line: each quoted text fills the next text field.
     await t.click(before.name);
-    await type(DECISION);
-    await press("Tab");
-    await type("Most of the cloves come up in spring");
-    const write = await run(`const form = (${PANEL})("A decision I'm making"); const b = [...form.querySelectorAll("button")].find((x) => x.textContent === "Write it down"); b.scrollIntoView({ block: "center" }); await na.sleep(200); const r = b.getBoundingClientRect(); return { at: [r.x + r.width / 2, r.y + r.height / 2], mark: na.notices.length };`);
+    await type(`"${DECISION}" "Most of the cloves come up in spring"`);
+    const write = await run(`const form = (${PANEL})("A decision I'm making"); const b = form.querySelector("button.gz-addline-go"); b.scrollIntoView({ block: "center" }); await na.sleep(200); const r = b.getBoundingClientRect(); return { at: [r.x + r.width / 2, r.y + r.height / 2], mark: na.notices.length, label: b.textContent, captions: [...form.querySelectorAll(".gz-pv-label")].map((s) => s.textContent) };`);
+    expect(JSON.stringify(write.captions) === JSON.stringify(["Decision", "I expected", "% sure", "Due"]) && write.label === "Write it down", write);
     await t.click(write.at);
     const written = await run(`
       const panel = ${PANEL};
       const path = "Decisions/${DECISION}.md";
       const fm = await na.until(() => na.fm(path), 5000);
       const ready = await na.until(() => Number(panel("Ready to score").querySelector(".gz-big").textContent) === ${before.ready} + 1, 3000);
-      const notices = await na.noticesSince(${write.mark}, "Written down");
+      // Its notify is said under the line, in place of a notice.
+      const notices = [await na.until(() => panel("A decision I'm making").querySelector(".gz-notice-text")?.textContent, 3000)];
       const tab = [...na.view().contentEl.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Score");
       tab.scrollIntoView({ block: "center" });
       await na.sleep(200);
@@ -173,7 +173,7 @@ export default async function gallery(t) {
   });
 
   await check("Task inbox: a task added through the form shows in Open; ticking it ticks its line", async () => {
-    await run(`await na.open("Apps/Task inbox"); na.view().contentEl.querySelector('.gz-form input[type="text"]').focus();`);
+    await run(`await na.open("Apps/Task inbox"); na.view().contentEl.querySelector(".gz-addline-input").focus();`);
     await type("Call the plumber");
     await press("Enter");
     const r = await run(`
@@ -194,7 +194,7 @@ export default async function gallery(t) {
     await run(`
       await na.open("Apps/Sleep");
       const form = (${PANEL})("Log my sleep");
-      form.querySelector('input[type="number"]').focus();`);
+      form.querySelector(".gz-addline-input").focus();`);
     await type("7.5");
     await press("Enter");
     const r = await run(`
@@ -204,6 +204,41 @@ export default async function gallery(t) {
       return { saved, latest, row: row && [...row.querySelectorAll("td")].map((td) => td.querySelector("input")?.value ?? td.textContent), goal: (${PANEL})("My sleep against my goal").querySelector(".gz-goal-label")?.textContent, errors: na.errors() };`);
     expect(r.saved?.value === 7.5 && typeof r.saved.at === "string" && r.latest === "7.5hours" && r.row?.[1] === "7.5" && r.goal === "Goal 8 hours" && r.errors === 0, r);
     return `saved ${JSON.stringify(r.saved)}; latest ${r.latest}; ${r.goal}`;
+  });
+
+  await check("Budget: / from anywhere focuses the add line; a typed line shows what it saves, Enter saves it, and ⌘Z takes it back", async () => {
+    const key = (k, code, vk, modifiers = 0) => t.page.send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers, ...(modifiers ? {} : { text: k }) })
+      .then(() => t.page.send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk, modifiers }));
+    const before = await run(`
+      await na.open("Apps/Budget");
+      await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 5000);
+      document.activeElement?.blur();
+      return na.fm("Apps/Budget data.md")?.spend?.length ?? 0;`);
+    await key("/", "Slash", 191);
+    await t.sleep(200);
+    const focused = await run(`const a = document.activeElement; return { line: a?.classList.contains("gz-addline-input"), value: a?.value };`);
+    expect(focused.line && focused.value === "", focused);
+    await type("4.20 lunch tra");
+    const preview = await run(`
+      const el = na.view().contentEl;
+      return { values: [...el.querySelectorAll(".gz-pv")].map((p) => p.querySelector(".gz-pv-value, .gz-chip.is-on")?.textContent ?? "—"), go: !el.querySelector(".gz-addline-go").disabled };`);
+    expect(JSON.stringify(preview) === JSON.stringify({ values: ["$4.20", "transport", "lunch"], go: true }), preview);
+    await t.shot("gallery-Budget-addline-typing.png", 1280, 900);
+    await press("Enter");
+    const saved = await run(`
+      const rows = await na.until(() => (na.fm("Apps/Budget data.md")?.spend?.length ?? 0) === ${before} + 1 && na.fm("Apps/Budget data.md").spend, 5000);
+      const said = await na.until(() => na.view().contentEl.querySelector(".gz-notice-text")?.textContent, 3000);
+      const line = na.view().contentEl.querySelector(".gz-addline-input").value;
+      document.activeElement?.blur();
+      return { row: rows && rows.at(-1), said, line, undo: !!na.view().contentEl.querySelector(".gz-notice button.gz-undo") };`);
+    expect(saved.row?.amount === 4.2 && saved.row.category === "transport" && saved.row.note === "lunch" && saved.said === "Added $4.20 to spend" && saved.line === "" && saved.undo, saved);
+    await t.shot("gallery-Budget-addline-saved.png", 1280, 900);
+    await key("z", "KeyZ", 90, process.platform === "darwin" ? 4 : 2);
+    const undone = await run(`
+      const back = await na.until(() => (na.fm("Apps/Budget data.md")?.spend?.length ?? 0) === ${before}, 5000);
+      return { back: !!back, said: await na.until(() => na.view().contentEl.querySelector(".gz-notice-text")?.textContent === "Undone" && "Undone", 3000), errors: na.errors() };`);
+    expect(undone.back && undone.said === "Undone" && undone.errors === 0, undone);
+    return `saved ${JSON.stringify({ amount: saved.row.amount, category: saved.row.category, note: saved.row.note })}; “${saved.said}”; ⌘Z: ${undone.said}`;
   });
 
   await check("Trip planner: days to go, itinerary rows, and the dollars follow its rate property", async () => {
@@ -218,10 +253,10 @@ export default async function gallery(t) {
       const itinerary = [...panel("Itinerary").querySelectorAll("tbody tr")].map((tr) => tr.textContent);
       tab("Spending");
       await na.sleep(300);
+      // Composed, the form is an add line: the word is the item, the number the yen.
       const form = panel("Spent abroad");
-      na.fill(form.querySelector('input[type="text"]'), "Ramen");
-      na.fill(form.querySelector('input[type="number"]'), "1500");
-      na.button("Add", form).click();
+      na.fill(form.querySelector(".gz-addline-input"), "Ramen 1500");
+      form.querySelector("button.gz-addline-go").click();
       const spent = () => panel("Spent so far").querySelector(".gz-big").textContent;
       const at150 = await na.until(() => spent() === "$10.00" && spent(), 3000);
       const file = na.file("Apps/Trip planner.md");

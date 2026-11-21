@@ -36,6 +36,8 @@ export interface ActionDeps {
   log?(what: string, changes: Change[]): Promise<string | undefined> | void;
   /** Runs the panel's `then` once its own actions are done, with the row they ran with; never rejects. */
   then?(p: Panel, ctx: Row): Promise<void>;
+  /** The caller tells the panel's `notify` itself (see ActionResult.told), so it isn't sent to `notify`. */
+  quiet?: boolean;
 }
 
 /** What an app gives runActions to write and tell with. */
@@ -73,6 +75,8 @@ export interface ActionResult {
   already?: boolean;
   /** Why nothing was saved, when a value rule refused the row. */
   error?: string;
+  /** With `quiet`, the panel's `notify`, filled from the run, for the caller to tell. */
+  told?: string;
 }
 
 /** Where a run writes the app's lists: its store, else the data note's properties. */
@@ -251,12 +255,14 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       if (!path) return { ok: false };
       ctx.path = path;
     }
-    if (p.notify) deps.notify(fillLine(p.notify, ctx));
+    const told = p.notify === undefined ? undefined : fillLine(p.notify, ctx);
+    if (told !== undefined && !deps.quiet) deps.notify(told);
+    const tell = deps.quiet && told !== undefined ? { told } : {};
     if (p.open) deps.openNote(fillLine(p.open, ctx), deps.appPath);
     // Kept before what `then` runs is, in the order they happened.
     log();
     if (p.then) await deps.then?.(p, ctx);
-    return { ok: true, path, ...(logged && { logged }) };
+    return { ok: true, path, ...(logged && { logged }), ...tell };
   } catch (e) {
     deps.notify(`Couldn't save: ${(e as Error).message}`);
     log();

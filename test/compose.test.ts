@@ -7,6 +7,7 @@ import { composedWidth } from "../src/layout.ts";
 import { readSpec, type Panel } from "../src/spec.ts";
 import { VIEW_DEFS, viewDef, type PanelCtx } from "../src/views/registry.ts";
 import { fakeEnv } from "./support/fakes.ts";
+import { typeLine } from "./support/addline.ts";
 
 // The composed layout: each panel takes a role from its view, and an app reads as its answer, its
 // line to add things, then the rest as written; a panel waiting for a pick waits in the sheet.
@@ -244,13 +245,12 @@ test("tabs: the panels outside any tab, the bar, then a pane per tab; switching 
   // A chart in a hidden tab is still drawn at its real width: the column's.
   assert.equal(root.querySelector(".gz-chart-svg")!.getAttribute("viewBox"), "0 0 760 220");
 
-  const input = root.querySelector(".gz-form input") as HTMLInputElement;
-  input.value = "77";
+  const input = typeLine(root, "77");
   tabs[1].click();
   assert.deepEqual([log, chart].map((p) => p.classList.contains("gz-off")), [true, false]);
   assert.deepEqual(tabs.map((b) => b.classList.contains("is-active")), [false, true]);
   tabs[0].click();
-  assert.equal(root.querySelector(".gz-form input"), input);
+  assert.equal(root.querySelector(".gz-addline-input"), input);
   assert.equal(input.value, "77");
 });
 
