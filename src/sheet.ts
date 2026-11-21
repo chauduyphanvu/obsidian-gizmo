@@ -200,8 +200,10 @@ function titleOf(p: Panel, pick: SheetPick, fields: string[], now: Date): string
   const { row } = pick;
   if (pick.record) {
     if (p.view === "list") return listItem(p, row, now);
+    // A board card is named by its text before the first " · ", as the card shows it.
+    if (p.view === "board") return itemText(p, row, now).split(" · ")[0];
     // A timeline's label carries the dates too, which its fields show.
-    if (p.view === "board" || p.view === "timeline") return itemText(p, row, now);
+    if (p.view === "timeline") return itemText(p, row, now);
     return pick.label ?? firstText(p, row, fields, now);
   }
   if (p.view === "scatter" && pick.label) return pick.label;

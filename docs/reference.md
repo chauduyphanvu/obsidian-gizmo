@@ -152,7 +152,7 @@ Each view has a role. The role tells where its panel goes:
 | Evidence | `line`, `bar`, `pie`, `scatter`, and `calendar` with `layout: year` | The flow. |
 | Workspace | `board`, `timeline`, `timer`, other `calendar` panels, and `form` with `save: this` | The flow. |
 | Records | `table`, `list`, `checklist`, `alerts` | The flow. |
-| Sheet | Any panel that reads a name that another panel selects | After the flow. It waits for the pick. |
+| Sheet | Any panel that reads a name that another panel selects | The side sheet, when you pick. |
 
 The app is at most 848 px wide. It reads from the top down:
 
@@ -161,15 +161,17 @@ The app is at most 848 px wide. It reads from the top down:
 3. The answer band. Controls from `inputs` come before it.
 4. The add line.
 5. The flow: evidence, workspaces and records, in the order that you write them.
-6. The sheet panels.
+6. The side sheet, at the right, when you pick something.
 
 **The answer band.** The first `number` is the headline: a big figure with its unit and label. If there is no `number`, the first `progress` is the headline, or else the first answer panel. The other answer panels sit beside it as facts. A figure counts up when its value changes, unless your system is set for reduced motion. With `compare: previous`, the headline says how the value differs from the window before, for example `↑ 12% more than Oct 1–20 · $1,146.90`. If that window is shorter than 3 days, it gives the amount and not the percent.
 
 **The meter.** A `progress` with the same `source`, `where`, `field` and `agg` as a `number` is not a fact. Gizmo draws it under that number, as its meter. The meter shows how much is left. If `where` has a date window that holds now, it also shows how much is left for each of the days that remain, and a tick marks an even pace. The fill turns to the error colour only when the value is greater than `max`. A value equal to `max` is not over.
 
-**Tabs and hosts.** Each tab keeps its own pane, laid out the same way. An app in an embed or a lens has the same layout, with no title, no time rail and no width limit.
+**The side sheet.** Select a row, a card, a bar or a day to open it in a sheet at the right of the app. On a narrow screen, the sheet comes up from the bottom. The sheet shows the name of what you picked and its `detail` text. For a row of a table or a list, a card of a board or an item of a timeline, it also shows the fields, and the field controls of `edit`, the row actions and **Open** for a note. The panels that read the pick show in the sheet. A table, list, board or timeline row opens the sheet even without `select` or `detail`. A day, a bar, a slice or a dot opens it only with `select` or `detail`. To close the sheet, select the same thing again, select **Close**, push Escape or go to another tab. The pick is then cleared.
 
-**`layout: grid`.** Add `layout: grid` to keep the earlier layout. Panels sit in a grid of up to 4 columns, in the order that you write them, and `span` sets the width of each. Forms and buttons are as they were. Only the text `composed` or `grid` sets the layout of the app. In a note that is one panel, any other `layout` value belongs to that panel, for example `cards` for a table or `year` for a calendar.
+**Tabs and hosts.** Each tab keeps its own pane, laid out the same way. An app in an embed or a lens has the same layout, with no title, no time rail, no side sheet and no width limit. There, the `detail` text shows under the rows, and the panels that read a pick show at the end of the app.
+
+**`layout: grid`.** Add `layout: grid` to keep the earlier layout. Panels sit in a grid of up to 4 columns, in the order that you write them, and `span` sets the width of each. Forms, buttons and picks are as they were, with no side sheet. Only the text `composed` or `grid` sets the layout of the app. In a note that is one panel, any other `layout` value belongs to that panel, for example `cards` for a table or `year` for a calendar.
 
 ## Sources
 

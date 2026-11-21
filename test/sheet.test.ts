@@ -285,7 +285,7 @@ test("a board's card opens with its fields, and the field its cards move between
   click(s.root.querySelector(".gz-board-card")!);
   await settle();
   const aside = s.sheet()!;
-  assert.equal(text(aside.querySelector(".gz-sheet-title")), "Garden · home");
+  assert.equal(text(aside.querySelector(".gz-sheet-title")), "Garden", "the card's name, before its first \" · \"");
   const fields = [...aside.querySelectorAll(".gz-sheet-field")];
   assert.deepEqual(fields.map((f) => text(f.querySelector(".gz-sheet-label"))), ["status", "area", "name"]);
   const status = fields[0].querySelector("select.gz-edit") as HTMLSelectElement;
@@ -428,4 +428,20 @@ test("hosted, nothing changes: the detail stays under the rows and a waiting pan
   click(s.rows("Plain")[1]);
   assert.equal(text(s.panel("Plain")!.querySelector(".gz-detail-text")), "Spent 7");
   assert.equal(s.root.querySelector(".gz-sheet, .gz-sheet-open"), null);
+});
+
+test("switching tabs closes the sheet, since what it shows was picked in the tab being left", async () => {
+  const s = setup({
+    [APP]: { fm: { app: "x", panels: [{ ...RECENT, select: undefined, tab: "Spend" }, { view: "countdown", title: "Trip", to: "2027-01-01", tab: "Later" }] } },
+    [DATA]: { fm: SPEND },
+  });
+  await settle();
+  click(s.rows("Recent")[0]);
+  await settle();
+  assert.ok(s.isOpen());
+  const [spend, later] = [...s.root.querySelectorAll("button.gz-tab")] as HTMLButtonElement[];
+  spend.click();
+  assert.ok(s.isOpen(), "the open tab again changes nothing");
+  later.click();
+  assert.ok(!s.isOpen());
 });

@@ -780,6 +780,8 @@ export class AppController {
       const b = bar.createEl("button", { cls: "gz-tab", text: name });
       b.setAttr("role", "tab");
       b.addEventListener("click", () => {
+        // What the sheet shows was picked in the tab being left.
+        if (name !== this.activeTab) this.closeSheet();
         this.activeTab = name;
         this.layout();
       });
