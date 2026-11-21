@@ -1,5 +1,5 @@
-// Replay: an app as it was (As of, See it then) and backtests. Rows are saved a moment apart, so
-// "the past" is a few seconds ago.
+// Replay: an app as it was (As of, See it then, the time rail) and backtests. Rows are saved a
+// moment apart, so "the past" is a few seconds ago.
 
 const steps = (alert) => `---
 app: Count my steps
@@ -31,6 +31,12 @@ const PANEL = `
     await na.sleep(400);
   };`;
 const MODALS = `const modals = () => [document, activeDocument].flatMap((d) => [...d.querySelectorAll(".modal")]);`;
+/** Page code, after PANEL: the open app's time rail under its title, and whether it shows the past. */
+const RAIL = `
+  const rail = () => el().querySelector(".gz-header > .gz-rail-slot > .gz-rail");
+  const railText = (sel) => rail()?.querySelector(sel)?.textContent;
+  const past = () => !!el().querySelector(".gz-past") && !!rail()?.classList.contains("is-past");
+  const current = () => !el().querySelector(".gz-past") && !!rail() && !rail().classList.contains("is-past");`;
 
 export default async function replay(t) {
   const { check, run, expect, shot, press } = t;
@@ -122,5 +128,89 @@ export default async function replay(t) {
     await closeAll();
     expect(has(alone, "It would have fired once.") && has(alone, "When it fired (1)"), alone);
     return r.text.find((l) => l.startsWith("Before"));
+  });
+
+  await check("the time rail: each saved row is a tick; [ shows the app before the latest one, Back to now and Escape show it now; [ typed in a field is typed; no rail on the grid", async () => {
+    await closeAll();
+    /** A real key press, as Obsidian's keymap hears it. */
+    const key = async (k) => {
+      const [code, vk] = k === "[" ? ["BracketLeft", 219] : ["BracketRight", 221];
+      await t.page.send("Input.dispatchKeyEvent", { type: "keyDown", key: k, code, text: k, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+      await t.page.send("Input.dispatchKeyEvent", { type: "keyUp", key: k, code, windowsVirtualKeyCode: vk, nativeVirtualKeyCode: vk });
+      await t.sleep(150);
+    };
+    const before = await run(`
+      ${PANEL} ${RAIL}
+      if ((na.fm("Apps/Steps data.md")?.steps?.length ?? 0) < 2) {
+        await na.write("Apps/Steps.md", ${JSON.stringify(steps("> 10"))});
+        await na.sleep(800);
+        await na.open("Apps/Steps");
+        await add(2);
+        await add(3);
+      } else await na.open("Apps/Steps");
+      await na.until(() => rail()?.querySelectorAll(".gz-rail-tick").length >= 2 && total(), 5000);
+      app.workspace.setActiveLeaf(na.leaf(), { focus: true });
+      if (document.activeElement?.matches("input, textarea, select")) document.activeElement.blur();
+      return {
+        ticks: rail()?.querySelectorAll(".gz-rail-tick").length, label: railText(".gz-rail-label"), meta: railText(".gz-rail-meta"),
+        underTitle: rail()?.parentElement.previousElementSibling?.classList.contains("gz-head"), current: current(), total: total(),
+        rows: na.fm("Apps/Steps data.md")?.steps?.map((r) => r.n),
+      };`);
+    expect(before.ticks >= 2 && before.label === "Now" && before.current && before.underTitle && /^\d+ changes in 30 days\[\]$/.test(before.meta), before);
+
+    await key("[");
+    const stepped = await run(`
+      ${PANEL} ${RAIL}
+      await na.until(() => past() && total(), 4000);
+      return { past: past(), total: total(), label: railText(".gz-rail-label"), meta: railText(".gz-rail-meta"), later: rail()?.querySelectorAll(".gz-rail-tick.is-later").length };`);
+    const allButLast = String(before.rows.slice(0, -1).reduce((s, n) => s + n, 0));
+    expect(stepped.past && stepped.total === allButLast && /^As of Today, /.test(stepped.label) && stepped.later === 1 && stepped.meta === "1 later change hiddenBack to now", { before, stepped });
+    await shot("rail-past.png");
+
+    const back = await run(`
+      ${PANEL} ${RAIL}
+      rail().querySelector("button.gz-rail-now").click();
+      await na.until(() => current() && total() === ${JSON.stringify(before.total)}, 4000);
+      return { current: current(), total: total(), label: railText(".gz-rail-label") };`);
+    expect(back.current && back.total === before.total && back.label === "Now", back);
+
+    await key("[");
+    await run(`${PANEL} ${RAIL} await na.until(() => past(), 4000);`);
+    await t.press("Escape");
+    const escaped = await run(`${PANEL} ${RAIL} await na.until(() => current(), 4000); return { current: current(), total: total() };`);
+    expect(escaped.current && escaped.total === before.total, escaped);
+
+    await run(`
+      ${PANEL}
+      const input = panel("Log").querySelector("input");
+      input.addEventListener("keydown", (e) => { window.__railKey = { stopped: e.defaultPrevented }; }, { once: true });
+      input.focus();`);
+    await key("[");
+    await t.sleep(600);
+    const typed = await run(`
+      ${PANEL} ${RAIL}
+      const r = { heard: window.__railKey, current: current() };
+      panel("Log").querySelector("input").blur();
+      return r;`);
+    expect(typed.heard && !typed.heard.stopped && typed.current, typed);
+
+    const grid = await run(`
+      ${PANEL} ${RAIL}
+      const note = await na.read("Apps/Steps.md");
+      await na.write("Apps/Steps.md", note.replace("app: Count my steps\\n", "app: Count my steps\\nlayout: grid\\n"));
+      await na.until(() => el().querySelector(".gz-grid") && total(), 4000);
+      const shown = !!el().querySelector(".gz-rail");
+      document.activeElement?.blur();
+      return { note, grid: !!el().querySelector(".gz-grid"), shown };`);
+    await key("[");
+    await t.sleep(600);
+    const restored = await run(`
+      ${PANEL} ${RAIL}
+      const stayed = !el().querySelector(".gz-past");
+      await na.write("Apps/Steps.md", ${JSON.stringify(grid.note)});
+      await na.until(() => rail() && !el().querySelector(".gz-grid"), 4000);
+      return { stayed, rail: !!rail(), ticks: rail()?.querySelectorAll(".gz-rail-tick").length };`);
+    expect(grid.grid && !grid.shown && restored.stayed && restored.rail && restored.ticks === before.ticks, { grid, restored });
+    return `${before.ticks} ticks; [ showed ${stepped.total} for ${before.total}; ${stepped.label}`;
   });
 }
