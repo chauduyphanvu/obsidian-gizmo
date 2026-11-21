@@ -75,11 +75,20 @@ test("a folder renamed while gizmod watches is read under its new name, and its 
   v.onChange((path, gone) => told.push(`${gone ? "-" : "+"}${path}`));
   v.watch();
   try {
+    // macOS starts watching a moment after watch() returns, a second or more on a busy machine,
+    // and misses what changes before: a note written again until it is seen says the watcher is on.
+    for (let i = 0; i < 100 && !v.file("Ready.md"); i++) {
+      writeFileSync(join(root, "Ready.md"), `${i}`);
+      await new Promise((r) => setTimeout(r, 100));
+    }
     const { renameSync } = await import("node:fs");
     renameSync(join(root, "Apps"), join(root, "Tools"));
-    // macOS reports the change late when the machine is busy.
-    for (let i = 0; i < 200 && !v.file("Tools/Deep/Inbox.md"); i++) await new Promise((r) => setTimeout(r, 50));
-    assert.deepEqual(v.notes().map((n) => n.path).sort(), ["Tools/Deep/Inbox.md", "Tools/Mood.md"]);
+    // The rename is taken in a note at a time: on Linux the old and new notes come and go a few
+    // milliseconds apart, and later when the machine is busy.
+    const notes = () => v.notes().map((n) => n.path).sort();
+    const expected = ["Ready.md", "Tools/Deep/Inbox.md", "Tools/Mood.md"];
+    for (let i = 0; i < 200 && notes().join() !== expected.join(); i++) await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(notes(), expected);
     assert.ok(told.includes("-Apps/Mood.md") && told.includes("+Tools/Mood.md"), told.join(" "));
   } finally {
     v.close();
