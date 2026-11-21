@@ -16,7 +16,7 @@ These three lines make this app:
 
 <picture>
   <source media="(prefers-color-scheme: dark)" srcset="docs/images/weight-dark.webp">
-  <img src="docs/images/weight-light.webp" alt="The Weight app: a form, the average for this week, a chart of values against a goal line and a table of entries">
+  <img src="docs/images/weight-light.webp" alt="The Weight app: the latest weight, this week against last week, a line to log a weight, a chart of values against a goal line and the entries by week">
 </picture>
 
 ## Why Gizmo
@@ -37,14 +37,14 @@ The gallery has apps that are ready to use. Run **Gizmo: New app from the galler
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/medication-dark.webp">
-        <img src="docs/images/medication-light.webp" alt="Medication log: a button, the doses today, a streak and a calendar of the year">
+        <img src="docs/images/medication-light.webp" alt="Medication log: the doses today, a streak, a button for each dose and a calendar of the year">
       </picture>
       <b>Medication log.</b> One button for each dose, a streak and a calendar of the year.
     </td>
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/budget-dark.webp">
-        <img src="docs/images/budget-light.webp" alt="Budget: a form, the month total against a limit and a chart of each week by category">
+        <img src="docs/images/budget-light.webp" alt="Budget: the month total against a limit with an even-pace mark, a line to add what you spend and a chart of each week by category">
       </picture>
       <b>Budget.</b> The month total against your limit, and each week by category.
     </td>
@@ -53,14 +53,14 @@ The gallery has apps that are ready to use. Run **Gizmo: New app from the galler
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/board-dark.webp">
-        <img src="docs/images/board-light.webp" alt="Project board: a form, projects in columns by status and a timeline of their dates">
+        <img src="docs/images/board-light.webp" alt="Project board: a line to add a project, projects in columns by status and a timeline of their dates">
       </picture>
       <b>Project board.</b> Projects in columns by status, and their dates on a timeline.
     </td>
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/decisions-dark.webp">
-        <img src="docs/images/decisions-light.webp" alt="Decision journal: a form, the decisions ready to score and the percentage of correct decisions">
+        <img src="docs/images/decisions-light.webp" alt="Decision journal: the decisions ready to score with their alert on, the percentage of correct decisions, a line to write a decision and a table to score them">
       </picture>
       <b>Decision journal.</b> Write a decision now, give it a score later, and see how many were correct.
     </td>
@@ -76,7 +76,7 @@ The gallery also has Weight, Sleep, Household chores, Book finder, Task inbox, T
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="docs/images/today-dark.webp">
-        <img src="docs/images/today-light.webp" alt="A note with a medication button and a water counter inside its text">
+        <img src="docs/images/today-light.webp" alt="A note with the doses today, a medication button and a water meter inside its text">
       </picture>
       <b>Inside a note.</b> A <code>gizmo</code> code block puts panels into the text of a note.
     </td>
