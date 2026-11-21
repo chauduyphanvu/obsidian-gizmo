@@ -547,6 +547,15 @@ node test/live/smoke.mjs <empty-dir>   # live checks in an isolated Obsidian
 uvx --from pymobiledevice3 python test/live/phone.py eval '<js>'   # run JS in Obsidian on a USB iPhone
 ```
 
+To release, set the new version in `manifest.json`, `package.json` and `versions.json`, commit, then push an annotated tag of that version:
+
+```sh
+git tag -a 0.3.0 -F notes.md   # the release notes
+git push origin main 0.3.0
+```
+
+The Release workflow checks that the versions agree, runs the lint and the tests, builds, and publishes the release with `main.js`, `manifest.json`, `styles.css` and `gizmod.mjs`. CI runs the build, the tests in three time zones and the lint on every push to `main`. Run the live checks on a Mac before you tag.
+
 Gizmo has no runtime dependencies. The lint has its own folder, `tools/lint`, because its TypeScript rules run on TypeScript 6 and the build uses TypeScript 7. `npm run build` puts the gallery into `main.js`. The live checks start Obsidian with copies of `test/vault` and the gallery, so Obsidian must be on the computer. Run `npm run build` before the live checks.
 
 | Folder | What it has |

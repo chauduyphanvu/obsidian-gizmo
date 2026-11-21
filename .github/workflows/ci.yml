@@ -1,0 +1,48 @@
+# Every push to main and every pull request: the build, the unit and DOM tests in three time
+# zones, and Obsidian's lint as the community directory applies it. The live checks need a real
+# Obsidian window, so they stay on a Mac (test/live/smoke.mjs).
+name: CI
+
+on:
+  push:
+    branches: [main]
+  pull_request:
+
+permissions:
+  contents: read
+
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    strategy:
+      fail-fast: false
+      matrix:
+        tz: [America/New_York, America/Los_Angeles, Asia/Ho_Chi_Minh]
+    env:
+      TZ: ${{ matrix.tz }}
+      # A failing assert on a DOM node can grow without bound while node prints it.
+      NODE_OPTIONS: --max-old-space-size=3072
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+      - run: npm ci
+      - run: npm run build
+      - run: npm test
+
+  lint:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/lint/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix tools/lint
+      - run: npm run lint

@@ -1,0 +1,54 @@
+# Pushing a version tag (1.2.3, the version in manifest.json) builds, checks and publishes the
+# release the community directory installs from, with the tag's annotation as its notes. Run by
+# hand from the Actions tab, it does the same on main and keeps the build as an artifact instead
+# of publishing.
+name: Release
+
+on:
+  push:
+    tags: ["[0-9]+.[0-9]+.[0-9]+"]
+  workflow_dispatch:
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    env:
+      NODE_OPTIONS: --max-old-space-size=3072
+    steps:
+      - uses: actions/checkout@v7
+      - uses: actions/setup-node@v7
+        with:
+          node-version: 26
+          cache: npm
+          cache-dependency-path: |
+            package-lock.json
+            tools/lint/package-lock.json
+      - run: npm ci
+      - run: npm ci --prefix tools/lint
+      - name: Versions agree
+        env:
+          TAG: ${{ github.ref_type == 'tag' && github.ref_name || '' }}
+        run: node tools/check-version.mjs $TAG
+      - run: npm run lint
+      - run: npm test
+      - run: npm run build
+      - name: Publish the release
+        if: github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >
+          gh release create "$GITHUB_REF_NAME" main.js manifest.json styles.css gizmod.mjs
+          --title "Gizmo $GITHUB_REF_NAME" --notes-from-tag --verify-tag
+      - name: Keep the build
+        if: github.ref_type != 'tag'
+        uses: actions/upload-artifact@v7
+        with:
+          name: gizmo-build
+          path: |
+            main.js
+            manifest.json
+            styles.css
+            gizmod.mjs
