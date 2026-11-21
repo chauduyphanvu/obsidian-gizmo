@@ -27,7 +27,7 @@ export const KEY_HINTS: Record<string, string> = {
   view: "What kind of panel this is: number, line, bar, table, list, …",
   title: "The panel's heading",
   tab: "Put this panel in a tab with this name",
-  span: "How many of the 4 columns wide this panel is: 1 to 4",
+  span: "With layout: grid, how many of the 4 columns wide this panel is: 1 to 4",
   // Where the rows come from
   source: "Where the data comes from: a web address, a vault file, notes, tasks, this, a saved list or a data block",
   headers: "Request headers for a web source, e.g. {authorization: \"Bearer {secret:key}\"}",
@@ -89,6 +89,11 @@ export const KEY_HINTS: Record<string, string> = {
   // Data blocks only
   record: "Save a sample of this source on a timer: 10m, 1h, 1d",
   into: "The saved list a record writes to; default is <block>_log",
+};
+
+/** What a key means at the top of an app note, where that differs from what it means in a panel. */
+const TOP_HINTS: Record<string, string> = {
+  layout: "How the app is laid out: composed (default) or grid",
 };
 
 /** What each view is for, first line only. */
@@ -162,6 +167,15 @@ export const VALUE_HINTS: Record<string, Record<string, string>> = {
   fields: Object.fromEntries(FIELD_TYPES.map((t) => [t, FIELD_HINTS[t] ?? ""])),
 };
 
+/**
+ * The values of `layout` at the top of an app. A note that is one panel may also mean that panel's
+ * layout there, so VALUE_HINTS.layout is offered beside them.
+ */
+export const APP_LAYOUTS: Record<string, string> = {
+  composed: "Panels placed by what they show, in one column (the default)",
+  grid: "Panels on a grid of columns, in the order written; span sets the width",
+};
+
 /** Value keys that only mean something in a panel, not in a data block. */
 const PANEL_VALUES = ["view", "layout", "compare", "pin"];
 
@@ -171,8 +185,8 @@ export interface Suggestion {
   hint: string;
 }
 
-// `devices` and `expect` are offered but aren't reserved: a list or a saved field may still be called that.
-const TOP_KEYS = { app: [...APP_KEYS, "devices", "expect"], component: COMPONENT_KEYS };
+// `layout`, `devices` and `expect` are offered but aren't reserved: a list or a saved field may still be called that.
+const TOP_KEYS = { app: [...APP_KEYS, "layout", "devices", "expect"], component: COMPONENT_KEYS };
 
 /** Keys a panel with this view takes. */
 function panelKeys(view: string): string[] | undefined {
@@ -194,11 +208,12 @@ function keysFor(ctx: Context, isComponent: boolean): readonly string[] {
 }
 
 /** The values the key being typed takes where the cursor is, or none. */
-function valuesFor(ctx: Context): Record<string, string> {
+function valuesFor(ctx: Context, isComponent: boolean): Record<string, string> {
   if (ctx.where === "fields") return VALUE_HINTS.fields;
   const key = ctx.key;
   if (!key || key === "fields" || !["top", "panel", "block"].includes(ctx.where)) return {};
   if (ctx.where === "block" && PANEL_VALUES.includes(key)) return {};
+  if (key === "layout" && ctx.where === "top" && !isComponent) return ctx.view ? { ...APP_LAYOUTS, ...VALUE_HINTS.layout } : APP_LAYOUTS;
   return Object.hasOwn(VALUE_HINTS, key) ? VALUE_HINTS[key] : {};
 }
 
@@ -215,10 +230,10 @@ function ranked(words: readonly string[], prefix: string): string[] {
  * typed. Nothing when the position takes free text, or the one thing left is what is already typed.
  */
 export function suggestionsFor(ctx: Context, isComponent: boolean): Suggestion[] {
-  const values = valuesFor(ctx);
+  const values = valuesFor(ctx, isComponent);
   const out: Suggestion[] = ctx.position === "key"
     ? ranked(keysFor(ctx, isComponent).filter((k) => !ctx.present.includes(k)), ctx.prefix)
-      .map((text) => ({ kind: "key", text, hint: KEY_HINTS[text] ?? "" }))
+      .map((text) => ({ kind: "key", text, hint: (ctx.where === "top" && TOP_HINTS[text]) || KEY_HINTS[text] || "" }))
     : ranked(Object.keys(values), ctx.prefix).map((text) => ({ kind: "value", text, hint: values[text] }));
   return out.length === 1 && out[0].text === ctx.prefix ? [] : out;
 }

@@ -6,6 +6,7 @@ This page gives the technical details of Gizmo. All keys are YAML in the propert
 - [The gallery](#the-gallery)
 - [Top-level keys](#top-level-keys)
 - [Views](#views)
+- [How an app is laid out](#how-an-app-is-laid-out)
 - [Sources](#sources)
 - [Shape the data](#shape-the-data)
 - [Forms and fields](#forms-and-fields)
@@ -55,7 +56,7 @@ This page gives the technical details of Gizmo. All keys are YAML in the propert
    ```
 
 4. Run **Gizmo: Open this note as an app**.
-5. Select **Drank a glass**. The progress bar moves.
+5. Select **Drank a glass**. The progress bar moves, and a notice says what Gizmo added. Select **Undo** to take it back.
 
 The button saves a row with the time into the list `water`. The progress panel counts the rows for today. Gizmo keeps the list in the note `Water data`, beside the app.
 
@@ -97,6 +98,7 @@ The gallery also has components that many apps can use:
 | `app` | One sentence about the app. This key makes the note an app. |
 | `panels` | The list of panels. Each panel has a `view`. |
 | `tabs` | Panels in tabs: a map from each tab name to a list of panels. |
+| `layout` | How the app is laid out: `composed` (the default) or `grid`. Refer to [How an app is laid out](#how-an-app-is-laid-out). |
 | `data` | Named blocks of data. Panels use a block by its name in `source`. |
 | `inputs` | Controls at the top of the app: a text field, a dropdown or a date. Panels read their values as `$name`. |
 | `refresh` | The interval for new web data, for example `15m`. |
@@ -107,7 +109,7 @@ The gallery also has components that many apps can use:
 
 ## Views
 
-The `view` key sets the view of a panel. Each panel also accepts `title`, `tab` and `span` (1 to 4 columns).
+The `view` key sets the view of a panel. Each panel also accepts `title`, `tab` and `span` (1 to 4 columns). `span` applies only with `layout: grid`.
 
 | View | What it shows |
 | --- | --- |
@@ -128,6 +130,46 @@ The `view` key sets the view of a panel. Each panel also accepts `title`, `tab` 
 | `checklist` | Items that you can select as done. |
 | `timer` | A timer for a number of minutes. |
 | `alerts` | The alerts of all apps that are true now. |
+
+**Ledgers.** A table or a list groups its rows by date when they are in date order. The rows are sorted by a date field, or they show a dated `at` column. Gizmo groups by day (Today, Yesterday, a weekday or a date). It groups by week (This week, Last week, Week of…) when the dates have no time of day and span more than two weeks. A table shows a total in each group: the sum if its first number column has a money format (`$`, `€`, `£` or `¥`), and the average if not. A list shows no total. In a table, the date column shows the time of day in a day group, and the date in a week group. In a day group, the column goes away if the dates have no time. A new row of a table or list slides in. A ledger needs 2 rows or more. A table or list with `group` or `layout: cards` is not a ledger.
+
+**Colours.** Charts draw data in ink and pencil grey. A bar chart with one series draws its bars in pencil, and the current period in ink. A bar over `goal` is amber. The goal is a dashed line, with its label at the right of the plot. A line with one series is ink, and its last value is a label at its end. Several series keep different colours. With `stack: true` and several `y` fields, a bar chart draws one bar for each x: the total. The composition of the bar that you see (the last bar, or the one under the pointer) is a strip above the chart, and a legend gives each value.
+
+**Calendar, board and timeline.** The year heatmap is grey. Today has an outline, and a caption under it names the day that you point at, with its count and the meaning of the shades. A board has no box around a column. A card splits its text at the first ` · `: the first part is its name, and the rest is a line under it. A timeline has a Today line in the accent colour. A bar that ended before today is pencil, and an item that starts after today is an outline.
+
+Ledgers and colours are the same in both layouts.
+
+## How an app is laid out
+
+Gizmo lays out each app in one column, by what its panels show. An app is an answer, not a dashboard. You change no key.
+
+Each view has a role. The role tells where its panel goes:
+
+| Role | Views | Where it goes |
+| --- | --- | --- |
+| Answer | `number`, `progress`, `countdown`, `text` | The answer band. |
+| Verb | `button`, and `form` unless it has `save: this` | The add line. |
+| Evidence | `line`, `bar`, `pie`, `scatter`, and `calendar` with `layout: year` | The flow. |
+| Workspace | `board`, `timeline`, `timer`, other `calendar` panels, and `form` with `save: this` | The flow. |
+| Records | `table`, `list`, `checklist`, `alerts` | The flow. |
+| Sheet | Any panel that reads a name that another panel selects | After the flow. It waits for the pick. |
+
+The app is at most 848 px wide. It reads from the top down:
+
+1. The title of the note, and the text of `app`.
+2. The time rail. Refer to [Activity, history and replay](#activity-history-and-replay).
+3. The answer band. Controls from `inputs` come before it.
+4. The add line.
+5. The flow: evidence, workspaces and records, in the order that you write them.
+6. The sheet panels.
+
+**The answer band.** The first `number` is the headline: a big figure with its unit and label. If there is no `number`, the first `progress` is the headline, or else the first answer panel. The other answer panels sit beside it as facts. A figure counts up when its value changes, unless your system is set for reduced motion. With `compare: previous`, the headline says how the value differs from the window before, for example `↑ 12% more than Oct 1–20 · $1,146.90`. If that window is shorter than 3 days, it gives the amount and not the percent.
+
+**The meter.** A `progress` with the same `source`, `where`, `field` and `agg` as a `number` is not a fact. Gizmo draws it under that number, as its meter. The meter shows how much is left. If `where` has a date window that holds now, it also shows how much is left for each of the days that remain, and a tick marks an even pace. The fill turns to the error colour only when the value is greater than `max`. A value equal to `max` is not over.
+
+**Tabs and hosts.** Each tab keeps its own pane, laid out the same way. An app in an embed or a lens has the same layout, with no title, no time rail and no width limit.
+
+**`layout: grid`.** Add `layout: grid` to keep the earlier layout. Panels sit in a grid of up to 4 columns, in the order that you write them, and `span` sets the width of each. Forms and buttons are as they were. Only the text `composed` or `grid` sets the layout of the app. In a note that is one panel, any other `layout` value belongs to that panel, for example `cards` for a table or `year` for a calendar.
 
 ## Sources
 
@@ -162,7 +204,9 @@ Gizmo writes the time into the `at` field of each saved row. Dates in `where` ca
 
 Formulas use a fixed list of functions, for example `if`, `round` and `prev`. They have no variables and no loops.
 
-To change how Gizmo shows values, use `unit`, `decimals`, `format`, `labels` and `values`. A format can be a pattern, for example `"$0,0.00"`, or a word: `date`, `time` or `relative`. A chart can also have `compare: previous`, `goal` and `stack: true`.
+To change how Gizmo shows values, use `unit`, `decimals`, `format`, `labels` and `values`. A format can be a pattern, for example `"$0,0.00"`, or a word: `date`, `time` or `relative`. A `number` can have `compare: previous`. A chart can have `goal`, and a bar chart can have `stack: true`.
+
+`compare: previous` needs a date window in `where`, for example `{at: this month}`. Gizmo compares a window that still runs with the same part of the window before. On Nov 20, `this month` is compared with Oct 1 to 20, and not with all of October. A month steps back by calendar months. If the month before is shorter, Gizmo stops at its last day. A window that looks ahead, for example `next 7 days`, is compared whole.
 
 ## Forms and fields
 
@@ -178,6 +222,16 @@ fields:
 
 A field type can be `text`, `number`, `date`, `checkbox` or a list of choices. A field can also have a `label`, a `format` and a `default`. Put `fields` in a `data` block, and all panels that use the block use the same fields. A table with `edit: true` then lets you edit those fields in its cells.
 
+### The add line
+
+In the composed layout, a form with up to 5 fields is one line that you type. Gizmo reads the line with the rules of the [capture line](#the-capture-line), and shows each field under the line before you push Enter. For the Budget form, type `14.5 lunch`: the amount is 14.5 and the note is `lunch`. A choice with up to 6 options shows as chips. Select a chip to change the choice.
+
+If you type no choice, Gizmo guesses it from the earlier rows of the list. It takes the choice of the newest row that has a word of 3 letters or more in common with your text. The preview shows the guess, and Gizmo saves it. If no row matches, the choice takes its default.
+
+A form with a `textarea` or `checkbox` field, or with more than 5 fields, shows its fields and not one line. Select **Use the form** to see the fields of a form that fits one line. Select **Use one line** to go back. A form with `save: this` is not a line. It stays as fields.
+
+Push `/` to move to the first add line, when no field has focus. After a save, a notice under the line says what Gizmo added, with **Undo**. The notice stays for 6 seconds. ⌘Z on a Mac, or Ctrl Z, does the same when no field has focus. The `notify` text of the panel shows in this place, and not as a pop-up. In the composed layout, a `button` is one large button with the same notice. On the grid, forms and buttons are as they were.
+
 ## Actions
 
 | Key | What it does |
@@ -187,7 +241,7 @@ A field type can be `text`, `number`, `date`, `checkbox` or a list of choices. A
 | `save: this` | Writes the form values into the properties of the note that shows the form. |
 | `row` | Sets the values that a save writes, for example `title: "{title}"`. |
 | `append`, `line` | Adds a line to the end of a note, for example `line: "- [ ] {task}"`. |
-| `notify` | Shows a notice. |
+| `notify` | Shows a notice. In the composed layout, a form or a button says it under itself. |
 | `open` | Opens a note. |
 | `action` | Puts a button with this label on each row of a list or a table. |
 | `edit` | Lets you edit table cells: `true` for all fields, or a list of fields. |
@@ -315,6 +369,8 @@ task call the bank
 
 Dates can be words: `today`, `yday`, `fri` or `last mon`. Before you push Enter, Gizmo shows what the line will do. A line that starts with `;;` in a note does the same, and Gizmo writes a receipt in its place. **Gizmo: Copy capture link** gives the same line to a phone shortcut or a launcher.
 
+The [add line](#the-add-line) of a form reads more freely than **Do…**. **Do…** gives the words to the fields in their order, and it guesses nothing. The add line gives each value to the first field that it fits, anywhere on the line. You can type a choice as its start, if the start has 3 letters or more and only one choice has it. The words that are left go to the first text field.
+
 ## Apps that start apps
 
 `then` runs a shortcut of a different app after a form, a button or an alert:
@@ -376,7 +432,8 @@ Run **Gizmo: Open the automation map**. The map shows each app with what it read
 
 - **Gizmo: Show app activity** shows each change, with **Undo**. Undo operates only while the vault still has what the app wrote. Gizmo moves a note that an app made to the trash only if the note is unchanged.
 - **See it then** on a change shows the app at that time.
-- **As of…** in the app menu (**⋯** in the app header) shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels.
+- The **time rail** is under the title of an app, in its own tab. Each change of the last 30 days is a tick. A change that you undid has no tick. Drag the handle, or push `[` and `]`, to show the app as it was at a change. With the rail in focus, the arrow keys do the same. Select **Back to now**, or push Escape, to return. The rail is only in the composed layout, and not in an embed or a lens. It uses **As of…** and the activity log, so the past is read only.
+- **As of…** in the tab menu (**⋯** in the tab header) shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels.
 - **Gizmo: Backtest this app** applies the alerts and `expect` rules of the app, as they are now, to its past data.
 
 ## Share and install
