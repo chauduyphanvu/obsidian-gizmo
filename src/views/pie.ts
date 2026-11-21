@@ -74,7 +74,7 @@ export const pie: ViewDef = {
     const fmt = (v: number) => (formatFor(p, sized) !== undefined ? display(p, sized, v, ctx.now) : formatValue(v, p.decimals) + (p.unit ? ` ${p.unit}` : ""));
     const share = (v: number) => `${Math.round((v / total) * 100)}%`;
     const box = el.createDiv({ cls: "gz-pie" });
-    const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "gz-pie-svg", role: "img", width: SIZE, height: SIZE }, box);
+    const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "gz-pie-svg", role: "img" }, box);
     const readout = el.createDiv({ cls: "gz-readout" });
     // The sized field's label, when the panel gives one, says what the total is of.
     const showTotal = () => readout.setText(`${labelFor(p, sized) ?? "Total"} · ${fmt(total)}`);

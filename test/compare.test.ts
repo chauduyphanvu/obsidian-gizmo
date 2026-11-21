@@ -194,9 +194,9 @@ const weights = [{ at: "2026-11-16", w: 10 }, { at: "2026-11-17", w: 40 }, { at:
 test("goal draws a dashed line with its label above the data, inside the plot", () => {
   const bars = draw(bar, { source: "s", x: "at", y: "w", goal: 80 }, weights);
   const lines = draw(line, { source: "s", x: "at", y: "w", goal: 80 }, weights);
-  for (const el of [bars, lines]) {
+  for (const [el, label] of [[bars, "80 goal"], [lines, "Goal 80"]] as const) {
     assert.equal(el.querySelectorAll("line.gz-goal").length, 1);
-    assert.equal(text_(el.querySelector("text.gz-goal-label")), "goal 80");
+    assert.equal(text_(el.querySelector("text.gz-goal-label")), label);
     assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "goal 80");
     // The plot starts 14 down: a goal beyond the data still fits.
     assert.ok(goalY(el) >= 14, String(goalY(el)));
@@ -215,10 +215,10 @@ test("a goal below the data reaches down to it; it reads in the panel's unit or 
   // The plot ends at y 194 (220 less the axis labels); the goal is inside it, below every point.
   assert.ok(goalY(low) <= 194 && goalY(low) >= 14, String(goalY(low)));
   assert.ok(goalY(low) > Number(low.querySelector("circle.gz-dot")!.getAttribute("cy")));
-  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 80, unit: "kg" }, weights).querySelector("text.gz-goal-label")), "goal 80 kg");
-  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 1234.5, format: "$0,0" }, weights).querySelector("text.gz-goal-label")), "goal $1,235");
+  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 80, unit: "kg" }, weights).querySelector("text.gz-goal-label")), "80 kg goal");
+  assert.equal(text_(draw(bar, { source: "s", x: "at", y: "w", goal: 1234.5, format: "$0,0" }, weights).querySelector("text.gz-goal-label")), "$1,235 goal");
   const many = draw(line, { source: "s", x: "at", y: ["w", "v"], goal: 80, format: { w: "0.0 kg" } }, weights);
-  assert.equal(text_(many.querySelector("text.gz-goal-label")), "goal 80.0 kg");
+  assert.equal(text_(many.querySelector("text.gz-goal-label")), "Goal 80.0 kg");
 });
 
 // ---- stack ----------------------------------------------------------------------------------------
@@ -229,55 +229,63 @@ const parts = [
   { g: "wk3", food: 25, rent: 100, fun: -15 },
 ];
 
-test("stacked bars pile positive values up and negative ones down, rounded only at the outer end", () => {
+/** A bar path's near and far ends, whichever way it points. */
+const heightOf = (el: Element) => { const g = geometry(el); return Math.abs(g.base - g.far); };
+const names = (el: Element, cls: string) => [...el.querySelectorAll(cls)].map((e) => text_(e));
+
+test("a stack is one bar per x, the total of its series, rounded at the top", () => {
   const el = draw(bar, { source: "s", x: "g", y: ["food", "rent", "fun"], stack: true }, parts);
   const all = [...el.querySelectorAll("path.gz-bar")];
-  assert.equal(all.length, 8, "a zero draws nothing");
-  assert.ok(all.every((b) => b.classList.contains("gz-stacked")));
-  const [food, rent, fun] = [1, 2, 3].map((s) => barsOf(el, s));
-  assert.deepEqual([food.length, rent.length, fun.length], [3, 2, 3]);
-  // A week is one column.
-  assert.equal(food[0].x, rent[0].x);
-  assert.equal(food[0].x, fun[0].x);
-  assert.equal(food[1].x, fun[1].x);
-  assert.equal(food[2].x, rent[1].x);
-  assert.equal(food[2].x, fun[2].x);
-  assert.notEqual(food[0].x, food[1].x);
-  // Each segment starts where the one under it ends; negative values start at the same baseline and go down.
-  assert.ok(Math.abs(rent[0].base - food[0].far) < 0.01);
-  assert.ok(Math.abs(fun[0].base - rent[0].far) < 0.01);
-  assert.ok(Math.abs(fun[1].base - food[1].far) < 0.01);
-  assert.ok(Math.abs(rent[1].base - food[2].far) < 0.01);
-  assert.equal(fun[2].base, food[2].base);
-  assert.ok(fun[2].far > fun[2].base, "week 3's negative segment hangs below the baseline");
-  assert.ok(food[0].far < food[0].base);
-  // Only the segment that ends a stack is rounded: week 1 and 2 end in fun, week 3 in rent, and its negative stack in fun.
-  assert.deepEqual(food.map((b) => b.rounded), [false, false, false]);
-  assert.deepEqual(rent.map((b) => b.rounded), [false, true]);
-  assert.deepEqual(fun.map((b) => b.rounded), [true, true, true]);
+  assert.equal(all.length, 3, "one bar for each of the three weeks");
+  assert.ok(all.every((b) => b.getAttribute("class") === "gz-bar" && geometry(b).rounded), "no series colour: pencil like a single series");
+  // The totals are 150, 15 and 110 (the 15 refunded in week 3 comes off): the heights keep that proportion.
+  const [one, two, three] = all.map(heightOf);
+  assert.ok(Math.abs(one / two - 10) < 0.01, `${one} / ${two}`);
+  assert.ok(Math.abs(one / three - 150 / 110) < 0.01);
+  assert.equal(new Set(all.map((b) => geometry(b).x)).size, 3);
+  assert.ok(all.every((b) => geometry(b).far < geometry(b).base), "every total is above the baseline");
 });
 
-test("the axis covers the tallest stack, not the tallest segment", () => {
+test("a stack tells the composition of the last bar above the plot: when, total, a strip of its parts, each part", () => {
+  const el = draw(bar, { source: "s", x: "g", y: ["food", "rent", "fun"], stack: true }, parts);
+  assert.equal(text_(el.querySelector(".gz-stack-when")), "wk3");
+  assert.equal(text_(el.querySelector(".gz-stack-total")), "110");
+  assert.equal(el.querySelector(".gz-readout"), null);
+  // Week 3: food 25, rent 100 and a refund of 15, which has no share of the strip.
+  const strip = [...el.querySelectorAll(".gz-strip span")] as HTMLElement[];
+  assert.deepEqual(strip.map((s) => [s.getAttribute("class"), s.style.flexGrow]), [["gz-s1", "25"], ["gz-s2", "100"]]);
+  assert.deepEqual(names(el, ".gz-legend-name"), ["food", "rent", "fun"]);
+  assert.deepEqual(names(el, ".gz-legend-value"), ["25", "100", "-15"]);
+  assert.equal(el.querySelector(".gz-legend-at"), null);
+  // Week 2 has no rent: its swatch is faint and its share is left out of the strip.
+  el.querySelectorAll("path.gz-bar")[1].dispatchEvent(new window.Event("pointerover", { bubbles: true }));
+  assert.deepEqual(names(el, ".gz-legend-value"), ["10", "0", "5"]);
+  assert.deepEqual([...el.querySelectorAll(".gz-legend-item")].map((i) => i.classList.contains("gz-zero")), [false, true, false]);
+  assert.deepEqual([...el.querySelectorAll(".gz-strip span")].map((s) => s.getAttribute("class")), ["gz-s1", "gz-s3"]);
+});
+
+test("the axis covers the tallest total, not the tallest segment", () => {
   const rows = [{ g: "a", x: 3, y: 4 }, { g: "b", x: 1, y: 1 }];
   const el = draw(bar, { source: "s", x: "g", y: ["x", "y"], stack: true }, rows);
-  const [x, y] = [barsOf(el, 1), barsOf(el, 2)];
-  assert.ok(Math.abs(y[0].base - x[0].far) < 0.01, "y stands on x");
-  assert.ok(y[0].far >= 14, "the stack of 7 fits in the plot");
-  // The scale is shared: 4 on top of 3 is taller than 4 on its own in the side-by-side chart.
+  const [a, b] = [...el.querySelectorAll("path.gz-bar")];
+  assert.ok(geometry(a).far >= 14, "the total of 7 fits in the plot");
+  assert.ok(Math.abs(heightOf(a) / heightOf(b) - 7 / 2) < 0.01);
+  assert.equal(el.querySelectorAll("path.gz-bar").length, 2);
+  // Side by side the same data is four bars in two columns, with no strip.
   const side = draw(bar, { source: "s", x: "g", y: ["x", "y"] }, rows);
-  assert.notEqual(barsOf(side, 1)[0].x, barsOf(side, 2)[0].x, "side by side the same data sits in two columns");
-  assert.equal(side.querySelector(".gz-stacked"), null);
-  assert.ok(y[0].base - y[0].far > 0);
+  assert.equal(side.querySelector(".gz-strip"), null);
+  assert.equal(side.querySelectorAll("path.gz-bar").length, 4);
+  assert.notEqual(barsOf(side, 1)[0].x, barsOf(side, 2)[0].x);
 });
 
-test("each segment of a stack calls the selection hook with its x", () => {
+test("a stack's bar calls the selection hook with its x", () => {
   const marks: unknown[] = [];
   const host = document.createElement("div");
   renderChart(host, [
     { name: "a", points: [{ x: "wk1", y: 1 }, { x: "wk2", y: 2 }] },
     { name: "b", points: [{ x: "wk1", y: 3 }, { x: "wk2", y: 0 }] },
   ], { kind: "bar", width: 600, stack: true, mark: (_el, x) => marks.push(x) });
-  assert.deepEqual(marks, ["wk1", "wk2", "wk1"]);
+  assert.deepEqual(marks, ["wk1", "wk2"]);
 });
 
 test("a stacked bar can be selected like any other, by its x", () => {
@@ -286,23 +294,25 @@ test("a stacked bar can be selected like any other, by its x", () => {
   const { panel } = checkPanel({ view: "bar", source: "s", x: "g", y: ["food", "rent"], stack: true, select: "week" }, true);
   const el = document.createElement("div");
   bar.mount(el, panel as Panel, c, "k").update(parts);
-  const segments = [...el.querySelectorAll("path.gz-bar")] as HTMLElement[];
-  assert.ok(segments.every((b) => b.classList.contains("gz-selectable")));
-  // Segments are drawn series by series: food ×3, then rent's first is week 1's.
-  segments[3].dispatchEvent(new window.Event("click", { bubbles: true }));
+  const bars = [...el.querySelectorAll("path.gz-bar")] as HTMLElement[];
+  assert.equal(bars.length, 3);
+  assert.ok(bars.every((b) => b.classList.contains("gz-selectable")));
+  bars[0].dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(picked, [parts[0]]);
 });
 
 test("a stack of one series is drawn as an ordinary chart", () => {
   const host = document.createElement("div");
   renderChart(host, [{ name: "a", points: [{ x: "wk1", y: 1 }] }], { kind: "bar", width: 600, stack: true });
-  assert.equal(host.querySelector(".gz-stacked"), null);
+  assert.equal(host.querySelector(".gz-stack-head"), null);
+  assert.equal(host.querySelector(".gz-strip"), null);
   assert.equal(host.querySelectorAll("path.gz-bar").length, 1);
 });
 
 test("goal works on a stack too, above the tallest stack", () => {
   const el = draw(bar, { source: "s", x: "g", y: ["food", "rent"], stack: true, goal: 200 }, parts);
-  assert.equal(text_(el.querySelector("text.gz-goal-label")), "goal 200");
+  assert.equal(text_(el.querySelector("text.gz-goal-label")), "200 goal");
   assert.ok(goalY(el) >= 14);
-  assert.ok(goalY(el) < Math.min(...[1, 2].flatMap((s) => barsOf(el, s).map((b) => b.far))));
+  assert.ok(goalY(el) < Math.min(...[...el.querySelectorAll("path.gz-bar")].map((b) => geometry(b).far)));
+  assert.equal(text_(el.querySelector(".gz-stack-total")), "125 of 200");
 });

@@ -67,12 +67,12 @@ test("number ticks are round values inside the range", () => {
   assert.deepEqual(niceTicks(5, 5), [5]);
 });
 
-test("one dot per row that has numbers for x and y, r=4 in the first chart colour", () => {
+test("one dot per row that has numbers for x and y, r=3.5 in ink", () => {
   const { el } = mount({}, CARS);
   assert.equal(dots(el).length, 3);
   for (const d of dots(el)) {
-    assert.equal(d.getAttribute("r"), "4");
-    assert.ok(d.classList.contains("gz-s1"));
+    assert.equal(d.getAttribute("r"), "3.5");
+    assert.equal(d.getAttribute("class"), "gz-scatter-dot", "no palette class: the colour is ink, from the stylesheet");
   }
   // Heavier cars sit further right and use less fuel, so lower.
   const [mini, golf, volvo] = dots(el).map((d) => [Number(d.getAttribute("cx")), Number(d.getAttribute("cy"))]);

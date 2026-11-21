@@ -43,15 +43,15 @@ marks:
 ---
 `;
 
-/** In the page: the stacked bars of the right-most week, as class and height. */
+/** In the page: the right-most week's bar as its height, and its parts as the strip above the plot tells them (class and share). */
 const LAST_WEEK_BARS = `(() => {
-  const bars = [...na.view().contentEl.querySelectorAll(".gz-view-bar path.gz-bar")];
+  const el = na.view().contentEl;
+  const bars = [...el.querySelectorAll(".gz-view-bar path.gz-bar")];
   const xs = bars.map((b) => Number(b.getAttribute("d").match(/^M([\\d.]+)/)[1]));
-  const right = Math.max(...xs);
-  return bars.filter((b, i) => Math.abs(xs[i] - right) < 1).map((b) => {
-    const m = b.getAttribute("d").match(/^M[\\d.]+,([\\d.]+)V([\\d.]+)/);
-    return b.getAttribute("class").replace("gz-bar ", "") + ":" + Math.round(Math.abs(Number(m[1]) - Number(m[2])));
-  });
+  const last = bars[xs.indexOf(Math.max(...xs))];
+  const m = last.getAttribute("d").match(/^M[\\d.]+,([\\d.]+)V([\\d.]+)/);
+  const parts = [...el.querySelectorAll(".gz-view-bar .gz-strip span")].map((s) => s.className + ":" + s.style.flexGrow);
+  return { height: Math.round(Math.abs(Number(m[1]) - Number(m[2]))), parts };
 })()`;
 
 export default async function display(t) {
@@ -80,12 +80,11 @@ export default async function display(t) {
         goalLine: !!el.querySelector(".gz-view-bar line.gz-goal"),
       };`);
     expect(r.value === "$80.00" && /^▲ \$30\.00 \(60%\) vs previous$/.test(r.compare ?? ""), r);
-    const height = (bars) => bars.reduce((s, b) => s + Number(b.split(":")[1]), 0);
-    expect(height(r.bars) > height(r.before.bars) && r.goal === "goal $400" && r.goalLine, r);
-    return `${r.before.value} → ${r.value}; ${r.compare}; week bar ${height(r.before.bars)} → ${height(r.bars)} px; ${r.goal}`;
+    expect(r.bars.height > r.before.bars.height && r.goal === "$400 goal" && r.goalLine, r);
+    return `${r.before.value} → ${r.value}; ${r.compare}; week bar ${r.before.bars.height} → ${r.bars.height} px; ${r.goal}`;
   });
 
-  await check("Spending: changing a row's category in the table restacks the bar and keeps focus", async () => {
+  await check("Spending: changing a row's category in the table recolours the week's strip, not its total, and keeps focus", async () => {
     const r = await run(`
       await na.open("Apps/Spending");
       const el = na.view().contentEl;
@@ -97,8 +96,8 @@ export default async function display(t) {
       await na.until(() => na.fm("Apps/Spending data.md")?.spend?.some((s) => s.note === "dinner out" && s.category === "fun"), 3000);
       await na.sleep(800);
       return { before, after: ${LAST_WEEK_BARS}, focused: document.activeElement === select, connected: select.isConnected };`);
-    expect(JSON.stringify(r.before) !== JSON.stringify(r.after) && r.focused && r.connected, r);
-    return `${r.before.join(" ")} → ${r.after.join(" ")}; focus kept`;
+    expect(JSON.stringify(r.before.parts) !== JSON.stringify(r.after.parts) && r.before.height === r.after.height && r.focused && r.connected, r);
+    return `${r.before.parts.join(" ")} → ${r.after.parts.join(" ")}; focus kept`;
   });
 
   await check("cards with select, action and edit: a click, Enter on another card, and a card's button each do only their own thing", async () => {
