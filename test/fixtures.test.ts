@@ -6,6 +6,7 @@ import { AppController } from "../src/app.ts";
 import { readSpec } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv, raw, savedAt } from "./support/fakes.ts";
+import { addLine, lineIn, said, typeLine } from "./support/addline.ts";
 import { vaultNote } from "./support/yaml.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -450,12 +451,8 @@ test("Spending: log a purchase, see the week against last, the stack against the
   assert.deepEqual(rows.map((tr) => [text(tr.querySelectorAll("td")[0]), text(tr.querySelectorAll("td")[1])]).slice(0, 2), [["23 hours ago", "$30.25"], ["2 days ago", "$12.00"]]);
   assert.deepEqual([...rows[0].querySelectorAll("select option")].map((o) => text(o)), ["food", "rent", "transport", "fun", "other"]);
 
-  // Log a purchase.
-  const [amount, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  amount.value = "20";
-  note.value = "movie";
-  choose(form.querySelector("select")!, "fun");
-  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  // Log a purchase, on the add line.
+  addLine(form, "20 fun movie");
   await settle();
   const saved = f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[];
   assert.deepEqual(saved.at(-1), { amount: 20, category: "fun", note: "movie", at: savedAt("2026-11-18T12:00") });
@@ -518,6 +515,8 @@ test("Space weather: Kp now, told when a storm is likely, an hourly record of my
   (root.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.equal(text(sightings.querySelector(".gz-list")), "2026-11-18T12:00");
+  // The button's notify is said beside it, in place of a notice.
+  assert.equal(said(root.querySelector(".gz-view-button")!), "Sighting saved");
   // From a hotkey or a link, without opening the app.
   t.advance(90 * 60_000);
   await t.bg.runUri({ app: "Space weather", do: "saw-aurora" });
@@ -525,7 +524,7 @@ test("Space weather: Kp now, told when a storm is likely, an hourly record of my
   await settle();
   assert.deepEqual((data().sightings as { at: string }[]).map((s) => s.at), [savedAt("2026-11-18T12:00"), savedAt("2026-11-18T13:30")]);
   assert.equal((data().kp_log as unknown[]).length, 2);
-  assert.deepEqual(t.notices.slice(1), ["Sighting saved", "Sighting saved"]);
+  assert.deepEqual(t.notices.slice(1), ["Sighting saved"]);
 });
 
 test("Meds: took meds from a hotkey or a link, and today's doses in the status bar", async () => {
@@ -602,9 +601,8 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
     await settle();
     const buy = panels()[3];
     assert.equal(text(buy.querySelector(".gz-title")), `Record a buy of ${symbol}`);
-    const fields = buy.querySelectorAll("input") as unknown as HTMLInputElement[];
-    [fields[0].value, fields[1].value, fields[2].value] = [date, shares, price];
-    buy.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+    // On its add line: the date, then the numbers in the order of their fields.
+    addLine(buy, `${date} ${shares} ${price}`);
     await settle();
   };
   await record("SPY", "2026-11-10", "10", "500");
@@ -664,9 +662,7 @@ test("AAPL: the whole note is the Ticker; its price is in the status bar, a 3% f
   assert.equal(text(root.querySelector(".gz-description")), "Follow one stock, record what I buy of it, and see what my shares are worth");
   const panels = () => panelsOf(root);
   assert.equal(text(panels()[2].querySelector(".gz-title")), "Record a buy of AAPL");
-  const fields = panels()[2].querySelectorAll("input") as unknown as HTMLInputElement[];
-  [fields[0].value, fields[1].value, fields[2].value] = ["2026-11-02", "10", "190"];
-  panels()[2].querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  addLine(panels()[2], "2026-11-02 10 190");
   await settle();
   assert.deepEqual(t.f.files.get("Apps/AAPL data.md")!.fm!.buys, [{ symbol: "AAPL", date: "2026-11-02", shares: 10, price: 190, at: savedAt("2026-11-18T12:00") }]);
   (panels()[4].querySelector("tbody tr") as HTMLElement).click();
@@ -706,25 +702,24 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   assert.equal(text(day.querySelector(".gz-empty")), "Nothing here yet.");
   assert.deepEqual([...all.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))), ["Eye exam", "Dentist", "Physical"]);
 
-  // Half-way through booking, look at another day: the form keeps what was typed.
-  const [what, date, who] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  what.value = "Blood test";
+  // Half-way through booking, look at another day: the add line keeps what was typed.
+  typeLine(form, '"Blood test"');
   const bar = root.querySelector('.gz-inputs input[type="date"]') as HTMLInputElement;
   bar.value = "2027-01-15";
   bar.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal(text(panelsOf(root)[3].querySelector(".gz-title")), "On 2027-01-15");
   assert.deepEqual(items(panelsOf(root)[3]), ["Eye exam with Dr. Patel"]);
-  assert.equal((panelsOf(root)[1].querySelector("input") as HTMLInputElement).value, "Blood test");
+  assert.equal(lineIn(panelsOf(root)[1]).value, '"Blood test"');
 
-  // Booked for tomorrow: a note in Health, first in line, in the status bar, and told.
-  [date.value, who.value] = ["2026-11-19", "Dr. Kim"];
-  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  // Booked for tomorrow: a note in Health, first in line, in the status bar, and told. Each quoted text fills the next text field.
+  addLine(form, '"Blood test" 2026-11-19 "Dr. Kim"');
   await settle();
   assert.deepEqual(t.f.files.get("Health/Blood test 2026-11-19.md")!.fm, { what: "Blood test", date: "2026-11-19", who: "Dr. Kim", at: savedAt("2026-11-18T12:00") });
   assert.deepEqual(items(panelsOf(root)[2])[0], "tomorrow · Blood test with Dr. Kim");
   assert.equal(text(panelsOf(root)[0].querySelector(".gz-big")), "1 day");
-  assert.deepEqual(t.notices, ["Booked Blood test on 2026-11-19", "Appointments: Next appointment (1 row)"]);
+  assert.equal(said(form), "Booked Blood test on 2026-11-19");
+  assert.deepEqual(t.notices, ["Appointments: Next appointment (1 row)"]);
   assert.equal(t.out.status[0].text, "Next appointment: 1 day");
 
   // Done: it leaves what's coming up. The dentist moves to the 20th.
@@ -758,15 +753,14 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
   const [next, form, coming, done] = panelsOf(root);
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map((s) => text(s)), ["What", "Due"]);
+  typeLine(form, "Passport");
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map((s) => text(s)), ["What", "Due"]);
   assert.equal(text(next.querySelector(".gz-big")), "—");
   assert.equal(text(coming.querySelector(".gz-empty")), "Nothing here yet.");
   assert.equal(text(done.querySelector(".gz-empty")), "Nothing here yet.");
 
   const add = async (what: string, due: string) => {
-    const [a, b] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-    [a.value, b.value] = [what, due];
-    form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+    addLine(form, `${what} ${due}`);
     await settle();
   };
   await add("Passport", "2027-03-01");

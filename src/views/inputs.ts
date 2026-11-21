@@ -5,7 +5,32 @@ import { THIS } from "../template.ts";
 import { labelOf } from "../format.ts";
 import { busy, fieldControl, heading, needsAction, redraw } from "./common.ts";
 import { ACTION_KEYS, checkFields, isPlainObject, startOf } from "../keys.ts";
+import { addLine, fitsOneLine, underFields, verbButton } from "./addline.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
+
+/** Whether a panel sits in the composed layout's line to add things; asked at each draw. */
+const inLine = (ctx: PanelCtx) => ctx.place?.()?.slot === "compose";
+
+/**
+ * A view drawn one way in the line to add things and another elsewhere; drawn again the other way
+ * when an update finds it has moved.
+ */
+function placed(el: HTMLElement, ctx: PanelCtx, draw: (composed: boolean) => PanelHandle): PanelHandle {
+  let composed = inLine(ctx);
+  let shown = draw(composed);
+  return {
+    update(data) {
+      if (inLine(ctx) !== composed) {
+        shown.destroy?.();
+        el.empty();
+        composed = !composed;
+        shown = draw(composed);
+      }
+      shown.update(data);
+    },
+    destroy: () => shown.destroy?.(),
+  };
+}
 
 export const button: ViewDef = {
   id: "button",
@@ -24,11 +49,11 @@ export const button: ViewDef = {
     { panel: { view: "button", label: "Took meds", save: "doses", alias: "My meds" } },
     { panel: { view: "button", label: "Took meds", save: "doses", alias: "meds!" }, errors: ["alias must be words of letters and digits (with - and '), up to 40 characters"] },
   ],
-  mount: (el, p, ctx) => redraw(el, () => {
+  mount: (el, p, ctx) => placed(el, ctx, (composed) => (composed ? verbButton(el, p, ctx) : redraw(el, () => {
     heading(el, p);
     const b = el.createEl("button", { cls: "mod-cta gz-button", text: p.label ?? "Log" });
     busy(b, () => ctx.runActions(p, {}));
-  }),
+  }))),
 };
 
 /** A form with `save: this`: its fields hold the properties of the note the app sits in, saved as they change. */
@@ -55,7 +80,8 @@ export const form: ViewDef = {
   id: "form",
   keys: [...ACTION_KEYS, "fields", "label", "shortcut", "alias", "then"],
   span: 4,
-  implicitSource: (p) => (p.target?.kind === "this" ? THIS : undefined),
+  // The list it saves to, which a choice left out of its add line is guessed from.
+  implicitSource: (p) => (p.target?.kind === "this" ? THIS : p.target?.kind === "list" ? p.target.name : undefined),
   validate(p) {
     // Without its own fields, a form takes those of the block it saves to.
     const fields = p.fields ?? p.schema;
@@ -76,61 +102,106 @@ export const form: ViewDef = {
     { panel: { view: "form", fields: { mood: { type: ["low", "ok"], default: "great" } }, save: "moods" }, errors: ['field "mood" default must be one of its choices: low, ok'] },
     { panel: { view: "form", fields: ["mood", "slept"], save: "moods" }, errors: ["fields as a list names fields of the block the form saves to; save to a block with fields, or give each field a type"] },
   ],
-  mount: (el, p, ctx) => (p.target?.kind === "this" ? propertyForm(el, p, ctx) : redraw(el, () => {
-    heading(el, p);
-    const f = el.createEl("form", { cls: "gz-form" });
-    const inputs: [string, string | string[], HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement][] = [];
-    for (const [name, type] of Object.entries(p.fields ?? p.schema!)) {
-      const label = f.createEl("label", { cls: "gz-field" });
-      label.createSpan({ text: labelOf(p, name) });
-      // Set as the field's default, so the form's reset after a save brings it back.
-      const start = startOf(p.fieldInfo?.[name], ctx.now) ?? (type === "date" ? stampParts(ctx.now).date : undefined);
-      let input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
-      if (Array.isArray(type)) {
-        input = label.createEl("select");
-        for (const opt of type) {
-          const option = input.createEl("option", { text: String(opt), value: String(opt) });
-          if (start !== undefined && opt === start) option.setAttr("selected", "");
-        }
-      } else if (type === "textarea") {
-        input = label.createEl("textarea");
-        if (start !== undefined) input.textContent = String(start);
-      } else {
-        input = label.createEl("input", { type: type === "number" ? "number" : type });
-        if (type === "number") input.setAttr("step", "any");
-        if (type === "checkbox") {
-          if (start === true) input.setAttr("checked", "");
-        } else if (start !== undefined) {
-          input.setAttr("value", String(start));
-          input.value = String(start);
-        }
-      }
-      inputs.push([name, type, input]);
-    }
-    const submit = f.createEl("button", { cls: "mod-cta", text: p.label ?? "Save", type: "submit" });
-    f.addEventListener("submit", async (e) => {
-      e.preventDefault();
-      const row: Row = {};
-      for (const [name, type, input] of inputs) {
-        if (type === "checkbox") row[name] = (input as HTMLInputElement).checked;
-        else if (type === "number") row[name] = input.value === "" ? null : Number(input.value);
-        // A choice is saved as it was typed in the list: 70 stays a number.
-        else if (Array.isArray(type)) row[name] = type.find((o) => String(o) === input.value) ?? input.value;
-        else row[name] = input.value;
-      }
-      submit.disabled = true;
-      try {
-        const r = await ctx.runActions(p, row);
-        f.querySelector(".gz-form-error")?.remove();
-        // Refused by the app's expect: what was typed stays, with why.
-        if (r && r.error) f.createDiv({ cls: "gz-form-error", text: `Not saved: ${r.error}` });
-        else f.reset();
-      } finally {
-        submit.disabled = false;
-      }
-    });
-  })),
+  mount: (el, p, ctx, key) => (p.target?.kind === "this"
+    ? propertyForm(el, p, ctx)
+    : placed(el, ctx, (composed) => (composed ? lineOrFields(el, p, ctx, key) : fieldsForm(el, p, ctx)))),
 };
+
+/**
+ * A form in the line to add things: one typed line when it reads as one, else its fields. Where
+ * both make sense, either switches to the other.
+ */
+function lineOrFields(el: HTMLElement, p: Panel, ctx: PanelCtx, key: string): PanelHandle {
+  let rows: unknown;
+  let shown: PanelHandle | undefined;
+  const draw = () => {
+    shown?.destroy?.();
+    el.empty();
+    const fits = fitsOneLine(p);
+    const switchTo = (fields: boolean) => () => {
+      asFields.set(key, fields);
+      draw();
+    };
+    shown = fits && !asFields.get(key) ? addLine(el, p, ctx, switchTo(true)) : fieldsForm(el, p, ctx, fits ? switchTo(false) : null);
+    shown.update(rows);
+  };
+  draw();
+  return {
+    update(data) {
+      rows = data;
+      shown?.update(data);
+    },
+    destroy: () => shown?.destroy?.(),
+  };
+}
+
+/** In the line to add things, the forms switched to their fields (true) or back to one line, by panel, while Obsidian runs. */
+const asFields = new Map<string, boolean>();
+
+/**
+ * A form as its fields, drawn once, so what is typed in them is never lost to new data. In the line
+ * to add things (`other` given there, or null when the form only reads as fields), what it saved is
+ * said under it with Undo, and `other` switches it to one line.
+ */
+function fieldsForm(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: (() => void) | null): PanelHandle {
+  heading(el, p);
+  const f = el.createEl("form", { cls: "gz-form" });
+  const inputs: [string, string | string[], HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement][] = [];
+  for (const [name, type] of Object.entries(p.fields ?? p.schema!)) {
+    const label = f.createEl("label", { cls: "gz-field" });
+    label.createSpan({ text: labelOf(p, name) });
+    // Set as the field's default, so the form's reset after a save brings it back.
+    const start = startOf(p.fieldInfo?.[name], ctx.now) ?? (type === "date" ? stampParts(ctx.now).date : undefined);
+    let input: HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;
+    if (Array.isArray(type)) {
+      input = label.createEl("select");
+      for (const opt of type) {
+        const option = input.createEl("option", { text: String(opt), value: String(opt) });
+        if (start !== undefined && opt === start) option.setAttr("selected", "");
+      }
+    } else if (type === "textarea") {
+      input = label.createEl("textarea");
+      if (start !== undefined) input.textContent = String(start);
+    } else {
+      input = label.createEl("input", { type: type === "number" ? "number" : type });
+      if (type === "number") input.setAttr("step", "any");
+      if (type === "checkbox") {
+        if (start === true) input.setAttr("checked", "");
+      } else if (start !== undefined) {
+        input.setAttr("value", String(start));
+        input.value = String(start);
+      }
+    }
+    inputs.push([name, type, input]);
+  }
+  const submit = f.createEl("button", { cls: "mod-cta", text: p.label ?? "Save", type: "submit" });
+  const said = other !== undefined ? underFields(el, p, ctx, other ?? undefined) : undefined;
+  f.addEventListener("submit", async (e) => {
+    e.preventDefault();
+    const row: Row = {};
+    for (const [name, type, input] of inputs) {
+      if (type === "checkbox") row[name] = (input as HTMLInputElement).checked;
+      else if (type === "number") row[name] = input.value === "" ? null : Number(input.value);
+      // A choice is saved as it was typed in the list: 70 stays a number.
+      else if (Array.isArray(type)) row[name] = type.find((o) => String(o) === input.value) ?? input.value;
+      else row[name] = input.value;
+    }
+    submit.disabled = true;
+    try {
+      const r = await ctx.runActions(p, row, said && { inPlace: true });
+      f.querySelector(".gz-form-error")?.remove();
+      // Refused by the app's expect: what was typed stays, with why.
+      if (r && r.error) f.createDiv({ cls: "gz-form-error", text: `Not saved: ${r.error}` });
+      else {
+        f.reset();
+        said?.saved(row, r);
+      }
+    } finally {
+      submit.disabled = false;
+    }
+  });
+  return { update() {}, destroy: () => said?.destroy() };
+}
 
 export const checklist: ViewDef = {
   id: "checklist",

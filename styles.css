@@ -252,7 +252,113 @@
 .gizmo .gz-form > button { flex: none; }
 
 /* == composer: forms and buttons as one line to add things == */
-/* (reserved) */
+/* In the line to add things a form is one typed line and a button one big button, each with no
+   surface of its own; a form kept as fields keeps a quiet one. Its title stays for screen readers. */
+.gizmo .gz-compose > .gz-panel.gz-view-form:has(> .gz-addline),
+.gizmo .gz-compose > .gz-panel.gz-view-button { background: none; border: 0; border-radius: 0; padding: 0; }
+.gizmo .gz-compose > .gz-panel.gz-view-form:has(> .gz-form) { border-radius: 12px; padding: 12px 16px; }
+.gizmo .gz-addline-title {
+  position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden;
+  clip-path: inset(50%); white-space: nowrap;
+}
+
+/* The line: the verb, what is typed, / while it's empty, and its button, in one 50 px box. */
+.gizmo .gz-addline {
+  display: flex; align-items: center; gap: 10px; height: 50px; padding: 0 7px 0 8px;
+  background: var(--background-secondary); border: 1px solid var(--background-modifier-border); border-radius: 12px;
+  transition: border-color 150ms, box-shadow 150ms, background-color 150ms;
+}
+.gizmo .gz-addline:focus-within {
+  background: var(--background-primary); border-color: var(--interactive-accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 24%, transparent);
+}
+.gizmo .gz-addline-verb {
+  flex: none; padding: 5px 8px; border-radius: 7px; line-height: 1.2; white-space: nowrap;
+  background: color-mix(in srgb, var(--interactive-accent) 13%, transparent); color: var(--text-accent);
+  font-family: var(--font-monospace); font-size: 12px; font-weight: 500;
+}
+.gizmo .gz-addline input.gz-addline-input,
+.gizmo .gz-addline input.gz-addline-input:hover,
+.gizmo .gz-addline input.gz-addline-input:focus,
+.gizmo .gz-addline input.gz-addline-input:focus-visible {
+  flex: 1; min-width: 0; height: 100%; padding: 0; border: 0; border-radius: 0; outline: 0; box-shadow: none;
+  background: transparent; color: var(--text-normal); font: inherit; font-size: 15px;
+}
+.gizmo .gz-addline-input::placeholder { color: var(--text-faint); }
+.gizmo .gz-addline kbd,
+.gizmo .gz-notice kbd {
+  flex: none; padding: 3px 5px; border: 1px solid currentColor; border-radius: 4px; background: none; box-shadow: none;
+  color: var(--text-faint); font-family: var(--font-monospace); font-size: 10.5px; line-height: 1; opacity: 0.8;
+}
+.gizmo .gz-addline kbd[hidden],
+.gizmo.gz-narrow .gz-addline kbd { display: none; }
+.gizmo button.gz-addline-go {
+  flex: none; display: inline-flex; align-items: center; gap: 7px; height: 36px; padding: 0 12px 0 14px;
+  border-radius: 8px; font-size: 13px; font-weight: 600; box-shadow: none; cursor: pointer;
+}
+.gizmo.gz-narrow button.gz-addline-go.is-long { padding: 0 12px; }
+.gizmo.gz-narrow button.gz-addline-go.is-long .gz-addline-go-label { display: none; }
+.gizmo button.gz-addline-go:disabled {
+  background: var(--background-modifier-border); color: var(--text-faint); opacity: 1; cursor: default;
+}
+
+/* Under the line: an example to try, what it will save, or what it saved. */
+.gizmo .gz-addline-under {
+  min-height: 38px; padding: 10px 2px 0; display: flex; flex-wrap: wrap; align-items: center; gap: 6px 10px;
+  font-size: 13px; line-height: 1.4; color: var(--text-muted);
+}
+.gizmo.gz-narrow .gz-addline-under { min-height: 30px; padding-top: 8px; }
+.gizmo .gz-form ~ .gz-addline-under { min-height: 0; padding: 8px 0 0; }
+.gizmo .gz-form ~ .gz-addline-under:empty { display: none; }
+.gizmo .gz-pv { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
+.gizmo .gz-pv:has(> .gz-chips) { align-items: center; }
+.gizmo .gz-pv-label { font-size: 11.5px; color: var(--text-faint); }
+.gizmo .gz-pv-value { color: var(--text-normal); font-weight: 500; overflow-wrap: anywhere; }
+.gizmo .gz-pv:first-child .gz-pv-value { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
+.gizmo .gz-pv.is-default .gz-pv-value,
+.gizmo .gz-pv.is-missing .gz-pv-value { color: var(--text-faint); font-weight: 400; }
+.gizmo .gz-pv-guess { font-size: 12px; color: var(--text-faint); }
+.gizmo .gz-chips { display: inline-flex; flex-wrap: wrap; gap: 6px; }
+.gizmo button.gz-chip {
+  display: inline-flex; align-items: center; height: 26px; padding: 0 10px; border: 1px solid var(--background-modifier-border);
+  border-radius: 13px; background: var(--background-primary); box-shadow: none; color: var(--text-muted);
+  font-size: 12.5px; font-weight: 400; cursor: pointer; transition: border-color 150ms, color 150ms;
+}
+.gizmo button.gz-chip:hover { color: var(--text-normal); border-color: var(--text-faint); }
+.gizmo button.gz-chip.is-on { color: var(--text-normal); border-color: var(--text-normal); font-weight: 500; }
+.gizmo button.gz-chip.is-default { border-style: dashed; border-color: var(--text-faint); }
+.gizmo .gz-addline-error { color: var(--text-error); opacity: 0.85; }
+.gizmo button.gz-addline-example {
+  height: auto; padding: 0; border: 0; background: none; box-shadow: none; color: var(--text-muted);
+  font-family: var(--font-monospace); font-size: 12px; cursor: pointer;
+  text-decoration: underline dotted var(--text-faint); text-underline-offset: 3px;
+}
+.gizmo button.gz-addline-example:hover { color: var(--text-normal); }
+.gizmo button.gz-addline-more {
+  margin-left: auto; height: auto; padding: 0; border: 0; background: none; box-shadow: none;
+  color: var(--text-faint); font-size: 12px; cursor: pointer;
+}
+.gizmo button.gz-addline-more:hover { color: var(--text-muted); text-decoration: underline; text-underline-offset: 3px; }
+
+/* What was saved, said in place of a notice, with Undo as a link. */
+.gizmo .gz-notice { display: inline-flex; align-items: center; flex-wrap: wrap; gap: 8px; color: var(--text-normal); }
+.gizmo .gz-notice .gz-icon { flex: none; }
+.gizmo button.gz-undo {
+  height: auto; padding: 0; border: 0; background: none; box-shadow: none;
+  color: var(--text-accent); font-size: 13px; font-weight: 600; cursor: pointer;
+}
+.gizmo button.gz-undo:hover { text-decoration: underline; text-underline-offset: 3px; }
+
+/* A button: 52 px tall, at least 260 px wide (the full width when narrow), and what it did beside it. */
+.gizmo .gz-verb-row { display: flex; flex-wrap: wrap; align-items: center; gap: 10px 18px; }
+.gizmo .gz-verb-row > .gz-addline-under { min-height: 0; padding: 0; }
+.gizmo button.gz-verb {
+  display: inline-flex; align-items: center; justify-content: center; gap: 10px;
+  width: auto; max-width: none; height: 52px; min-width: 260px; padding: 0 22px; border-radius: 12px;
+  font-size: 15.5px; font-weight: 600; transition: transform 120ms;
+}
+.gizmo button.gz-verb:active { transform: scale(0.985); }
+.gizmo.gz-narrow button.gz-verb { width: 100%; min-width: 0; }
 /* == /composer == */
 
 /* Progress and timer */

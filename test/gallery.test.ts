@@ -9,6 +9,7 @@ import { LensIndex, LensStack } from "../src/lenses.ts";
 import { pickPanels, readComponentPreview, readSpec } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv, listsIn, raw, savedAt } from "./support/fakes.ts";
+import { addLine, said, typeLine } from "./support/addline.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 // The notes under gallery/, proved: each reads without errors and asks for exactly the permissions
@@ -229,7 +230,9 @@ test("Medication log: a dose from the button, a hotkey or a link; the count, str
   const saved = t.f.files.get("Apps/Medication log data.md")!.fm!.doses as { at: string }[];
   assert.equal(saved.length, 5);
   assert.equal(text(today.querySelector(".gz-big")), "3");
-  assert.deepEqual(t.notices, ["Dose logged", "Dose logged", "Dose logged"]);
+  // The button's notify was said beside it, in place of a notice; the hotkey and the link tell it.
+  assert.equal(said(root.querySelector(".gz-view-button")!), "Dose logged");
+  assert.deepEqual(t.notices, ["Dose logged", "Dose logged"]);
   assert.equal(t.out.status[0].text, "Doses today: 3");
 });
 
@@ -246,7 +249,8 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.equal(root.querySelector(".gz-error"), null);
   const [week, latest, form, chart, entries] = panels(root);
   assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["This week", "Latest", "Log my weight", "My weight against my goal", "Entries"]);
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["weight", "note"]);
+  typeLine(form, "79.4 after the trip");
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map(text), ["weight", "note"]);
   assert.equal(text(week.querySelector(".gz-big")), "80.4kg");
   assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.6 kg (<1%) vs previous");
   assert.equal(text(latest.querySelector(".gz-big")), "80.2kg");
@@ -254,10 +258,7 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.equal(chart.querySelector(".gz-legend"), null);
   assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "weight", "note"]);
 
-  const [value, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  value.value = "79.4";
-  note.value = "after the trip";
-  submit(form.querySelector("form")!);
+  addLine(form, "79.4 after the trip");
   await settle();
   const saved = f.files.get("Apps/Weight data.md")!.fm!.weight as Record<string, unknown>[];
   assert.deepEqual(saved.at(-1), { value: 79.4, note: "after the trip", at: savedAt("2026-11-18T12:00") });
@@ -287,8 +288,7 @@ test("Sleep: the same kit for hours slept, against a goal of eight", async () =>
   assert.equal(text(week.querySelector(".gz-compare")), "▲ 0.5 hours (8%) vs previous");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "goal 8 hours");
 
-  (form.querySelector("input") as HTMLInputElement).value = "8.5";
-  submit(form.querySelector("form")!);
+  addLine(form, "8.5");
   await settle();
   assert.deepEqual((f.files.get("Apps/Sleep data.md")!.fm!.sleep as unknown[]).at(-1), { value: 8.5, note: "", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(latest.querySelector(".gz-big")), "8.5hours");
@@ -335,7 +335,9 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.equal(root.querySelector(".gz-error"), null);
   const [month, limit, form, chart, recent] = panels(root);
   // The amount field carries its label and money format to the form, the number and the table.
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Spent", "category", "note"]);
+  typeLine(form, "1350 transport flights");
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map(text), ["Spent", "category", "note"]);
+  assert.equal(text(form.querySelector(".gz-pv-value")), "$1,350.00");
   assert.deepEqual([...recent.querySelectorAll("th")].map(text), ["When", "Spent", "category", "note"]);
   assert.equal(text(month.querySelector(".gz-big")), "$700.00");
   assert.equal(text(limit.querySelector(".gz-big")), "$700/ $2,000");
@@ -344,11 +346,7 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["Food", "Home", "Transport", "Fun", "Other"]);
   assert.ok(chart.querySelectorAll("path.gz-bar.gz-stacked").length >= 3);
 
-  const [amount, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  amount.value = "1350";
-  note.value = "flights";
-  choose(form.querySelector("select")!, "transport");
-  submit(form.querySelector("form")!);
+  addLine(form, "1350 transport flights");
   await settle();
   const saved = t.f.files.get("Apps/Budget data.md")!.fm!.spend as Record<string, unknown>[];
   assert.deepEqual(saved.at(-1), { amount: 1350, category: "transport", note: "flights", at: savedAt("2026-11-18T12:00") });
@@ -499,13 +497,10 @@ test("Project board: add a project, drag it along, pick it for its dates, and op
   assert.equal(board.querySelector(".gz-detail"), null);
 
   // A new project starts as an idea.
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["name", "area", "start", "due"]);
-  const [name, area, start, due] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  name.value = "Learn piano";
-  area.value = "learning";
-  start.value = "2026-12-01";
-  due.value = "2027-06-30";
-  submit(form.querySelector("form")!);
+  // On the add line: the quoted name fills the first text field, the word left over the next, the dates start then due.
+  typeLine(form, '"Learn piano" learning 2026-12-01 2027-06-30');
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map(text), ["name", "area", "start", "due"]);
+  addLine(form, '"Learn piano" learning 2026-12-01 2027-06-30');
   await settle();
   assert.deepEqual(f.files.get("Projects/Learn piano.md")!.fm, { status: "idea", area: "learning", start: "2026-12-01", due: "2027-06-30", at: savedAt("2026-11-18T12:00") });
   assert.deepEqual(cards("idea"), ["Learn Rust · learning", "Tax return · money", "Learn piano · learning"]);
@@ -549,18 +544,14 @@ test("Decision journal: one decision is due; write one down, score the due one, 
 
   // Written down: a note in Decisions, its confidence a number, outcome open and today's date from the fields' defaults.
   const form = panel("A decision I'm making");
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Decision", "I expected", "% sure", "Due"]);
-  const [name, expect] = form.querySelectorAll("input");
-  type(name, "Walk to work through the winter");
-  type(expect, "I keep it up until March");
-  choose(form.querySelector("select")!, "80");
-  type(form.querySelector('input[type="date"]')!, "2027-03-01");
-  submit(form.querySelector("form")!);
+  typeLine(form, '"Walk to work through the winter" "I keep it up until March" 80 2027-03-01');
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map(text), ["Decision", "I expected", "% sure", "Due"]);
+  addLine(form, '"Walk to work through the winter" "I keep it up until March" 80 2027-03-01');
   await settle();
   assert.deepEqual(t.f.files.get("Decisions/Walk to work through the winter.md")!.fm, {
     expect: "I keep it up until March", confidence: 80, review: "2027-03-01", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
-  assert.ok(t.notices.includes("Written down. Come back on 2027-03-01 to score it."), t.notices.join("; "));
+  assert.equal(said(form), "Written down. Come back on 2027-03-01 to score it.");
 
   // Waiting: picking one shows what I expected, with a link to its note.
   tab("Waiting");
@@ -699,11 +690,9 @@ test("Trip planner: days to go, packing, the itinerary from a calendar file, exp
   assert.equal(text(packing.querySelector(".gz-title")), "Packing · 1/6");
 
   // 3,000 yen at the rate in the note's properties, 150 to the dollar.
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["item", "Yen"]);
-  const [item, local] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
-  item.value = "Ramen";
-  local.value = "3000";
-  submit(form.querySelector("form")!);
+  typeLine(form, "Ramen 3000");
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map(text), ["item", "Yen"]);
+  addLine(form, "Ramen 3000");
   await settle();
   assert.deepEqual((f.files.get("Apps/Trip planner data.md")!.fm!.spend as unknown[]), [{ item: "Ramen", local: 3000, at: savedAt("2026-11-18T12:00") }]);
   assert.equal(text(total.querySelector(".gz-big")), "$20.00");
@@ -743,10 +732,8 @@ test("Watchlist: pick a symbol, see its move, record a buy, and pick a position 
   const record = async (symbol: string, date: string, shares: string, paid: string) => {
     choose(root.querySelector(".gz-inputs select")!, symbol);
     await settle();
-    const fields = panels(root)[2].querySelectorAll("input") as unknown as HTMLInputElement[];
     assert.match(text(panels(root)[2].querySelector(".gz-title")), new RegExp(`of ${symbol}$`));
-    [fields[0].value, fields[1].value, fields[2].value] = [date, shares, paid];
-    submit(panels(root)[2].querySelector("form")!);
+    addLine(panels(root)[2], `${date} ${shares} ${paid}`);
     await settle();
   };
   await record("SPY", "2026-11-10", "10", "500");
@@ -823,7 +810,8 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   await t.bg.runUri({ app: "Aurora watch", do: "saw-aurora" });
   await settle();
   assert.equal((data().sightings as unknown[]).length, 2);
-  assert.deepEqual(t.notices.slice(2), ["Sighting saved", "Sighting saved"]);
+  assert.equal(said(root.querySelector(".gz-view-button")!), "Sighting saved");
+  assert.deepEqual(t.notices.slice(2), ["Sighting saved"]);
 });
 
 const rss = (...items: [string, string, string][]) => `<?xml version="1.0" encoding="UTF-8"?>
@@ -900,7 +888,8 @@ test("Today: the medication button and a water counter work from inside a plain 
   await settle();
   assert.equal((t.f.files.get("Apps/Medication log data.md")!.fm!.doses as unknown[]).length, 1);
   assert.equal(text(meds.querySelector(".gz-view-number .gz-big")), "1");
-  assert.deepEqual(t.notices, ["Dose logged"]);
+  assert.equal(said(meds), "Dose logged");
+  assert.deepEqual(t.notices, []);
 
   // A counter of the note's own, saving in Today data.
   assert.equal(text(water.querySelector(".gz-view-progress .gz-big")), "0/ 8 glasses");

@@ -2,7 +2,7 @@ import { pastText, shownAsNow } from "./replay.ts";
 import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
-import type { NewEntry } from "./activity.ts";
+import type { Entry, NewEntry } from "./activity.ts";
 import { editWords, renderBlocked, renderEmpty, renderErrors, renderHandEdit, renderOpenOnce, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
@@ -87,8 +87,10 @@ export interface AppEnv {
   sourceLines(): Promise<string[]>;
   /** Puts text on the clipboard. */
   copy(text: string): void;
-  /** Keeps what the app changed in the activity log. */
-  log?(entry: NewEntry): void;
+  /** Keeps what the app changed in the activity log; may give the entry once it is kept. */
+  log?(entry: NewEntry): Promise<Entry | undefined> | void;
+  /** Undoes an entry of the activity log by its id, as far as the vault allows; says how it went. */
+  undo?(entryId: string): Promise<string>;
   /** Runs a panel's `then`: another app's shortcut, through the background service. */
   trigger?(fromPath: string, then: Then, ctx: Row): Promise<void>;
   now(): Date;
@@ -252,7 +254,8 @@ export class AppController {
     this.ctx = {
       get now() { return self.env.now(); },
       width: (key) => this.widthOf(key),
-      runActions: (p, row) => this.writes.runActions(p, row),
+      runActions: (p, row, how) => this.writes.runActions(p, row, how),
+      ...(env.undo && { undo: (entry: string) => this.env.undo!(entry) }),
       toggleChecked: (key, item) => this.writes.toggleChecked(key, item),
       clearChecked: (key) => this.writes.clearChecked(key),
       openNote: (path) => this.env.openNote(path, this.appPath),

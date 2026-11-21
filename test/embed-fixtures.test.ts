@@ -6,6 +6,7 @@ import { HostedApp } from "../src/hosted.ts";
 import { LensIndex, LensStack } from "../src/lenses.ts";
 import { readComponentPreview } from "../src/spec.ts";
 import { fakeEnv, listsIn, savedAt } from "./support/fakes.ts";
+import { said } from "./support/addline.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -84,7 +85,9 @@ test("Today: my day at a glance, logging meds and water from the note itself", a
   (meds.querySelector("button.gz-button") as HTMLButtonElement).click();
   await settle();
   assert.equal((t.f.files.get("Apps/Meds data.md")!.fm!.doses as unknown[]).length, 1);
-  assert.deepEqual(t.notices, ["Logged"]);
+  // Its notify is said beside the button, in place of a notice.
+  assert.equal(said(meds), "Logged");
+  assert.deepEqual(t.notices, []);
 
   // Water, an app of the note's own, saving to its data note.
   assert.equal(text(water.querySelector(".gz-view-number .gz-big")), "0of 8");

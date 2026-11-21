@@ -3,7 +3,7 @@ import {
   Notice, TFile, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type WorkspaceLeaf,
 } from "obsidian";
 import { bodyOf } from "./actions.ts";
-import type { LogStore, UndoIO } from "./activity.ts";
+import { undoMessage, type LogStore, type UndoIO } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import { DEVICE_FOLDERS, deviceFile, otherLogs, type PluginFiles } from "./device.ts";
 import { ResponseHistory } from "./responses.ts";
@@ -244,7 +244,11 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     showSourceAt: (line) => { if (leaf) void plugin.showSourceAt(leaf, file, line); },
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
     copy: (text) => copyText(text),
-    log: (entry) => void plugin.activity.add(entry),
+    log: (entry) => plugin.activity.add(entry),
+    async undo(id) {
+      const entry = await plugin.activity.get(id);
+      return entry ? undoMessage(await plugin.undo(entry)) : "That change is no longer in the activity log";
+    },
     trigger: async (from, then, ctx) => plugin.background?.runThen(from, then, ctx),
     now: () => new Date(),
     opened: (path) => plugin.background?.opened(path),

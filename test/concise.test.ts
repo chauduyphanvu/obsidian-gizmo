@@ -8,6 +8,7 @@ import { LensIndex, LensStack } from "../src/lenses.ts";
 import { readComponentPreview, readSpec } from "../src/spec.ts";
 import { askersOf, permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv, savedAt } from "./support/fakes.ts";
+import { addLine, said, typeLine } from "./support/addline.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
 
 // The Decision journal written short (Apps/Decisions), the same app as a kit (Components/Decision
@@ -227,19 +228,17 @@ test("Decisions: the due decision is counted, scored in place from the dropdown,
 test("Decisions: the form writes a decision note with a number, outcome open and today's date", async () => {
   const app = open("Apps/Decisions.md");
   await settle();
+  // Composed, the form is one line: each quoted text fills the next text field, 70 is a choice, the date its day.
   const form = app.panel("A decision I'm making");
-  assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Decision", "I expected", "% sure", "Due"]);
-  const [name, expect] = form.querySelectorAll("input");
-  (name as HTMLInputElement).value = "Walk to work in winter";
-  (expect as HTMLInputElement).value = "I keep it up through January";
-  for (const o of form.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "70");
-  (form.querySelector('input[type="date"]') as HTMLInputElement).value = "2027-02-01";
-  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  typeLine(form, '"Walk to work in winter" "I keep it up through January" 70 2027-02-01');
+  assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map(text), ["Decision", "I expected", "% sure", "Due"]);
+  addLine(form, '"Walk to work in winter" "I keep it up through January" 70 2027-02-01');
   await settle();
   assert.deepEqual(app.f.files.get("Decisions/Walk to work in winter.md")!.fm, {
     expect: "I keep it up through January", confidence: 70, review: "2027-02-01", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
-  assert.ok(app.notices.includes("Written down. Come back on 2027-02-01 to score it."), app.notices.join("; "));
+  // Said under the line, in place of a notice.
+  assert.equal(said(form), "Written down. Come back on 2027-02-01 to score it.");
   app.tab("Waiting");
   assert.ok([...app.panel("Still waiting to find out").querySelectorAll(".gz-tl-label")].map(text).includes("Walk to work in winter"));
 });
@@ -298,12 +297,7 @@ test("Bets: the kit runs on Bets, counts and writes there, and leaves Decisions 
   assert.equal(text(app.root.querySelector(".gz-description")), "Bets I've made with friends, scored when we find out who was right");
   assert.equal(text(app.panel("Bets to score").querySelector(".gz-big")), "0");
   assert.equal(text(app.panel("Right so far").querySelector(".gz-big")), "100%");
-  const form = app.panel("Before I know");
-  const [name, expect] = form.querySelectorAll("input");
-  (name as HTMLInputElement).value = "Alex is late to the party";
-  (expect as HTMLInputElement).value = "Alex turns up after nine";
-  for (const o of form.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "60");
-  form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  addLine(app.panel("Before I know"), '"Alex is late to the party" "Alex turns up after nine" 60');
   await settle();
   assert.deepEqual(app.f.files.get("Bets/Alex is late to the party.md")!.fm, {
     expect: "Alex turns up after nine", confidence: 60, review: "2026-11-18", outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),

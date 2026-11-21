@@ -6,6 +6,7 @@ import { AppController } from "../src/app.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv, savedAt } from "./support/fakes.ts";
+import { addLine, said } from "./support/addline.ts";
 
 // Fields that carry their own label, format and default, a form that lists fields by name, and the
 // table defaults a block's fields give. The fake clock reads 2026-11-18 12:00.
@@ -155,18 +156,15 @@ test("saving a form saves the schema's defaults for the fields it doesn't show; 
     ],
   });
   await settle();
+  // Composed, each form is an add line; the first's notify is said under it.
   const [first, second] = app.panels();
-  (first.querySelector("input") as HTMLInputElement).value = "Take the train";
-  (first.querySelectorAll("input")[1] as HTMLInputElement).value = "I keep it up";
-  for (const o of first.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "70");
-  first.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  addLine(first, '"Take the train" "I keep it up" 70');
   await settle();
   assert.deepEqual(app.f.files.get("Decisions/Take the train.md")!.fm, {
     expect: "I keep it up", confidence: 70, outcome: "open", made: "2026-11-18", at: savedAt("2026-11-18T12:00"),
   });
-  assert.ok(app.notices.includes("Saved Take the train, open"), app.notices.join("; "));
-  (second.querySelector("input") as HTMLInputElement).value = "Plant seeds";
-  second.querySelector("form")!.dispatchEvent(new window.Event("submit"));
+  assert.equal(said(first), "Saved Take the train, open");
+  addLine(second, "Plant seeds");
   await settle();
   assert.deepEqual(app.f.files.get("Decisions/Plant seeds.md")!.fm, { outcome: "wrong", made: "2026-11-18", at: savedAt("2026-11-18T12:00") });
 });

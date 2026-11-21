@@ -23,8 +23,11 @@ export interface PanelCtx {
   now: Date;
   /** The drawing width inside the panel with this key. */
   width(key: string): number;
-  /** Runs a panel's actions; says why when a value rule refused the row, so a form can keep what was typed. */
-  runActions(p: Panel, row: Row): Promise<{ error?: string } | void>;
+  /**
+   * Runs a panel's actions; says why when a value rule refused the row, so a form can keep what was
+   * typed. `inPlace`: the panel tells its `notify` itself, beside it, rather than in a notice.
+   */
+  runActions(p: Panel, row: Row, how?: { inPlace?: boolean }): Promise<RunResult | void>;
   toggleChecked(key: string, item: string): Promise<void>;
   clearChecked(key: string): Promise<void>;
   openNote(path: string): void;
@@ -51,10 +54,27 @@ export interface PanelCtx {
    * that reads differently there; undefined on the grid. Asked each time, as editing the app can move it.
    */
   place?(): Placement | undefined;
+  /**
+   * Undoes an entry of the activity log (a run's `entry`) as far as the vault still allows; says how
+   * it went. Absent where nothing is kept to undo.
+   */
+  undo?(entry: string): Promise<string>;
   /** Alerts true now across the vault, when the plugin's background service runs. */
   alerts?: AlertFeed;
   /** In a try before Allow, where nothing drawn may reach out of Obsidian. */
   preview?: boolean;
+}
+
+/** How running a panel's actions went, for a view that says so beside it. */
+export interface RunResult {
+  /** Why nothing was saved, when a value rule refused the row. */
+  error?: string;
+  /** False when the run stopped on a problem it has already told (a note that exists, a failed write). */
+  ok?: boolean;
+  /** The activity log's entry for what the run changed, once kept. */
+  entry?: string;
+  /** The panel's `notify`, filled, when it was asked to be told in place. */
+  told?: string;
 }
 
 export interface PanelHandle {

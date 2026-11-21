@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { captureDate, captureLine, captureTargets, captureTime, completed, parseLine, receipt, type CaptureApp } from "../src/capture.ts";
+import { captureDate, captureLine, captureTargets, captureTime, completed, parseFields, parseLine, receipt, type CaptureApp } from "../src/capture.ts";
 import { readSpec } from "../src/spec.ts";
 import { fakeBackground, savedAt } from "./support/fakes.ts";
 
@@ -121,6 +121,60 @@ test("nothing is guessed: each wrong value says what was expected, with what cou
   assert.deepEqual(!typedOn.ok && typedOn.completions, [], "past the name, names aren't offered for the last word");
   const cat = bad("spend 5 f");
   assert.deepEqual(!cat.ok && cat.completions, ["food", "fun"]);
+});
+
+// ---- The fields alone: the Do… command's strict read, and an add line's loose one --------------------
+
+const SPEND: [string, string | string[]][] = [["amount", "number"], ["category", ["food", "home", "transport", "fun", "other"]], ["note", "text"]];
+const COSTS: [string, string | string[]][] = [["item", "text"], ["local", "number"], ["on", "date"], ["at", "time"]];
+const loose = (line: string, fields = SPEND) => parseFields(line, fields, NOW, { name: "spend", loose: true });
+
+test("read strictly, the fields are read as the Do… command reads them", () => {
+  assert.deepEqual(parseFields("14.5 food lunch with Sam", SPEND, NOW, { name: "spend" }), {
+    params: { amount: "14.5", category: "food", note: "lunch with Sam" }, missing: [], errors: [], completions: [],
+  });
+  const lunch = parseFields("lunch 12", SPEND, NOW, { name: "spend" });
+  assert.deepEqual(lunch.errors, ["amount must be a number, not “lunch”"]);
+  assert.equal(lunch.next, "amount: a number");
+  assert.deepEqual(parseFields("14.5", SPEND, NOW, { name: "spend" }).missing, ["category", "note"]);
+});
+
+test("read loosely, a number goes to the number field wherever it is on the line, and the words left over to the text field", () => {
+  assert.deepEqual(loose("lunch with Sam 14.50").params, { amount: "14.5", note: "lunch with Sam" });
+  assert.deepEqual(loose("lunch 14.50 with Sam").params, { amount: "14.5", note: "lunch with Sam" }, "words keep their order");
+  assert.deepEqual(loose("lunch 14.50 with Sam").missing, ["category"]);
+  assert.deepEqual(loose("2 coffees 6").params, { amount: "2", note: "coffees 6" }, "a second number has no field left, so it is text");
+  assert.deepEqual(loose("").params, {});
+  assert.deepEqual(loose("").missing, ["amount", "category", "note"]);
+});
+
+test("read loosely, a choice is found anywhere, in full or by 3 letters or more of only one of them", () => {
+  assert.deepEqual(loose("bus pass 2.90 tra").params, { amount: "2.9", category: "transport", note: "bus pass" });
+  assert.deepEqual(loose("FUN 20").params, { amount: "20", category: "fun" });
+  assert.deepEqual(loose("foo 3").params, { amount: "3", category: "food" });
+  assert.deepEqual(loose("fo 3").params, { amount: "3", note: "fo" }, "two letters are text when there is a text field");
+  assert.deepEqual(loose("3 fo", [["amount", "number"], ["category", ["food", "home"]]]).params, { amount: "3", category: "food" }, "with no text field, a short start still picks the only choice");
+  assert.deepEqual(loose("3 hom", [["amount", "number"], ["category", ["home", "homework"]], ["note", "text"]]).params, { amount: "3", note: "hom" }, "a start two choices share is text");
+  assert.deepEqual(loose('"to read" 3', [["page", "number"], ["status", ["to read", "reading", "done"]]]).params, { page: "3", status: "to read" });
+});
+
+test("read loosely, dates and times take their words, name= fills a field, and quoted values fill the text fields in order", () => {
+  assert.deepEqual(loose("coffee yday 4.5 8am", COSTS).params, { item: "coffee", local: "4.5", on: "2026-11-18", at: "08:00" });
+  assert.deepEqual(loose("last mon tram 3", COSTS).params, { item: "tram", local: "3", on: "2026-11-16" });
+  assert.deepEqual(loose("note=parking 6 transport").params, { amount: "6", category: "transport", note: "parking" });
+  assert.deepEqual(loose('"flat white" 4.5', COSTS).params, { item: "flat white", local: "4.5" });
+  const two: [string, string | string[]][] = [["name", "text"], ["expect", "text"], ["sure", ["60", "70", "80"]], ["due", "date"]];
+  assert.deepEqual(loose('"Take the job" "It works out" 80 fri', two).params, { name: "Take the job", expect: "It works out", sure: "80", due: "2026-11-20" });
+  assert.deepEqual(loose("Take the job 80", two).params, { name: "Take the job", sure: "80" });
+});
+
+test("read loosely, what can't be read says why, and nothing it can't place is dropped", () => {
+  assert.deepEqual(loose("lots", [["weight", "number"]]).errors, ["weight must be a number, not “lots”"]);
+  assert.deepEqual(loose("80 81", [["weight", "number"]]).errors, ["too many values: 81"]);
+  assert.deepEqual(loose("colour=red 5").errors, ["spend has no field “colour”; its fields are amount, category, note"]);
+  assert.deepEqual(loose("colour=red 5").params, { amount: "5" }, "the rest of the line is still read");
+  assert.deepEqual(loose("amount=lots").errors, ["amount must be a number, not “lots”"]);
+  assert.deepEqual(loose('5 "lunch').errors, ["a quote isn't closed"]);
 });
 
 test("a shortcut's own name works while it's the only one in the vault; two apps sharing a name are both refused until one has an alias", () => {

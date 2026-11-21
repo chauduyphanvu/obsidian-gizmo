@@ -7,6 +7,7 @@ import { editErrors, editableSource } from "./edit.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { Panel } from "./spec.ts";
+import type { RunResult } from "./views/registry.ts";
 import { frontmatterStore, type DataStore } from "./datastore.ts";
 import { rowIdOf } from "./ledger-store.ts";
 
@@ -67,9 +68,14 @@ export class AppWrites {
       ?? frontmatterStore(dataPath, (path, fn) => this.env.writeFrontmatter(path, fn), (path) => this.env.frontmatter(path), () => this.env.frontmatter(this.site.appPath) ?? {});
   }
 
-  /** Keeps what the person just changed through the app, so the app's activity can show and undo it. */
-  private log(what: string, changes: Change[]): void {
-    if (changes.length) this.env.log?.({ app: this.site.appPath, actor: "you", what, changes });
+  /**
+   * Keeps what the person just changed through the app, so the app's activity can show and undo it;
+   * gives the entry's id once it is kept, when the env says.
+   */
+  private log(what: string, changes: Change[]): Promise<string | undefined> | undefined {
+    if (!changes.length) return undefined;
+    const kept = this.env.log?.({ app: this.site.appPath, actor: "you", what, changes });
+    return kept ? kept.then((e) => e?.id, () => undefined) : undefined;
   }
 
   /** Sets one property of an existing note and keeps what it was; false when the note is gone. */
@@ -153,7 +159,8 @@ export class AppWrites {
     reload();
   }
 
-  async runActions(p: Panel, row: Row): Promise<{ error?: string } | void> {
+  /** `inPlace`: the panel tells its `notify` itself, so it isn't also a notice. */
+  async runActions(p: Panel, row: Row, how?: { inPlace?: boolean }): Promise<RunResult> {
     const env = this.env;
     const appPath = this.site.appPath;
     const r = await runActions(p, row, {
@@ -161,7 +168,10 @@ export class AppWrites {
       expect: this.site.expect(),
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
+      quiet: how?.inPlace,
     });
-    if (r.error) return { error: r.error };
+    if (r.error) return { error: r.error, ok: false };
+    const entry = await r.logged;
+    return { ok: r.ok, ...(entry !== undefined && { entry }), ...(r.told !== undefined && { told: r.told }) };
   }
 }
