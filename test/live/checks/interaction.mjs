@@ -41,8 +41,9 @@ export default async function interaction(t) {
       const el = na.view().contentEl;
       const box = el.querySelector('input[aria-label="q"]');
       box.focus();
-      const about = [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "About this book");
-      return { focused: document.activeElement === box, about: na.text(about) };`);
+      // Composed, About waits for a pick out of sight, in the sheet slot.
+      const about = el.querySelector(".gz-sheet-slot > .gz-panel");
+      return { focused: document.activeElement === box, waits: about.classList.contains("gz-collapsed") && !about.textContent };`);
     await type("dune");
     await press("Enter");
     const r = await run(`
@@ -62,7 +63,7 @@ export default async function interaction(t) {
       await na.sleep(800);
       const about = [...na.view().contentEl.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === "About this book");
       return na.text(about);`);
-    expect(before.focused && before.about.includes("Pick a row in “Search results”"), before);
+    expect(before.focused && before.waits, before);
     expect(r.results && r.focused && r.caret === 4 && r.value === "dune", r);
     expect(/gz-selectable/.test(tabbed.cls ?? ""), { tabbed, note: "Tab from the search box should reach the first result" });
     expect(/, by .+First published in \d{4}; \d+ editions\./.test(after), after);
@@ -181,9 +182,11 @@ export default async function interaction(t) {
       const panel = (title) => [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent === title);
       const row = await na.until(() => panel("The ten strongest")?.querySelector("tbody tr"), 10000);
       const [mag, place] = [...row.querySelectorAll("td")].map((td) => td.textContent);
-      const waiting = panel("The one I picked").textContent;
+      // Composed, the picked quake waits out of sight, in the sheet slot.
+      const sheet = el.querySelector(".gz-sheet-slot > .gz-panel");
+      const waiting = sheet.classList.contains("gz-collapsed") && !sheet.textContent;
       row.click();
-      const card = await na.until(() => panel("The one I picked").querySelector(".gz-rowcard"), 3000);
+      const card = await na.until(() => sheet.querySelector(".gz-rowcard"), 3000);
       const link = card?.querySelector("a")?.getAttribute("href");
       const mark = na.notices.length;
       na.button("Follow", row).click();
@@ -194,7 +197,7 @@ export default async function interaction(t) {
       na.fill(followed.querySelector("input"), "Near family");
       const note = await na.until(() => na.fm("Apps/Planet Earth data.md")?.following?.find((f) => f.quake === saved.quake)?.note, 3000);
       return { mag, place, waiting, title: card?.querySelector(".gz-rowcard-title")?.textContent, link, saved, notices, note, errors: na.errors() };`);
-    expect(r.waiting.includes("Pick a row in “The ten strongest”") && /^\d+\.\d$/.test(r.mag) && r.title === r.place, r);
+    expect(r.waiting && /^\d+\.\d$/.test(r.mag) && r.title === r.place, r);
     expect(/^https:\/\/earthquake\.usgs\.gov\/earthquakes\/eventpage\/\w+$/.test(r.link ?? "") && r.saved?.page === r.link && r.saved.quake.startsWith("M ") && typeof r.saved.when === "number", r);
     expect(r.notices.includes(`Following ${r.place}`) && r.note === "Near family" && r.errors === 0, r);
     return `picked M${r.mag} ${r.place}; followed with a note`;
@@ -208,17 +211,20 @@ export default async function interaction(t) {
       const el = na.view().contentEl;
       const bars = () => [...el.querySelectorAll(".gz-view-bar path.gz-bar")];
       const list = () => na.text(el.querySelector(".gz-view-list"));
-      const waiting = list();
+      // Composed, the list waits for a pick out of sight.
+      const hidden = () => el.querySelector(".gz-view-list").classList.contains("gz-collapsed");
+      const waiting = hidden();
       bars().find((b) => b.getAttribute("aria-label") === "kitchen").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await na.sleep(600);
       const opacity = bars().map((b) => b.getAttribute("aria-label") + " " + getComputedStyle(b).opacity);
       const picked = list();
+      const shown = !hidden();
       bars().find((b) => b.classList.contains("gz-selected")).dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await na.sleep(600);
-      return { waiting, opacity, picked, cleared: list(), after: bars().map((b) => getComputedStyle(b).opacity) };`);
-    expect(r.waiting.includes("Pick a row in “Chores per room”"), r);
+      return { waiting, opacity, picked, shown, cleared: hidden(), after: bars().map((b) => getComputedStyle(b).opacity) };`);
+    expect(r.waiting && r.shown, r);
     expect(r.opacity.filter((o) => o === "kitchen 1").length === 1 && r.opacity.filter((o) => o.endsWith(" 0.35")).length === 2 && r.picked.includes("Wipe the counters") && r.picked.includes("Mop") && !r.picked.includes("Weed"), r);
-    expect(r.cleared.includes("Pick a row") && r.after.every((o) => o === "1"), r);
+    expect(r.cleared && r.after.every((o) => o === "1"), r);
     return `opacity ${r.opacity.join(",")}; list: ${r.picked}`;
   });
 }

@@ -25,8 +25,10 @@ const reader = (notes: Record<string, Record<string, unknown>>): NoteReader => (
 });
 
 const QUAKES = "https://quakes.example.com/feed";
+// On the grid, where a panel waiting for a pick says where to pick; compose.test.ts has the composed sheet.
 const MASTER_DETAIL = {
   app: "Quakes",
+  layout: "grid",
   data: { quakes: { source: QUAKES, pick: "features" } },
   panels: [
     { view: "list", title: "Strongest", source: "quakes", item: "{place}", select: "quake" },
@@ -201,7 +203,8 @@ test("a selection survives its panel reloading and is gone when the note is reop
   first.dispose();
   new AppController(root, APP, env).load();
   await settle();
-  assert.ok(root.querySelector(".gz-waiting"));
+  // The text waits for a pick again, out of sight until there is one.
+  assert.ok(root.querySelector(".gz-view-text.gz-collapsed"));
   assert.equal(root.querySelectorAll(".gz-selected").length, 0);
 });
 
@@ -330,7 +333,8 @@ test("two uses of one component keep their selections apart", async () => {
     } },
     "Apps/W data.md": { fm: { a: [{ name: "a1" }, { name: "a2" }], b: [{ name: "b1" }] } },
   };
-  const { root, start } = open({ app: "x", panels: [{ use: "[[Picker]]", with: { list: "a" } }, { use: "[[Picker]]", with: { list: "b" } }] }, notes);
+  // On the grid, where each waiting text names the list of its own use to pick from.
+  const { root, start } = open({ app: "x", layout: "grid", panels: [{ use: "[[Picker]]", with: { list: "a" } }, { use: "[[Picker]]", with: { list: "b" } }] }, notes);
   start();
   await settle();
   const [, textA, listB, textB] = [...root.querySelectorAll(".gz-panel")];

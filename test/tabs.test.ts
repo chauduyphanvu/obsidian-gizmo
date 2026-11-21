@@ -63,7 +63,8 @@ test("a panel listed under a tab is the same panel with tab: set; tabs come afte
   await settle();
   const tabs = [...root.querySelectorAll("button.gz-tab")];
   assert.deepEqual(tabs.map(text), ["History", "Today"]);
-  const shown = () => [...root.querySelectorAll(".gz-panel:not(.gz-off) .gz-title")].map(text);
+  // A hidden tab hides its pane (composed) or each of its panels (on the grid).
+  const shown = () => [...root.querySelectorAll(".gz-panel .gz-title")].filter((t) => !t.closest(".gz-off")).map(text);
   assert.deepEqual(shown(), ["Doses", "Older", "All"]);
   click(tabs[1]);
   assert.deepEqual(shown(), ["Doses", "Today"]);

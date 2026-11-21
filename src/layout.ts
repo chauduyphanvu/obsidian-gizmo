@@ -69,3 +69,20 @@ export function widthFor(tracks: number, appWidth: number, pad = APP_PAD, max = 
   const track = (content(appWidth, pad, max) - GAP * (TRACKS - 1)) / TRACKS;
   return track * tracks + GAP * (tracks - 1);
 }
+
+/**
+ * The composed layout is one column, kept in step with styles.css (`.gizmo.gz-composed`): in its own
+ * tab at most 760 px of content, with 44 px padding each side, or 16 px once the app is narrower
+ * than 600 px; hosted, the host's width with no padding. Every panel is drawn at the column's width.
+ */
+export const COLUMN_MAX = 848, COLUMN_PAD = 88, NARROW_PAD = 32, NARROW = 600;
+
+/** Whether an app this wide is narrow: one column of facts and less padding. Not laid out yet (0) isn't. */
+export function isNarrow(appWidth: number): boolean {
+  return appWidth > 0 && appWidth < NARROW;
+}
+
+/** The drawing width of a panel in the composed column; not laid out yet (0) counts as the widest app tab. */
+export function composedWidth(appWidth: number, pad = isNarrow(appWidth) ? NARROW_PAD : COLUMN_PAD, max = COLUMN_MAX): number {
+  return Math.min(appWidth || COLUMN_MAX, max) - pad;
+}

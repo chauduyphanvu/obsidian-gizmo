@@ -1,3 +1,4 @@
+import type { Placement } from "../compose.ts";
 import type { Row } from "../data.ts";
 import type { Panel } from "../spec.ts";
 import { board } from "./board.ts";
@@ -45,6 +46,11 @@ export interface PanelCtx {
    * updates when the write lands. Absent outside an app.
    */
   setProperty?(field: string, value: unknown): Promise<void>;
+  /**
+   * Where the panel sits in the composed layout (its role, and its part of the answer), for a view
+   * that reads differently there; undefined on the grid. Asked each time, as editing the app can move it.
+   */
+  place?(): Placement | undefined;
   /** Alerts true now across the vault, when the plugin's background service runs. */
   alerts?: AlertFeed;
   /** In a try before Allow, where nothing drawn may reach out of Obsidian. */

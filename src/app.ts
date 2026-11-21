@@ -22,7 +22,8 @@ import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
-import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, rowTracks, spanOn, widthFor } from "./layout.ts";
+import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, composedWidth, isNarrow, rowTracks, spanOn, widthFor } from "./layout.ts";
+import { compose, type Placement, type Scope } from "./compose.ts";
 import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
@@ -175,7 +176,15 @@ export class AppController {
   private appPath: string;
   private env: AppEnv;
   private shell: HTMLElement;
+  /** What holds the panels: the grid (`.gz-grid`), or the composed layout's scopes (`.gz-body`). */
   private grid: HTMLElement | undefined;
+  /** The layout `grid` was built for; a different one builds it again. */
+  private gridLayout: AppSpec["layout"] | undefined;
+  /** In the composed layout, each panel's place, by id, and each tab's pane; empty on the grid. */
+  private placements = new Map<string, Placement>();
+  private panes = new Map<string, HTMLElement>();
+  /** In an app's own tab, where the time rail goes; the same element while the app is open. */
+  private rail: HTMLElement | undefined;
   private mounted = new Map<string, Mounted>();
   private spec: AppSpec | undefined;
   private definition = "";
@@ -238,6 +247,7 @@ export class AppController {
     this.cards = { env, appPath, hostPath: this.hostPath, grantKey: this.grantKey, hosted: !!hosting, scope: hosting?.kind === "lens" ? hosting.scope : undefined, load: () => this.load() };
     this.readHost();
     this.shell = root.createDiv({ cls: "gizmo" });
+    if (!hosting) this.rail = this.shell.createDiv({ cls: "gz-rail-slot" });
     const self = this;
     this.ctx = {
       get now() { return self.env.now(); },
@@ -322,6 +332,14 @@ export class AppController {
     }));
   }
 
+  /**
+   * Where the time rail goes: an element that stays the same while the app is open, shown under the
+   * app's title in the composed layout and left out on the grid. Undefined for a hosted app.
+   */
+  railSlot(): HTMLElement | undefined {
+    return this.rail;
+  }
+
   /** Whether the inspector is showing. */
   get inspectorShown(): boolean {
     return this.inspector !== undefined;
@@ -360,10 +378,17 @@ export class AppController {
     }, 150);
   }
 
-  /** The drawing width inside a panel, from the grid arithmetic rather than measuring it. */
+  /** The drawing width inside a panel, from the layout's arithmetic rather than measuring it. */
   private widthOf(id: string): number {
+    const width = this.shell.clientWidth;
+    if (this.composed) return this.hosting ? composedWidth(width, HOSTED_PAD, HOSTED_MAX) : composedWidth(width);
     const m = this.mounted.get(id);
-    return widthFor(m?.tracks ?? this.ownTracks(m?.span ?? MAX_COLUMNS), this.shell.clientWidth, ...this.shellBox());
+    return widthFor(m?.tracks ?? this.ownTracks(m?.span ?? MAX_COLUMNS), width, ...this.shellBox());
+  }
+
+  /** Whether the app is laid out by role in one column; the default, also before it's read. */
+  private get composed(): boolean {
+    return this.spec?.layout !== "grid";
   }
 
   /** The tracks a span takes before its row is known, as if nothing beside it grew. */
@@ -378,9 +403,21 @@ export class AppController {
 
   /**
    * Sets the column count, each shown panel's tracks and every panel's visibility as classes. A
-   * panel whose width changed is drawn again at it, unless the caller redraws them all.
+   * panel whose width changed is drawn again at it, unless the caller redraws them all. In the
+   * composed layout, every panel is as wide as the column, so only the open tab's pane is set, and
+   * whether the app is narrow.
    */
   private layout(redraw = true): void {
+    if (this.composed) {
+      this.shell.classList.toggle("gz-narrow", isNarrow(this.shell.clientWidth));
+      for (const [tab, pane] of this.panes) pane.classList.toggle("gz-off", tab !== this.activeTab);
+    } else {
+      this.layoutGrid(redraw);
+    }
+    for (const b of this.tabs?.querySelectorAll("button") ?? []) b.classList.toggle("is-active", b.textContent === this.activeTab);
+  }
+
+  private layoutGrid(redraw: boolean): void {
     this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     if (!this.grid) return;
     this.grid.className = `gz-grid gz-cols-${this.columns}`;
@@ -397,7 +434,6 @@ export class AppController {
       m.el.classList.add(`gz-span-${m.tracks}`);
       if (redraw && before !== m.tracks) m.handle.resize?.(this.widthOf(m.id));
     });
-    for (const b of this.tabs?.querySelectorAll("button") ?? []) b.classList.toggle("is-active", b.textContent === this.activeTab);
   }
 
   // ---- Definition ---------------------------------------------------------------------------
@@ -440,8 +476,12 @@ export class AppController {
     this.links = result?.spec?.links ?? [];
     this.spec = picked?.spec ?? result?.spec;
     this.dataPath = dataPath;
+    const composed = this.composed;
+    this.shell.classList.toggle("gz-composed", composed);
+    this.shell.classList.toggle("gz-narrow", composed && isNarrow(this.shell.clientWidth));
 
     for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector) el.remove();
+    this.rail?.remove();
     const header = createDivIn(this.shell, "gz-header");
     this.shell.prepend(header);
     const past = this.env.data.at;
@@ -459,7 +499,16 @@ export class AppController {
       return this.showOnly(header);
     }
     const description = this.spec?.description ?? String(fm.app ?? "");
-    if (description) header.createDiv({ cls: "gz-description", text: description });
+    if (composed && !h) {
+      // In its own tab the app reads as a page: its name and what it's for, then the time rail.
+      const head = createDivIn(header, "gz-head");
+      header.prepend(head);
+      head.createDiv({ cls: "gz-app-title", text: basename(this.appPath) });
+      if (description) head.createDiv({ cls: "gz-description", text: description });
+      if (this.rail) header.insertBefore(this.rail, head.nextSibling);
+    } else if (description) {
+      header.createDiv({ cls: "gz-description", text: description });
+    }
     if (component) renderUsage(header, component, this.cards);
     if (result.empty) {
       renderEmpty(header, this.cards);
@@ -486,12 +535,19 @@ export class AppController {
       const kept = before?.filter((p) => wanted.includes(p));
       if (before === undefined ? (verdict?.asked ?? wanted).length === 0 : kept!.length !== before.length) void this.env.grant(this.appPath, kept ?? []);
     }
+    // Another layout draws every panel afresh in it.
+    if (this.grid && this.gridLayout !== spec.layout) this.destroyPanels();
     this.setRefresh(spec);
     for (const name of [...this.selections.keys()]) if (!spec.selections.includes(name)) this.selections.delete(name);
-    if (!this.grid) this.grid = this.shell.createDiv({ cls: "gz-grid" });
+    if (!this.grid) this.grid = this.shell.createDiv({ cls: composed ? "gz-body" : "gz-grid" });
+    this.gridLayout = spec.layout;
     this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     this.syncInputs(spec);
     const ids = panelIds(spec.panels.map((ps) => ps.template));
+    // Placed before any panel is mounted, so a view can ask for its place as it first draws.
+    const composition = composed ? compose(spec.panels, spec.selections) : undefined;
+    const placedBefore = this.placements;
+    this.placements = new Map(composition ? ids.map((id, i) => [id, composition.placements[i]]) : []);
     const keep = new Set(ids);
     for (const [id, m] of this.mounted) {
       if (!keep.has(id)) {
@@ -510,6 +566,11 @@ export class AppController {
         m.deps = this.env.data.depsOf(m.source, m.p, files);
         void this.loadPanel(m);
       }
+      // A kept panel whose place changed is drawn again for it, once its data is there.
+      if (existing && !m.idle && stableJson(placedBefore.get(id)) !== stableJson(this.placements.get(id))) {
+        m.remount = true;
+        if (!m.source) this.show(m, undefined);
+      }
       return m;
     });
     // Panels without a tab come first and stay visible; the tab bar sits between them and the rest.
@@ -517,12 +578,65 @@ export class AppController {
     if (!this.activeTab || !tabNames.includes(this.activeTab)) this.activeTab = tabNames[0];
     this.tabs?.remove();
     this.tabs = tabNames.length ? this.renderTabs(tabNames) : undefined;
-    for (const m of order) if (m.tab === undefined) this.grid.appendChild(m.el);
-    if (this.tabs) this.grid.appendChild(this.tabs);
-    for (const m of order) if (m.tab !== undefined) this.grid.appendChild(m.el);
+    if (composition) {
+      this.arrange(composition.scopes, order);
+    } else {
+      for (const m of order) if (m.tab === undefined) this.grid.appendChild(m.el);
+      if (this.tabs) this.grid.appendChild(this.tabs);
+      for (const m of order) if (m.tab !== undefined) this.grid.appendChild(m.el);
+    }
     this.layout();
     this.subscribe();
     if (moved) this.refillHostReaders();
+  }
+
+  /**
+   * Lays the panels out by role, scope by scope: the panels outside any tab, then the tab bar, then
+   * each tab in a pane of its own. A scope is its answer, the line to add things, then the rest in
+   * the order written, ending with the panels that wait for a pick; a part with no panels is left out.
+   */
+  private arrange(scopes: Scope[], order: Mounted[]): void {
+    const body = this.grid!;
+    body.empty();
+    this.panes.clear();
+    for (const m of order) placeClasses(m.el, this.placements.get(m.id)!);
+    const el = (i: number) => order[i].el;
+    for (const scope of scopes) {
+      let into = body;
+      if (scope.tab !== undefined) {
+        if (this.tabs && this.tabs.parentElement !== body) body.appendChild(this.tabs);
+        into = createDivIn(body, "gz-tabpane");
+        this.panes.set(scope.tab, into);
+      }
+      const { headline, facts, meters } = scope.answer;
+      if (headline !== undefined) {
+        const band = into.createEl("section", { cls: "gz-answer" });
+        // A meter is drawn under its number, in the same slot; panels are never put inside one another.
+        const slot = (parent: HTMLElement, i: number) => {
+          const s = createDivIn(parent, "gz-slot");
+          s.appendChild(el(i));
+          const meter = meters.get(i);
+          if (meter !== undefined) s.appendChild(el(meter));
+        };
+        slot(band, headline);
+        if (facts.length) {
+          const row = createDivIn(band, "gz-facts");
+          for (const i of facts) slot(row, i);
+        }
+      }
+      if (scope.compose.length) {
+        const line = into.createEl("section", { cls: "gz-compose" });
+        for (const i of scope.compose) line.appendChild(el(i));
+      }
+      if (scope.flow.length || scope.sheet.length) {
+        const flow = createDivIn(into, "gz-flow");
+        for (const i of scope.flow) flow.appendChild(el(i));
+        if (scope.sheet.length) {
+          const sheet = createDivIn(flow, "gz-sheet-slot");
+          for (const i of scope.sheet) sheet.appendChild(el(i));
+        }
+      }
+    }
   }
 
   /** Keeps each input's value while it's still allowed, starts new ones, and draws the bar. */
@@ -655,6 +769,8 @@ export class AppController {
     this.mounted.clear();
     this.grid?.remove();
     this.grid = undefined;
+    this.gridLayout = undefined;
+    this.panes.clear();
     this.tabs = undefined;
     if (this.refreshHandle) clearInterval(this.refreshHandle);
     this.refreshHandle = undefined;
@@ -790,7 +906,7 @@ export class AppController {
       m.handle = mountView(m.def, m.el, m.p, this.ctxFor(m.id), m.id);
       m.remount = false;
     }
-    m.el.removeClass("gz-loading", "gz-error", "gz-stale");
+    m.el.removeClass("gz-loading", "gz-error", "gz-stale", "gz-collapsed");
     m.handle.update(data);
     this.markAsOf(m, asOf);
   }
@@ -807,7 +923,7 @@ export class AppController {
 
   private showPanelError(m: Mounted, message: string): void {
     this.markAsOf(m);
-    m.el.removeClass("gz-loading", "gz-stale");
+    m.el.removeClass("gz-loading", "gz-stale", "gz-collapsed");
     m.el.addClass("gz-error");
     m.el.empty();
     m.el.createDiv({ cls: "gz-title", text: m.p.title ?? m.p.view });
@@ -828,6 +944,10 @@ export class AppController {
     this.markAsOf(m);
     m.el.removeClass("gz-loading", "gz-error", "gz-stale");
     m.el.empty();
+    // In the composed layout a panel waiting for a pick is out of sight until there is one.
+    const collapse = this.placements.get(m.id)?.slot === "sheet" && !!this.spec?.selections.includes(waiting);
+    m.el.classList.toggle("gz-collapsed", collapse);
+    if (collapse) return;
     const title = plainTitle(m.ps);
     if (title) m.el.createDiv({ cls: "gz-title", text: title });
     m.el.createDiv({ cls: "gz-waiting", text: this.waitingFor(waiting) });
@@ -856,6 +976,7 @@ export class AppController {
   /** A panel's own view of the app: what every panel may ask, and edits that know whose rows they are. */
   private ctxFor(id: string): PanelCtx {
     return Object.assign(Object.create(this.ctx) as PanelCtx, {
+      place: () => this.placements.get(id),
       editRow: (row: Row, field: string, value: unknown) => this.editRow(id, row, field, value),
       setProperty: (field: string, value: unknown) => this.setProperty(id, field, value),
     });
@@ -877,4 +998,13 @@ export class AppController {
 
 function createDivIn(parent: HTMLElement, cls: string): HTMLElement {
   return parent.createDiv({ cls });
+}
+
+const PLACE_CLASS = /^gz-(role-.+|headline|fact|meter)$/;
+
+/** A panel's role and, in the answer, its part of it, as classes in place of those it had. */
+function placeClasses(el: HTMLElement, place: Placement): void {
+  for (const c of [...el.classList]) if (PLACE_CLASS.test(c)) el.classList.remove(c);
+  el.classList.add(`gz-role-${place.role}`);
+  if (place.role === "answer") el.classList.add(`gz-${place.slot}`);
 }

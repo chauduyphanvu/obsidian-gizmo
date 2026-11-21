@@ -355,7 +355,10 @@ test("an embed drawn again keeps its input values and selections while its note 
   t.root.empty();
   t.draw("k");
   await settle();
-  assert.equal(text(t.root.querySelector(".gz-waiting")), "Pick a row in “Log”");
+  // The text waits for a pick again, out of sight until there is one.
+  const waiting = t.root.querySelector(".gz-view-text")!;
+  assert.ok(waiting.classList.contains("gz-collapsed"));
+  assert.equal(waiting.childNodes.length, 0);
 });
 
 test("a renamed or deleted note takes its embeds' grants along", () => {
@@ -368,7 +371,8 @@ test("a renamed or deleted note takes its embeds' grants along", () => {
 });
 
 test("an embed's panels are drawn 48 px wider than the same panel in an app's own tab, which has padding the embed lacks", async () => {
-  const panel = { view: "line", source: "weights", x: "at", y: "kg" };
+  // On the grid; compose.test.ts has the composed column's widths.
+  const panel = { view: "line", source: "weights", x: "at", y: "kg", layout: "grid" };
   const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
   const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
   const viewBox = (root: HTMLElement) => root.querySelector(".gz-chart-svg")!.getAttribute("viewBox");
@@ -448,7 +452,8 @@ test("save: this doesn't bring back a note that has gone", async () => {
 });
 
 test("an embed wider than an app's tab draws its panels at its own width; an app note stays at 960 px", async () => {
-  const panel = { view: "line", source: "weights", x: "at", y: "kg" };
+  // On the grid; compose.test.ts has the composed column's widths.
+  const panel = { view: "line", source: "weights", x: "at", y: "kg", layout: "grid" };
   const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
   const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
   const viewBox = (root: HTMLElement) => root.querySelector(".gz-chart-svg")!.getAttribute("viewBox");

@@ -66,7 +66,8 @@ export default async function apps(t) {
       [...el.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Moods").click();
       await na.sleep(200);
       return { tabs: [...el.querySelectorAll("button.gz-tab")].map((b) => b.textContent), first, second: shown(), same: el.querySelector(".gz-view-pie") === pie };`);
-    const want = { tabs: ["Weeks", "Moods", "Year"], first: ["gz-view-button", "gz-view-number", "gz-view-bar"], second: ["gz-view-button", "gz-view-number", "gz-view-pie", "gz-view-list"], same: true };
+    // Composed: the streak (the answer) comes before the button that adds to it, then the open tab.
+    const want = { tabs: ["Weeks", "Moods", "Year"], first: ["gz-view-number", "gz-view-button", "gz-view-bar"], second: ["gz-view-number", "gz-view-button", "gz-view-pie", "gz-view-list"], same: true };
     if (JSON.stringify(r) !== JSON.stringify(want)) throw new Error(JSON.stringify(r));
     return "Weeks → Moods";
   });
@@ -385,14 +386,15 @@ export default async function apps(t) {
       await na.open("Apps/Meds");
       await app.fileManager.renameFile(app.vault.getFileByPath("Apps/Meds.md"), "Apps/Medication.md");
       await na.sleep(1200);
-      const shown = na.state() + " " + na.text().slice(0, 20);
+      const shown = na.state() + " " + na.text().slice(0, 30);
       const moved = na.fm("Apps/Medication data.md")?.doses?.length;
       const left = !!app.vault.getFileByPath("Apps/Meds data.md");
       await app.fileManager.renameFile(app.vault.getFileByPath("Apps/Medication.md"), "Apps/Meds.md");
       await na.sleep(1200);
       return { shown, moved, left, back: na.fm("Apps/Meds data.md")?.doses?.length };`);
     const n = medsBefore + 2;
-    if (!r.shown.startsWith("gizmo:Apps/Medication.md Log when") || r.moved !== n || r.left || r.back !== n) {
+    // The app's tab shows its title, the note's new name, above what it's for.
+    if (!r.shown.startsWith("gizmo:Apps/Medication.md Medication | Log when") || r.moved !== n || r.left || r.back !== n) {
       throw new Error(JSON.stringify(r));
     }
     return "followed both renames";

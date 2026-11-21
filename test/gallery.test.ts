@@ -34,6 +34,8 @@ const type = (input: Element, value: string) => {
   change(input);
 };
 const panels = (root: Element) => [...root.querySelectorAll(".gz-panel")];
+/** A panel that reads a pick nobody made: in the composed layout, empty and out of sight until there is one. */
+const waitsForPick = (el: Element) => el.classList.contains("gz-collapsed") && el.childNodes.length === 0;
 
 /** Everything a test started, stopped afterwards: an app that refreshes keeps its timer, and the process, alive. */
 const started: { dispose(): void }[] = [];
@@ -196,12 +198,12 @@ test("Medication log: a dose from the button, a hotkey or a link; the count, str
 
   const root = await t.open(path);
   assert.equal(root.querySelector(".gz-error"), null);
-  const [, today, streak, onTime, year, day] = panels(root);
+  const [today, streak, onTime, , year, day] = panels(root);
   const square = (date: string) => root.querySelector(`rect[data-date="${date}"]`)!;
   assert.equal(text(today.querySelector(".gz-big")), "0");
   assert.equal(text(streak.querySelector(".gz-big")), "2days");
   assert.match(text(onTime.querySelector(".gz-big")), /^\d+days$/);
-  assert.equal(text(day.querySelector(".gz-waiting")), "Pick a row in “My year”");
+  assert.ok(waitsForPick(day));
 
   click(root.querySelector("button.gz-button")!);
   await settle();
@@ -242,8 +244,8 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   const { root, f } = openApp("Apps/Weight.md", { [TRACKER]: { fm: fm(TRACKER) }, "Apps/Weight data.md": { fm: { weight } } });
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
-  const [form, week, latest, chart, entries] = panels(root);
-  assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["Log my weight", "This week", "Latest", "My weight against my goal", "Entries"]);
+  const [week, latest, form, chart, entries] = panels(root);
+  assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["This week", "Latest", "Log my weight", "My weight against my goal", "Entries"]);
   assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["weight", "note"]);
   assert.equal(text(week.querySelector(".gz-big")), "80.4kg");
   assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.6 kg (<1%) vs previous");
@@ -278,9 +280,9 @@ test("Sleep: the same kit for hours slept, against a goal of eight", async () =>
   const { root, f } = openApp("Apps/Sleep.md", { [TRACKER]: { fm: fm(TRACKER) }, "Apps/Sleep data.md": { fm: { sleep } } });
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
-  const [form, week, latest, chart, entries] = panels(root);
+  const [week, latest, form, chart, entries] = panels(root);
   assert.equal(text(root.querySelector(".gz-description")), "Log how long I sleep and see whether I'm getting my eight hours");
-  assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["Log my sleep", "This week", "Latest", "My sleep against my goal", "Entries"]);
+  assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["This week", "Latest", "Log my sleep", "My sleep against my goal", "Entries"]);
   assert.equal(text(week.querySelector(".gz-big")), "6.5hours");
   assert.equal(text(week.querySelector(".gz-compare")), "▲ 0.5 hours (8%) vs previous");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "goal 8 hours");
@@ -331,7 +333,7 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.deepEqual(t.notices, []);
   const root = await t.open(path);
   assert.equal(root.querySelector(".gz-error"), null);
-  const [form, month, limit, chart, recent] = panels(root);
+  const [month, limit, form, chart, recent] = panels(root);
   // The amount field carries its label and money format to the form, the number and the table.
   assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Spent", "category", "note"]);
   assert.deepEqual([...recent.querySelectorAll("th")].map(text), ["When", "Spent", "category", "note"]);
@@ -378,7 +380,7 @@ test("Book finder: search, read about a pick, add it to Books, then set its stat
   );
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
-  const [results, read, shelf] = panels(root);
+  const [read, results, shelf] = panels(root);
   assert.equal(text(results.querySelector(".gz-waiting")), "Type in “q”");
   assert.equal(text(read.querySelector(".gz-big")), "1");
   assert.deepEqual([...shelf.querySelectorAll(".gz-rowcard-title")].map(text), ["Middlemarch"]);
@@ -628,7 +630,7 @@ test("Task inbox: add a task to the inbox, see what is open and due this week, t
   const { root, f, writes } = openApp("Apps/Task inbox.md", { "Tasks/Home.md": { fm: {}, body: home } });
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
-  const [form, open, soon, done] = panels(root);
+  const [soon, form, open, done] = panels(root);
   const openRows = () => [...open.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].slice(0, 3).map(text));
   // The undated task, the one still to be sorted, comes first.
   assert.deepEqual(openRows(), [["Buy stamps", "Home", "—"], ["Water plants 📅 2026-11-19", "Home", "2026-11-19"]]);
@@ -674,7 +676,7 @@ test("Trip planner: days to go, packing, the itinerary from a calendar file, exp
   }, responses);
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
-  const [days, packing, itinerary, form, total, rate, expenses, now, week, year] = panels(root);
+  const [days, packing, itinerary, total, rate, form, expenses, now, week, year] = panels(root);
   assert.equal(text(days.querySelector(".gz-big")), "116 days");
   assert.equal(text(packing.querySelector(".gz-title")), "Packing · 0/6");
   assert.deepEqual([...itinerary.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelectorAll("td")[1])),
@@ -731,20 +733,20 @@ test("Watchlist: pick a symbol, see its move, record a buy, and pick a position 
   const { root, f } = openApp("Apps/Watchlist.md", {}, responses);
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
-  const [price, move, chart, , positions, worth] = panels(root);
+  const [price, move, , chart, positions, , worth] = panels(root);
   assert.equal(text(price.querySelector(".gz-big")), "508.29USD");
   assert.equal(text(move.querySelector(".gz-big")), "0.40%");
   assert.ok(chart.querySelector(".gz-chart-svg"));
   assert.equal(text(positions.querySelector(".gz-empty")), "Nothing here yet.");
-  assert.equal(text(worth.querySelector(".gz-waiting")), "Pick a row in “My positions”");
+  assert.ok(waitsForPick(worth));
 
   const record = async (symbol: string, date: string, shares: string, paid: string) => {
     choose(root.querySelector(".gz-inputs select")!, symbol);
     await settle();
-    const fields = panels(root)[3].querySelectorAll("input") as unknown as HTMLInputElement[];
-    assert.match(text(panels(root)[3].querySelector(".gz-title")), new RegExp(`of ${symbol}$`));
+    const fields = panels(root)[2].querySelectorAll("input") as unknown as HTMLInputElement[];
+    assert.match(text(panels(root)[2].querySelector(".gz-title")), new RegExp(`of ${symbol}$`));
     [fields[0].value, fields[1].value, fields[2].value] = [date, shares, paid];
-    submit(panels(root)[3].querySelector("form")!);
+    submit(panels(root)[2].querySelector("form")!);
     await settle();
   };
   await record("SPY", "2026-11-10", "10", "500");
@@ -765,13 +767,13 @@ test("Watchlist: pick a symbol, see its move, record a buy, and pick a position 
   // SPY: 15 shares at the last close of 508.29, against $7,550.
   click(rows()[1]);
   await settle();
-  assert.equal(text(panels(root)[5].querySelector(".gz-big")), "$7,624.35");
-  assert.equal(text(panels(root)[5].querySelector(".gz-title")), "SPY is worth");
-  assert.equal(text(panels(root)[6].querySelector(".gz-big")), "$74.35");
+  assert.equal(text(panels(root)[6].querySelector(".gz-big")), "$7,624.35");
+  assert.equal(text(panels(root)[6].querySelector(".gz-title")), "SPY is worth");
+  assert.equal(text(panels(root)[7].querySelector(".gz-big")), "$74.35");
   assert.ok(f.requests.includes(`${YAHOO}SPY?range=5d&interval=1d`));
 
   // Setting a buy's shares to 0 takes it out of the positions.
-  const lots = [...panels(root)[7].querySelectorAll("tbody tr")];
+  const lots = [...panels(root)[5].querySelectorAll("tbody tr")];
   assert.equal(lots.length, 3);
   const aapl = lots.find((tr) => text(tr.querySelectorAll("td")[1]) === "AAPL")!;
   type(aapl.querySelector("input.gz-edit")!, "0");
@@ -893,7 +895,7 @@ test("Today: the medication button and a water counter work from inside a plain 
   assert.equal(water.querySelector(".gz-error"), null);
 
   // The Medication log's own button and count, saving in the Medication log's data note.
-  assert.deepEqual(panels(meds).map(text), ["Took meds", "Doses today0"]);
+  assert.deepEqual(panels(meds).map(text), ["Doses today0", "Took meds"]);
   click(meds.querySelector("button.gz-button")!);
   await settle();
   assert.equal((t.f.files.get("Apps/Medication log data.md")!.fm!.doses as unknown[]).length, 1);
@@ -920,11 +922,11 @@ test("Movers (test vault): pick one of the biggest moves, note why it happened, 
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
   const all = panels(root);
-  const [moves, form, why] = all.slice(-3);
+  const [moves, why, form] = all.slice(-3);
   assert.equal(text(all[3].querySelector(".gz-big")), "2");
   assert.deepEqual([...moves.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].map(text)),
     [["session 5", "99.00", "-3.41"], ["session 3", "103.00", "2.49"]]);
-  assert.equal(text(form.querySelector(".gz-waiting")), "Pick a row in “Biggest moves”");
+  assert.ok(waitsForPick(form));
   assert.equal(text(why.querySelector(".gz-empty")), "Nothing here yet.");
 
   click(moves.querySelector("tbody tr")!);

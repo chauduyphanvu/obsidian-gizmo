@@ -72,7 +72,8 @@ test("grouped, each group's share is its share column, which a chart, a pie and 
   started.push(app);
   app.load();
   await settle();
-  const [bar, table, pie, number] = [...root.querySelectorAll(".gz-panel")];
+  // Composed, the number leads; the rest follow as written.
+  const [number, bar, table, pie] = [...root.querySelectorAll(".gz-panel")];
   assert.equal(bar.querySelectorAll("path.gz-bar").length, 3, "60% is a share of 0, which draws no bar");
   assert.match(text(bar.querySelector(".gz-readout")), /^90 · 50%$/);
   assert.deepEqual([...table.querySelectorAll("th")].map(text), ["confidence", "share"]);

@@ -158,6 +158,8 @@ export interface AppSpec {
    */
   split?: boolean;
   description: string;
+  /** `layout:`: panels placed by what they show, in one column (composed), or on the grid of spans as typed. */
+  layout: "composed" | "grid";
   panels: PanelSpec[];
   refreshMs?: number;
   inputs: InputDef[];
@@ -632,6 +634,8 @@ export function readSpec(
       check(p, strict);
     }
   };
+  /** A note that is one panel, its keys at the top. */
+  let onePanel = false;
   if (fm.use !== undefined) {
     if (fm.panels !== undefined || fm.tabs !== undefined) errors.push("put - use: … inside panels to mix a component with other panels");
     else entry({ use: fm.use, with: fm.with }, "", true);
@@ -645,8 +649,9 @@ export function readSpec(
       else errors.push(`${label}: must be a set of keys`);
     }
   } else if (fm.view !== undefined) {
-    // The note's other properties aren't part of the panel.
-    entry(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES)), "", false);
+    onePanel = true;
+    // The note's other properties aren't part of the panel, nor is the app's own layout.
+    entry(Object.fromEntries(Object.entries(fm).filter(([k]) => k in KEY_TYPES && !(k === "layout" && isLayout(fm.layout)))), "", false);
   } else {
     return { errors, empty: true };
   }
@@ -688,6 +693,11 @@ export function readSpec(
     if (fm.devices === "split") split = true;
     else errors.push("devices must be split, e.g. devices: split");
   }
+  // Only text is the setting, as with devices; in a note that is one panel, any other layout is that
+  // panel's own (a table's cards, a calendar's year).
+  let layout: AppSpec["layout"] = "composed";
+  if (isLayout(fm.layout)) layout = fm.layout;
+  else if (typeof fm.layout === "string" && !onePanel) errors.push("layout must be composed or grid, e.g. layout: grid");
   // Only a list is the setting: an app that saves a field called expect into its own note keeps it as data.
   const expect = areRules(fm.expect) ? readExpect(fm.expect, errors) : [];
   const expected: Record<string, PanelSpec> = {};
@@ -720,10 +730,14 @@ export function readSpec(
     if (r.panel) expected[rule.id] = { template: p.template, panel: { ...r.panel, ...(then && { then }) }, label, inputs: uses, strict: true, writtenIn: p.writtenIn };
   }
   const spec = {
-    description, panels, refreshMs, store, split, inputs, selections,
+    description, layout, panels, refreshMs, store, split, inputs, selections,
     blocks: Object.fromEntries(blocks), recorded, expect, expected, read: expander.read, links: [...expander.links],
   };
   return { spec, errors, empty: false };
+}
+
+function isLayout(v: unknown): v is AppSpec["layout"] {
+  return v === "composed" || v === "grid";
 }
 
 /** The names an app's own panel entries select (beside `use` too), checked. */

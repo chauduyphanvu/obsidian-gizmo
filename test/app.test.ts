@@ -142,7 +142,8 @@ test("editing one panel's keys keeps the other panels as they are", async () => 
   assert.equal(root.querySelector(".gz-view-form"), form);
   assert.notEqual(root.querySelector(".gz-view-number"), before);
   assert.equal(text(root.querySelector(".gz-view-number .gz-unit")), "kg");
-  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => e.className.split(" ")[1]), ["gz-view-form", "gz-view-number", "gz-view-countdown"]);
+  // Composed, the answer comes first (the number, then the countdown beside it), then the form.
+  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => e.className.split(" ")[1]), ["gz-view-number", "gz-view-countdown", "gz-view-form"]);
 });
 
 test("a notes panel follows edits to the notes it reads", async () => {
@@ -204,7 +205,7 @@ test("editing a data block remounts only the panels that use it", async () => {
 });
 
 test("without tabs there's no tab bar; spans become classes, in twelfths of the row", async () => {
-  const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", panels: [
+  const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", layout: "grid", panels: [
     { view: "countdown", to: "2027-01-01" },
     { view: "countdown", to: "2027-02-01", span: 2 },
     { view: "line", source: "weights", x: "at", y: "weight" },
@@ -217,7 +218,7 @@ test("without tabs there's no tab bar; spans become classes, in twelfths of the 
 });
 
 test("small panels that asked for no span share their row instead of leaving part of it empty", async () => {
-  const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", panels: [
+  const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", layout: "grid", panels: [
     { view: "countdown", to: "2027-01-01" },
     { view: "countdown", to: "2027-02-01" },
     { view: "line", source: "weights", x: "at", y: "weight" },
@@ -229,7 +230,7 @@ test("small panels that asked for no span share their row instead of leaving par
 
 test("tabs: untabbed panels stay above the bar; switching keeps elements and typed text", async () => {
   const { app, root } = setup({
-    "Apps/W.md": { fm: { app: "x", panels: [
+    "Apps/W.md": { fm: { app: "x", layout: "grid", panels: [
       { view: "countdown", to: "2027-01-01" },
       { view: "form", fields: { weight: "number" }, save: "weights", tab: "Log" },
       { view: "line", source: "weights", x: "at", y: "weight", tab: "Chart" },

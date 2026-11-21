@@ -102,14 +102,14 @@ export default async function authoring(t) {
     return `${r.text} → line ${r.n}: ${r.line}`;
   });
 
-  await check("Planet Earth: Inspect data lists each source above the grid; a key copies its path; the menu item toggles it away", async () => {
+  await check("Planet Earth: Inspect data lists each source above the panels; a key copies its path; the menu item toggles it away", async () => {
     const r = await run(`
       await na.open("Apps/Planet Earth");
       na.menuItem("Inspect data");
       const el = na.view().contentEl;
       const pane = await na.until(() => el.querySelector(".gz-inspector .gz-inspect-source") && el.querySelector(".gz-inspector"), 10000);
       const shell = el.querySelector(".gizmo");
-      const above = [...shell.children].indexOf(pane) < [...shell.children].indexOf(shell.querySelector(".gz-grid"));
+      const above = [...shell.children].indexOf(pane) < [...shell.children].indexOf(shell.querySelector(".gz-body"));
       const urls = [...pane.querySelectorAll(".gz-inspect-url")].map((u) => u.textContent);
       const quakes = [...pane.querySelectorAll(".gz-inspect-source")].find((s) => s.textContent.includes("earthquake.usgs.gov"));
       const features = [...quakes.querySelectorAll(".gz-tree details")].find((d) => d.querySelector(":scope > summary .gz-key")?.textContent === "features");
@@ -369,7 +369,8 @@ export default async function authoring(t) {
     expect(r.items.length && r.items[0].startsWith("Sleep"), r.items);
     expect(after.app === gallery("Apps/Sleep.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
     expect(after.state === "gizmo:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
-    expect(JSON.stringify(after.titles) === JSON.stringify(["Log my sleep", "This week", "Latest", "My sleep against my goal", "Entries"]), after.titles);
+    // Composed: the answer (This week, Latest) before the form that adds to it, then the rest.
+    expect(JSON.stringify(after.titles) === JSON.stringify(["This week", "Latest", "Log my sleep", "My sleep against my goal", "Entries"]), after.titles);
     await run(`for (const p of ["Sleep.md", "Tracker kit.md"]) await na.remove(p); await na.sleep(500);`);
     return `${r.before} → ${after.after} notes; ${after.titles.join(", ")}`;
   });

@@ -46,6 +46,50 @@
 .gizmo button.gz-tab:hover { color: var(--text-normal); }
 .gizmo button.gz-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
 
+/* Composed layout: an app reads as one column, its panels placed by role (src/compose.ts). In its
+   own tab the column holds at most 760 px of content, with 44 px each side, or 16 px once the app is
+   under 600 px wide (gz-narrow); src/layout.ts keeps the same numbers. Hosted, it is the host's width. */
+.gizmo.gz-composed { max-width: 848px; padding: 34px 44px 150px; }
+.gizmo.gz-composed.gz-narrow { padding: 22px 16px 120px; }
+.gz-embed .gizmo.gz-composed,
+.gz-lens .gizmo.gz-composed { max-width: none; padding: 0; margin: 0; }
+.gz-lens-body .gizmo.gz-composed { padding-top: var(--size-4-2); }
+.gizmo .gz-head { margin-bottom: var(--size-4-5); }
+.gizmo .gz-app-title {
+  font-size: 28px;
+  line-height: 1.15;
+  font-weight: 700;
+  letter-spacing: -0.025em;
+  color: var(--text-normal);
+}
+.gizmo.gz-narrow .gz-app-title { font-size: 24px; }
+.gizmo .gz-head .gz-description { margin: 6px 0 0; font-size: 14.5px; line-height: 1.45; max-width: 60ch; text-wrap: pretty; }
+/* The answer: the headline on the left, the facts in a row on the right, and a number's meter under
+   it across the band; one column when narrow. A slot holds a panel and its meter. */
+.gizmo .gz-answer {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr) fit-content(55%);
+  gap: 18px 48px;
+  align-items: end;
+  margin-top: 30px;
+}
+.gizmo .gz-answer:not(:has(> .gz-facts)),
+.gizmo.gz-narrow .gz-answer { grid-template-columns: minmax(0, 1fr); }
+.gizmo .gz-answer > .gz-slot { display: contents; }
+.gizmo .gz-answer > .gz-slot > .gz-headline { grid-column: 1; grid-row: 1; }
+.gizmo .gz-answer > .gz-slot > .gz-meter { grid-column: 1 / -1; grid-row: 2; }
+.gizmo .gz-facts { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; gap: var(--size-4-4) 36px; min-width: 0; }
+.gizmo.gz-narrow .gz-facts { grid-column: 1; grid-row: 3; }
+.gizmo .gz-facts > .gz-slot { min-width: 0; }
+/* The line to add things, then the evidence and the records, each well apart. */
+.gizmo .gz-compose { margin-top: 30px; display: flex; flex-direction: column; gap: var(--size-4-4); }
+.gizmo .gz-flow { margin-top: 46px; }
+.gizmo .gz-flow, .gizmo .gz-sheet-slot { display: flex; flex-direction: column; gap: 46px; }
+/* A panel waiting for a pick is out of sight, and so is a sheet with nothing else in it. */
+.gizmo .gz-collapsed { display: none; }
+.gizmo .gz-sheet-slot:not(:has(> :not(.gz-collapsed))) { display: none; }
+.gizmo .gz-body > .gz-tabs { margin: 46px 0 0; }
+
 /* A panel sits on the page. Only what is a thing of its own gets a surface: a card (a prompt, a
    notice, the inspector), a form you type into, and a panel that failed. */
 .gizmo .gz-panel { min-width: 0; }
@@ -147,6 +191,10 @@
 }
 .gizmo .gz-readout span + span { color: var(--text-normal); }
 
+/* == charts: line, bar and pie, in pencil until a line is crossed == */
+/* (reserved) */
+/* == /charts == */
+
 /* Tables and lists. In its own tab a table reaches into the shell's padding by its cells' padding,
    so its text lines up with the panel's title; hosted, it stays inside the note's text. */
 .gizmo .gz-table-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--size-4-2)); }
@@ -175,6 +223,10 @@
 .gizmo .gz-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }
 .gizmo .gz-checklist input:checked + span { color: var(--text-faint); text-decoration: line-through; }
 
+/* == ledger: tables and lists as ledgers, grouped by day or week == */
+/* (reserved) */
+/* == /ledger == */
+
 /* Forms: fields share the row and wrap; a name typed in lowercase is shown with a capital. */
 .gizmo .gz-form { display: flex; flex-wrap: wrap; gap: var(--size-4-3); align-items: flex-end; }
 .gizmo .gz-field {
@@ -198,6 +250,10 @@
 .gizmo .gz-field:has(> input[type="checkbox"]) { flex: none; }
 .gizmo .gz-field:has(> textarea) { flex-basis: 100%; max-width: none; }
 .gizmo .gz-form > button { flex: none; }
+
+/* == composer: forms and buttons as one line to add things == */
+/* (reserved) */
+/* == /composer == */
 
 /* Progress and timer */
 .gizmo .gz-progress {
@@ -236,6 +292,10 @@
   padding: 0 6px;
   margin-right: 6px;
 }
+
+/* == answer: number, progress, countdown in the answer band == */
+/* (reserved) */
+/* == /answer == */
 
 /* Selection, row actions, edit in place */
 .gizmo .gz-waiting { color: var(--text-muted); font-size: var(--font-ui-small); font-style: italic; }
@@ -384,6 +444,10 @@
 .gizmo .gz-tl-bar:focus-visible, .gizmo .gz-tl-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .gizmo .gz-tl-bar.gz-selected, .gizmo .gz-tl-dot.gz-selected { outline: 2px solid var(--text-normal); outline-offset: 1px; }
 .gizmo .gz-tl-body:has(.gz-selected) .gz-tl-bar:not(.gz-selected), .gizmo .gz-tl-body:has(.gz-selected) .gz-tl-dot:not(.gz-selected) { opacity: 0.45; }
+/* == views: calendar, board, timeline, scatter and heatmap colours == */
+/* (reserved) */
+/* == /views == */
+
 /* Display: format, cells, cards, compare, goal */
 .gizmo .gz-cell-bar { height: 8px; min-width: 56px; border-radius: 4px; background: var(--background-modifier-border); overflow: hidden; }
 .gizmo .gz-cell-fill { height: 100%; background: var(--interactive-accent); }
@@ -521,6 +585,10 @@ button.gz-lens-toggle {
 .gizmo .gz-alert-title { color: var(--text-normal); }
 .gizmo .gz-alert-value { margin-left: auto; color: var(--text-accent); font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
 
+/* == rail: the time rail under the title == */
+/* (reserved) */
+/* == /rail == */
+
 /* Background: status bar items stay on one line in a narrow window, cut short rather than stacked. */
 .status-bar .gz-status { white-space: nowrap; max-width: 18em; overflow: hidden; text-overflow: ellipsis; }
 
@@ -537,6 +605,10 @@ button.gz-lens-toggle {
   font-size: var(--font-ui-small);
 }
 .gizmo .gz-detail-text { flex: 1 1 16em; }
+
+/* == sheet: the side sheet a row, bar, day or card opens in == */
+/* (reserved) */
+/* == /sheet == */
 
 /* Edit in place: a dropdown in an edited column is as wide as its longest choice, never cut short. */
 .gizmo .gz-table select.gz-edit { width: auto; min-width: max-content; }
@@ -641,3 +713,7 @@ button.gz-lens-toggle {
 .gizmo .gz-backtest-fire { fill: var(--interactive-accent); }
 .gizmo .gz-backtest-before { fill: var(--text-muted); }
 .gizmo .gz-backtest-legend { font-size: var(--font-ui-small); margin-top: var(--size-4-1); }
+
+/* == motion: count-up, rows sliding in, undo in place == */
+/* (reserved) */
+/* == /motion == */

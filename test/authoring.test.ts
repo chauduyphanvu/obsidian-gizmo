@@ -165,7 +165,7 @@ test("the action opens the pane above the panels, and closes it again", async ()
   const pane = root.querySelector(".gz-inspector")!;
   assert.ok(pane);
   const order = [...shell(root).children];
-  assert.ok(order.indexOf(pane) < order.indexOf(root.querySelector(".gz-grid")!));
+  assert.ok(order.indexOf(pane) < order.indexOf(root.querySelector(".gz-body")!));
   assert.deepEqual([...pane.querySelectorAll(".gz-inspect-head")].map(text), [
     "Strongest · earthquake.usgs.gov", "Now · api.open-meteo.com", "Doses · list: doses",
   ]);
