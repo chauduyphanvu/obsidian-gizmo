@@ -53,6 +53,8 @@ test("an app as of a past time shows its lists and web answers as they were then
   await settle();
   assert.deepEqual([past.big("Last"), past.big("Rain")], ["80", "1"]);
   assert.match(text(past.root.querySelector(".gz-past")), /^As of .*: read only\. Shown as they are now, since their notes keep no history: Notes\.$/);
+  // The date has a span of its own, which CSS hides beside the time rail.
+  assert.match(text(past.root.querySelector(".gz-past .gz-past-when")), /^As of .*: $/);
   const later = open(pastEnv(t.env, T0 + 2 * HOUR));
   await settle();
   assert.deepEqual([later.big("Last"), later.big("Rain")], ["79", "2"]);

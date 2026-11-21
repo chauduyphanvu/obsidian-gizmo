@@ -1005,6 +1005,9 @@ button.gz-lens-toggle {
 .gizmo .gz-rail { margin-top: 20px; }
 /* The past's banner, saying what can't be shown as it was, stands a little apart from the rail. */
 .gizmo .gz-rail-slot:has(+ .gz-past) .gz-rail { margin-bottom: 16px; }
+/* Beside the rail, which names the moment shown, the banner only says what that means. */
+.gizmo .gz-header:has(.gz-rail) .gz-past-when { display: none; }
+.gizmo .gz-header:has(.gz-rail) .gz-past-text::first-letter { text-transform: uppercase; }
 .gizmo .gz-rail-top {
   display: flex;
   justify-content: space-between;

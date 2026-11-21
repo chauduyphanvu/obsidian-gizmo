@@ -59,7 +59,7 @@ function setup(notes: Parameters<typeof fakeHost>[0]) {
   const root = document.createElement("div");
   document.body.appendChild(root);
   const app = new AppController(root, "Apps/W.md", env);
-  return { app, root, edit, writes, notices, f };
+  return { app, root, edit, writes, notices, f, env };
 }
 
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
@@ -270,4 +270,19 @@ test("the open tab survives an edit to the note while it still exists", async ()
   assert.deepEqual([...root.querySelectorAll("button.gz-tab.is-active")].map((b) => b.textContent), ["B"]);
   await edit("Apps/W.md", (fm) => { fm.panels = [panels[0]]; });
   assert.deepEqual([...root.querySelectorAll("button.gz-tab.is-active")].map((b) => b.textContent), ["A"]);
+});
+
+test("in its own tab the rail slot sits under the app's title once the app shows, not above its permission question", async () => {
+  const fm = { app: "x", panels: [{ view: "number", source: "https://example.com/v.json", field: "v" }] };
+  const asking = setup({ "Apps/W.md": { fm } });
+  asking.env.isGranted = () => false;
+  asking.app.load();
+  await settle();
+  assert.ok(asking.root.querySelector(".gz-header .gz-card"));
+  assert.equal(asking.root.querySelector(".gz-rail-slot"), null);
+  const shown = setup({ "Apps/W.md": { fm } });
+  shown.app.load();
+  await settle();
+  const head = shown.root.querySelector(".gz-header > .gz-head");
+  assert.equal(head?.nextElementSibling, shown.app.railSlot());
 });

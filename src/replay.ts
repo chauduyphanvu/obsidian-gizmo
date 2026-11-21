@@ -30,6 +30,7 @@ export function pastEnv(env: AppEnv, at: number, back?: () => void): AppEnv {
     setTaskDone: refuse,
     store: ledger && ((dataPath, appPath) => ledgerStore(ledger, dataPath, () => env.frontmatter(appPath) ?? {})),
     log: undefined,
+    undo: undefined,
     trigger: undefined,
     opened: undefined,
     backToNow: back,

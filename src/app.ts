@@ -490,7 +490,11 @@ export class AppController {
     const past = this.env.data.at;
     if (past !== undefined && this.spec) {
       const now = shownAsNow(this.spec);
-      const banner = header.createDiv({ cls: "gz-card gz-past", text: `As of ${pastText(past)}: read only.${now.length ? ` Shown as they are now, since their notes keep no history: ${now.join(", ")}.` : ""}` });
+      const banner = header.createDiv({ cls: "gz-card gz-past" });
+      // Beside the time rail, which names the moment, CSS hides the date and the banner reads "Read only."
+      const said = banner.createSpan({ cls: "gz-past-text" });
+      said.createSpan({ cls: "gz-past-when", text: `As of ${pastText(past)}: ` });
+      said.append(`read only.${now.length ? ` Shown as they are now, since their notes keep no history: ${now.join(", ")}.` : ""}`);
       const back = this.env.backToNow;
       if (back) banner.createEl("button", { cls: "gz-past-back", text: "Back to now" }).addEventListener("click", () => back());
     }
@@ -502,13 +506,14 @@ export class AppController {
       return this.showOnly(header);
     }
     const description = this.spec?.description ?? String(fm.app ?? "");
+    let railAfter: HTMLElement | undefined;
     if (composed && !h) {
       // In its own tab the app reads as a page: its name and what it's for, then the time rail.
       const head = createDivIn(header, "gz-head");
       header.prepend(head);
       head.createDiv({ cls: "gz-app-title", text: basename(this.appPath) });
       if (description) head.createDiv({ cls: "gz-description", text: description });
-      if (this.rail) header.insertBefore(this.rail, head.nextSibling);
+      railAfter = head;
     } else if (description) {
       header.createDiv({ cls: "gz-description", text: description });
     }
@@ -530,6 +535,8 @@ export class AppController {
       else renderPermissionPrompt(header, verdict?.asked ?? wanted, askersOf(read!.spec!, this.appPath), this.cards, verdict?.covered.length ?? 0);
       return this.showOnly(header);
     }
+    // The rail goes in only once the app shows, not above an error or a question.
+    if (railAfter && this.rail) header.insertBefore(this.rail, railAfter.nextSibling);
 
     // An app opened in its own tab has been seen; the background acts only for those, even when they ask for nothing.
     if (!h && !component) {
