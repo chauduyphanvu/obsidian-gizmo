@@ -57,6 +57,17 @@ test("append, save to a list, notify: in that order, as before", async () => {
   assert.deepEqual(failing.log.at(-1), "notify Couldn't save: disk full");
 });
 
+test("append takes a note's path typed plain or as a [[link]], and asks to write the note it writes", async () => {
+  for (const append of ["Journal/Daily", "Journal/Daily.md", "[[Journal/Daily]]", "[[Journal/Daily|my day]]", " [[Journal/Daily#Log]] "]) {
+    const { d, log } = deps();
+    const p = panel({ view: "button", label: "Log", append, line: "- ran" });
+    assert.deepEqual(await runActions(p, {}, d), { ok: true, path: undefined }, append);
+    assert.deepEqual(log, ["append Journal/Daily.md: - ran"], append);
+    const spec = readSpec({ app: "x", panels: [{ view: "button", label: "Log", append, line: "- ran" }] }, { path: "Apps/X.md" })!.spec!;
+    assert.deepEqual(permissionsOf(spec, "Apps/X.md"), ["write:Journal/Daily.md"], append);
+  }
+});
+
 test("a line, a note's name and a notice write numbers as they are, not rounded for display", async () => {
   const { d, log } = deps();
   const p = panel({

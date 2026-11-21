@@ -5,13 +5,13 @@ import { isPlainObject } from "./keys.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { urlHost } from "./sources/url.ts";
 import type { AppSpec, Panel, PanelSpec } from "./spec.ts";
-import { notePath, storeTarget } from "./store.ts";
+import { appendPath, notePath, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
 
 /** A panel's permissions, each with the key that asks for it. */
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   const out: [string, keyof Panel][] = p.source ? sourceDef(p.source).permissions(p, selfPath) : [];
-  if (p.append && notePath(p.append) !== selfPath) out.push([`write:${notePath(p.append)}`, "append"]);
+  if (p.append && appendPath(p.append) !== selfPath) out.push([`write:${appendPath(p.append)}`, "append"]);
   // Named as typed, like the notes it writes: the app it names is looked up when it runs.
   if (p.then) out.push([`run:${storeTarget(p.then.app)}#${p.then.do}`, "then"]);
   // Its link sends the panel's value out of Obsidian, to whatever app opened it.

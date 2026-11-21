@@ -65,6 +65,11 @@ export function notePath(path: string): string {
   return /\.md$/i.test(path) ? path : `${path}.md`;
 }
 
+/** The note `append` writes: its path from the vault's root, typed plain or as a [[link]]. */
+export function appendPath(append: string): string {
+  return notePath(storeTarget(append));
+}
+
 export function defaultDataPath(appPath: string): string {
   return `${appPath.replace(/\.md$/i, "")} data.md`;
 }

@@ -10,7 +10,7 @@ import { sourceDef } from "./sources/registry.ts";
 import { urlHost } from "./sources/url.ts";
 import { readSpec, saveTarget, type AppSpec, type Panel } from "./spec.ts";
 import type { NoteReader } from "./expand.ts";
-import { basename, dataPathOf, notePath, storeTarget } from "./store.ts";
+import { appendPath, basename, dataPathOf, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
 
 /** What the flow check needs to know about where an app runs. */
@@ -306,7 +306,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     if (target?.kind === "list") intoNotes(basename(ctx.dataPath), dataLabels);
     if (target?.kind === "folder") intoNotes(`notes in ${target.folder}`, scopeLabels(policy, target.folder));
     if (p.append) {
-      const into = notePath(p.append);
+      const into = appendPath(p.append);
       const label = join(p.line ? keyLabel("line", p.line) : topLabel(saved), refsLabel(ps.template.append));
       check(where, p.line ? fieldsWhat(p.line, "line") : from, label, `the note ${basename(into)}`, noteLabels(policy, into, ctx.tags(into)).base);
     }
@@ -334,7 +334,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
       if (rank(l) > rank(clearance(policy, "notify")!)) check(where, what, l, `a notice from ${basename(t.path)} (through then)`, clearance(policy, "notify"));
     }
     if (q.append) {
-      const note = notePath(q.append);
+      const note = appendPath(q.append);
       const l = q.line ? label(q.line) : Object.values(saved).reduce(join, "public");
       check(where, what, l, `the note ${basename(note)} (through then)`, noteLabels(policy, note, ctx.tags(note)).base);
     }

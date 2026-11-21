@@ -4,7 +4,7 @@ import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, type Row } from "./data.ts";
 import { stampOf, stampParts } from "./time.ts";
 import { saveTarget, type Panel } from "./spec.ts";
-import { notePath, withoutDefinition } from "./store.ts";
+import { appendPath, withoutDefinition } from "./store.ts";
 import { frontmatterStore, type DataStore } from "./datastore.ts";
 import { startOf } from "./keys.ts";
 
@@ -245,7 +245,7 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       // The row's values are added after filling, so they are never read as placeholders themselves.
       const fields = Object.entries(row).map(([k, v]) => `${k}: ${oneLine(String(v))}`).join(", ");
       const line = p.line !== undefined ? fillLine(p.line, ctx) : `${fillLine("- {date} {time}", ctx)}${fields ? ` ${fields}` : ""}`;
-      const into = notePath(p.append);
+      const into = appendPath(p.append);
       const created = await deps.appendLine(into, line);
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }

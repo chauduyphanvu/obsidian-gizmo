@@ -24,7 +24,7 @@ import type { AppSummary } from "./map.ts";
 import { askersOf, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
 import type { AppliedPolicy, Label, Policy } from "./policy.ts";
-import { basename, dataPathOf, devicesFolder, notePath, storeTarget } from "./store.ts";
+import { appendPath, basename, dataPathOf, devicesFolder, storeTarget } from "./store.ts";
 import { THIS } from "./template.ts";
 import type { AlertFeed } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
@@ -280,7 +280,7 @@ export class Background {
           title: p.title ?? p.label ?? e.name, then: p.then ? resolved(p.then) : undefined,
         })),
         thens: panels.filter((p) => p.then && p.alert === undefined).map((p) => ({ from: labelOf(p, p.view), ...resolved(p.then!) })),
-        writesSelf: panels.some((p) => p.append !== undefined && notePath(p.append) === e.path),
+        writesSelf: panels.some((p) => p.append !== undefined && appendPath(p.append) === e.path),
       };
     });
   }

@@ -242,7 +242,7 @@ Push `/` to move to the first add line, when no field has focus. After a save, a
 | `save: <notes block>`, `name` | Makes a note in the folder of that block. `template` gives its first text. |
 | `save: this` | Writes the form values into the properties of the note that shows the form. |
 | `row` | Sets the values that a save writes, for example `title: "{title}"`. |
-| `append`, `line` | Adds a line to the end of a note, for example `line: "- [ ] {task}"`. |
+| `append`, `line` | Adds a line to the end of a note, for example `line: "- [ ] {task}"`. `append` names the note by its path from the vault's root, plain or as a link: `Journal/Inbox` and `"[[Journal/Inbox]]"` are the same note. |
 | `notify` | Shows a notice. In the composed layout, a form or a button says it under itself. |
 | `open` | Opens a note. |
 | `action` | Puts a button with this label on each row of a list or a table. |

@@ -5,7 +5,7 @@ import { PERIODS, stampParts, type Per } from "./time.ts";
 import { computeErrors } from "./formula.ts";
 import { fnv1a, stableJson } from "./hash.ts";
 import { rowsAreNotes, sourceDef } from "./sources/registry.ts";
-import { RESERVED, SOURCE_WORDS, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, appendPath, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
 import {
   InputRef, InputText, NAME, THIS, firstRef, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
   type InputDef, type InputValue,
@@ -359,7 +359,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
     ...(p.body !== undefined && !isUrl(p.source) ? ['"body" needs a URL source'] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
-    ...(p.append && isPolicyPath(notePath(storeTarget(p.append))) ? [`append can't write ${basename(POLICY_PATH)}, your data policy; change it by hand`] : []),
+    ...(p.append && isPolicyPath(appendPath(p.append)) ? [`append can't write ${basename(POLICY_PATH)}, your data policy; change it by hand`] : []),
     ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
     ...(p.save && RESERVED.includes(p.save) && p.target?.kind !== "this" ? [`save can't use "${p.save}", which names part of the app`] : []),
