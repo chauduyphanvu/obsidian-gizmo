@@ -433,10 +433,10 @@ test("Spending: log a purchase, see the week against last, the stack against the
   assert.equal(root.querySelector(".gz-error"), null);
   const [week, form, chart, recent] = [...root.querySelectorAll(".gz-panel")];
 
-  // This week ($42.25) against last week ($125.50).
+  // This week ($42.25) against last week up to the same point, Monday to Wednesday noon ($80.50), named by its dates.
   assert.equal(text(week.querySelector(".gz-big")), "$42.25");
-  assert.equal(text(week.querySelector(".gz-compare")), "▼ $83.25 (66%) vs previous");
-  assert.equal(week.querySelector(".gz-compare")!.getAttribute("aria-label"), "down $83.25, 66 percent, versus previous");
+  assert.equal(text(week.querySelector(".gz-compare")), "↓ $38.25 less than Nov 9–11 · $80.50");
+  assert.equal(week.querySelector(".gz-compare")!.getAttribute("aria-label"), "$38.25 less than Nov 9–11, which was $80.50");
 
   // Weekly totals stacked by category, with the budget line.
   assert.equal(text(chart.querySelector(".gz-goal-label")), "$400 goal");
@@ -466,7 +466,7 @@ test("Spending: log a purchase, see the week against last, the stack against the
   const saved = f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[];
   assert.deepEqual(saved.at(-1), { amount: 20, category: "fun", note: "movie", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(week.querySelector(".gz-big")), "$62.25");
-  assert.equal(text(week.querySelector(".gz-compare")), "▼ $63.25 (50%) vs previous");
+  assert.equal(text(week.querySelector(".gz-compare")), "↓ $18.25 less than Nov 9–11 · $80.50");
   assert.deepEqual([...recent.querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => text(tr.querySelectorAll("td")[1])).slice(0, 2), ["$20.00", "$30.25"]);
   assert.equal(text(recent.querySelector("tbody tr td")), timeOf(18, 12, 0));
 

@@ -59,9 +59,10 @@ export default async function display(t) {
 
   await check("Spending: an expense from the form changes This week, the compare line, the week's bar; the goal line shows", async () => {
     const r = await run(`
-      // Last week's spending, so there is something to compare with.
+      // Last week's spending, so there is something to compare with: at the start of this weekday a week ago, so it is
+      // within the part of last week this week is compared with whatever the hour.
       const last = new Date(Date.now() - 7 * 86400000);
-      const at = last.getFullYear() + "-" + String(last.getMonth() + 1).padStart(2, "0") + "-" + String(last.getDate()).padStart(2, "0") + "T12:00";
+      const at = last.getFullYear() + "-" + String(last.getMonth() + 1).padStart(2, "0") + "-" + String(last.getDate()).padStart(2, "0") + "T00:00";
       await na.write("Apps/Spending data.md", "---\\nspend:\\n  - {amount: 50, category: food, note: groceries, at: " + at + "}\\n---\\n");
       await na.open("Apps/Spending");
       const el = na.view().contentEl;
@@ -79,7 +80,8 @@ export default async function display(t) {
         bars: ${LAST_WEEK_BARS}, goal: el.querySelector(".gz-view-bar .gz-goal-label")?.textContent,
         goalLine: !!el.querySelector(".gz-view-bar line.gz-goal"),
       };`);
-    expect(r.value === "$80.00" && /^▲ \$30\.00 \(60%\) vs previous$/.test(r.compare ?? ""), r);
+    // The headline names last week's part by its dates; under three days of it, the change is by the amount.
+    expect(r.value === "$80.00" && /^↑ (60%|\$30\.00) more than \S.* · \$50\.00$/.test(r.compare ?? ""), r);
     expect(r.bars.height > r.before.bars.height && r.goal === "$400 goal" && r.goalLine, r);
     return `${r.before.value} → ${r.value}; ${r.compare}; week bar ${r.before.bars.height} → ${r.bars.height} px; ${r.goal}`;
   });

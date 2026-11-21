@@ -248,7 +248,8 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["This week", "Latest", "Log my weight", "My weight against my goal", "Entries"]);
   assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["weight", "note"]);
   assert.equal(text(week.querySelector(".gz-big")), "80.4kg");
-  assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.6 kg (<1%) vs previous");
+  // Against last week up to Wednesday noon, which holds only the 81.2 of the 10th.
+  assert.equal(text(week.querySelector(".gz-compare")), "↓ 0.8 kg less than Nov 9–11 · 81.2 kg");
   assert.equal(text(latest.querySelector(".gz-big")), "80.2kg");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "Goal 75 kg");
   assert.equal(chart.querySelector(".gz-legend"), null);
@@ -263,7 +264,7 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.deepEqual(saved.at(-1), { value: 79.4, note: "after the trip", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(latest.querySelector(".gz-big")), "79.4kg");
   assert.equal(text(week.querySelector(".gz-big")), "80.1kg");
-  assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.9 kg (1%) vs previous");
+  assert.equal(text(week.querySelector(".gz-compare")), "↓ 1.1 kg less than Nov 9–11 · 81.2 kg");
 
   // The newest entry is the first row; its weight was a typo.
   const first = entries.querySelector("tbody tr:not(.gz-ledger-group)")!;
@@ -284,7 +285,7 @@ test("Sleep: the same kit for hours slept, against a goal of eight", async () =>
   assert.equal(text(root.querySelector(".gz-description")), "Log how long I sleep and see whether I'm getting my eight hours");
   assert.deepEqual(panels(root).map((p) => text(p.querySelector(".gz-title"))), ["This week", "Latest", "Log my sleep", "My sleep against my goal", "Entries"]);
   assert.equal(text(week.querySelector(".gz-big")), "6.5hours");
-  assert.equal(text(week.querySelector(".gz-compare")), "▲ 0.5 hours (8%) vs previous");
+  assert.equal(text(week.querySelector(".gz-compare")), "↑ 0.5 hours more than Nov 9–11 · 6.0 hours");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "Goal 8 hours");
 
   (form.querySelector("input") as HTMLInputElement).value = "8.5";
@@ -338,8 +339,9 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Spent", "category", "note"]);
   assert.deepEqual([...recent.querySelectorAll("thead th")].map(text), ["When", "Spent", "category", "note"]);
   assert.equal(text(month.querySelector(".gz-big")), "$700.00");
-  assert.equal(text(limit.querySelector(".gz-big")), "$700/ $2,000");
-  assert.equal(text(month.querySelector(".gz-compare")), "▼ $1,100.00 (61%) vs previous");
+  // The limit bar shows the same value, so it is the number's meter: a bar and its legend, with what is left a day.
+  assert.equal(text(limit.querySelector(".gz-meter-legend")), "35% of $2,000$1,300.00 left · $108.33 a day for 12 days");
+  assert.equal(text(month.querySelector(".gz-compare")), "↓ 61% less than Oct 1–18 · $1,800.00");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "$500 goal");
   assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["Food", "Home", "Transport", "Fun", "Other"]);
   // A bar for each week with spending (1,800 and 700), both past the $500 goal; this week has none yet.
@@ -357,7 +359,8 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   const saved = t.f.files.get("Apps/Budget data.md")!.fm!.spend as Record<string, unknown>[];
   assert.deepEqual(saved.at(-1), { amount: 1350, category: "transport", note: "flights", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(month.querySelector(".gz-big")), "$2,050.00");
-  assert.equal(text(limit.querySelector(".gz-big")), "$2,050/ $2,000");
+  assert.equal(text(limit.querySelector(".gz-meter-legend")), "103% of $2,000$50.00 over");
+  assert.equal(text(limit.querySelector(".gz-meter-status")), "Over the limit by $50.00 · the alert is on");
   assert.deepEqual(t.notices, ["Budget: Against my limit $2,050"]);
   assert.deepEqual(t.bg.alerts.list().map((a) => [a.app, a.title, a.text]), [["Budget", "Against my limit", "$2,050"]]);
 

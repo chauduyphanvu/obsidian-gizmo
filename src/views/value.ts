@@ -1,12 +1,13 @@
-import { compareWindows, splitByWindow } from "../compare.ts";
-import { AGGS, fillWith, formatValue, rowsOf, toNumber, valueOf, type Row } from "../data.ts";
-import { daysUntil } from "../time.ts";
-import { display, formatErrors, formatFor, mapped } from "../format.ts";
+import { compareWindows, splitByWindow, type Windows } from "../compare.ts";
+import { AGGS, compileWhere, fillWith, formatValue, matches, rowsOf, toNumber, valueOf, type Row } from "../data.ts";
+import { DAY, daysUntil, periodStart, shiftPeriod } from "../time.ts";
+import { display, formatErrors, formatFor, formatWith, mapped } from "../format.ts";
 import { streak } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { heading, redraw } from "./common.ts";
+import { heading } from "./common.ts";
 import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
-import type { ViewDef } from "./registry.ts";
+import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
+import { CountUp } from "./tween.ts";
 
 function checkAgg(p: Panel): string[] {
   if (p.agg && !AGGS.includes(p.agg)) return [`agg must be one of ${AGGS.join(", ")}`];
@@ -63,9 +64,7 @@ function drawChange(el: HTMLElement, p: Panel, now: Date, value: unknown, previo
     el.createDiv({ cls: "gz-compare", text: "no change vs previous", attr: { role: "img", "aria-label": "no change, versus previous" } });
     return;
   }
-  const size = formatFor(p, p.field) !== undefined
-    ? display(p, p.field, Math.abs(diff), now)
-    : `${formatValue(Math.abs(diff), p.decimals)}${p.unit ? ` ${p.unit}` : ""}`;
+  const size = amountOf(p, Math.abs(diff), now);
   // A change from nothing has no percent.
   const percent = before === 0 ? undefined : (Math.abs(diff) / Math.abs(before)) * 100;
   const small = percent !== undefined && percent < 1;
@@ -76,6 +75,244 @@ function drawChange(el: HTMLElement, p: Panel, now: Date, value: unknown, previo
     text: `${diff > 0 ? "▲" : "▼"} ${size}${shown} vs previous`,
     attr: { role: "img", "aria-label": `${diff > 0 ? "up" : "down"} ${size}${spoken}, versus previous` },
   });
+}
+
+/** A number as the panel shows its value: in its format, else with its decimals and unit. */
+function amountOf(p: Panel, n: number, now: Date): string {
+  return formatFor(p, p.field) !== undefined ? display(p, p.field, n, now) : `${formatValue(n, p.decimals)}${p.unit ? ` ${p.unit}` : ""}`;
+}
+
+// ---- The answer band --------------------------------------------------------------------------------
+
+/** Where an answer view draws in the composed layout: as the headline, a fact, or a number's meter; undefined on the grid. */
+type AnswerSlot = "headline" | "fact" | "meter";
+
+function answerSlot(ctx: PanelCtx): AnswerSlot | undefined {
+  const slot = ctx.place?.()?.slot;
+  return slot === "headline" || slot === "fact" || slot === "meter" ? slot : undefined;
+}
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+const dayName = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+
+/**
+ * A window as the dates it covers: `Oct 1`, `Oct 1–20`, `Sep 28 – Oct 4`; its last day is the one
+ * before its end. A window that ends in another year than now says which.
+ */
+export function windowName([from, to]: readonly [number, number], now: Date): string {
+  const a = new Date(from), b = new Date(Math.max(from, to - 1));
+  const year = b.getFullYear() === now.getFullYear() ? "" : `, ${b.getFullYear()}`;
+  if (a.toDateString() === b.toDateString()) return `${dayName(a)}${year}`;
+  if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) return `${dayName(a)}–${b.getDate()}${year}`;
+  return `${dayName(a)} – ${dayName(b)}${year}`;
+}
+
+/** The window before, in a word where one fits (`last week`, `last month`, `last year`, `the day before`), else its dates. */
+function windowWord(w: Windows, now: Date): string {
+  const { per, n } = w.step;
+  if (n === 1) return per === "day" ? "the day before" : `last ${per}`;
+  if (per === "month" && n === 12 && new Date(w.current[0]).getMonth() === 0) return "last year";
+  return windowName(w.previous, now);
+}
+
+/** A compare line: what is shown, a faint ending, and the same in words for a screen reader. */
+interface Change {
+  text: string;
+  faint?: string;
+  spoken?: string;
+}
+
+/**
+ * How the value differs from the one over the window before, never in colour: in full,
+ * `↑ 12% more than Oct 1–20 · $1,146.90`, or by the amount when the window before is under three
+ * days (or was nothing); short, for a fact, `↓ 0.7 kg vs last week`. Undefined when this window has
+ * no value to compare.
+ */
+function changeOf(p: Panel, now: Date, value: unknown, previous: unknown[], w: Windows, short: boolean): Change | undefined {
+  const before = previous.length ? toNumber(valueOf(p, previous, now)) : undefined;
+  if (before === undefined) return { text: "Nothing to compare with yet" };
+  const after = toNumber(value);
+  if (after === undefined) return undefined;
+  const diff = after - before;
+  const named = short ? windowWord(w, now) : windowName(w.previous, now);
+  if (diff === 0) return { text: `Same as ${named}` };
+  const [arrow, more] = diff > 0 ? ["↑", "more"] : ["↓", "less"];
+  const size = amountOf(p, Math.abs(diff), now);
+  if (short) return { text: `${arrow} ${size} vs ${named}`, spoken: `${diff > 0 ? "up" : "down"} ${size}, versus ${named}` };
+  const percent = (Math.abs(diff) / Math.abs(before)) * 100;
+  const [shown, said] = before === 0 || w.previous[1] - w.previous[0] < 3 * DAY ? [size, size]
+    : percent < 1 ? ["<1%", "less than 1 percent"]
+    : [`${Math.round(percent)}%`, `${Math.round(percent)} percent`];
+  const was = amountOf(p, before, now);
+  return { text: `${arrow} ${shown} ${more} than ${named}`, faint: ` · ${was}`, spoken: `${said} ${more} than ${named}, which was ${was}` };
+}
+
+function drawChangeLine(el: HTMLElement, change: Change, cls: string): void {
+  const line = el.createDiv({ cls: `gz-compare ${cls}`, text: change.text });
+  if (change.faint) line.createSpan({ cls: "gz-faint", text: change.faint });
+  if (!change.spoken) return;
+  line.setAttr("role", "img");
+  line.setAttr("aria-label", change.spoken);
+}
+
+/** The title in the answer band: a small eyebrow over the headline, or a fact's name. */
+function answerTitle(el: HTMLElement, p: Panel, slot: AnswerSlot): void {
+  if (p.title) el.createDiv({ cls: `gz-title ${slot === "headline" ? "gz-eyebrow" : "gz-fact-title"}`, text: p.title });
+}
+
+/**
+ * The figure: large in a row with its caption for the headline, smaller for a fact, whose caption
+ * goes on a line under it. `.gz-big` holds the value and its unit only; a missing value is a faint
+ * dash with no unit. Returns the value's element.
+ */
+function drawFigure(el: HTMLElement, slot: AnswerSlot, text: string, unit: string | undefined, caption: string | undefined): HTMLElement {
+  const headline = slot === "headline";
+  const row = headline ? el.createDiv({ cls: "gz-fig-row" }) : el;
+  const big = row.createDiv({ cls: `gz-big ${headline ? "gz-fig" : "gz-fact-fig"}` });
+  const fig = big.createSpan({ text });
+  if (text === "—") fig.addClass("gz-none");
+  else if (unit) big.createSpan({ cls: "gz-unit", text: unit });
+  if (caption && headline) row.createSpan({ cls: "gz-label gz-fig-cap", text: caption });
+  else if (caption) el.createDiv({ cls: "gz-label gz-fact-note", text: caption });
+  return fig;
+}
+
+const DATE_WORDS = ["date", "time", "datetime", "relative", "until"];
+
+/**
+ * The number a figure counts up to: its value, when it's a number shown as one; not words from
+ * `values`, nor a date.
+ */
+function countable(p: Panel, value: unknown): number | undefined {
+  if (typeof value === "boolean" || (p.field !== undefined && p.values && Object.hasOwn(p.values, p.field))) return undefined;
+  const format = formatFor(p, p.field);
+  return format !== undefined && DATE_WORDS.includes(format) ? undefined : toNumber(value);
+}
+
+/** Whether a count between whole numbers keeps to whole numbers: with no format or decimals, the figure would show the fractions on the way. */
+const wholeSteps = (p: Panel) => p.decimals === undefined && formatFor(p, p.field) === undefined;
+
+/** A view that draws on the grid as it always has, and in the answer band in `answer`, counting its figure up there. */
+function answerView(
+  el: HTMLElement, ctx: PanelCtx, grid: (data: unknown) => void,
+  answer: (slot: AnswerSlot, data: unknown, count: CountUp) => void, slots: readonly AnswerSlot[] = ["headline", "fact"],
+): PanelHandle {
+  const count = new CountUp();
+  return {
+    update(data) {
+      count.stop();
+      el.empty();
+      const slot = answerSlot(ctx);
+      if (slot && slots.includes(slot)) answer(slot, data, count);
+      else grid(data);
+    },
+    destroy: () => count.stop(),
+  };
+}
+
+function drawNumber(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, data: unknown, count: CountUp): void {
+  const now = ctx.now;
+  answerTitle(el, p, slot);
+  const { current, previous } = splitByWindow(p, data, now);
+  const { value, text, unit } = panelValue(p, current, now);
+  const windows = previous && compareWindows(p.where, now);
+  const change = windows ? changeOf(p, now, value, previous!, windows, slot === "fact") : undefined;
+  // A fact has one line under its figure: the change when there is one, else the label.
+  const fig = drawFigure(el, slot, text, unit, slot === "fact" && change ? undefined : p.label);
+  if (change) drawChangeLine(el, change, slot === "fact" ? "gz-fact-note" : "gz-ans-sub");
+  count.to(el, countable(p, value), (n) => fig.setText(display(p, p.field, n, now)), wholeSteps(p));
+}
+
+/**
+ * A progress in the answer band. As a number's meter it is only the bar and its legend; on its own
+ * it has its title and figure (`$1,284 / $2,000`) over them. Inside a date window that holds now, a
+ * tick marks even pace and the legend says what is left a day; past `max` the fill turns to the
+ * error colour and a line says by how much. Amounts of money left and over read in the field's own
+ * format, which may be finer than the panel's.
+ */
+function drawProgress(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, data: unknown, count: CountUp): void {
+  const now = ctx.now, t = now.getTime();
+  const { value, text, unit } = panelValue(p, data, now);
+  const n = value as number;
+  const max = p.max ?? 100;
+  const of = `${display(p, p.field, max, now)}${unit ? ` ${unit}` : ""}`;
+  let fig: HTMLElement | undefined;
+  if (slot !== "meter") {
+    answerTitle(el, p, slot);
+    fig = drawFigure(el, slot, text, `/ ${of}`, p.label);
+  }
+  const fieldFormat = p.field === undefined ? undefined : p.fieldInfo?.[p.field]?.format;
+  const exact = (x: number) => (fieldFormat ? formatWith(x, fieldFormat, now) : amountOf(p, x, now));
+  const over = n > max;
+  const track = el.createDiv({ cls: "gz-meter-track" });
+  const fill = track.createDiv({ cls: over ? "gz-meter-fill gz-over" : "gz-meter-fill" });
+  const width = (x: number) => `${Math.max(0, Math.min(100, (x / max) * 100))}%`;
+  const window = compareWindows(p.where, now)?.current;
+  const running = window && window[0] <= t && t < window[1] ? window : undefined;
+  if (running) {
+    const pace = (t - running[0]) / (running[1] - running[0]);
+    const tick = track.createDiv({ cls: `gz-meter-pace${pace < 0.12 ? " gz-pace-start" : pace > 0.88 ? " gz-pace-end" : ""}` });
+    tick.style.left = `${pace * 100}%`;
+    tick.createSpan({ cls: "gz-meter-pace-label", text: `Even pace ${amountOf(p, max * pace, now)}` });
+  }
+  const legend = el.createDiv({ cls: "gz-meter-legend" });
+  const part = (parent: HTMLElement, bold: string, rest: string) => {
+    parent.createEl("b", { text: bold });
+    parent.append(rest);
+  };
+  part(legend.createSpan(), `${Math.round((n * 100) / max)}%`, ` of ${of}`);
+  const right = legend.createSpan();
+  if (over) part(right, exact(n - max), " over");
+  else {
+    part(right, exact(max - n), " left");
+    // Whole days left in the window after today: on Nov 20 in a 30-day month, 10.
+    const days = running ? Math.round((running[1] - shiftPeriod(periodStart(t, "day"), "day", 1)) / DAY) : 0;
+    if (n < max && days >= 1) {
+      right.append(" · ");
+      part(right, exact((max - n) / days), ` a day for ${days} ${days === 1 ? "day" : "days"}`);
+    }
+  }
+  if (over) {
+    const status = el.createDiv({ cls: "gz-meter-status" });
+    warningIcon(status);
+    const alerting = p.alert !== undefined && (typeof p.alert === "string" ? matches(n, p.alert, now) : rowsOf(data).some(compileWhere(p.alert, now)));
+    status.append(`Over the limit by ${exact(n - max)}${alerting ? " · the alert is on" : ""}`);
+  }
+  const before = count.shown;
+  fill.style.width = width(n);
+  if (count.to(el, countable(p, n), (x) => fig?.setText(display(p, p.field, x, now)), wholeSteps(p))) {
+    // The fill is new on every draw: it starts at the old width, laid out, so moving to the new one transitions.
+    fill.style.width = width(before!);
+    void fill.offsetWidth;
+    fill.style.width = width(n);
+  }
+}
+
+/** Lucide's alert-triangle, drawn in the text's colour. */
+function warningIcon(parent: HTMLElement): void {
+  const ns = "http://www.w3.org/2000/svg";
+  const doc = parent.ownerDocument;
+  const icon = doc.createElementNS(ns, "svg");
+  for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "gz-meter-icon" })) icon.setAttribute(k, v);
+  for (const d of ["m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "M12 9v4", "M12 17h.01"]) {
+    const path = doc.createElementNS(ns, "path");
+    path.setAttribute("d", d);
+    icon.appendChild(path);
+  }
+  parent.appendChild(icon);
+}
+
+/** A date as the answer band names it: `Oct 3, 2027`. */
+const dateName = (d: Date) => `${dayName(d)}, ${d.getFullYear()}`;
+
+/** Days as the figure, and what they count to: `until Oct 3, 2027`, `today`, `ago · Oct 3, 2027`; the label first when there is one. */
+function drawCountdown(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, count: CountUp): void {
+  answerTitle(el, p, slot);
+  const days = daysUntil(p.to!, ctx.now);
+  const date = dateName(new Date(Date.parse(p.to!.length === 10 ? `${p.to}T00:00` : p.to!)));
+  const when = days > 0 ? (p.label ? date : `until ${date}`) : days === 0 ? "today" : `ago · ${date}`;
+  const fig = drawFigure(el, slot, String(Math.abs(days)), Math.abs(days) === 1 ? "day" : "days", p.label ? `${p.label} · ${when}` : when);
+  count.to(el, Math.abs(days), (n) => fig.setText(String(n)), true);
 }
 
 const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes';
@@ -111,7 +348,7 @@ export const number: ViewDef = {
     { panel: { view: "number", source: "doses", pin: "sidebar" }, errors: ["pin must be status"] },
     { panel: { view: "number", source: "https://services.swpc.noaa.gov/kp.json", field: "kp_index", alert: ">= 5" } },
   ],
-  mount: (el, p, ctx) => redraw(el, (data) => {
+  mount: (el, p, ctx) => answerView(el, ctx, (data) => {
     heading(el, p);
     // With compare, the data holds the window before too; the value is the current window's.
     const { current, previous } = splitByWindow(p, data, ctx.now);
@@ -122,7 +359,7 @@ export const number: ViewDef = {
     // The label says what the value is, so it sits under it; the change comes after.
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
     if (previous) drawChange(el, p, ctx.now, value, previous);
-  }),
+  }, (slot, data, count) => drawNumber(el, p, ctx, slot, data, count)),
 };
 
 export const text: ViewDef = {
@@ -141,10 +378,14 @@ export const text: ViewDef = {
     { panel: { view: "text", source: "https://api.example.com/now", pick: "current", text: "{temp}°C", pin: "status" } },
     { panel: { view: "text", text: "Plain", alert: { temp: "> 30" } }, errors: ["alert needs a source"] },
   ],
-  mount: (el, p, ctx) => redraw(el, (data) => {
+  mount: (el, p, ctx) => answerView(el, ctx, (data) => {
     heading(el, p);
     el.createDiv({ cls: "gz-text", text: panelValue(p, data, ctx.now).text });
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
+  }, (slot, data) => {
+    answerTitle(el, p, slot);
+    el.createDiv({ cls: `gz-text ${slot === "headline" ? "gz-ans-text" : "gz-fact-text"}`, text: panelValue(p, data, ctx.now).text });
+    if (p.label) el.createDiv({ cls: "gz-label gz-ans-label", text: p.label });
   }),
 };
 
@@ -160,7 +401,7 @@ export const progress: ViewDef = {
     { panel: { view: "progress", max: 8 }, errors: ["progress needs a source"] },
     { panel: { view: "progress", source: "notes", from: "Books", max: 24, alert: ">= 24" } },
   ],
-  mount: (el, p, ctx) => redraw(el, (data) => {
+  mount: (el, p, ctx) => answerView(el, ctx, (data) => {
     heading(el, p);
     const { value, text, unit } = panelValue(p, data, ctx.now);
     const max = p.max ?? 100;
@@ -170,7 +411,7 @@ export const progress: ViewDef = {
     const bar = el.createDiv({ cls: "gz-progress" }).createDiv({ cls: "gz-progress-fill" });
     bar.style.width = `${Math.max(0, Math.min(100, ((value as number) / max) * 100))}%`;
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
-  }),
+  }, (slot, data, count) => drawProgress(el, p, ctx, slot, data, count), ["headline", "fact", "meter"]),
 };
 
 export const countdown: ViewDef = {
@@ -183,7 +424,7 @@ export const countdown: ViewDef = {
     { panel: { view: "countdown", to: "soon" }, errors: ['"to" is not a date'] },
     { panel: { view: "countdown", to: "2027-01-01", unit: "days" }, errors: ['"unit" doesn\'t apply to countdown'] },
   ],
-  mount: (el, p, ctx) => redraw(el, () => {
+  mount: (el, p, ctx) => answerView(el, ctx, () => {
     heading(el, p);
     const days = daysUntil(p.to!, ctx.now);
     const big = el.createDiv({ cls: "gz-big" });
@@ -192,5 +433,5 @@ export const countdown: ViewDef = {
     const when = new Date(Date.parse(p.to!.length === 10 ? `${p.to}T00:00` : p.to!));
     const suffix = days < 0 ? "ago" : days === 0 ? "today" : "left";
     el.createDiv({ cls: "gz-label", text: `${p.label ? `${p.label} · ` : ""}${when.toLocaleDateString()} · ${suffix}` });
-  }),
+  }, (slot, _data, count) => drawCountdown(el, p, ctx, slot, count)),
 };
