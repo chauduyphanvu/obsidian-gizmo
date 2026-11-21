@@ -252,7 +252,7 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.equal(text(latest.querySelector(".gz-big")), "80.2kg");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "Goal 75 kg");
   assert.equal(chart.querySelector(".gz-legend"), null);
-  assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "weight", "note"]);
+  assert.deepEqual([...entries.querySelectorAll("thead th")].map(text), ["at", "weight", "note"]);
 
   const [value, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
   value.value = "79.4";
@@ -266,8 +266,8 @@ test("Weight: the Tracker kit in three lines; log a weight, see the week against
   assert.equal(text(week.querySelector(".gz-compare")), "▼ 0.9 kg (1%) vs previous");
 
   // The newest entry is the first row; its weight was a typo.
-  const first = entries.querySelector("tbody tr")!;
-  assert.equal(text(first.querySelectorAll("td")[0]), new Date(2026, 10, 18, 12).toLocaleDateString());
+  const first = entries.querySelector("tbody tr:not(.gz-ledger-group)")!;
+  assert.equal(text(first.querySelectorAll("td")[0]), new Date(2026, 10, 18, 12).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" }));
   type(first.querySelectorAll("input")[0], "79.9");
   await settle();
   assert.equal((f.files.get("Apps/Weight data.md")!.fm!.weight as { value: number }[]).at(-1)!.value, 79.9);
@@ -293,7 +293,7 @@ test("Sleep: the same kit for hours slept, against a goal of eight", async () =>
   assert.deepEqual((f.files.get("Apps/Sleep data.md")!.fm!.sleep as unknown[]).at(-1), { value: 8.5, note: "", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(latest.querySelector(".gz-big")), "8.5hours");
   assert.equal(text(week.querySelector(".gz-big")), "7.2hours");
-  assert.deepEqual([...entries.querySelectorAll("th")].map(text), ["at", "sleep", "note"]);
+  assert.deepEqual([...entries.querySelectorAll("thead th")].map(text), ["at", "sleep", "note"]);
 });
 
 test("Tracker kit: one app may use it twice; each thing it tracks keeps its own list", async () => {
@@ -336,7 +336,7 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   const [month, limit, form, chart, recent] = panels(root);
   // The amount field carries its label and money format to the form, the number and the table.
   assert.deepEqual([...form.querySelectorAll(".gz-field > span")].map(text), ["Spent", "category", "note"]);
-  assert.deepEqual([...recent.querySelectorAll("th")].map(text), ["When", "Spent", "category", "note"]);
+  assert.deepEqual([...recent.querySelectorAll("thead th")].map(text), ["When", "Spent", "category", "note"]);
   assert.equal(text(month.querySelector(".gz-big")), "$700.00");
   assert.equal(text(limit.querySelector(".gz-big")), "$700/ $2,000");
   assert.equal(text(month.querySelector(".gz-compare")), "▼ $1,100.00 (61%) vs previous");
@@ -362,7 +362,7 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.deepEqual(t.bg.alerts.list().map((a) => [a.app, a.title, a.text]), [["Budget", "Against my limit", "$2,050"]]);
 
   // The flights were fun, not transport.
-  const row = [...recent.querySelectorAll("tbody tr")].find((tr) => (tr.querySelector("input.gz-edit") as HTMLInputElement | null)?.value === "1350")!;
+  const row = [...recent.querySelectorAll("tbody tr:not(.gz-ledger-group)")].find((tr) => (tr.querySelector("input.gz-edit") as HTMLInputElement | null)?.value === "1350")!;
   choose(row.querySelector("select")!, "fun");
   await settle();
   assert.equal((t.f.files.get("Apps/Budget data.md")!.fm!.spend as { category: string }[]).at(-1)!.category, "fun");
@@ -578,8 +578,8 @@ test("Decision journal: one decision is due; write one down, score the due one, 
   // Score the due one in place: what I learned, then how it went; it leaves the table and the count.
   tab("Score");
   const score = panel("How did these turn out?");
-  assert.deepEqual([...score.querySelectorAll("th")].map(text), ["Decision", "I expected", "% sure", "Due", "It went", "What I learned"]);
-  const row = score.querySelector("tbody tr")!;
+  assert.deepEqual([...score.querySelectorAll("thead th")].map(text), ["Decision", "I expected", "% sure", "Due", "It went", "What I learned"]);
+  const row = score.querySelector("tbody tr:not(.gz-ledger-group)")!;
   assert.deepEqual([...row.querySelectorAll("td")].slice(0, 4).map(text),
     ["Repaint the hallway myself", "It takes one weekend and looks as good as a painter's job", "70", "3 days ago"]);
   type(row.querySelector("input")!, "Two weekends, and the ceiling shows it");
@@ -601,7 +601,7 @@ test("Decision journal: one decision is due; write one down, score the due one, 
   // 60%, 70% (both of them wrong, so no bar for right) and 90% sure.
   assert.equal(chart.querySelectorAll("path.gz-bar").length, 5);
   assert.equal(text(chart.querySelector(".gz-legend")), "90I said90%I was right100%");
-  assert.deepEqual([...panel("Scored").querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))),
+  assert.deepEqual([...panel("Scored").querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => text(tr.querySelector("td"))),
     ["Repaint the hallway myself", "Buy the winter tyres in October", "Fix the electricity price for a year", "Cook dinner from scratch three nights a week"]);
 });
 
@@ -657,7 +657,7 @@ test("Task inbox: add a task to the inbox, see what is open and due this week, t
   assert.equal(f.files.get("Tasks/Home.md")!.body, "# Home\n\n- [x] Water plants 📅 2026-11-19\n- [ ] Buy stamps\n- [x] Call the bank 📅 2026-11-17\n");
   assert.equal(openRows().length, 2);
   assert.equal(text(soon.querySelector(".gz-big")), "0");
-  assert.deepEqual([...done.querySelectorAll("li")].map(text), ["Water plants 📅 2026-11-19 · Home", "Call the bank 📅 2026-11-17 · Home"]);
+  assert.deepEqual([...done.querySelectorAll("li:not(.gz-ledger-group)")].map(text), ["Water plants 📅 2026-11-19 · Home", "Call the bank 📅 2026-11-17 · Home"]);
 });
 
 const WEATHER = {
@@ -683,7 +683,7 @@ test("Trip planner: days to go, packing, the itinerary from a calendar file, exp
   const [days, packing, itinerary, total, rate, form, expenses, now, week, year] = panels(root);
   assert.equal(text(days.querySelector(".gz-big")), "116 days");
   assert.equal(text(packing.querySelector(".gz-title")), "Packing · 0/6");
-  assert.deepEqual([...itinerary.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelectorAll("td")[1])),
+  assert.deepEqual([...itinerary.querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => text(tr.querySelectorAll("td")[1])),
     ["Flight to Tokyo", "Hotel in Shinjuku", "Breakfast at Tsukiji outer market", "Day trip to Kamakura", "teamLab Planets", "Flight home"]);
   assert.equal(text(rate.querySelector(".gz-big")), "159.42");
 
@@ -777,9 +777,9 @@ test("Watchlist: pick a symbol, see its move, record a buy, and pick a position 
   assert.ok(f.requests.includes(`${YAHOO}SPY?range=5d&interval=1d`));
 
   // Setting a buy's shares to 0 takes it out of the positions.
-  const lots = [...panels(root)[5].querySelectorAll("tbody tr")];
+  const lots = [...panels(root)[5].querySelectorAll("tbody tr:not(.gz-ledger-group)")];
   assert.equal(lots.length, 3);
-  const aapl = lots.find((tr) => text(tr.querySelectorAll("td")[1]) === "AAPL")!;
+  const aapl = lots.find((tr) => text(tr.querySelectorAll("td")[0]) === "AAPL")!;
   type(aapl.querySelector("input.gz-edit")!, "0");
   await settle();
   assert.deepEqual(rows().map((tr) => text(tr.querySelector("td"))), ["SPY"]);
@@ -867,7 +867,7 @@ test("Read later: save an article from a feed as a note, then tick it off when r
   assert.equal(f.files.get("Reading/Markets close higher.md")!.fm!.via, "NPR news");
 
   assert.equal(text(unread.querySelector(".gz-big")), "2");
-  const rows = () => [...toRead.querySelectorAll("tbody tr")];
+  const rows = () => [...toRead.querySelectorAll("tbody tr:not(.gz-ledger-group)")];
   assert.deepEqual(rows().map((tr) => text(tr.querySelector("td"))), ["Markets close higher", "A robot learns to fold"]);
   // The link opens outside Obsidian.
   assert.equal(rows()[0].querySelector("a.external-link")!.getAttribute("href"), "https://www.npr.org/3");

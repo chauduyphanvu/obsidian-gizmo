@@ -1,9 +1,10 @@
-import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
-import { display, formatErrors, formatFor, labelOf, mapped } from "../format.ts";
+import { extent, fillWith, getPath, rowsOf, toNumber, type Row } from "../data.ts";
+import { display, formatErrors, formatFor, formatWith, labelOf, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
+import { DAY, periodStart, toTime, wallTime } from "../time.ts";
 import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
-  busy, conflictChip, fieldControl, groupedTotals, heading, noteLink, redraw, rowActionErrors, rowKey, rowNote, selectable, shownRows,
+  busy, conflictChip, fieldControl, groupedTotals, heading, noteLink, rowActionErrors, rowKey, rowNote, selectable, shownRows,
 } from "./common.ts";
 import { ACTION_KEYS, DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
@@ -49,11 +50,210 @@ function numeric(p: Panel, c: string, v: unknown): boolean {
   return typeof v === "number" && mapped(p, c, v) === undefined;
 }
 
-/** A column of plain numbers (gaps allowed), whose heading sits over them on the right. */
-function numericColumn(p: Panel, c: string, rows: Row[]): boolean {
-  if (cellKind(p, c) || p.edit?.includes(c)) return false;
+/** A column of plain numbers (gaps allowed), edited or not: what a ledger totals. */
+function numbers(p: Panel, c: string, rows: Row[]): boolean {
+  if (cellKind(p, c)) return false;
   const values = rows.map((r) => getPath(r, c)).filter((v) => v !== undefined && v !== null && v !== "");
   return values.length > 0 && values.every((v) => numeric(p, c, v));
+}
+
+/** A column of plain numbers that isn't edited, whose heading sits over them on the right. */
+function numericColumn(p: Panel, c: string, rows: Row[]): boolean {
+  return !p.edit?.includes(c) && numbers(p, c, rows);
+}
+
+// ---- Ledgers -------------------------------------------------------------------------------------
+
+/** A ledger: rows in date order, grouped by the day or week of one date field. */
+export interface Ledger {
+  field: string;
+  per: "day" | "week";
+}
+
+/** The share of a field's values that must be times for it to be a ledger's date. */
+const DATED = 0.8;
+/** Rows of a date-only field that span more than this are grouped by week. */
+const WEEKLY_AFTER = 14 * DAY;
+/** How long a row that just arrived is marked, in ms. */
+const FRESH_MS = 1800;
+
+const dateOnly = (v: unknown) => typeof v === "string" && /^\d{4}-\d{2}-\d{2}$/.test(v);
+
+/** A date field's own format: a text `format` is for numbers only, so it says nothing about a date. */
+const dateFormat = (p: Panel, field: string) => (typeof p.format === "string" ? undefined : formatFor(p, field));
+
+/** Whether no value of a date field carries a time of day, so a day's rows need no clock. */
+const datesOnly = (rows: Row[], field: string) => rows.every((r) => {
+  const v = getPath(r, field);
+  return toTime(v) === undefined || dateOnly(v);
+});
+
+function inOrder(times: number[]): boolean {
+  let up = true, down = true;
+  for (let i = 1; i < times.length; i++) {
+    if (times[i] < times[i - 1]) up = false;
+    if (times[i] > times[i - 1]) down = false;
+  }
+  return up || down;
+}
+
+/**
+ * How a table or list is grouped as a ledger, or nothing when it isn't one. A ledger has no `group`
+ * (grouped rows are totals already), isn't cards, has two rows or more, and is in date order by a
+ * date field: the `sort` field when most of its values are times, else `at` when it is a shown
+ * column (`columns` is undefined for a list, where any field of the rows will do). A date field with
+ * no time of day (or formatted as `date`) over more than two weeks is grouped by week, else by day.
+ */
+export function ledgerBy(p: Panel, rows: Row[], columns?: readonly string[]): Ledger | undefined {
+  if (p.group || p.layout === "cards" || rows.length < 2) return undefined;
+  const sorted = p.sort?.replace(/^-/, "");
+  const fields = new Set([sorted, !columns || columns.includes("at") ? "at" : undefined]);
+  for (const field of fields) {
+    if (field === undefined) continue;
+    const times = rows.map((r) => toTime(getPath(r, field))).filter((t): t is number => t !== undefined);
+    // Sorting by the field already puts the rows in its order.
+    if (times.length < rows.length * DATED || (field !== sorted && !inOrder(times))) continue;
+    const [first, last] = extent(times);
+    const noClock = dateFormat(p, field) === "date" || datesOnly(rows, field);
+    return { field, per: noClock && last - first > WEEKLY_AFTER ? "week" : "day" };
+  }
+  return undefined;
+}
+
+/** How a ledger draws its date column: as a clock (`clock`), or not at all when the group says it (`dropped`). */
+interface LedgerLook {
+  ledger?: Ledger;
+  clock?: string;
+  dropped?: string;
+}
+
+/**
+ * A ledger's date column shows the time of day under a day's heading, or the date under a week's,
+ * whatever the panel formats it as; with no time of day to show, the column goes. A column that is
+ * edited or drawn as a `cells` kind stays as it is.
+ */
+function ledgerLook(p: Panel, rows: Row[], columns: string[], edited: Map<string, unknown>): LedgerLook {
+  const ledger = ledgerBy(p, rows, columns);
+  if (!ledger) return {};
+  const clock = columns.includes(ledger.field) && !edited.has(ledger.field) && !cellKind(p, ledger.field) ? ledger.field : undefined;
+  const dropped = clock && columns.length > 1 && ledger.per === "day" && datesOnly(rows, clock) ? clock : undefined;
+  return { ledger, clock, dropped };
+}
+
+/** The start of the day or week a row's date falls in, as lived; undefined when it has none. */
+function bucketOf(ledger: Ledger, row: Row): number | undefined {
+  const t = wallTime(getPath(row, ledger.field));
+  return t === undefined ? undefined : periodStart(t, ledger.per);
+}
+
+/** `Fri Nov 20`, or `Nov 2` without the weekday; the year follows when it isn't this one. */
+function shortDate(t: number, now: Date, weekday: boolean): string {
+  const d = new Date(t);
+  const part = (o: Intl.DateTimeFormatOptions) => d.toLocaleDateString(undefined, o);
+  const text = `${weekday ? `${part({ weekday: "short" })} ` : ""}${part({ month: "short" })} ${d.getDate()}`;
+  return d.getFullYear() === now.getFullYear() ? text : `${text}, ${d.getFullYear()}`;
+}
+
+/** A group's heading: Today, Yesterday, a weekday or a date; This week, Last week or the week's first day. */
+function whenText(start: number, per: Ledger["per"], now: Date): string {
+  const t = now.getTime();
+  if (per === "week") {
+    const weeks = Math.round((periodStart(t, "week") - start) / (7 * DAY));
+    return weeks === 0 ? "This week" : weeks === 1 ? "Last week" : `Week of ${shortDate(start, now, false)}`;
+  }
+  const days = Math.round((periodStart(t, "day") - start) / DAY);
+  if (days === 0) return "Today";
+  if (days === 1) return "Yesterday";
+  return days > 1 && days <= 6 ? new Date(start).toLocaleDateString(undefined, { weekday: "long" }) : shortDate(start, now, true);
+}
+
+/**
+ * What a group's heading says besides its day: a currency column's sum, or another number's
+ * average; nothing when the group has no numbers.
+ */
+function totalText(p: Panel, column: string, rows: Row[], now: Date): string {
+  const nums = rows.map((r) => toNumber(getPath(r, column))).filter((n): n is number => n !== undefined);
+  if (nums.length === 0) return "";
+  const sum = nums.reduce((a, b) => a + b, 0);
+  if (/[$€£¥]/.test(formatFor(p, column) ?? "")) return display(p, column, sum, now);
+  const mean = sum / nums.length;
+  const wholes = nums.every(Number.isInteger) && Number.isInteger(Math.round(mean * 10) / 10);
+  return `avg ${display({ ...p, decimals: p.decimals ?? (wholes ? 0 : 1) }, column, mean, now)}`;
+}
+
+/** Draws a ledger's group headings as its rows arrive, and keeps each heading's total. */
+interface Grouping {
+  /** Before row `i` is drawn: the heading of its group, if it starts one. */
+  enter(i: number): void;
+  /** Every total again, from the rows as they are now. */
+  retotal(): void;
+  /** Whether these rows, as far as drawn, fall in the groups they were drawn in. */
+  holds(rows: Row[]): boolean;
+}
+
+/** `rows` is read as it is when a total is drawn, so a view that updates rows in place keeps it current. */
+function grouping(ledger: Ledger, now: Date, rows: Row[], heading: () => HTMLElement, totalOf: (rows: Row[]) => string): Grouping {
+  const buckets: (number | undefined)[] = [];
+  const groups: { total: HTMLElement; members: number[] }[] = [];
+  const retotal = (g: (typeof groups)[number]) => g.total.setText(totalOf(g.members.map((i) => rows[i])));
+  let at: number | undefined;
+  return {
+    enter(i) {
+      const bucket = bucketOf(ledger, rows[i]);
+      buckets.push(bucket);
+      if (bucket !== undefined && bucket !== at) {
+        at = bucket;
+        const head = heading();
+        head.createSpan({ cls: "gz-ledger-when", text: whenText(bucket, ledger.per, now) });
+        groups.push({ total: head.createSpan({ cls: "gz-ledger-total" }), members: [] });
+      }
+      // Rows with no date before the first dated one have no group.
+      const group = groups.at(-1);
+      if (!group) return;
+      group.members.push(i);
+      retotal(group);
+    },
+    retotal() { groups.forEach(retotal); },
+    holds: (next) => buckets.every((b, i) => bucketOf(ledger, next[i]) === b),
+  };
+}
+
+/** What a draw knows of the rows that are new since the last one. */
+interface Arrivals {
+  keys: unknown[];
+  /** Keys of rows not shown last time; nothing on a panel's first draw. */
+  fresh: Set<unknown>;
+  /** Marks a row's element as new for a moment. */
+  mark(el: Element): void;
+}
+
+/** Remembers which rows were shown, so the next draw can tell the new ones; its timers end with `stop`. */
+function rowMemory() {
+  let seen: Set<unknown> | undefined;
+  const timers = new Set<ReturnType<typeof setTimeout>>();
+  return {
+    arrive(rows: Row[]): Arrivals {
+      const keys = rows.map(rowKey);
+      const before = seen;
+      seen = new Set(keys);
+      return {
+        keys,
+        fresh: new Set(before ? keys.filter((k) => k !== undefined && !before.has(k)) : []),
+        mark(el) {
+          el.classList.add("gz-fresh");
+          const timer = setTimeout(() => {
+            el.classList.remove("gz-fresh");
+            timers.delete(timer);
+          }, FRESH_MS);
+          timers.add(timer);
+        },
+      };
+    },
+    stop() {
+      for (const timer of timers) clearTimeout(timer);
+      timers.clear();
+    },
+  };
 }
 
 /**
@@ -79,11 +279,14 @@ function editType(p: Panel, field: string, rows: Row[]): string | string[] {
   return typeof sample === "boolean" ? "checkbox" : typeof sample === "number" ? "number" : "text";
 }
 
-/** A drawn table or set of cards: what it shows, and how to show new values of the same rows in place. */
+/**
+ * A drawn table or set of cards: what it shows, and how to show new values of the same rows in
+ * place; false when they no longer fall in the same groups, and the rows are to be drawn again.
+ */
 interface Drawn {
   columns: string[];
   keys: unknown[];
-  patch(rows: Row[]): void;
+  patch(rows: Row[]): boolean;
 }
 
 const sameList = (a: unknown[], b: unknown[]) => a.length === b.length && a.every((x, i) => x === b[i]);
@@ -96,6 +299,11 @@ interface RowEnv {
   edited: Map<string, string | string[]>;
   /** The rows as last shown: buttons and inputs read their row here, so it stays current. */
   current: Row[];
+  ledger?: Ledger;
+  /** The date column a ledger shows as a clock. */
+  clock?: string;
+  /** The column read as each row's name. */
+  lead?: string;
 }
 
 /** A drawn row: its element, and what shows the row's new values in it. */
@@ -104,9 +312,27 @@ interface DrawnRow {
   show(row: Row): void;
 }
 
+/** A ledger's date cell: the time of day under a day's heading, the date under a week's; undefined for a value that isn't a time. */
+function clockText(env: RowEnv, row: Row, c: string): string | undefined {
+  const v = getPath(row, c);
+  const t = wallTime(v);
+  if (t === undefined || !env.ledger) return undefined;
+  return env.ledger.per === "week" ? shortDate(t, env.ctx.now, true) : formatWith(v, "time", env.ctx.now);
+}
+
 /** One column of row `i` in `box` (a table cell, a card's line): an input when edited, else what the cell draws. */
 function column(box: HTMLElement, env: RowEnv, c: string, i: number, title = false): (row: Row) => void {
   const type = env.edited.get(c);
+  if (c === env.lead) box.addClass("gz-lead");
+  if (c === env.clock) {
+    return (row) => {
+      box.empty();
+      const when = clockText(env, row, c);
+      if (when === undefined) fillCell(box, env.p, env.ctx, row, c);
+      else box.setText(when);
+      box.classList.toggle("gz-ledger-time", when !== undefined);
+    };
+  }
   if (type === undefined) return (row) => { box.empty(); fillCell(box, env.p, env.ctx, row, c, title); };
   // A cell has no label of its own; anything but a number, date or time is edited as one line of text.
   const show = fieldControl(box, type, (value) => env.ctx.editRow(env.current[i], c, value), {
@@ -146,38 +372,61 @@ function card(grid: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
   return { el, show: (row) => shows.forEach((show) => show(row)) };
 }
 
-function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[]): Drawn | undefined {
+function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: Arrivals): Drawn | undefined {
   heading(el, p, p.label);
   if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return undefined; }
-  const env: RowEnv = {
-    p, ctx, columns: columnsOf(p, rows), edited: new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)])), current: [...rows],
-  };
+  const all = columnsOf(p, rows);
+  const edited = new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)] as const));
   const cards = p.layout === "cards";
+  const look = cards ? {} : ledgerLook(p, rows, all, edited);
+  const env: RowEnv = {
+    p, ctx, columns: all.filter((c) => c !== look.dropped), edited, current: [...rows], ledger: look.ledger, clock: look.clock,
+  };
+  if (!cards) env.lead = env.columns.find((c) => c !== look.ledger?.field && !cellKind(p, c) && !edited.has(c) && !numericColumn(p, c, rows));
   let parent: HTMLElement;
+  let groups: Grouping | undefined;
   if (cards) {
     parent = el.createDiv({ cls: "gz-cards" });
   } else {
-    const table = el.createDiv({ cls: "gz-table-wrap" }).createEl("table", { cls: "gz-table" });
+    const table = el.createDiv({ cls: "gz-table-wrap" }).createEl("table", { cls: look.ledger ? "gz-table gz-ledger" : "gz-table" });
     const head = table.createEl("thead").createEl("tr");
-    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows) ? "gz-num" : undefined });
+    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows) || edited.get(c) === "number" ? "gz-num" : undefined });
     if (p.action) head.createEl("th");
     parent = table.createEl("tbody");
+    if (look.ledger) {
+      const span = env.columns.length + (p.action ? 1 : 0);
+      const by = env.columns.find((c) => c !== look.ledger!.field && numbers(p, c, rows));
+      groups = grouping(
+        look.ledger, ctx.now, env.current,
+        () => parent.createEl("tr", { cls: "gz-ledger-group" }).createEl("th", { attr: { colspan: span } }).createDiv({ cls: "gz-ledger-head" }),
+        (of) => (by === undefined ? "" : totalText(p, by, of, ctx.now)),
+      );
+    }
   }
   const updates: ((r: Row) => void)[] = [];
   shownRows(el, env.current, (r) => {
-    const drawn = (cards ? card : tableRow)(parent, env, r, updates.length);
+    const i = updates.length;
+    groups?.enter(i);
+    const drawn = (cards ? card : tableRow)(parent, env, r, i);
+    if (news.fresh.has(news.keys[i])) news.mark(drawn.el);
     const repick = selectable(drawn.el, p, ctx, r);
     updates.push((row) => {
       drawn.show(row);
       repick(row);
     });
   });
+  // Rows shown later, behind "Show all", are not new then.
+  news.fresh.clear();
+  const shape = JSON.stringify(look);
   return {
-    columns: env.columns,
-    keys: rows.map(rowKey),
+    columns: all,
+    keys: news.keys,
     patch(next) {
+      if (JSON.stringify(cards ? {} : ledgerLook(p, next, all, edited)) !== shape || (groups && !groups.holds(next))) return false;
       env.current.splice(0, env.current.length, ...next);
       next.forEach((r, i) => updates[i]?.(r));
+      groups?.retotal();
+      return true;
     },
   };
 }
@@ -229,18 +478,18 @@ export const table: ViewDef = {
   ],
   mount(el, p, ctx) {
     let drawn: Drawn | undefined;
+    const memory = rowMemory();
     return {
       update(data) {
         const rows = rowsOf(data);
+        const news = memory.arrive(rows);
         // The same rows back after a write are updated in place, so focus and typing in other cells stay.
-        const keys = rows.map(rowKey);
-        if (drawn && p.edit && keys.every((k) => k !== undefined) && sameList(drawn.keys, keys) && sameList(drawn.columns, columnsOf(p, rows))) {
-          drawn.patch(rows);
-          return;
-        }
+        if (drawn && p.edit && news.keys.every((k) => k !== undefined) && sameList(drawn.keys, news.keys) && sameList(drawn.columns, columnsOf(p, rows)) && drawn.patch(rows)) return;
+        memory.stop();
         el.empty();
-        drawn = drawRows(el, p, ctx, rows);
+        drawn = drawRows(el, p, ctx, rows, news);
       },
+      destroy: memory.stop,
     };
   },
 };
@@ -283,20 +532,35 @@ export const list: ViewDef = {
     { panel: { view: "list", source: "s", action: "Add" }, errors: ['"action" needs at least one of save, append, notify, open'] },
     { panel: { view: "list", source: "notes", from: "Books", detail: "{name} by {author}, {pages} pages" } },
   ],
-  mount: (el, p, ctx) => redraw(el, (data) => {
-    heading(el, p, p.label);
-    const rows = rowsOf(data);
-    if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return; }
-    const ul = el.createEl("ul", { cls: "gz-list" });
-    shownRows(el, rows, (r) => {
-      const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
-      const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) + countLabel(p) : plainItem(p, r, ctx.now);
-      const li = ul.createEl("li");
-      const note = rowNote(p, r);
-      if (note) noteLink(li, text, note, ctx);
-      else li.setText(text);
-      rowAction(li, p, ctx, () => r);
-      selectable(li, p, ctx, r);
-    });
-  }),
+  mount(el, p, ctx) {
+    const memory = rowMemory();
+    return {
+      update(data) {
+        memory.stop();
+        el.empty();
+        heading(el, p, p.label);
+        const rows = rowsOf(data);
+        const news = memory.arrive(rows);
+        if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return; }
+        const ledger = ledgerBy(p, rows);
+        const ul = el.createEl("ul", { cls: ledger ? "gz-list gz-ledger" : "gz-list" });
+        const groups = ledger && grouping(ledger, ctx.now, rows, () => ul.createEl("li", { cls: "gz-ledger-group" }), () => "");
+        let i = 0;
+        shownRows(el, rows, (r) => {
+          groups?.enter(i);
+          const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
+          const text = item ? fillWith(item, r, (path, v) => display(p, path, v, ctx.now, "text")) + countLabel(p) : plainItem(p, r, ctx.now);
+          const li = ul.createEl("li");
+          if (news.fresh.has(news.keys[i++])) news.mark(li);
+          const note = rowNote(p, r);
+          if (note) noteLink(li, text, note, ctx);
+          else li.setText(text);
+          rowAction(li, p, ctx, () => r);
+          selectable(li, p, ctx, r);
+        });
+        news.fresh.clear();
+      },
+      destroy: memory.stop,
+    };
+  },
 };

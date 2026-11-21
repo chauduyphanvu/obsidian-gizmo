@@ -219,7 +219,7 @@ test("Reading list: save an article from a feed as a note, then tick it off when
     { link: "https://example.com/parser", date: "2026-11-18T18:05", at: savedAt("2026-11-18T12:00") });
   assert.deepEqual(f.files.get("Reading/Voyager Crash.md")!.fm, { link: "https://xkcd.com/3326/", date: "2026-11-17T19:00", at: savedAt("2026-11-18T12:00") });
 
-  const rows = [...saved.querySelectorAll("tbody tr")];
+  const rows = [...saved.querySelectorAll("tbody tr:not(.gz-ledger-group)")];
   assert.deepEqual(rows.map((tr) => text(tr.querySelector("td"))), ["Show HN A tiny & fast parser", "Voyager Crash"]);
   const tick = rows[1].querySelector('input[type="checkbox"]') as HTMLInputElement;
   assert.equal(tick.checked, false);
@@ -239,10 +239,10 @@ test("Week: the next seven days from a calendar file; log an item as done, or so
   assert.equal(root.querySelector(".gz-error"), null);
   const [form, agenda, done] = [...root.querySelectorAll(".gz-panel")];
   // Wed 18 Nov: the Thursday bins and Tuesday's swim practice (a weekly rule), not Thanksgiving on the 26th.
-  assert.deepEqual([...agenda.querySelectorAll("li")].map((li) => text(li)), ["2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
+  assert.deepEqual([...agenda.querySelectorAll("li:not(.gz-ledger-group)")].map((li) => text(li)), ["2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
   assert.equal(text(done.querySelector(".gz-empty")), "Nothing here yet.");
 
-  (agenda.querySelectorAll("li")[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
+  (agenda.querySelectorAll("li:not(.gz-ledger-group)")[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
   assert.deepEqual(notices, ["Logged Swim practice"]);
   assert.deepEqual(f.files.get("Apps/Week data.md")!.fm!.done, [{ what: "Swim practice", planned: "2026-11-24T17:30", at: savedAt("2026-11-18T12:00") }]);
@@ -250,14 +250,14 @@ test("Week: the next seven days from a calendar file; log an item as done, or so
   (form.querySelector("input") as HTMLInputElement).value = "Called the plumber";
   form.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();
-  assert.deepEqual([...done.querySelectorAll("li")].map((li) => text(li)), ["2026-11-18T12:00 · Swim practice", "2026-11-18T12:00 · Called the plumber"]);
+  assert.deepEqual([...done.querySelectorAll("li:not(.gz-ledger-group)")].map((li) => text(li)), ["2026-11-18T12:00 · Swim practice", "2026-11-18T12:00 · Called the plumber"]);
 
   // An event added to the calendar file today appears first.
   const ics = vaultFile("Calendar/family.ics").raw.replace("END:VCALENDAR", "BEGIN:VEVENT\nUID:dentist\nDTSTART;VALUE=DATE:20261118\nSUMMARY:Dentist\nEND:VEVENT\nEND:VCALENDAR");
   f.files.set("Calendar/family.ics", { raw: ics });
   changed("Calendar/family.ics");
   await settle();
-  assert.deepEqual([...agenda.querySelectorAll("li")].map((li) => text(li)),
+  assert.deepEqual([...agenda.querySelectorAll("li:not(.gz-ledger-group)")].map((li) => text(li)),
     ["2026-11-18 · DentistDone", "2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
 });
 
@@ -449,9 +449,11 @@ test("Spending: log a purchase, see the week against last, the stack against the
   assert.match(text(chart.querySelector(".gz-legend")), /Food\$30.*Transport\$12/);
 
   // Recent purchases, newest first, in the panel's formats; category is a dropdown.
-  assert.deepEqual([...recent.querySelectorAll("th")].map((th) => text(th)), ["When", "Spent", "category", "note"]);
-  const rows = [...recent.querySelectorAll("tbody tr")];
-  assert.deepEqual(rows.map((tr) => [text(tr.querySelectorAll("td")[0]), text(tr.querySelectorAll("td")[1])]).slice(0, 2), [["23 hours ago", "$30.25"], ["2 days ago", "$12.00"]]);
+  assert.deepEqual([...recent.querySelectorAll("thead th")].map((th) => text(th)), ["When", "Spent", "category", "note"]);
+  const rows = [...recent.querySelectorAll("tbody tr:not(.gz-ledger-group)")];
+  // Under each day's heading, a purchase's When is its time of day.
+  const timeOf = (day: number, h: number, m: number) => new Date(2026, 10, day, h, m).toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+  assert.deepEqual(rows.map((tr) => [text(tr.querySelectorAll("td")[0]), text(tr.querySelectorAll("td")[1])]).slice(0, 2), [[timeOf(17, 13, 0), "$30.25"], [timeOf(16, 8, 15), "$12.00"]]);
   assert.deepEqual([...rows[0].querySelectorAll("select option")].map((o) => text(o)), ["food", "rent", "transport", "fun", "other"]);
 
   // Log a purchase.
@@ -465,8 +467,8 @@ test("Spending: log a purchase, see the week against last, the stack against the
   assert.deepEqual(saved.at(-1), { amount: 20, category: "fun", note: "movie", at: savedAt("2026-11-18T12:00") });
   assert.equal(text(week.querySelector(".gz-big")), "$62.25");
   assert.equal(text(week.querySelector(".gz-compare")), "▼ $63.25 (50%) vs previous");
-  assert.deepEqual([...recent.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelectorAll("td")[1])).slice(0, 2), ["$20.00", "$30.25"]);
-  assert.equal(text(recent.querySelector("tbody tr td")), "just now");
+  assert.deepEqual([...recent.querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => text(tr.querySelectorAll("td")[1])).slice(0, 2), ["$20.00", "$30.25"]);
+  assert.equal(text(recent.querySelector("tbody tr td")), timeOf(18, 12, 0));
 
   // The movie was food after all.
   choose(recent.querySelector("tbody tr select")!, "food");
@@ -702,13 +704,13 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   await settle();
   assert.equal(root.querySelector(".gz-error"), null);
   const [next, form, coming, day, all] = panelsOf(root);
-  const items = (panel: Element) => [...panel.querySelectorAll("li")].map((li) => text(li));
+  const items = (panel: Element) => [...panel.querySelectorAll("li:not(.gz-ledger-group)")].map((li) => text(li));
   // The physical in September is past, so it is only in the table.
   assert.deepEqual(items(coming), ["in 16 days · Dentist with Dr. Lee", "in 58 days · Eye exam with Dr. Patel"]);
   assert.equal(text(next.querySelector(".gz-big")), "16 days");
   assert.equal(text(day.querySelector(".gz-title")), "On 2026-11-18");
   assert.equal(text(day.querySelector(".gz-empty")), "Nothing here yet.");
-  assert.deepEqual([...all.querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))), ["Eye exam", "Dentist", "Physical"]);
+  assert.deepEqual([...all.querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => text(tr.querySelector("td"))), ["Eye exam", "Dentist", "Physical"]);
 
   // Half-way through booking, look at another day: the form keeps what was typed.
   const [what, date, who] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
@@ -780,8 +782,8 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
     { what: "Passport", due: "2027-03-01", at: savedAt("2026-11-18T12:00") },
     { what: "Car insurance", due: "2026-11-25", at: savedAt("2026-11-18T12:00") },
   ]);
-  const rows = () => [...coming.querySelectorAll("tbody tr")];
-  assert.deepEqual([...coming.querySelectorAll("th")].map((th) => text(th)), ["What", "Due", "Days left", "Done"]);
+  const rows = () => [...coming.querySelectorAll("tbody tr:not(.gz-ledger-group)")];
+  assert.deepEqual([...coming.querySelectorAll("thead th")].map((th) => text(th)), ["What", "Due", "Days left", "Done"]);
   assert.deepEqual(rows().map((tr) => [text(tr.querySelector("td")), (tr.querySelector('input[type="date"]') as HTMLInputElement).value, text(tr.querySelectorAll("td")[2])]),
     [["Car insurance", "2026-11-25", "7"], ["Passport", "2027-03-01", "103"]]);
   assert.equal(text(next.querySelector(".gz-big")), "7 days");

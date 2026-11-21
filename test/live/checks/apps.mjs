@@ -156,7 +156,7 @@ export default async function apps(t) {
       await na.open("Apps/Appointments");
       const el = na.view().contentEl;
       const panel = (start) => [...el.querySelectorAll(".gz-panel")].find((p) => p.querySelector(".gz-title")?.textContent.startsWith(start));
-      const items = (start) => [...panel(start).querySelectorAll("li")].map((li) => li.textContent);
+      const items = (start) => [...panel(start).querySelectorAll("li:not(.gz-ledger-group)")].map((li) => li.textContent);
       const form = panel("Book an appointment");
       const [what, date, who] = form.querySelectorAll("input");
       na.fill(what, "Blood test");
@@ -175,7 +175,7 @@ export default async function apps(t) {
       const pinned = await na.until(() => na.status().find((s) => s === "Next appointment: 1 day"), 3000);
       await na.sleep(500);
       const first = items("Coming up")[0];
-      const row = [...panel("All appointments").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td").textContent === "Blood test " + tomorrow);
+      const row = [...panel("All appointments").querySelectorAll("tbody tr:not(.gz-ledger-group)")].find((tr) => tr.querySelector("td").textContent === "Blood test " + tomorrow);
       row.querySelector('input[type="checkbox"]').click();
       const done = await na.until(() => na.fm(note)?.done === true, 3000);
       await na.sleep(800);
@@ -207,7 +207,7 @@ export default async function apps(t) {
       await add("Passport", day(100));
       await add("Car insurance", day(5));
       const notices = await na.noticesSince(mark, "Renewals: Coming up", 5000);
-      const rows = () => [...panel("Coming up").querySelectorAll("tbody tr")];
+      const rows = () => [...panel("Coming up").querySelectorAll("tbody tr:not(.gz-ledger-group)")];
       const listed = rows().map((tr) => [tr.querySelector("td").textContent, tr.querySelector('input[type="date"]').value, tr.querySelectorAll("td")[2].textContent]);
       const next = panel("Next deadline").querySelector(".gz-big").textContent;
       rows()[0].querySelector('input[type="checkbox"]').click();
@@ -334,7 +334,7 @@ export default async function apps(t) {
       await na.open("Apps/Appointments");
       await app.fileManager.processFrontMatter(app.vault.getFileByPath("Health/Dentist.md"), (fm) => { fm.date = "2026-12-20"; });
       await na.sleep(1500);
-      const row = [...na.view().contentEl.querySelectorAll(".gz-view-table tbody tr")].find((tr) => tr.querySelector("td").textContent === "Dentist");
+      const row = [...na.view().contentEl.querySelectorAll(".gz-view-table tbody tr:not(.gz-ledger-group)")].find((tr) => tr.querySelector("td").textContent === "Dentist");
       return row?.querySelector('input[type="date"]')?.value;`);
     if (r !== "2026-12-20") throw new Error(String(r));
     return "updated without reopening";
