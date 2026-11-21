@@ -1,5 +1,5 @@
 import { extent, getPath, rowsOf, type Row } from "../data.ts";
-import { periodStart, stampParts, toTime } from "../time.ts";
+import { periodStart, shiftPeriod, stampParts, toTime } from "../time.ts";
 import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
@@ -27,6 +27,12 @@ function itemsOf(p: Panel, rows: Row[]): { rows: Row[]; items: Map<Row, Item>; s
   return { rows: sorted, items, skipped: rows.length - items.size };
 }
 
+/** A month tick's year in two digits, "Jan 2027" as "Jan ’27"; a tick that is only a year stays. */
+const shortYear = (label: string) => label.replace(/^(\D.*?)\s+\d{2}(\d{2})$/, "$1 ’$2");
+
+/** About how wide a tick's label is, in pixels, to keep the one for today clear of its neighbours. */
+const labelWidth = (label: string) => label.length * 6.5;
+
 /** A date, with the time when it isn't midnight. */
 function when(t: number): string {
   const s = stampParts(new Date(t));
@@ -47,11 +53,22 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
   const margin = hi === lo ? DAY : (hi - lo) * 0.04;
   const [from, to] = [lo - margin, hi + margin];
   const left = (t: number) => `left: ${(((t - from) / (to - from)) * 100).toFixed(3)}%`;
-  const ticks = timeTicks(from, to, Math.max(2, Math.floor((width - LABEL) / 80)));
+  const track = Math.max(1, width - LABEL);
+  const ticks = timeTicks(from, to, Math.max(2, Math.floor(track / 80)));
+  const today = periodStart(ctx.now.getTime(), "day");
+  const tomorrow = shiftPeriod(today, "day", 1);
+  const showToday = today >= from && today <= to;
+  const px = (t: number) => ((t - from) / (to - from)) * track;
 
   const root = el.createDiv({ cls: "gz-timeline" });
   const axis = root.createDiv({ cls: "gz-tl-axis" });
-  for (const t of ticks) axis.createSpan({ cls: "gz-tl-tick", text: t.label, attr: { style: left(t.at) } });
+  for (const t of ticks) {
+    const label = shortYear(t.label);
+    // A label under "Today" is left out; its gridline stays.
+    if (showToday && px(t.at) < px(today) + 23 && px(t.at) + labelWidth(label) + 4 > px(today) - 23) continue;
+    axis.createSpan({ cls: "gz-tl-tick", text: label, attr: { style: left(t.at) } });
+  }
+  if (showToday) axis.createSpan({ cls: "gz-tl-now", text: "Today", attr: { style: left(today) } });
   const body = root.createDiv({ cls: "gz-tl-body" });
   const lines = body.createDiv({ cls: "gz-tl-grid", attr: { "aria-hidden": "true" } });
   for (const t of ticks) lines.createDiv({ cls: "gz-tl-line", attr: { style: left(t.at) } });
@@ -66,8 +83,10 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
     if (note) noteLink(label, text, note, ctx);
     else label.setText(text);
     const detail = `${text}: ${end === undefined ? when(start) : `${when(start)} to ${when(end)}`}`;
+    const kind = end === undefined ? "gz-tl-dot" : "gz-tl-bar";
     const mark = line.createDiv({ cls: "gz-tl-track" }).createDiv({
-      cls: end === undefined ? "gz-tl-dot" : "gz-tl-bar",
+      // A bar that ended before today is finished; an item that starts after today is drawn as an outline.
+      cls: [kind, ...(end !== undefined && end < today ? ["gz-tl-done"] : []), ...(start >= tomorrow ? ["gz-tl-future"] : [])],
       attr: { style: end === undefined ? left(start) : `${left(start)}; width: ${(((end - start) / (to - from)) * 100).toFixed(3)}%`, title: detail, tabindex: 0 },
     });
     if (picks(p)) {
@@ -78,8 +97,7 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
     }
   });
 
-  const today = periodStart(ctx.now.getTime(), "day");
-  if (today >= from && today <= to) {
+  if (showToday) {
     body.createDiv({ cls: "gz-tl-grid", attr: { "aria-hidden": "true" } }).createDiv({ cls: "gz-tl-today", attr: { style: left(today) } });
   }
   skippedNote();

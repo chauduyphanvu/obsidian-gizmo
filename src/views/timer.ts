@@ -20,11 +20,12 @@ export const timer: ViewDef = {
     heading(el, p);
     const state = ctx.timer(key, p);
     const remaining = state.endsAt ? state.endsAt - Date.now() : state.remainingMs;
-    el.createDiv({ cls: "gz-big gz-clock", text: formatClock(remaining), attr: { "data-gz-timer": key } });
-    const row = el.createDiv({ cls: "gz-row" });
-    const toggle = row.createEl("button", { cls: "mod-cta", text: state.endsAt ? "Pause" : "Start" });
+    const box = el.createDiv({ cls: "gz-timer" });
+    box.createDiv({ cls: "gz-clock", text: formatClock(remaining), attr: { "data-gz-timer": key } });
+    const row = box.createDiv({ cls: "gz-timer-actions" });
+    const toggle = row.createEl("button", { cls: state.endsAt ? undefined : "mod-cta", text: state.endsAt ? "Pause" : "Start" });
     toggle.addEventListener("click", () => (state.endsAt ? ctx.pauseTimer(key) : ctx.startTimer(key, p)));
     row.createEl("button", { text: "Reset" }).addEventListener("click", () => ctx.resetTimer(key, p));
-    if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
+    if (p.label) box.createDiv({ cls: "gz-label", text: p.label });
   }),
 };

@@ -1,5 +1,6 @@
 import { document } from "./support/dom.ts";
 import assert from "node:assert/strict";
+import { readFileSync } from "node:fs";
 import { test } from "node:test";
 import type { Row } from "../src/data.ts";
 import { checkPanel, type Panel } from "../src/spec.ts";
@@ -107,8 +108,9 @@ test("ticks are days on a short span and months on a long one, and fewer when na
   assert.ok(ticks(short.el).every((t) => /^Nov \d+$/.test(t)), ticks(short.el).join());
   const year = [{ name: "a", start: "2026-03-01", due: "2027-02-01" }];
   const long = mount({}, year);
-  assert.ok(ticks(long.el).every((t) => /^[A-Z][a-z]{2}( \d{4})?$/.test(t)), ticks(long.el).join());
-  assert.ok(ticks(long.el).includes("Jan 2027"));
+  assert.ok(ticks(long.el).every((t) => /^[A-Z][a-z]{2}( ’\d{2})?$/.test(t)), ticks(long.el).join());
+  assert.ok(ticks(long.el).includes("Jan ’27"));
+  assert.ok(ticks(long.el).includes("Mar ’26"));
   const narrow = mount({}, year, fakeCtx(300).ctx);
   assert.ok(ticks(narrow.el).length < ticks(long.el).length);
   long.handle.resize!(300);
@@ -155,4 +157,42 @@ test("item placeholders and the default text go through values and format", () =
   assert.deepEqual(checkPanel({ view: "timeline", source: "s", start: "start", format: "dollars" }, true).errors, [
     'format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
   ]);
+});
+
+const classes = (el: Element) => marks(el).map((m) => [...m.classList].filter((c) => /^gz-tl-(done|future)$/.test(c)).map((c) => c.slice(6)));
+
+test("a bar that ended before today is finished (pencil) and an item that starts after it is an outline; the rest are ink", () => {
+  const { el } = mount({ item: "{name}" }, [
+    { name: "Finished", start: "2026-10-01", due: "2026-10-20" },
+    { name: "Past dot", start: "2026-10-05" },
+    { name: "Running", start: "2026-11-10", due: "2026-11-30" },
+    { name: "Ends today", start: "2026-11-01", due: "2026-11-18" },
+    { name: "Starts today", start: "2026-11-18T09:00", due: "2026-11-19" },
+    { name: "Later", start: "2026-11-25", due: "2026-12-10" },
+    { name: "Soon dot", start: "2026-11-30" },
+  ]);
+  assert.deepEqual(labels(el), ["Finished", "Past dot", "Ends today", "Running", "Starts today", "Later", "Soon dot"]);
+  assert.deepEqual(classes(el), [["done"], [], [], [], [], ["future"], ["future"]]);
+  assert.deepEqual(marks(el).map((m) => m.classList.contains("gz-tl-bar")), [true, false, true, true, true, true, false]);
+});
+
+test("today is a line with its name above it in the label row, at the same place, and no tick label sits under it", () => {
+  const { el } = mount({}, ROWS);
+  const now = el.querySelector(".gz-tl-axis .gz-tl-now")!;
+  assert.equal(text(now), "Today");
+  assert.equal(el.querySelectorAll(".gz-tl-now").length, 1);
+  const line = el.querySelector(".gz-tl-body .gz-tl-today")!;
+  assert.equal(percent(now, "left"), percent(line, "left"));
+  assert.equal(mount({}, [{ name: "Old", start: "2025-01-01", due: "2025-02-01" }]).el.querySelector(".gz-tl-now"), null);
+  // November is a tick on this axis, close to 18 November; its label gives way to Today, its line stays.
+  const { el: year } = mount({}, [{ name: "a", start: "2026-03-01", due: "2027-02-01" }]);
+  assert.ok(!ticks(year).includes("Nov"));
+  assert.equal(year.querySelectorAll(".gz-tl-line").length, year.querySelectorAll(".gz-tl-tick").length + 1);
+});
+
+test("the styles draw today's line in the accent and have no red or dashed line on the timeline", () => {
+  const css = readFileSync(new URL("../styles.css", import.meta.url), "utf8");
+  const rules = css.split("\n").filter((l) => /\.gz-tl-/.test(l));
+  assert.ok(rules.some((l) => /\.gz-tl-today\b.*--interactive-accent/.test(l)));
+  assert.deepEqual(rules.filter((l) => /red|dashed/.test(l)), []);
 });

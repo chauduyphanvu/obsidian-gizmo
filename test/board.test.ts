@@ -315,3 +315,60 @@ test("what a board's moves write can't be chosen while it runs: no $name in its 
   assert.deepEqual(errors({ panels: [{ use: "[[C]]", with: { by: "status" } }] }), []);
   assert.deepEqual(errors({ inputs: { by: ["status", "area"] }, panels: [{ view: "bar", source: "notes", from: "Projects", group: "$by" }] }), []);
 });
+
+test("a card's text splits at the first · into a name and a meta line, and its text stays whole", () => {
+  const { ctx, opened } = fakeCtx();
+  const { el } = mount({ item: "{name} · {area} · {status}", select: "project" }, ROWS, ctx);
+  const garden = card(el, "Garden · home · doing");
+  assert.equal(text(garden.querySelector(".gz-card-name")), "Garden");
+  assert.equal(text(garden.querySelector(".gz-card-meta")), "home · doing");
+  // The Move menu and the pick name the card by everything it says.
+  assert.equal(garden.getAttribute("aria-label"), "Garden · home · doing");
+  assert.equal(garden.querySelector("select")!.getAttribute("aria-label"), "Move Garden · home · doing");
+  // The name is the note's link; the line under it isn't.
+  const link = garden.querySelector("a.internal-link") as HTMLElement;
+  assert.equal(text(link), "Garden");
+  assert.equal(garden.querySelectorAll("a").length, 1);
+  link.click();
+  assert.deepEqual(opened, ["Projects/Garden.md"]);
+});
+
+test("a card whose text has no · has a name and no meta line, and one that ends in it has none to show", () => {
+  const { el } = mount({}, ROWS);
+  const garden = card(el, "Garden");
+  assert.equal(text(garden.querySelector(".gz-card-name")), "Garden");
+  assert.equal(garden.querySelector(".gz-card-meta"), null);
+  const ends = mount({ item: "{name} · {due}" }, [{ name: "Rust", status: "idea" }, { name: "Garden", due: "2026-11-30", status: "idea" }]).el;
+  const [rust, plan] = cards(ends);
+  assert.equal(text(rust.querySelector(".gz-card-name")), "Rust");
+  assert.equal(rust.querySelector(".gz-card-meta"), null);
+  assert.equal(text(plan.querySelector(".gz-card-meta")), "2026-11-30");
+  // A text that starts with it has no name to cut off, so it stays one piece.
+  const starts = mount({ item: "{name}" }, [{ name: " · odd", status: "idea" }]).el;
+  assert.equal(text(starts.querySelector(".gz-card-name")), " · odd");
+  assert.equal(starts.querySelector(".gz-card-meta"), null);
+});
+
+test("the group field's last choice is the done column when it reads as done, whatever its case", () => {
+  const done = (el: Element) => [...el.querySelectorAll(".gz-board-col")].filter((c) => c.classList.contains("gz-board-done")).map((c) => c.getAttribute("aria-label"));
+  assert.deepEqual(done(mount({}, ROWS).el), ["done"]);
+  for (const last of ["Done", "COMPLETE", "completed", "Finished"]) {
+    const { el } = mount({}, [], undefined, { schema: { status: ["todo", "doing", last] } });
+    assert.deepEqual(done(el), [last]);
+  }
+  // Only the last choice counts, and only from the schema; a column that just appears in the data doesn't.
+  assert.deepEqual(done(mount({}, ROWS, undefined, { schema: { status: ["done", "doing"] } }).el), []);
+  assert.deepEqual(done(mount({}, [{ name: "a", status: "done" }, { name: "b", status: "idea" }], undefined, {}).el), []);
+  assert.deepEqual(done(mount({}, [{ name: "a", status: "closed" }], undefined, { schema: { status: ["open", "closed"] } }).el), []);
+  // The extra columns after the choices (a value the schema doesn't know, then none) are not it either.
+  assert.deepEqual(done(mount({}, ROWS).el), ["done"]);
+  assert.deepEqual(names(mount({}, ROWS).el).slice(-2), ["blocked", "(none)"]);
+});
+
+test("a done column's cards are told apart from the others only by a class on the column", () => {
+  const { el } = mount({}, ROWS);
+  const taxes = card(el, "Taxes");
+  assert.ok(taxes.closest(".gz-board-col")!.classList.contains("gz-board-done"));
+  assert.ok(!card(el, "Garden").closest(".gz-board-col")!.classList.contains("gz-board-done"));
+  for (const c of el.querySelectorAll(".gz-board-card")) assert.equal(c.getAttribute("style"), null);
+});

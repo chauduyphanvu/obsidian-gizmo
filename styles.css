@@ -368,80 +368,144 @@
 .gizmo .gz-table input.gz-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
 
 /* Views: calendar, board, scatter, timeline */
-/* A five-step single-hue scale: the first chart colour mixed into the page; an empty day is a faint
-   tint of the text colour, which shows on the page in both themes. */
-.gizmo { --gz-blank: color-mix(in srgb, var(--text-normal) 7%, var(--background-primary)); }
-.gizmo .gz-step-1 { --gz-shade: color-mix(in srgb, var(--gz-s1) 24%, var(--background-primary)); }
-.gizmo .gz-step-2 { --gz-shade: color-mix(in srgb, var(--gz-s1) 42%, var(--background-primary)); }
-.gizmo .gz-step-3 { --gz-shade: color-mix(in srgb, var(--gz-s1) 60%, var(--background-primary)); }
-.gizmo .gz-step-4 { --gz-shade: color-mix(in srgb, var(--gz-s1) 80%, var(--background-primary)); }
-.gizmo .gz-step-5 { --gz-shade: var(--gz-s1); }
-.gizmo .gz-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
-.gizmo .gz-cal-title { font-size: var(--font-ui-small); font-weight: var(--font-semibold); min-width: 6em; text-align: center; }
+.gizmo .gz-scatter-dot { fill: var(--gz-c); fill-opacity: 0.7; stroke: none; }
+.gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
+.gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
+.gizmo .gz-chart-svg:has(.gz-scatter-dot.gz-selected) .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
+/* == views: calendar, board, timeline, scatter and heatmap colours == */
+/* Ink and pencil: data is grey, drawn darker the more there is; the accent marks "now" and the pick.
+   An empty day is a faint tint of the text colour, which shows on the page in both themes. */
+.gizmo {
+  --gz-ink: var(--text-normal);
+  --gz-pencil: color-mix(in srgb, var(--text-normal) 20%, var(--background-primary));
+  --gz-blank: color-mix(in srgb, var(--text-normal) 6%, var(--background-primary));
+  --gz-heat-1: color-mix(in srgb, var(--text-normal) 22%, var(--background-primary));
+  --gz-heat-2: color-mix(in srgb, var(--text-normal) 36%, var(--background-primary));
+  --gz-heat-3: color-mix(in srgb, var(--text-normal) 50%, var(--background-primary));
+  --gz-heat-4: color-mix(in srgb, var(--text-normal) 64%, var(--background-primary));
+  --gz-heat-5: color-mix(in srgb, var(--text-normal) 78%, var(--background-primary));
+}
+.gizmo .gz-step-1 { --gz-shade: var(--gz-heat-1); }
+.gizmo .gz-step-2 { --gz-shade: var(--gz-heat-2); }
+.gizmo .gz-step-3 { --gz-shade: var(--gz-heat-3); }
+.gizmo .gz-step-4 { --gz-shade: var(--gz-heat-4); }
+.gizmo .gz-step-5 { --gz-shade: var(--gz-heat-5); }
+
+/* Calendar: the way between months and years is quiet text, with a surface only under the pointer. */
+.gizmo .gz-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: 2px; margin: 0 -8px var(--size-4-3); }
+.gizmo .gz-cal-head button { background: transparent; box-shadow: none; color: var(--text-muted); }
+.gizmo .gz-cal-head button:hover { background: var(--background-modifier-hover); color: var(--text-normal); }
+.gizmo .gz-cal-title { min-width: 6em; text-align: center; font-size: 13px; font-weight: 600; }
 .gizmo .gz-cal-today { margin-left: auto; }
 .gizmo .gz-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
-.gizmo .gz-cal-dow { color: var(--text-muted); font-size: var(--font-ui-smaller); text-align: center; }
+.gizmo .gz-cal-dow { padding-bottom: 2px; color: var(--text-faint); font-size: 11px; text-align: center; }
 .gizmo .gz-cal-grid .gz-cal-day {
-  --gz-blank: var(--background-secondary);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 3.2em;
-  padding: 3px 5px;
-  border-radius: var(--radius-s);
+  padding: 4px 6px;
+  border: 0;
+  border-radius: 6px;
   background: var(--gz-shade, var(--gz-blank));
-  font-size: var(--font-ui-smaller);
+  color: var(--text-normal);
+  font-size: 11.5px;
 }
-.gizmo .gz-cal-val { align-self: flex-end; font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
-.gizmo .gz-cal-grid .gz-step-4, .gizmo .gz-cal-grid .gz-step-5 { color: var(--text-on-accent); }
-.gizmo .gz-cal-grid .gz-today { box-shadow: inset 0 0 0 2px var(--text-normal); }
-.gizmo .gz-cal-scroll { overflow-x: auto; }
+.gizmo .gz-cal-val { align-self: flex-end; font-weight: 600; font-variant-numeric: tabular-nums; }
+/* The two darkest steps are nearly the text colour, so their text turns to the page's. */
+.gizmo .gz-cal-grid .gz-step-4, .gizmo .gz-cal-grid .gz-step-5 { color: var(--background-primary); }
+.gizmo .gz-cal-grid .gz-today { box-shadow: 0 0 0 1.5px var(--gz-ink); }
+.gizmo .gz-cal-grid .gz-selected { box-shadow: 0 0 0 2px var(--interactive-accent); }
+.gizmo .gz-cal-grid .gz-today.gz-selected { box-shadow: 0 0 0 1.5px var(--gz-ink), 0 0 0 3.5px var(--interactive-accent); }
+
+/* The year: squares on the page, today outlined in ink and the pick in the accent. The scroller's
+   padding keeps those outlines from being cut at its edge. */
+.gizmo .gz-cal-scroll { overflow-x: auto; padding: 2px; margin: -2px; }
 .gizmo .gz-cal-year { display: block; }
 .gizmo .gz-cal-year .gz-cal-day { fill: var(--gz-shade, var(--gz-blank)); stroke: none; }
-.gizmo .gz-cal-year .gz-cal-day.gz-today { stroke: var(--text-normal); stroke-width: 2; }
+.gizmo .gz-cal-year .gz-cal-day.gz-future { fill-opacity: 0.5; }
+.gizmo .gz-cal-year .gz-cal-day:hover { stroke: var(--text-muted); stroke-width: 1; }
+.gizmo .gz-cal-year .gz-cal-day.gz-today { stroke: var(--gz-ink); stroke-width: 1.5; }
 .gizmo .gz-cal-year .gz-cal-day.gz-selected { stroke: var(--interactive-accent); stroke-width: 2; }
-.gizmo .gz-cal-grid .gz-cal-day.gz-selected { box-shadow: 0 0 0 2px var(--interactive-accent); }
-.gizmo .gz-cal-grid .gz-cal-day.gz-today.gz-selected { box-shadow: inset 0 0 0 2px var(--text-normal), 0 0 0 2px var(--interactive-accent); }
-.gizmo .gz-board { display: flex; align-items: flex-start; gap: var(--size-4-3); overflow-x: auto; padding-bottom: var(--size-4-1); }
-.gizmo .gz-board-col {
-  flex: 1 0 180px;
-  min-width: 180px;
-  background: var(--background-secondary);
-  border-radius: var(--radius-m);
-  padding: var(--size-4-2);
+.gizmo .gz-heat-month { fill: var(--text-faint); font-size: 11px; font-family: var(--font-interface); }
+.gizmo .gz-heat-cap {
+  display: flex;
+  flex-wrap: wrap;
+  justify-content: space-between;
+  gap: 6px 16px;
+  margin-top: 12px;
+  color: var(--text-muted);
+  font-size: 12.5px;
+  font-variant-numeric: tabular-nums;
 }
-.gizmo .gz-board-col.gz-over { outline: 2px dashed var(--interactive-accent); outline-offset: -2px; }
-.gizmo .gz-board-head { display: flex; justify-content: space-between; gap: var(--size-4-2); margin-bottom: var(--size-4-2); font-size: var(--font-ui-small); font-weight: var(--font-semibold); }
-.gizmo .gz-board-count { color: var(--text-muted); font-weight: var(--font-normal); font-variant-numeric: tabular-nums; }
-.gizmo .gz-board-cards { display: flex; flex-direction: column; gap: var(--size-4-2); min-height: 2.5em; }
+.gizmo .gz-heat-cap b { color: var(--text-normal); font-weight: 600; }
+.gizmo .gz-heat-key { display: inline-flex; align-items: center; gap: 4px 6px; }
+.gizmo .gz-heat-key span + i { margin-left: 6px; }
+.gizmo .gz-heat-swatch { display: inline-block; width: 10px; height: 10px; border-radius: 2px; background: var(--gz-shade, var(--gz-blank)); }
+
+/* Board: lanes sit on the page; only a card has a surface. The lane's padding is cancelled by its
+   margin, so the soft background of a lane being dropped on reaches past its text. */
+.gizmo .gz-board { display: flex; align-items: flex-start; gap: 18px; margin: -6px; padding: 6px; overflow-x: auto; }
+.gizmo .gz-board-col {
+  box-sizing: border-box;
+  flex: 1 0 200px;
+  min-width: 200px;
+  margin: -6px;
+  padding: 6px;
+  border-radius: 12px;
+  transition: background 150ms;
+}
+.gizmo .gz-board-col.gz-over { background: color-mix(in srgb, var(--interactive-accent) 10%, transparent); }
+.gizmo .gz-board-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--size-4-2); padding: 0 2px 8px; font-size: 12.5px; font-weight: 600; color: var(--text-muted); }
+.gizmo .gz-board-count { font-weight: 500; color: var(--text-faint); font-variant-numeric: tabular-nums; }
+.gizmo .gz-board-cards { display: flex; flex-direction: column; gap: 8px; min-height: 60px; }
+.gizmo .gz-board-cards > .gz-empty { padding: 16px 12px; border: 1px dashed var(--background-modifier-border-hover); border-radius: 10px; font-size: 12.5px; text-align: center; }
 .gizmo .gz-board-card {
   position: relative;
   display: flex;
   flex-direction: column;
-  gap: var(--size-4-1);
+  align-items: flex-start;
+  gap: 6px;
+  padding: 10px 12px;
   background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-s);
-  padding: var(--size-4-2) var(--size-4-3);
-  font-size: var(--font-ui-small);
+  border-radius: 10px;
   cursor: grab;
+  transition: border-color 150ms, box-shadow 150ms, opacity 150ms;
 }
-.gizmo .gz-board-text { overflow-wrap: anywhere; }
-.gizmo .gz-board-card.gz-dragging { opacity: 0.4; }
+.gizmo .gz-board-card:hover { border-color: var(--background-modifier-border-hover); }
+.gizmo .gz-board-card.gz-selected { border-color: var(--interactive-accent); box-shadow: 0 0 0 3px color-mix(in srgb, var(--interactive-accent) 22%, transparent); }
+.gizmo .gz-board-card.gz-dragging { opacity: 0.35; }
 .gizmo .gz-board-card.gz-busy { opacity: 0.5; pointer-events: none; }
-.gizmo .gz-board-card.gz-selected { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
-.gizmo select.gz-move { font-size: var(--font-ui-smaller); color: var(--text-muted); height: auto; padding: 1px var(--size-4-2); }
+.gizmo .gz-board-text { align-self: stretch; }
+.gizmo .gz-card-name { font-size: 14px; font-weight: 500; line-height: 1.3; overflow-wrap: anywhere; }
+.gizmo .gz-card-name a.internal-link { color: inherit; text-decoration: none; }
+.gizmo .gz-card-name a.internal-link:hover { text-decoration: underline; }
+.gizmo .gz-card-sep { display: none; }
+.gizmo .gz-card-meta { margin-top: 4px; font-size: 12.5px; color: var(--text-muted); overflow-wrap: anywhere; }
+.gizmo .gz-board-done .gz-card-name { color: var(--text-muted); }
+.gizmo select.gz-move {
+  height: auto;
+  padding: 1px var(--size-4-2);
+  background-color: transparent;
+  border: 0;
+  box-shadow: none;
+  font-size: 12px;
+  color: var(--text-muted);
+}
+.gizmo select.gz-move:hover { background-color: var(--background-modifier-hover); }
 /* With a pointer, a card is dragged; its Move control (the keyboard and touch way) waits in its
    corner as a small arrow until the card is under the pointer or has focus. */
 @media (hover: hover) {
-  .gizmo .gz-board-card .gz-board-text { padding-right: 22px; }
+  .gizmo .gz-board-card .gz-card-name { padding-right: 22px; }
   .gizmo .gz-board-card select.gz-move {
     position: absolute;
-    top: 4px;
-    right: 4px;
+    top: 6px;
+    right: 6px;
     width: 24px;
     height: 22px;
     padding: 0;
+    border-radius: var(--radius-s);
     color: transparent;
     background-position: center;
     opacity: 0;
@@ -454,20 +518,40 @@
 .gizmo .gz-timeline { --gz-tl-label: 140px; font-size: var(--font-ui-small); }
 .gizmo .gz-tl-axis { position: relative; height: 1.6em; margin-left: var(--gz-tl-label); }
 .gizmo .gz-tl-tick { position: absolute; transform: translateX(-50%); color: var(--text-faint); font-size: var(--font-ui-smaller); white-space: nowrap; }
+/* Narrow, the lanes stack in one column. */
+.gizmo.gz-narrow .gz-board { flex-direction: column; align-items: stretch; gap: 22px; overflow-x: visible; }
+.gizmo.gz-narrow .gz-board-col { flex: none; min-width: 0; }
+
+/* Timeline: bars are ink, pencil once finished, and an outline until they start; the row under the
+   pointer and the picked one go accent. A line for each month, and one for today with its name above. */
+.gizmo .gz-timeline { --gz-tl-label: 140px; font-size: 13px; }
+.gizmo .gz-tl-axis { position: relative; height: 22px; margin-left: var(--gz-tl-label); color: var(--text-faint); font-size: 11.5px; }
+.gizmo .gz-tl-tick, .gizmo .gz-tl-now { position: absolute; top: 0; white-space: nowrap; }
+.gizmo .gz-tl-now { transform: translateX(-50%); color: var(--interactive-accent); font-weight: 600; }
 .gizmo .gz-tl-body { position: relative; }
 .gizmo .gz-tl-grid { position: absolute; top: 0; bottom: 0; left: var(--gz-tl-label); right: 0; pointer-events: none; }
-.gizmo .gz-tl-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--background-modifier-border); }
-.gizmo .gz-tl-today { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--color-red); }
-.gizmo .gz-tl-row { display: grid; grid-template-columns: var(--gz-tl-label) minmax(0, 1fr); align-items: center; }
-.gizmo .gz-tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: var(--size-4-2); }
-.gizmo .gz-tl-track { position: relative; height: 1.9em; }
-.gizmo .gz-tl-bar { position: absolute; top: 22%; bottom: 22%; min-width: 4px; border-radius: 4px; background: var(--gz-s1); }
-.gizmo .gz-tl-dot { position: absolute; top: 50%; width: 10px; height: 10px; margin: -5px 0 0 -5px; border-radius: 50%; background: var(--gz-s1); }
+.gizmo .gz-tl-line { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--background-modifier-border); }
+.gizmo .gz-tl-today { position: absolute; top: 0; bottom: 0; width: 1px; background: var(--interactive-accent); }
+.gizmo .gz-tl-row { display: grid; grid-template-columns: var(--gz-tl-label) minmax(0, 1fr); align-items: center; height: 30px; border-radius: 6px; transition: background 150ms; }
+.gizmo .gz-tl-row:hover { background: var(--background-modifier-hover); }
+.gizmo .gz-tl-label { padding: 0 var(--size-4-2); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-size: 13px; }
+.gizmo .gz-tl-label a.internal-link { color: inherit; text-decoration: none; }
+.gizmo .gz-tl-label a.internal-link:hover { text-decoration: underline; }
+.gizmo .gz-tl-track { position: relative; height: 100%; }
+.gizmo .gz-tl-bar, .gizmo .gz-tl-dot { position: absolute; top: 50%; height: 10px; margin-top: -5px; background: var(--gz-ink); transition: background 150ms, box-shadow 150ms; }
+.gizmo .gz-tl-bar { min-width: 4px; border-radius: 5px; }
+.gizmo .gz-tl-dot { width: 10px; margin-left: -5px; border-radius: 50%; }
+.gizmo .gz-tl-bar.gz-tl-done { background: var(--gz-pencil); }
+.gizmo .gz-tl-bar.gz-tl-future, .gizmo .gz-tl-dot.gz-tl-future { background: transparent; box-shadow: inset 0 0 0 1.5px var(--text-faint); }
+.gizmo .gz-tl-row:hover :is(.gz-tl-bar, .gz-tl-dot), .gizmo :is(.gz-tl-bar, .gz-tl-dot).gz-selected { background: var(--interactive-accent); }
+.gizmo .gz-tl-row:hover :is(.gz-tl-bar, .gz-tl-dot).gz-tl-future, .gizmo :is(.gz-tl-bar, .gz-tl-dot).gz-tl-future.gz-selected { background: transparent; box-shadow: inset 0 0 0 1.5px var(--interactive-accent); }
 .gizmo .gz-tl-bar:focus-visible, .gizmo .gz-tl-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
-.gizmo .gz-tl-bar.gz-selected, .gizmo .gz-tl-dot.gz-selected { outline: 2px solid var(--text-normal); outline-offset: 1px; }
-.gizmo .gz-tl-body:has(.gz-selected) .gz-tl-bar:not(.gz-selected), .gizmo .gz-tl-body:has(.gz-selected) .gz-tl-dot:not(.gz-selected) { opacity: 0.45; }
-/* == views: calendar, board, timeline, scatter and heatmap colours == */
-/* (reserved) */
+
+/* Timer: the time left is the figure, with quiet buttons under it. */
+.gizmo .gz-timer .gz-clock { margin-bottom: var(--size-4-3); color: var(--gz-ink); font-size: 56px; font-weight: 650; line-height: 1; letter-spacing: -0.04em; font-variant-numeric: tabular-nums; }
+.gizmo .gz-timer-actions { display: flex; gap: 2px; }
+.gizmo .gz-timer-actions button:not(.mod-cta) { background: transparent; box-shadow: none; color: var(--text-muted); }
+.gizmo .gz-timer-actions button:not(.mod-cta):hover { background: var(--background-modifier-hover); color: var(--text-normal); }
 /* == /views == */
 
 /* Display: format, cells, cards, compare, goal */
