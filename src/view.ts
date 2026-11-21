@@ -1,4 +1,5 @@
-import { FileView, type Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { FileView, Scope, type Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { eventsOf, undoneIn } from "./activity.ts";
 import { AppController } from "./app.ts";
 import { EditSession } from "./backtest.ts";
 import { obsidianAppEnv } from "./host.ts";
@@ -6,6 +7,7 @@ import { openActivity } from "./activity-view.ts";
 import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
 import { AsOfModal, BacktestModal } from "./past-views.ts";
+import { TimeRail, typing } from "./rail.ts";
 import { pastEnv } from "./replay.ts";
 
 export const VIEW_TYPE = "gizmo";
@@ -19,6 +21,11 @@ export class AppView extends FileView {
   private shownPast: number | undefined;
   /** The definition this editing session started from, for "Backtest this change". */
   private session = new EditSession();
+  /** The time rail, one for the view's life: each controller started gets it in its rail slot. */
+  private rail = new TimeRail((at) => this.showAt(at));
+  /** How many reads of the app's activity the rail has asked for, so an overtaken one is dropped. */
+  private railReads = 0;
+  private unwatch: (() => void) | undefined;
 
   constructor(leaf: WorkspaceLeaf, plugin: GizmoPlugin) {
     super(leaf);
@@ -35,6 +42,39 @@ export class AppView extends FileView {
     this.registerEvent(this.app.metadataCache.on("changed", (f) => {
       if (f === this.file) this.session.seen(this.app.metadataCache.getFileCache(f)?.frontmatter, Date.now());
     }));
+    this.unwatch = this.plugin.activity.onChange(() => void this.refreshRail());
+    // The view's own scope hears keys only while it is the active tab. Returning false stops a key there.
+    this.scope = new Scope(this.app.scope);
+    this.scope.register([], "[", (evt) => this.railKey(evt, -1));
+    this.scope.register([], "]", (evt) => this.railKey(evt, 1));
+    this.scope.register([], "Escape", (evt) => {
+      if (typing(evt) || !this.rail.el.isConnected || !this.rail.past) return true;
+      this.rail.back();
+      return false;
+    });
+  }
+
+  /** `[` and `]` step through the app's changes while the rail shows and nothing is being typed in. */
+  private railKey(evt: KeyboardEvent, dir: -1 | 1): boolean {
+    if (typing(evt) || !this.rail.el.isConnected) return true;
+    this.rail.step(dir);
+    return false;
+  }
+
+  /** Reads the app's changes for the rail again. */
+  private async refreshRail(): Promise<void> {
+    const path = this.file?.path;
+    if (!path) return;
+    const read = ++this.railReads;
+    const listed = await this.plugin.activity.list(path);
+    // An entry of ledger events is undone as the ledger says, whichever device undid it.
+    const ledger = this.plugin.dataLayer.ledger;
+    const undone = new Map<string, Set<string>>();
+    for (const p of new Set(listed.flatMap((e) => eventsOf(e)?.map((x) => x.path) ?? []))) {
+      undone.set(p, (await ledger?.state(p).catch(() => undefined))?.undone ?? new Set());
+    }
+    if (read !== this.railReads) return;
+    this.rail.update(listed.map((e) => ({ ...e, undone: undoneIn(e, (p) => undone.get(p) ?? new Set()) })));
   }
 
   /** A view opened with `past` in its state shows the app as it was then. It isn't kept with the workspace. */
@@ -49,8 +89,17 @@ export class AppView extends FileView {
   showAt(at: number | undefined): void {
     this.past = at;
     if (!this.file) return;
+    const top = this.contentEl.scrollTop;
+    const height = (this.contentEl.firstElementChild as HTMLElement | null)?.offsetHeight ?? 0;
     this.stop();
     this.start(this.file);
+    if (!top) return;
+    // The app drawn again is short until its data arrives: it keeps the old height a moment, so
+    // stepping through time leaves the pane scrolled where it was.
+    const shell = this.contentEl.firstElementChild as HTMLElement;
+    shell.style.minHeight = `${height}px`;
+    this.contentEl.scrollTop = top;
+    window.setTimeout(() => shell.style.removeProperty("min-height"), 1500);
   }
 
   /**
@@ -101,6 +150,8 @@ export class AppView extends FileView {
   }
 
   async onClose(): Promise<void> {
+    this.unwatch?.();
+    this.rail.dispose();
     this.stop();
   }
 
@@ -119,6 +170,9 @@ export class AppView extends FileView {
     this.shownPast = this.past;
     this.controller = new AppController(this.contentEl, file.path, env);
     this.controller.load();
+    this.controller.railSlot()?.appendChild(this.rail.el);
+    this.rail.sync(this.past);
+    void this.refreshRail();
   }
 
   private stop(): void {
