@@ -11,6 +11,9 @@ on:
 
 permissions:
   contents: write
+  # For the build's provenance attestation, which the community directory checks for.
+  id-token: write
+  attestations: write
 
 jobs:
   release:
@@ -35,6 +38,15 @@ jobs:
       - run: npm run lint
       - run: npm test
       - run: npm run build
+      - name: Attest the build
+        if: github.ref_type == 'tag'
+        uses: actions/attest-build-provenance@v4
+        with:
+          subject-path: |
+            main.js
+            manifest.json
+            styles.css
+            gizmod.mjs
       - name: Publish the release
         if: github.ref_type == 'tag'
         env:
