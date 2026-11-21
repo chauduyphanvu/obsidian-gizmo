@@ -3,10 +3,16 @@ import { HostedApp, Memories, blockKey } from "./hosted.ts";
 import { obsidianAppEnv } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 
-/** A block's app, started when Obsidian loads the block's element and disposed when it goes. */
+/**
+ * A block's app, started the first time the block is shown and disposed when it goes. A markdown
+ * view keeps its other mode drawn out of sight (reading view behind live preview, and the other way
+ * round), so every block is drawn twice; the hidden copy starts only if the view switches to it.
+ */
 class EmbedChild extends MarkdownRenderChild {
   private hosted: HostedApp;
   private live: Set<HostedApp>;
+  private started = false;
+  private shown: ResizeObserver | undefined;
 
   constructor(el: HTMLElement, hosted: HostedApp, live: Set<HostedApp>) {
     super(el);
@@ -15,13 +21,29 @@ class EmbedChild extends MarkdownRenderChild {
   }
 
   onload(): void {
+    // Out of sight the block has no size; it gets one when its mode is shown. The observer is the
+    // block's own window's, which in a pop-out isn't the main one.
+    const win = this.containerEl.win as Window & typeof globalThis;
+    const shown = new win.ResizeObserver((entries) => {
+      if (this.started || !entries.some((e) => e.contentRect.width > 0)) return;
+      shown.disconnect();
+      this.start();
+    });
+    shown.observe(this.containerEl);
+    this.shown = shown;
+  }
+
+  private start(): void {
+    this.started = true;
     this.live.add(this.hosted);
     this.hosted.load();
-    // The block is laid out once it is in the page; measure it then.
     this.hosted.resize();
   }
 
   onunload(): void {
+    this.shown?.disconnect();
+    this.shown = undefined;
+    if (!this.started) return;
     this.hosted.dispose();
     this.live.delete(this.hosted);
   }
