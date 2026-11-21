@@ -36,7 +36,9 @@ export interface ActionDeps {
   log?(what: string, changes: Change[]): Promise<string | undefined> | void;
   /** Runs the panel's `then` once its own actions are done, with the row they ran with; never rejects. */
   then?(p: Panel, ctx: Row): Promise<void>;
-  /** The caller tells the panel's `notify` itself (see ActionResult.told), so it isn't sent to `notify`. */
+  /** The caller tells the panel's `notify` itself, so it gets the text back (see ActionResult.told). */
+  inPlace?: boolean;
+  /** The panel's `notify` isn't also sent to `notify`. */
   quiet?: boolean;
 }
 
@@ -75,7 +77,7 @@ export interface ActionResult {
   already?: boolean;
   /** Why nothing was saved, when a value rule refused the row. */
   error?: string;
-  /** With `quiet`, the panel's `notify`, filled from the run, for the caller to tell. */
+  /** With `inPlace`, the panel's `notify`, filled from the run, for the caller to tell. */
   told?: string;
 }
 
@@ -257,7 +259,7 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     }
     const told = p.notify === undefined ? undefined : fillLine(p.notify, ctx);
     if (told !== undefined && !deps.quiet) deps.notify(told);
-    const tell = deps.quiet && told !== undefined ? { told } : {};
+    const tell = deps.inPlace && told !== undefined ? { told } : {};
     if (p.open) deps.openNote(fillLine(p.open, ctx), deps.appPath);
     // Kept before what `then` runs is, in the order they happened.
     log();

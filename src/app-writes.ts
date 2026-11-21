@@ -168,7 +168,9 @@ export class AppWrites {
       expect: this.site.expect(),
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
-      quiet: how?.inPlace,
+      inPlace: how?.inPlace,
+      // A try lists what the run tells among what it does, in order, as well as saying it in place.
+      quiet: how?.inPlace && !env.preview,
     });
     if (r.error) return { error: r.error, ok: false };
     const entry = await r.logged;

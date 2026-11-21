@@ -53,9 +53,10 @@ test("a try draws the real app, lets it be used on copies, and lists what it did
   button.click();
   await settle();
   assert.match(text(t.panel("Doses")), /1/);
-  // The button's notify is said beside it, in place of a notice.
+  // The button's notify is said beside it, and the try still lists it among what the app did.
   assert.equal(said(button.closest(".gz-panel")!), "Logged");
   assert.deepEqual(t.box.events.map((e) => [e.kind, e.text]), [
+    ["notice", "Logged"],
     ["change", "Saved a row to doses in Meds data"],
     ["then", "It would run “add” in Inbox"],
   ]);
