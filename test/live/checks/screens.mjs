@@ -43,7 +43,7 @@ export default async function screens(t) {
     ["Dune-lens-reading", `await na.openMd("Books/Dune.md", "preview");`],
     ["Habits-year", `await na.open("Apps/Habits"); [...na.view().contentEl.querySelectorAll("button.gz-tab")].find((b) => b.textContent === "Year").click();`],
     ["Projects-picked", `await na.open("Apps/Projects"); if (!na.view().contentEl.querySelector(".gz-tl-bar.gz-selected")) na.view().contentEl.querySelector(".gz-tl-bar")?.click();`],
-    ["Planet-Earth-inspector", `await na.open("Apps/Planet Earth"); if (!na.view().contentEl.querySelector(".gz-inspector")) [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data").click(); await na.sleep(2000);`],
+    ["Planet-Earth-inspector", `await na.open("Apps/Planet Earth"); if (!na.view().contentEl.querySelector(".gz-inspector")) na.menuItem("Inspect data"); await na.sleep(2000);`],
     ["Plants-cards", `await na.open("Scratch/Plants");`],
     ["Journal-calendar", `await na.open("Scratch/Journal"); if (!na.view().contentEl.querySelector(".gz-cal-day.gz-selected")) na.view().contentEl.querySelector('.gz-cal-day[data-date$="-09"]')?.click();`],
   ];

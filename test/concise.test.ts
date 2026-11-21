@@ -265,7 +265,7 @@ test("Decisions: the track record charts what I said against how often I was rig
   await settle();
   app.tab("Track record");
   const chart = app.panel("How sure I said I was, and how often I was right");
-  assert.equal(text(chart.querySelector(".gz-legend")), "I saidI was right");
+  assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["I said", "I was right"]);
   assert.equal(chart.querySelectorAll("path.gz-bar").length, 8, "four levels of sure, each with what I said and how often I was right");
   const scored = app.panel("Scored");
   assert.deepEqual([...scored.querySelectorAll("th")].map(text), ["Decision", "% sure", "It went", "What I learned"]);

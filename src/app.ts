@@ -22,7 +22,7 @@ import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
-import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, columnsFor, spanOn, widthFor } from "./layout.ts";
+import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, rowTracks, spanOn, widthFor } from "./layout.ts";
 import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type TimerState, type ViewDef } from "./views/registry.ts";
@@ -148,6 +148,8 @@ interface Mounted {
   handle: PanelHandle;
   /** Columns asked for, and the tab the panel sits in (none: always shown, above the tabs). */
   span: number;
+  /** Twelfths of the row it was last laid out at; undefined until then. */
+  tracks?: number;
   tab: string | undefined;
   source: string | undefined;
   deps: string[];
@@ -320,6 +322,11 @@ export class AppController {
     }));
   }
 
+  /** Whether the inspector is showing. */
+  get inspectorShown(): boolean {
+    return this.inspector !== undefined;
+  }
+
   /** Shows the inspector above the panels, or takes it away. */
   async toggleInspector(): Promise<void> {
     if (this.inspector) {
@@ -348,7 +355,7 @@ export class AppController {
       const width = this.shell.clientWidth;
       if (Math.abs(width - this.width) < 8) return;
       this.width = width;
-      this.layout();
+      this.layout(false);
       for (const [id, m] of this.mounted) m.handle.resize?.(this.widthOf(id));
     }, 150);
   }
@@ -356,7 +363,12 @@ export class AppController {
   /** The drawing width inside a panel, from the grid arithmetic rather than measuring it. */
   private widthOf(id: string): number {
     const m = this.mounted.get(id);
-    return widthFor(m?.span ?? MAX_COLUMNS, this.columns, this.shell.clientWidth, ...this.shellBox());
+    return widthFor(m?.tracks ?? this.ownTracks(m?.span ?? MAX_COLUMNS), this.shell.clientWidth, ...this.shellBox());
+  }
+
+  /** The tracks a span takes before its row is known, as if nothing beside it grew. */
+  private ownTracks(span: number): number {
+    return spanOn(span, this.columns) * (TRACKS / this.columns);
   }
 
   /** The shell's padding and widest width: an app in an embed or a lens has neither of its own (see styles.css). */
@@ -364,16 +376,27 @@ export class AppController {
     return this.hosting ? [HOSTED_PAD, HOSTED_MAX] : [APP_PAD, APP_MAX];
   }
 
-  /** Sets the column count and each panel's span and visibility as classes. */
-  private layout(): void {
+  /**
+   * Sets the column count, each shown panel's tracks and every panel's visibility as classes. A
+   * panel whose width changed is drawn again at it, unless the caller redraws them all.
+   */
+  private layout(redraw = true): void {
     this.columns = columnsFor(this.shell.clientWidth, ...this.shellBox());
     if (!this.grid) return;
     this.grid.className = `gz-grid gz-cols-${this.columns}`;
-    for (const m of this.mounted.values()) {
+    for (const m of this.mounted.values()) m.el.classList.toggle("gz-off", m.tab !== undefined && m.tab !== this.activeTab);
+    const byEl = new Map([...this.mounted.values()].map((m) => [m.el as Element, m]));
+    const shown = [...this.grid.children].filter((el) => !el.classList.contains("gz-off")).map((el) => byEl.get(el));
+    // Only a panel that asked for no span may grow into the room its row leaves.
+    const tracks = rowTracks(shown.map((m) => (m ? { span: m.span, grows: m.p.span === undefined } : null)), this.columns);
+    shown.forEach((m, i) => {
+      if (!m) return;
+      const before = m.tracks ?? this.ownTracks(m.span);
+      m.tracks = tracks[i]!;
       for (const c of [...m.el.classList]) if (c.startsWith("gz-span-")) m.el.classList.remove(c);
-      m.el.classList.add(`gz-span-${spanOn(m.span, this.columns)}`);
-      m.el.classList.toggle("gz-off", m.tab !== undefined && m.tab !== this.activeTab);
-    }
+      m.el.classList.add(`gz-span-${m.tracks}`);
+      if (redraw && before !== m.tracks) m.handle.resize?.(this.widthOf(m.id));
+    });
     for (const b of this.tabs?.querySelectorAll("button") ?? []) b.classList.toggle("is-active", b.textContent === this.activeTab);
   }
 

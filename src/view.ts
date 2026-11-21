@@ -30,11 +30,8 @@ export class AppView extends FileView {
   getIcon(): string { return "layout-dashboard"; }
 
   async onOpen(): Promise<void> {
+    // The one action in the header; the rest are in the tab's menu (onPaneMenu).
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
-    this.addAction("search-code", "Inspect data", () => void this.controller?.toggleInspector());
-    this.addAction("refresh-cw", "Reload data", () => this.controller?.reload());
-    this.addAction("history", "Activity", () => this.file && openActivity(this.plugin, this.file.path));
-    this.addAction("clock", "As of…", () => new AsOfModal(this.app, (at) => this.showAt(at)).open());
     this.registerEvent(this.app.metadataCache.on("changed", (f) => {
       if (f === this.file) this.session.seen(this.app.metadataCache.getFileCache(f)?.frontmatter, Date.now());
     }));
@@ -57,12 +54,17 @@ export class AppView extends FileView {
   }
 
   /**
-   * The tab's menu offers the link to each of this app's shortcuts. A link's key is made when one
-   * is copied, not when the menu opens, so opening it never writes the plugin's settings.
+   * The tab's menu: the app's activity, the app as of a time, its data, a reload, backtests, and
+   * the link to each of its shortcuts. A link's key is made when one is copied, not when the menu
+   * opens, so opening it never writes the plugin's settings.
    */
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source);
     const path = this.file?.path;
+    menu.addItem((item) => item.setTitle("Activity").setIcon("history").setSection("view").onClick(() => path && openActivity(this.plugin, path)));
+    menu.addItem((item) => item.setTitle("As of…").setIcon("clock").setSection("view").onClick(() => new AsOfModal(this.app, (at) => this.showAt(at)).open()));
+    menu.addItem((item) => item.setTitle("Inspect data").setIcon("search-code").setChecked(this.controller?.inspectorShown ?? false).setSection("view").onClick(() => void this.controller?.toggleInspector()));
+    menu.addItem((item) => item.setTitle("Reload data").setIcon("refresh-cw").setSection("view").onClick(() => this.controller?.reload()));
     const bg = this.plugin.background;
     const app = bg?.list().find((a) => a.path === path);
     if (path && this.past === undefined) {

@@ -339,7 +339,7 @@ test("Budget: log an expense, see the month against last, the stacked weeks and 
   assert.equal(text(limit.querySelector(".gz-big")), "$700/ $2,000");
   assert.equal(text(month.querySelector(".gz-compare")), "▼ $1,100.00 (61%) vs previous");
   assert.equal(text(chart.querySelector(".gz-goal-label")), "goal $500");
-  assert.equal(text(chart.querySelector(".gz-legend")), "FoodHomeTransportFunOther");
+  assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["Food", "Home", "Transport", "Fun", "Other"]);
   assert.ok(chart.querySelectorAll("path.gz-bar.gz-stacked").length >= 3);
 
   const [amount, note] = form.querySelectorAll("input") as unknown as HTMLInputElement[];
@@ -591,10 +591,10 @@ test("Decision journal: one decision is due; write one down, score the due one, 
   // Track record: what I said against how often I was right, by how sure I was.
   tab("Track record");
   const chart = panel("How sure I said I was, and how often I was right");
-  assert.equal(text(chart.querySelector(".gz-legend")), "I saidI was right");
+  assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["I said", "I was right"]);
   // 60%, 70% (both of them wrong, so no bar for right) and 90% sure.
   assert.equal(chart.querySelectorAll("path.gz-bar").length, 5);
-  assert.equal(text(chart.querySelector(".gz-readout")), "90I said 90%I was right 100%");
+  assert.equal(text(chart.querySelector(".gz-legend")), "90I said90%I was right100%");
   assert.deepEqual([...panel("Scored").querySelectorAll("tbody tr")].map((tr) => text(tr.querySelector("td"))),
     ["Repaint the hallway myself", "Buy the winter tyres in October", "Fix the electricity price for a year", "Cook dinner from scratch three nights a week"]);
 });

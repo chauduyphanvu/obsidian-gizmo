@@ -102,11 +102,10 @@ export default async function authoring(t) {
     return `${r.text} → line ${r.n}: ${r.line}`;
   });
 
-  await check("Planet Earth: Inspect data lists each source above the grid; a key copies its path; the action toggles it away", async () => {
+  await check("Planet Earth: Inspect data lists each source above the grid; a key copies its path; the menu item toggles it away", async () => {
     const r = await run(`
       await na.open("Apps/Planet Earth");
-      const action = () => [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data");
-      action().click();
+      na.menuItem("Inspect data");
       const el = na.view().contentEl;
       const pane = await na.until(() => el.querySelector(".gz-inspector .gz-inspect-source") && el.querySelector(".gz-inspector"), 10000);
       const shell = el.querySelector(".gizmo");
@@ -127,7 +126,7 @@ export default async function authoring(t) {
       await na.sleep(300);
       const copied = await navigator.clipboard.readText();
       const badge = !!props.querySelector(".gz-copied");
-      action().click();
+      na.menuItem("Inspect data");
       await na.sleep(300);
       return { above, urls, copied, badge, gone: !el.querySelector(".gz-inspector") };`);
     const hosts = new Set(r.urls.map((u) => new URL(u).host));
@@ -142,7 +141,7 @@ export default async function authoring(t) {
       await na.write("Scratch/Parcel.md", ${JSON.stringify(SECRET)});
       await na.sleep(800);
       const { prompt } = await na.open("Scratch/Parcel");
-      [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Inspect data").click();
+      na.menuItem("Inspect data");
       const el = na.view().contentEl;
       const pane = await na.until(() => el.querySelector(".gz-inspector .gz-inspect-source") && el.querySelector(".gz-inspector"), 10000);
       await na.sleep(500);

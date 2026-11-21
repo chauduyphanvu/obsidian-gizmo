@@ -30,22 +30,23 @@ const SKY = { weathercode: { 0: "Clear", 1: "Mostly clear", 3: "Overcast" } };
 
 // ---- labels ---------------------------------------------------------------------------------------
 
-test("labels name series in a chart's legend and readout; one labelled series gets a legend, an unlabelled one none", () => {
+test("labels name series in a chart's legend, beside their values; one labelled series gets a legend, an unlabelled one none", () => {
   for (const def of [line, bar]) {
     const two = draw(def, { source: "s", x: "time", y: ["hi", "lo"], labels: { hi: "High", lo: "Low" } }, daily);
-    assert.equal(text_(two.querySelector(".gz-legend")), "HighLow");
-    assert.match(text_(two.querySelector(".gz-readout")), /High 10 *Low 3/);
+    const names = (el: Element) => [...el.querySelectorAll(".gz-legend-name")].map(text_);
+    assert.deepEqual(names(two), ["High", "Low"]);
+    assert.match(text_(two.querySelector(".gz-legend")), /High10Low3$/);
     const part = draw(def, { source: "s", x: "time", y: ["hi", "lo"], labels: { hi: "High" } }, daily);
-    assert.equal(text_(part.querySelector(".gz-legend")), "Highlo");
+    assert.deepEqual(names(part), ["High", "lo"]);
     const one = draw(def, { source: "s", x: "time", y: "hi", labels: { hi: "High" } }, daily);
-    assert.equal(text_(one.querySelector(".gz-legend")), "High");
+    assert.deepEqual(names(one), ["High"]);
     assert.equal(draw(def, { source: "s", x: "time", y: "hi" }, daily).querySelector(".gz-legend"), null);
   }
 });
 
 test("labels on a grouped chart name the count", () => {
   const el = draw(bar, { source: "s", group: "genre", labels: { count: "Books" } }, [{ genre: "a", count: 2 }, { genre: "b", count: 1 }]);
-  assert.equal(text_(el.querySelector(".gz-legend")), "Books");
+  assert.deepEqual([...el.querySelectorAll(".gz-legend-name")].map(text_), ["Books"]);
 });
 
 test("labels are the table's column headers", () => {

@@ -53,6 +53,19 @@ const PAGE_HELPERS = `(async () => {
   }, 50);
   window.__na = {
     sleep, leaf, view, settle, notices,
+    /** Runs the item with this title in the active tab's menu (its header's ⋯), as a click on it would. */
+    menuItem: (title) => {
+      const items = {};
+      const itemOf = () => {
+        let t;
+        const item = new Proxy({}, { get: (_, k) => (k === "setTitle" ? (x) => { t = x; return item; } : k === "onClick" ? (f) => { items[t] = f; return item; } : () => item) });
+        return item;
+      };
+      const menu = new Proxy({}, { get: (_, k) => (k === "addItem" ? (cb) => { cb(itemOf()); return menu; } : () => menu) });
+      view().onPaneMenu(menu, "more-options");
+      if (!items[title]) throw new Error(\`no "\${title}" in the tab's menu: \${Object.keys(items).join(", ")}\`);
+      items[title]();
+    },
     /** The notices shown after mark (notices.length taken earlier), once one holding part is among them or after ms. */
     noticesSince: async (mark, part = "", ms = 3000) => {
       for (let t = 0; t < ms && !notices.slice(mark).some((n) => n.includes(part)); t += 100) await sleep(100);

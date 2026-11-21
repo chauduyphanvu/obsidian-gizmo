@@ -246,7 +246,7 @@ test("text: a text format is for every placeholder, a map for its fields", () =>
 
 const hourly = { time: ["2026-11-18T00:00", "2026-11-18T01:00", "2026-11-18T02:00"], t: [4, 5, 6], h: [0.5, 0.6, 0.7] };
 
-test("line: axis ticks and the readout take the format; a map is per series", () => {
+test("line: axis ticks, the readout and the legend take the format; a map is per series", () => {
   const one = draw(line, { source: "s", x: "time", y: "t", format: "0.0 °C" }, hourly);
   const ticks = [...one.querySelectorAll("text.gz-axis")].filter((t) => t.getAttribute("x") === "44").map((t) => text_(t));
   assert.ok(ticks.length > 1);
@@ -254,15 +254,15 @@ test("line: axis ticks and the readout take the format; a map is per series", ()
   assert.match(text_(one.querySelector(".gz-readout")), /6\.0 °C$/);
 
   const many = draw(line, { source: "s", x: "time", y: ["t", "h"], format: { t: "0.0 °C", h: "0%" } }, hourly);
-  assert.match(plain(text_(many.querySelector(".gz-readout"))), /t 6\.0 °C *h 70%/);
+  assert.match(plain(text_(many.querySelector(".gz-legend"))), /t6\.0 °Ch70%$/);
   const plainOne = draw(line, { source: "s", x: "time", y: "t", unit: "°C" }, hourly);
   assert.match(text_(plainOne.querySelector(".gz-readout")), /6 °C$/);
 });
 
-test("bar: tooltips take the format of their series", () => {
+test("bar: legend values take the format of their series", () => {
   const rows = [{ g: "a", spent: 1234.5, budget: 2000 }, { g: "b", spent: 800, budget: 2000 }];
   const el = draw(bar, { source: "s", x: "g", y: ["spent", "budget"], format: { spent: "$0,0.00", budget: "$0,0" } }, rows);
-  assert.match(plain(text_(el.querySelector(".gz-readout"))), /b.*spent \$800\.00.*budget \$2,000/);
+  assert.match(plain(text_(el.querySelector(".gz-legend"))), /^bspent\$800\.00budget\$2,000$/);
   const group = draw(bar, { source: "s", group: "genre", format: "0 books" }, [{ genre: "x", count: 2 }]);
   assert.match(text_(group.querySelector(".gz-readout")), /2 books$/);
 });

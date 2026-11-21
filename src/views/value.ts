@@ -119,8 +119,9 @@ export const number: ViewDef = {
     const row = el.createDiv({ cls: "gz-big" });
     row.createSpan({ text });
     if (unit) row.createSpan({ cls: "gz-unit", text: unit });
-    if (previous) drawChange(el, p, ctx.now, value, previous);
+    // The label says what the value is, so it sits under it; the change comes after.
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
+    if (previous) drawChange(el, p, ctx.now, value, previous);
   }),
 };
 

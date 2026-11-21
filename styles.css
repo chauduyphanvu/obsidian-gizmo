@@ -1,5 +1,5 @@
 .gizmo {
-  padding: var(--size-4-4) var(--size-4-4) var(--size-4-8);
+  padding: var(--size-4-4) var(--size-4-6) var(--size-4-12);
   max-width: 960px;
   margin: 0 auto;
 }
@@ -7,21 +7,25 @@
 .gizmo .gz-description {
   color: var(--text-muted);
   font-size: var(--font-ui-small);
-  margin-bottom: var(--size-4-3);
+  margin-bottom: var(--size-4-5);
 }
 
-/* Column count and spans are set as classes by src/layout.ts, which keeps the same numbers. */
+/* Twelve tracks; each panel's share of its row is set as a class by src/layout.ts, which keeps the
+   same numbers (24 px between columns). Panels have no box, so rows are kept apart by space. */
 .gizmo .gz-grid {
   display: grid;
-  grid-template-columns: minmax(0, 1fr);
-  gap: var(--size-4-3);
+  grid-template-columns: repeat(12, minmax(0, 1fr));
+  gap: var(--size-4-8) var(--size-4-6);
 }
-.gizmo .gz-grid.gz-cols-2 { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-.gizmo .gz-grid.gz-cols-3 { grid-template-columns: repeat(3, minmax(0, 1fr)); }
-.gizmo .gz-grid.gz-cols-4 { grid-template-columns: repeat(4, minmax(0, 1fr)); }
-.gizmo .gz-span-2 { grid-column: span 2; }
-.gizmo .gz-span-3 { grid-column: span 3; }
-.gizmo .gz-span-4 { grid-column: span 4; }
+.gizmo .gz-grid > * { grid-column: 1 / -1; }
+.gizmo .gz-grid > .gz-span-3 { grid-column: span 3; }
+.gizmo .gz-grid > .gz-span-4 { grid-column: span 4; }
+.gizmo .gz-grid > .gz-span-6 { grid-column: span 6; }
+.gizmo .gz-grid > .gz-span-8 { grid-column: span 8; }
+.gizmo .gz-grid > .gz-span-9 { grid-column: span 9; }
+.gizmo .gz-grid > .gz-span-12 { grid-column: span 12; }
+/* A button beside panels with a title lines up with the bottom of their values. */
+.gizmo .gz-grid > .gz-view-button { align-self: end; }
 .gizmo .gz-off { display: none; }
 .gizmo .gz-tabs {
   grid-column: 1 / -1;
@@ -29,6 +33,7 @@
   flex-wrap: wrap;
   gap: var(--size-4-1);
   border-bottom: 1px solid var(--background-modifier-border);
+  margin-bottom: calc(-1 * var(--size-4-3));
 }
 .gizmo button.gz-tab {
   background: none;
@@ -41,23 +46,26 @@
 .gizmo button.gz-tab:hover { color: var(--text-normal); }
 .gizmo button.gz-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
 
-.gizmo .gz-panel,
-.gizmo .gz-card {
+/* A panel sits on the page. Only what is a thing of its own gets a surface: a card (a prompt, a
+   notice, the inspector), a form you type into, and a panel that failed. */
+.gizmo .gz-panel { min-width: 0; }
+.gizmo .gz-card,
+.gizmo .gz-panel.gz-view-form,
+.gizmo .gz-panel.gz-error {
   background: var(--background-secondary);
-  border: 1px solid var(--background-modifier-border);
-  border-radius: var(--radius-l);
+  border: 1px solid transparent;
+  border-radius: var(--radius-m);
   padding: var(--size-4-3) var(--size-4-4);
-  min-width: 0;
 }
 
-.gizmo .gz-card { margin-bottom: var(--size-4-3); }
+.gizmo .gz-card { margin-bottom: var(--size-4-4); }
 .gizmo .gz-card ul { margin: var(--size-4-2) 0; }
 .gizmo .gz-error { border-color: var(--text-error); }
 
 .gizmo .gz-title {
   font-weight: var(--font-semibold);
   font-size: var(--font-ui-small);
-  color: var(--text-normal);
+  color: var(--text-muted);
   margin-bottom: var(--size-4-2);
 }
 
@@ -68,11 +76,11 @@
 }
 
 .gizmo .gz-big {
-  font-size: 2.1em;
-  font-weight: 650;
-  line-height: 1.15;
+  font-size: 2em;
+  font-weight: 600;
+  line-height: 1.1;
   font-variant-numeric: tabular-nums;
-  letter-spacing: -0.01em;
+  letter-spacing: -0.02em;
 }
 
 .gizmo .gz-unit {
@@ -95,7 +103,7 @@
 
 .gizmo .gz-row .gz-title { margin-bottom: 0; }
 .gizmo .gz-small { font-size: var(--font-ui-smaller); padding: 2px 8px; height: auto; }
-.gizmo .gz-button { width: 100%; height: 2.6em; font-size: var(--font-ui-medium); }
+.gizmo .gz-button { width: 100%; max-width: 22em; height: 2.6em; font-size: var(--font-ui-medium); }
 
 /* Charts */
 .gizmo .gz-chart-svg { width: 100%; height: auto; display: block; touch-action: pan-y; }
@@ -119,29 +127,47 @@
 .gizmo .gz-other { --gz-c: var(--text-faint); }
 .gizmo .gz-line { fill: none; stroke: var(--gz-c); stroke-width: 2; stroke-linejoin: round; stroke-linecap: round; }
 .gizmo .gz-area { fill: var(--gz-c); opacity: 0.1; }
-.gizmo .gz-dot { fill: var(--gz-c); stroke: var(--background-secondary); stroke-width: 2; }
+.gizmo .gz-dot { fill: var(--gz-c); stroke: var(--background-primary); stroke-width: 2; }
 .gizmo .gz-bar { fill: var(--gz-c); }
-.gizmo .gz-legend { display: flex; flex-wrap: wrap; gap: 4px 14px; margin-top: 6px; font-size: var(--font-ui-smaller); color: var(--text-muted); }
+/* Above a chart, the point shown: its x, then each series with its value there (the legend), or
+   the one value (the readout). */
+.gizmo .gz-legend { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 14px; margin-bottom: var(--size-4-2); font-size: var(--font-ui-smaller); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gizmo .gz-legend-at { min-width: 4.5em; }
 .gizmo .gz-legend-item { display: inline-flex; align-items: center; gap: 6px; }
+.gizmo .gz-legend-value { color: var(--text-normal); }
+.gizmo .gz-legend-item.gz-zero .gz-legend-value { color: var(--text-faint); }
 .gizmo .gz-swatch { width: 10px; height: 10px; border-radius: 3px; background: var(--gz-c); flex: none; }
-.gizmo .gz-readout .gz-legend-item { margin-left: 12px; }
 .gizmo .gz-cursor { stroke: var(--text-faint); stroke-width: 1; stroke-dasharray: 3 3; }
 .gizmo .gz-readout {
   font-size: var(--font-ui-smaller);
   color: var(--text-muted);
   font-variant-numeric: tabular-nums;
-  text-align: right;
   min-height: 1.4em;
+  margin-bottom: var(--size-4-2);
 }
+.gizmo .gz-readout span + span { color: var(--text-normal); }
 
-/* Tables and lists */
-.gizmo .gz-table-wrap { overflow-x: auto; }
+/* Tables and lists. In its own tab a table reaches into the shell's padding by its cells' padding,
+   so its text lines up with the panel's title; hosted, it stays inside the note's text. */
+.gizmo .gz-table-wrap { overflow-x: auto; margin: 0 calc(-1 * var(--size-4-2)); }
+.gz-embed .gizmo .gz-table-wrap, .gz-lens .gizmo .gz-table-wrap, .gizmo.gz-bases .gz-table-wrap { margin: 0; }
 .gizmo .gz-table { width: 100%; border-collapse: collapse; font-size: var(--font-ui-small); }
-.gizmo .gz-table th { text-align: left; color: var(--text-muted); font-weight: var(--font-medium); }
-.gizmo .gz-table th, .gizmo .gz-table td {
-  padding: var(--size-4-1) var(--size-4-2);
+.gizmo .gz-table th {
+  text-align: left;
+  color: var(--text-muted);
+  font-weight: var(--font-medium);
+  font-size: var(--font-ui-smaller);
+  padding: 0 var(--size-4-2) var(--size-4-1);
   border-bottom: 1px solid var(--background-modifier-border);
 }
+.gizmo .gz-table th::first-letter { text-transform: uppercase; }
+.gizmo .gz-table td {
+  padding: var(--size-4-1) var(--size-4-2);
+  border-bottom: 1px solid color-mix(in srgb, var(--background-modifier-border) 60%, transparent);
+}
+.gizmo .gz-table tbody tr:last-child td { border-bottom: none; }
+.gizmo .gz-table tr.gz-selectable:hover td,
+.gizmo .gz-table tr:has(.gz-edit):hover td { background: var(--background-modifier-hover); }
 .gizmo .gz-table td.gz-num { text-align: right; font-variant-numeric: tabular-nums; }
 .gizmo .gz-table th.gz-num { text-align: right; }
 .gizmo .gz-list, .gizmo .gz-checklist { margin: 0; padding-left: var(--size-4-5); }
@@ -149,17 +175,36 @@
 .gizmo .gz-checklist label { display: flex; gap: var(--size-4-2); align-items: center; padding: 3px 0; }
 .gizmo .gz-checklist input:checked + span { color: var(--text-faint); text-decoration: line-through; }
 
-/* Forms */
+/* Forms: fields share the row and wrap; a name typed in lowercase is shown with a capital. */
 .gizmo .gz-form { display: flex; flex-wrap: wrap; gap: var(--size-4-3); align-items: flex-end; }
-.gizmo .gz-field { display: flex; flex-direction: column; gap: var(--size-4-1); font-size: var(--font-ui-small); color: var(--text-muted); }
-.gizmo .gz-field textarea { min-width: 260px; }
+.gizmo .gz-field {
+  display: flex;
+  flex-direction: column;
+  gap: var(--size-4-1);
+  flex: 1 1 10em;
+  min-width: 0;
+  max-width: 22em;
+  font-size: var(--font-ui-smaller);
+  color: var(--text-muted);
+}
+.gizmo .gz-field > span::first-letter { text-transform: uppercase; }
+.gizmo .gz-field input:not([type="checkbox"]), .gizmo .gz-field select, .gizmo .gz-field textarea { width: 100%; }
+/* A list of choices looks like the fields beside it, not like a button. */
+.gizmo .gz-form select {
+  background-color: var(--background-modifier-form-field);
+  border: 1px solid var(--background-modifier-border);
+  box-shadow: none;
+}
+.gizmo .gz-field:has(> input[type="checkbox"]) { flex: none; }
+.gizmo .gz-field:has(> textarea) { flex-basis: 100%; max-width: none; }
+.gizmo .gz-form > button { flex: none; }
 
 /* Progress and timer */
 .gizmo .gz-progress {
-  height: 8px;
-  border-radius: 4px;
+  height: 6px;
+  border-radius: 3px;
   background: var(--background-modifier-border);
-  margin-top: var(--size-4-2);
+  margin-top: var(--size-4-3);
   overflow: hidden;
 }
 .gizmo .gz-progress-fill { height: 100%; background: var(--interactive-accent); }
@@ -171,7 +216,7 @@
 
 .gizmo .gz-pie { display: flex; flex-wrap: wrap; align-items: center; gap: 12px 24px; }
 .gizmo .gz-pie-svg { flex: none; }
-.gizmo .gz-slice { fill: var(--gz-c); stroke: var(--background-secondary); stroke-width: 2; }
+.gizmo .gz-slice { fill: var(--gz-c); stroke: var(--background-primary); stroke-width: 2; }
 .gizmo .gz-ring { fill: none; stroke: var(--gz-c); }
 .gizmo .gz-pie-legend { display: flex; flex-direction: column; gap: 6px; font-size: var(--font-ui-small); color: var(--text-normal); }
 .gizmo .gz-pie-value { color: var(--text-muted); margin-left: 4px; font-variant-numeric: tabular-nums; }
@@ -179,6 +224,7 @@
 .gizmo .gz-inputs { display: flex; flex-wrap: wrap; gap: var(--size-4-2) var(--size-4-4); margin-bottom: var(--size-4-3); }
 .gizmo .gz-input { display: flex; align-items: center; gap: var(--size-4-1); }
 .gizmo .gz-input-name { color: var(--text-muted); font-size: var(--font-ui-small); margin-right: var(--size-4-1); }
+.gizmo .gz-input-name::first-letter { text-transform: uppercase; }
 .gizmo .gz-stale { opacity: 0.55; transition: opacity 0.15s; }
 
 .gizmo .gz-new {
@@ -206,16 +252,43 @@
 .gizmo .gz-pie:has(.gz-selected) .gz-selectable:not(.gz-selected) { opacity: 0.35; }
 .gizmo .gz-bar.gz-selected, .gizmo .gz-slice.gz-selected { stroke: var(--text-normal); stroke-width: 1.5; }
 .gizmo .gz-row-action { margin-left: var(--size-4-2); }
+/* A row's action reads as a quiet word beside the row, and as a button when the row is under the pointer. */
+.gizmo button.gz-row-action:not(.mod-cta) { background: transparent; box-shadow: none; color: var(--text-muted); }
+.gizmo .gz-selectable:hover button.gz-row-action:not(.mod-cta),
+.gizmo li:hover > button.gz-row-action:not(.mod-cta),
+.gizmo tr:hover button.gz-row-action:not(.mod-cta),
+.gizmo .gz-rowcard:hover button.gz-row-action:not(.mod-cta),
+.gizmo button.gz-row-action:not(.mod-cta):focus-visible { background: var(--interactive-normal); color: var(--text-normal); }
 .gizmo td.gz-row-actions { text-align: right; white-space: nowrap; }
-.gizmo .gz-table .gz-edit { width: 100%; min-width: 4em; }
+/* An edited cell reads as text; its field shows under the pointer and while it has focus. Its text
+   lines up with the column's, the field's edge reaching into the cell's padding. */
+.gizmo .gz-table input.gz-edit:not([type="checkbox"]),
+.gizmo .gz-table textarea.gz-edit { width: calc(100% + 2 * var(--size-4-2)); min-width: 4em; margin: 0 calc(-1 * var(--size-4-2)); }
+.gizmo .gz-table select.gz-edit { margin-left: calc(-1 * var(--size-4-2)); }
+.gizmo .gz-table .gz-edit:not([type="checkbox"]),
+.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]) { background-color: transparent; border-color: transparent; box-shadow: none; }
+.gizmo .gz-table tr:hover .gz-edit:not([type="checkbox"]),
+.gizmo .gz-rowcard:hover .gz-edit:not([type="checkbox"]) { border-color: var(--background-modifier-border); background-color: var(--background-modifier-form-field); }
+.gizmo .gz-table .gz-edit:not([type="checkbox"]):focus,
+.gizmo .gz-rowcard .gz-edit:not([type="checkbox"]):focus {
+  border-color: var(--background-modifier-border-focus);
+  background-color: var(--background-modifier-form-field);
+  box-shadow: 0 0 0 2px var(--background-modifier-border-focus);
+}
+.gizmo .gz-table .gz-edit:not([type="checkbox"]) { height: 28px; }
+.gizmo .gz-table td.gz-num .gz-edit { text-align: right; }
+.gizmo .gz-table input.gz-edit[type="number"]::-webkit-inner-spin-button,
+.gizmo .gz-table input.gz-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 .gizmo .gz-table input.gz-edit[type="checkbox"] { width: var(--checkbox-size); min-width: 0; }
 
 /* Views: calendar, board, scatter, timeline */
-/* A five-step single-hue scale: the first chart colour mixed into the panel background. */
-.gizmo .gz-step-1 { --gz-shade: color-mix(in srgb, var(--gz-s1) 24%, var(--background-secondary)); }
-.gizmo .gz-step-2 { --gz-shade: color-mix(in srgb, var(--gz-s1) 42%, var(--background-secondary)); }
-.gizmo .gz-step-3 { --gz-shade: color-mix(in srgb, var(--gz-s1) 60%, var(--background-secondary)); }
-.gizmo .gz-step-4 { --gz-shade: color-mix(in srgb, var(--gz-s1) 80%, var(--background-secondary)); }
+/* A five-step single-hue scale: the first chart colour mixed into the page; an empty day is a faint
+   tint of the text colour, which shows on the page in both themes. */
+.gizmo { --gz-blank: color-mix(in srgb, var(--text-normal) 7%, var(--background-primary)); }
+.gizmo .gz-step-1 { --gz-shade: color-mix(in srgb, var(--gz-s1) 24%, var(--background-primary)); }
+.gizmo .gz-step-2 { --gz-shade: color-mix(in srgb, var(--gz-s1) 42%, var(--background-primary)); }
+.gizmo .gz-step-3 { --gz-shade: color-mix(in srgb, var(--gz-s1) 60%, var(--background-primary)); }
+.gizmo .gz-step-4 { --gz-shade: color-mix(in srgb, var(--gz-s1) 80%, var(--background-primary)); }
 .gizmo .gz-step-5 { --gz-shade: var(--gz-s1); }
 .gizmo .gz-cal-head { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
 .gizmo .gz-cal-title { font-size: var(--font-ui-small); font-weight: var(--font-semibold); min-width: 6em; text-align: center; }
@@ -223,13 +296,14 @@
 .gizmo .gz-cal-grid { display: grid; grid-template-columns: repeat(7, minmax(0, 1fr)); gap: 3px; }
 .gizmo .gz-cal-dow { color: var(--text-muted); font-size: var(--font-ui-smaller); text-align: center; }
 .gizmo .gz-cal-grid .gz-cal-day {
+  --gz-blank: var(--background-secondary);
   display: flex;
   flex-direction: column;
   justify-content: space-between;
   min-height: 3.2em;
   padding: 3px 5px;
   border-radius: var(--radius-s);
-  background: var(--gz-shade, var(--background-primary));
+  background: var(--gz-shade, var(--gz-blank));
   font-size: var(--font-ui-smaller);
 }
 .gizmo .gz-cal-val { align-self: flex-end; font-weight: var(--font-semibold); font-variant-numeric: tabular-nums; }
@@ -237,7 +311,7 @@
 .gizmo .gz-cal-grid .gz-today { box-shadow: inset 0 0 0 2px var(--text-normal); }
 .gizmo .gz-cal-scroll { overflow-x: auto; }
 .gizmo .gz-cal-year { display: block; }
-.gizmo .gz-cal-year .gz-cal-day { fill: var(--gz-shade, var(--background-primary)); stroke: var(--background-modifier-border); stroke-width: 1; }
+.gizmo .gz-cal-year .gz-cal-day { fill: var(--gz-shade, var(--gz-blank)); stroke: none; }
 .gizmo .gz-cal-year .gz-cal-day.gz-today { stroke: var(--text-normal); stroke-width: 2; }
 .gizmo .gz-cal-year .gz-cal-day.gz-selected { stroke: var(--interactive-accent); stroke-width: 2; }
 .gizmo .gz-cal-grid .gz-cal-day.gz-selected { box-shadow: 0 0 0 2px var(--interactive-accent); }
@@ -246,8 +320,7 @@
 .gizmo .gz-board-col {
   flex: 1 0 180px;
   min-width: 180px;
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
   border-radius: var(--radius-m);
   padding: var(--size-4-2);
 }
@@ -256,13 +329,14 @@
 .gizmo .gz-board-count { color: var(--text-muted); font-weight: var(--font-normal); font-variant-numeric: tabular-nums; }
 .gizmo .gz-board-cards { display: flex; flex-direction: column; gap: var(--size-4-2); min-height: 2.5em; }
 .gizmo .gz-board-card {
+  position: relative;
   display: flex;
   flex-direction: column;
   gap: var(--size-4-1);
-  background: var(--background-secondary);
+  background: var(--background-primary);
   border: 1px solid var(--background-modifier-border);
   border-radius: var(--radius-s);
-  padding: var(--size-4-2);
+  padding: var(--size-4-2) var(--size-4-3);
   font-size: var(--font-ui-small);
   cursor: grab;
 }
@@ -271,6 +345,26 @@
 .gizmo .gz-board-card.gz-busy { opacity: 0.5; pointer-events: none; }
 .gizmo .gz-board-card.gz-selected { border-color: var(--interactive-accent); background: var(--background-modifier-hover); }
 .gizmo select.gz-move { font-size: var(--font-ui-smaller); color: var(--text-muted); height: auto; padding: 1px var(--size-4-2); }
+/* With a pointer, a card is dragged; its Move control (the keyboard and touch way) waits in its
+   corner as a small arrow until the card is under the pointer or has focus. */
+@media (hover: hover) {
+  .gizmo .gz-board-card .gz-board-text { padding-right: 22px; }
+  .gizmo .gz-board-card select.gz-move {
+    position: absolute;
+    top: 4px;
+    right: 4px;
+    width: 24px;
+    height: 22px;
+    padding: 0;
+    color: transparent;
+    background-position: center;
+    opacity: 0;
+    transition: opacity 0.15s;
+  }
+  .gizmo .gz-board-card select.gz-move option { color: var(--text-normal); }
+  .gizmo .gz-board-card:hover select.gz-move,
+  .gizmo .gz-board-card:focus-within select.gz-move { opacity: 1; }
+}
 .gizmo .gz-scatter-dot { fill: var(--gz-c); fill-opacity: 0.7; stroke: none; }
 .gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
@@ -281,7 +375,7 @@
 .gizmo .gz-tl-body { position: relative; }
 .gizmo .gz-tl-grid { position: absolute; top: 0; bottom: 0; left: var(--gz-tl-label); right: 0; pointer-events: none; }
 .gizmo .gz-tl-line { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--background-modifier-border); }
-.gizmo .gz-tl-today { position: absolute; top: 0; bottom: 0; border-left: 2px dashed var(--color-red); }
+.gizmo .gz-tl-today { position: absolute; top: 0; bottom: 0; border-left: 1px solid var(--color-red); }
 .gizmo .gz-tl-row { display: grid; grid-template-columns: var(--gz-tl-label) minmax(0, 1fr); align-items: center; }
 .gizmo .gz-tl-label { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; padding-right: var(--size-4-2); }
 .gizmo .gz-tl-track { position: relative; height: 1.9em; }
@@ -318,23 +412,24 @@
   gap: var(--size-4-1);
   min-width: 0;
   padding: var(--size-4-2) var(--size-4-3);
-  background: var(--background-primary);
-  border: 1px solid var(--background-modifier-border);
+  background: var(--background-secondary);
+  border: 1px solid transparent;
   border-radius: var(--radius-m);
   font-size: var(--font-ui-small);
 }
-.gizmo .gz-rowcard.gz-selected { background: var(--background-modifier-hover); border-color: var(--interactive-accent); }
+.gizmo .gz-rowcard.gz-selected { border-color: var(--interactive-accent); }
 .gizmo .gz-rowcard-image .gz-cell-img { height: 120px; width: 100%; }
 .gizmo .gz-rowcard-title { font-weight: var(--font-semibold); overflow-wrap: anywhere; }
 .gizmo .gz-rowcard-line { display: flex; justify-content: space-between; gap: var(--size-4-2); }
 .gizmo .gz-rowcard-label { color: var(--text-muted); }
+.gizmo .gz-rowcard-label::first-letter { text-transform: uppercase; }
 .gizmo .gz-rowcard-value { min-width: 0; text-align: right; overflow-wrap: anywhere; }
 .gizmo .gz-rowcard-value .gz-edit { max-width: 100%; }
 .gizmo .gz-rowcard-actions { margin-top: auto; text-align: right; }
 .gizmo .gz-compare { margin-top: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-smaller); font-variant-numeric: tabular-nums; }
 .gizmo .gz-goal { stroke: var(--text-muted); stroke-width: 1; stroke-dasharray: 5 4; }
 .gizmo .gz-goal-label { fill: var(--text-muted); font-size: 11px; font-family: var(--font-interface); }
-.gizmo .gz-stacked:not(.gz-selected) { stroke: var(--background-secondary); stroke-width: 1; }
+.gizmo .gz-stacked:not(.gz-selected) { stroke: var(--background-primary); stroke-width: 1; }
 /* Authoring: suggestions, error links, inspector */
 .suggestion-item .gz-suggest-key { color: var(--text-normal); }
 .suggestion-item .gz-suggest-hint { color: var(--text-muted); font-size: var(--font-ui-smaller); }
@@ -384,7 +479,7 @@
 /* In a note the app sits at the text's width, not in the 960px shell of an app tab. */
 .gz-embed .gizmo,
 .gz-lens .gizmo { padding: 0; max-width: none; margin: 0; }
-.gz-embed { margin: var(--size-4-2) 0; }
+.gz-embed { margin: var(--size-4-4) 0; }
 /* A Gizmo view in a base fills the pane under the base's toolbar. */
 .gizmo.gz-bases { padding: var(--size-4-3) var(--size-4-4) var(--size-4-4); max-width: none; margin: 0; }
 /* The lens sits above the editor and the preview, which share what is left of the view's height. */
@@ -437,9 +532,8 @@ button.gz-lens-toggle {
   gap: var(--size-4-1) var(--size-4-3);
   margin-top: var(--size-4-2);
   padding: var(--size-4-2) var(--size-4-3);
-  border-left: 3px solid var(--interactive-accent);
-  border-radius: var(--radius-s);
-  background: var(--background-modifier-hover);
+  border-radius: var(--radius-m);
+  background: var(--background-secondary);
   font-size: var(--font-ui-small);
 }
 .gizmo .gz-detail-text { flex: 1 1 16em; }

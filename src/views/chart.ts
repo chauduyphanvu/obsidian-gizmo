@@ -12,7 +12,7 @@ export const H = 220, L = 52, R = 14, T = 14, B = 26;
 /** Most series one chart draws: past this, colours stop being told apart. */
 export const MAX_SERIES = 6;
 /** Bars are at most this wide, with a gap between neighbours and rounded data ends. */
-const BAR_MAX = 24, GAP = 2, RADIUS = 4;
+const BAR_MAX = 36, GAP = 2, RADIUS = 4;
 
 export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent?: Element): SVGElementTagNameMap[K] {
   const el = document.createElementNS(NS, tag);
@@ -92,7 +92,7 @@ function stackRange(values: Map<number, number>[]): [number, number] {
 export function legendItem(parent: HTMLElement, colour: string, name: string): HTMLElement {
   const item = parent.createSpan({ cls: "gz-legend-item" });
   item.createSpan({ cls: `gz-swatch ${colour}` });
-  item.createSpan({ text: name });
+  item.createSpan({ cls: "gz-legend-name", text: name });
   return item;
 }
 
@@ -150,8 +150,8 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     svg("line", { x1: L, x2: W - R, y1: y, y2: y, class: "gz-gridline" }, root);
     svg("text", { x: L - 8, y: y + 4, class: "gz-axis", "text-anchor": "end" }, root).textContent = opts.format?.(t, 0) ?? formatValue(t);
   }
-  // Categories each get a label while they fit; a time axis gets its ends and middle.
-  const labelIdx = !isTime && opts.kind === "bar" && n <= 12 ? keys.map((_, i) => i)
+  // Bars each get a label while they fit (a date needs about 52 px); otherwise the ends and middle.
+  const labelIdx = opts.kind === "bar" && n <= 12 && (!isTime || bandW >= 52) ? keys.map((_, i) => i)
     : n <= 1 ? [0] : [0, Math.floor((n - 1) / 2), n - 1];
   const every = labelIdx.length > 3;
   for (const i of new Set(labelIdx)) {
@@ -211,23 +211,33 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     root.setAttribute("aria-label", `goal ${fmt(opts.goal)}`);
   }
 
-  // One series needs no legend unless the panel names it.
-  if (series.length > 1 || series[0].label !== undefined) {
-    const legend = wrap.createDiv({ cls: "gz-legend" });
-    series.forEach((_, i) => legendItem(legend, colour(i), name(i)));
-  }
-
+  // Above the chart, the point shown (the last, or the one under the pointer): several series, or
+  // one the panel names, get a legend that carries each value; one unnamed series, a readout.
   const cursor = svg("line", { y1: T, y2: H - B, class: "gz-cursor", visibility: "hidden" }, root);
-  const readout = wrap.createDiv({ cls: "gz-readout" });
+  let showValues: (i: number) => void;
+  if (series.length > 1 || series[0].label !== undefined) {
+    const legend = createDivBefore(wrap, root, "gz-legend");
+    const at = legend.createSpan({ cls: "gz-legend-at" });
+    const cells = series.map((_, s) => legendItem(legend, colour(s), name(s)).createSpan({ cls: "gz-legend-value" }));
+    showValues = (i) => {
+      at.textContent = xLabel(i);
+      values.forEach((byIndex, s) => {
+        const y = byIndex.get(i);
+        cells[s].textContent = y === undefined ? "–" : fmt(y, s);
+        cells[s].parentElement!.classList.toggle("gz-zero", !y);
+      });
+    };
+  } else {
+    const readout = createDivBefore(wrap, root, "gz-readout");
+    showValues = (i) => {
+      readout.empty();
+      readout.createSpan({ text: xLabel(i) });
+      const y = values[0].get(i);
+      if (y !== undefined) readout.createSpan({ text: ` · ${fmt(y)}` });
+    };
+  }
   const showPoint = (i: number) => {
-    readout.empty();
-    readout.createSpan({ text: xLabel(i) });
-    values.forEach((byIndex, s) => {
-      const y = byIndex.get(i);
-      if (y === undefined) return;
-      if (series.length === 1) readout.createSpan({ text: ` · ${fmt(y)}` });
-      else legendItem(readout, colour(s), `${name(s)} ${fmt(y, s)}`);
-    });
+    showValues(i);
     cursor.setAttribute("x1", String(sx(i)));
     cursor.setAttribute("x2", String(sx(i)));
   };
@@ -244,6 +254,12 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     cursor.setAttribute("visibility", "hidden");
     showPoint(n - 1);
   });
+}
+
+function createDivBefore(parent: HTMLElement, before: Element, cls: string): HTMLElement {
+  const el = parent.createDiv({ cls });
+  parent.insertBefore(el, before);
+  return el;
 }
 
 /** The row behind a bar: the data (or group) row whose x is `at`, else one made of the series' values there. */

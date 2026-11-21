@@ -376,7 +376,7 @@ Run **Gizmo: Open the automation map**. The map shows each app with what it read
 
 - **Gizmo: Show app activity** shows each change, with **Undo**. Undo operates only while the vault still has what the app wrote. Gizmo moves a note that an app made to the trash only if the note is unchanged.
 - **See it then** on a change shows the app at that time.
-- **As of…** in the app header shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels.
+- **As of…** in the app menu (**⋯** in the app header) shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels.
 - **Gizmo: Backtest this app** applies the alerts and `expect` rules of the app, as they are now, to its past data.
 
 ## Share and install

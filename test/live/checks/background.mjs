@@ -100,7 +100,7 @@ export default async function background(t) {
       const host = na.plugin().dataLayer.host;
       window.__naFetch = host.fetch;
       host.fetch = async () => ({ status: 503, text: "Service Unavailable", contentType: "text/plain" });
-      [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Reload data").click();
+      na.menuItem("Reload data");
       const el = na.view().contentEl;
       // Every panel that reads the forecast; the walks are in the data note, not on the web.
       const panels = () => [...el.querySelectorAll(".gz-panel")].filter((p) => p.querySelector(".gz-title")?.textContent !== "My walks");

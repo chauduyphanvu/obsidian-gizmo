@@ -203,7 +203,7 @@ test("editing a data block remounts only the panels that use it", async () => {
   assert.equal(text(first2.querySelector(".gz-big")), "82");
 });
 
-test("without tabs there's no tab bar; spans become classes", async () => {
+test("without tabs there's no tab bar; spans become classes, in twelfths of the row", async () => {
   const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", panels: [
     { view: "countdown", to: "2027-01-01" },
     { view: "countdown", to: "2027-02-01", span: 2 },
@@ -213,7 +213,18 @@ test("without tabs there's no tab bar; spans become classes", async () => {
   await settle();
   assert.equal(root.querySelector(".gz-tabs"), null);
   assert.equal(root.querySelector(".gz-grid")!.className, "gz-grid gz-cols-4");
-  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => [...e.classList].find((c) => c.startsWith("gz-span-"))), ["gz-span-1", "gz-span-2", "gz-span-4"]);
+  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => [...e.classList].find((c) => c.startsWith("gz-span-"))), ["gz-span-3", "gz-span-6", "gz-span-12"]);
+});
+
+test("small panels that asked for no span share their row instead of leaving part of it empty", async () => {
+  const { app, root } = setup({ "Apps/W.md": { fm: { app: "x", panels: [
+    { view: "countdown", to: "2027-01-01" },
+    { view: "countdown", to: "2027-02-01" },
+    { view: "line", source: "weights", x: "at", y: "weight" },
+  ] } } });
+  app.load();
+  await settle();
+  assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((e) => [...e.classList].find((c) => c.startsWith("gz-span-"))), ["gz-span-6", "gz-span-6", "gz-span-12"]);
 });
 
 test("tabs: untabbed panels stay above the bar; switching keeps elements and typed text", async () => {
@@ -236,7 +247,7 @@ test("tabs: untabbed panels stay above the bar; switching keeps elements and typ
   const off = () => children.filter((e) => e.classList.contains("gz-off")).map((e) => e.className.split(" ")[1]);
   assert.deepEqual(off(), ["gz-view-line"]);
   // A chart in a hidden tab is still drawn at its real width.
-  assert.equal(root.querySelector(".gz-chart-svg")!.getAttribute("viewBox"), "0 0 894 220");
+  assert.equal(root.querySelector(".gz-chart-svg")!.getAttribute("viewBox"), "0 0 912 220");
 
   const input = root.querySelector(".gz-form input") as HTMLInputElement;
   input.value = "77";

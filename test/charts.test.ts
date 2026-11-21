@@ -26,13 +26,14 @@ test("one series wears the accent, fills its area and needs no legend", () => {
   assert.equal(el.querySelector(".gz-legend"), null);
 });
 
-test("several series each get a palette colour, a legend entry and a readout value", () => {
+test("several series each get a palette colour and a legend entry holding its value at the point shown", () => {
   const el = draw(line, { view: "line", source: "s", x: "time", y: ["t", "feels"] }, hourly);
   const lines = [...el.querySelectorAll("path.gz-line")];
   assert.deepEqual(lines.map((l) => l.getAttribute("class")), ["gz-line gz-s1", "gz-line gz-s2"]);
   assert.equal(el.querySelectorAll(".gz-area").length, 0);
-  assert.equal(el.querySelector(".gz-legend")!.textContent, "tfeels");
-  assert.match(el.querySelector(".gz-readout")!.textContent!, /t 6 · *feels 3|t 6feels 3/);
+  assert.deepEqual([...el.querySelectorAll(".gz-legend-name")].map((e) => e.textContent), ["t", "feels"]);
+  assert.deepEqual([...el.querySelectorAll(".gz-legend-value")].map((e) => e.textContent), ["6", "3"]);
+  assert.equal(el.querySelector(".gz-readout"), null);
 });
 
 test("bars for several series sit side by side; zero draws nothing", () => {

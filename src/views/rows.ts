@@ -112,6 +112,7 @@ function column(box: HTMLElement, env: RowEnv, c: string, i: number, title = fal
   const show = fieldControl(box, type, (value) => env.ctx.editRow(env.current[i], c, value), {
     cls: "gz-edit", label: c, input: (t) => (["number", "date", "time"].includes(t) ? t : "text"),
   });
+  if (type === "number") box.addClass("gz-num");
   return (row) => {
     show(getPath(row, c));
     conflictChip(box, row, c, (value) => env.ctx.editRow(env.current[i], c, value));

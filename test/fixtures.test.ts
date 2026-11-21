@@ -438,9 +438,9 @@ test("Spending: log a purchase, see the week against last, the stack against the
 
   // Weekly totals stacked by category, with the budget line.
   assert.equal(text(chart.querySelector(".gz-goal-label")), "goal $400");
-  assert.equal(text(chart.querySelector(".gz-legend")), "FoodRentTransportFunOther");
+  assert.deepEqual([...chart.querySelectorAll(".gz-legend-name")].map(text), ["Food", "Rent", "Transport", "Fun", "Other"]);
   assert.ok(chart.querySelectorAll("path.gz-bar.gz-stacked").length >= 6);
-  assert.match(text(chart.querySelector(".gz-readout")), /Food \$30.*Transport \$12/);
+  assert.match(text(chart.querySelector(".gz-legend")), /Food\$30.*Transport\$12/);
 
   // Recent purchases, newest first, in the panel's formats; category is a dropdown.
   assert.deepEqual([...recent.querySelectorAll("th")].map((th) => text(th)), ["When", "Spent", "category", "note"]);
@@ -467,7 +467,7 @@ test("Spending: log a purchase, see the week against last, the stack against the
   await settle();
   assert.equal((f.files.get("Apps/Spending data.md")!.fm!.spend as Record<string, unknown>[]).at(-1)!.category, "food");
   assert.equal(text(week.querySelector(".gz-big")), "$62.25");
-  assert.match(text(chart.querySelector(".gz-readout")), /Food \$50/);
+  assert.match(text(chart.querySelector(".gz-legend")), /Food\$50/);
 });
 
 const KP = "https://services.swpc.noaa.gov/json/planetary_k_index_1m.json";
@@ -900,7 +900,7 @@ test("Weather: now, the next hours and the week in words, told when rain is like
   assert.equal(t.f.requests.filter((u) => u.startsWith(METEO)).length, 1);
   assert.equal(text(now.querySelector("li")), "8.4°C, feels like 6.2°C, overcast, wind 12.3 km/hI went for a walk");
   assert.equal(text(rainy.querySelector(".gz-big")), "2hours");
-  assert.equal(text(hours.querySelector(".gz-legend")), "TemperatureFeels like");
+  assert.deepEqual([...hours.querySelectorAll(".gz-legend-name")].map(text), ["Temperature", "Feels like"]);
   assert.equal(hours.querySelectorAll("path.gz-line").length, 2);
   assert.equal(text(chance.querySelector(".gz-goal-label")), "goal 50 %");
   assert.deepEqual([...week.querySelectorAll("th")].map((th) => text(th)), ["Day", "Sky", "Temperature", "Rain chance"]);
@@ -1015,6 +1015,6 @@ test("Planet Earth: told of a strong quake, pick one to see where and how deep w
 
   // A city, through the component: now, and its last thirteen weeks from one request.
   assert.equal(text(panel("Saigon now").querySelector(".gz-big")), "48°F");
-  assert.equal(text(panel("Average high and low by week, last three months").querySelector(".gz-legend")), "HighLow");
+  assert.deepEqual([...panel("Average high and low by week, last three months").querySelectorAll(".gz-legend-name")].map(text), ["High", "Low"]);
   assert.equal(t.f.requests.filter((u) => u.includes("latitude=10.82")).length, 1);
 });

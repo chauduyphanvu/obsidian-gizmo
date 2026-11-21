@@ -367,7 +367,7 @@ test("a renamed or deleted note takes its embeds' grants along", () => {
   assert.equal(dropGrants(grants, "Nope.md"), false);
 });
 
-test("an embed's panels are drawn 32 px wider than the same panel in an app's own tab, which has padding the embed lacks", async () => {
+test("an embed's panels are drawn 48 px wider than the same panel in an app's own tab, which has padding the embed lacks", async () => {
   const panel = { view: "line", source: "weights", x: "at", y: "kg" };
   const weights = { fm: { weights: [{ at: "2026-11-01", kg: 80 }, { at: "2026-11-02", kg: 79 }] } };
   const data = { "Apps/W.md": { fm: { app: "W", ...panel } }, "Apps/W data.md": weights, "Journal/2026-11-18 data.md": weights };
@@ -385,13 +385,13 @@ test("an embed's panels are drawn 32 px wider than the same panel in an app's ow
   full.load();
   await settle();
   await widen(ownRoot, () => full.resize());
-  // 700 less the shell's 32 px of padding, less the panel's own 34, in three columns of the grid.
-  assert.equal(viewBox(ownRoot), "0 0 634 220");
+  // 700 less the shell's 48 px of padding; the panel has none of its own.
+  assert.equal(viewBox(ownRoot), "0 0 652 220");
 
   const t = embed(panel, data);
   await settle();
   await widen(t.root, () => t.app.resize());
-  assert.equal(viewBox(t.root), "0 0 666 220");
+  assert.equal(viewBox(t.root), "0 0 700 220");
 });
 
 test("then in an embed or a lens says it works only in an app note, and asks for nothing it can't do there", () => {
@@ -464,9 +464,9 @@ test("an embed wider than an app's tab draws its panels at its own width; an app
   full.load();
   await settle();
   await widen(ownRoot, () => full.resize());
-  assert.equal(viewBox(ownRoot), "0 0 894 220", "960 less 32 of padding, less the panel's 34");
+  assert.equal(viewBox(ownRoot), "0 0 912 220", "960 less 48 of padding");
   const t = embed(panel, data);
   await settle();
   await widen(t.root, () => t.app.resize());
-  assert.equal(viewBox(t.root), "0 0 1366 220", "1400 less the panel's 34");
+  assert.equal(viewBox(t.root), "0 0 1400 220", "1400, with no padding of its own");
 });
