@@ -120,7 +120,7 @@ export const board: ViewDef = {
       const drawCard = (parent: HTMLElement, row: Row, column: Column) => {
         const text = itemText(p, row, ctx.now);
         const key = rowKey(row);
-        const card = parent.createDiv({ cls: "gz-board-card", attr: { draggable: "true" } });
+        const card = parent.createDiv({ cls: "gz-board-card" });
         if (key !== undefined) card.setAttribute("data-key", String(key));
         const title = card.createDiv({ cls: "gz-board-text" });
         const [name, rest] = splitItem(text);
@@ -133,6 +133,11 @@ export const board: ViewDef = {
           title.createSpan({ cls: "gz-card-sep", text: " · ", attr: { "aria-hidden": "true" } });
           if (rest) title.createDiv({ cls: "gz-card-meta", text: rest });
         }
+        // A moved card comes back as a new row; a selection of it takes the new values.
+        const repick = selectable(card, own, ctx, row, text, true);
+        // Shown as it was, a card can't move.
+        if (ctx.readOnly) return repick(row);
+        card.setAttribute("draggable", "true");
         // Moved to two columns at once on two devices: the other column is offered.
         conflictChip(card, row, p.group!, (value) => ctx.editRow(row, p.group!, value));
         card.addEventListener("dragstart", (e) => {
@@ -156,8 +161,7 @@ export const board: ViewDef = {
           moveTo.options[0].selected = true;
           if (picked !== "") void move(card, row, others[Number(picked)]);
         });
-        // A moved card comes back as a new row; a selection of it takes the new values.
-        selectable(card, own, ctx, row, text, true)(row);
+        repick(row);
         if (key !== undefined && String(key) === refocus) moveTo.focus();
       };
       for (const column of columns) {

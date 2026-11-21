@@ -500,7 +500,7 @@
 /* The answer as one band (src/views/value.ts): the headline's eyebrow, its figure large with the unit
    and caption on one line, then the change in words; a fact the same, smaller; a progress over the
    headline's value is its meter, with a tick at even pace. Data is ink and grey: colour only where a
-   line was crossed, the fill past max. Every digit is tabular. */
+   line was crossed, the fill past max. Every digit is tabular but the figures'. */
 .gizmo .gz-role-answer .gz-title.gz-eyebrow,
 .gizmo .gz-role-answer .gz-title.gz-fact-title {
   margin: 0 0 8px;
@@ -517,7 +517,6 @@
   font-weight: 650;
   letter-spacing: -0.04em;
   color: var(--text-normal);
-  font-variant-numeric: tabular-nums;
   overflow-wrap: anywhere;
 }
 .gizmo.gz-narrow .gz-role-answer .gz-big.gz-fig { font-size: 46px; }
@@ -548,9 +547,11 @@
   font-weight: 650;
   letter-spacing: -0.03em;
   color: var(--text-normal);
-  font-variant-numeric: tabular-nums;
   white-space: nowrap;
 }
+/* At this size tabular digits leave gaps around a 1, so a figure is set in proportional digits; only
+   while it counts up are they tabular, so its width holds still. */
+.gizmo .gz-role-answer.gz-counting .gz-big { font-variant-numeric: tabular-nums; }
 .gizmo .gz-role-answer .gz-fact-fig .gz-unit {
   margin-left: 5px;
   font-size: 14px;
@@ -635,7 +636,7 @@
   font-variant-numeric: tabular-nums;
 }
 .gizmo .gz-role-answer .gz-meter-legend b { font-weight: 600; color: var(--text-normal); }
-.gizmo .gz-role-answer .gz-meter-status {
+.gizmo .gz-role-answer .gz-ans-status {
   display: flex;
   align-items: center;
   gap: 6px;
@@ -645,7 +646,7 @@
   color: var(--text-error);
   font-variant-numeric: tabular-nums;
 }
-.gizmo .gz-role-answer .gz-meter-icon { flex: none; width: 15px; height: 15px; }
+.gizmo .gz-role-answer .gz-ans-icon { flex: none; width: 15px; height: 15px; }
 /* The headline and the facts beside it line up on the baselines of their last lines. */
 .gizmo .gz-answer > .gz-slot > .gz-headline,
 .gizmo .gz-answer > .gz-facts { align-self: last baseline; }
@@ -1353,6 +1354,8 @@ button.gz-lens-toggle {
 /* An app as it was, and backtests */
 .gizmo .gz-past { display: flex; align-items: center; gap: var(--size-4-2); border-color: var(--interactive-accent); }
 .gizmo .gz-past-back { margin-left: auto; }
+/* In the past a panel that only writes (a button, a form, a checklist) stays in place, faded; it is inert. */
+.gizmo .gz-panel.gz-readonly { opacity: 0.45; }
 .gizmo .gz-activity-then { font-size: var(--font-ui-small); }
 .gizmo.gz-asof .gz-asof-quick { display: flex; gap: var(--size-4-2); flex-wrap: wrap; margin-bottom: var(--size-4-3); }
 .gizmo.gz-asof form { display: flex; gap: var(--size-4-2); }

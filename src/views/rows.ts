@@ -14,7 +14,7 @@ const HIDDEN_COLUMNS = new Set(["path", "mtime", "ctime", "tags", "position"]);
 
 /** A row's own button, running the panel's actions with that row. */
 export function rowAction(parent: HTMLElement, p: Panel, ctx: PanelCtx, row: () => Row): void {
-  if (!p.action) return;
+  if (!p.action || ctx.readOnly) return;
   const b = parent.createEl("button", { cls: "gz-small gz-row-action", text: p.action });
   busy(b, () => ctx.runActions(p, row()));
 }
@@ -58,8 +58,8 @@ function numbers(p: Panel, c: string, rows: Row[]): boolean {
 }
 
 /** A column of plain numbers that isn't edited, whose heading sits over them on the right. */
-function numericColumn(p: Panel, c: string, rows: Row[]): boolean {
-  return !p.edit?.includes(c) && numbers(p, c, rows);
+function numericColumn(p: Panel, c: string, rows: Row[], edited: Map<string, unknown>): boolean {
+  return !edited.has(c) && numbers(p, c, rows);
 }
 
 // ---- Ledgers -------------------------------------------------------------------------------------
@@ -359,11 +359,11 @@ export function rowFields(p: Panel, row: Row): [field: string, type?: string | s
 
 /**
  * One field of a row in `box`, for the side sheet: the control an edited cell gets when `type` is
- * given, writing through the panel's editRow, else the value as its cell draws it. Returns what
- * shows the row's new values, which leaves a field being typed in alone.
+ * given and the app isn't shown as it was, writing through the panel's editRow, else the value as
+ * its cell draws it. Returns what shows the row's new values, which leaves a field being typed in alone.
  */
 export function fieldBox(box: HTMLElement, p: Panel, ctx: PanelCtx, row: Row, field: string, type?: string | string[]): (row: Row) => void {
-  const env: RowEnv = { p, ctx, columns: [field], edited: new Map(type === undefined ? [] : [[field, type]]), current: [row] };
+  const env: RowEnv = { p, ctx, columns: [field], edited: new Map(type === undefined || ctx.readOnly ? [] : [[field, type]]), current: [row] };
   const show = column(box, env, field, 0);
   show(row);
   return (next) => {
@@ -403,13 +403,14 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: A
   heading(el, p, p.label);
   if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return undefined; }
   const all = columnsOf(p, rows);
-  const edited = new Map((p.edit ?? []).map((f) => [f, editType(p, f, rows)] as const));
+  // Shown as it was, nothing can be written: an edited column reads as its cells do.
+  const edited = new Map(ctx.readOnly ? [] : (p.edit ?? []).map((f) => [f, editType(p, f, rows)] as const));
   const cards = p.layout === "cards";
   const look = cards ? {} : ledgerLook(p, rows, all, edited);
   const env: RowEnv = {
     p, ctx, columns: all.filter((c) => c !== look.dropped), edited, current: [...rows], ledger: look.ledger, clock: look.clock,
   };
-  if (!cards) env.lead = env.columns.find((c) => c !== look.ledger?.field && !cellKind(p, c) && !edited.has(c) && !numericColumn(p, c, rows));
+  if (!cards) env.lead = env.columns.find((c) => c !== look.ledger?.field && !cellKind(p, c) && !edited.has(c) && !numericColumn(p, c, rows, edited));
   let parent: HTMLElement;
   let groups: Grouping | undefined;
   if (cards) {
@@ -417,7 +418,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: A
   } else {
     const table = el.createDiv({ cls: "gz-table-wrap" }).createEl("table", { cls: look.ledger ? "gz-table gz-ledger" : "gz-table" });
     const head = table.createEl("thead").createEl("tr");
-    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows) || edited.get(c) === "number" ? "gz-num" : undefined });
+    for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows, edited) || edited.get(c) === "number" ? "gz-num" : undefined });
     if (p.action) head.createEl("th");
     parent = table.createEl("tbody");
     if (look.ledger) {
@@ -533,6 +534,13 @@ function plainItem(p: Panel, r: Row, now: Date): string {
   return mapped(p, field, r[field]) ?? (formatFor(p, field) !== undefined ? display(p, field, r[field], now, "text") : String(r[field]));
 }
 
+/** The fields a list's items show, in order: the paths its `item` fills in, or the one field a plain item shows. */
+function itemFields(p: Panel, rows: Row[]): string[] {
+  if (p.item) return [...new Set([...p.item.matchAll(/\{([^{}]+)\}/g)].map((m) => m[1].trim()))];
+  const field = ["name", "title", "value"].find((f) => rows[0][f] !== undefined && rows[0][f] !== null);
+  return field ? [field] : [];
+}
+
 /** A list item's text: its `item` filled in, a group's key and count, or the row's name, title or value. */
 export function listItem(p: Panel, r: Row, now: Date): string {
   const item = p.item ?? (p.group ? `{${p.group}} · {count}` : undefined);
@@ -577,7 +585,11 @@ export const list: ViewDef = {
         if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return; }
         const ledger = ledgerBy(p, rows);
         const ul = el.createEl("ul", { cls: ledger ? "gz-list gz-ledger" : "gz-list" });
-        const groups = ledger && grouping(ledger, ctx.now, rows, () => ul.createEl("li", { cls: "gz-ledger-group" }), () => "");
+        const by = ledger && itemFields(p, rows).find((f) => f !== ledger.field && numbers(p, f, rows));
+        const groups = ledger && grouping(
+          ledger, ctx.now, rows, () => ul.createEl("li", { cls: "gz-ledger-group" }),
+          (of) => (by === undefined ? "" : totalText(p, by, of, ctx.now)),
+        );
         let i = 0;
         shownRows(el, rows, (r) => {
           groups?.enter(i);

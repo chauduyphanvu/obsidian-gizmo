@@ -14,6 +14,13 @@ panels:
     label: Log
     alias: $what
   - view: number
+    title: Latest
+    source: $what
+    sort: at
+    field: value
+    agg: last
+    unit: $unit
+  - view: number
     title: This week
     source: $what
     where: {at: this week}
@@ -23,13 +30,6 @@ panels:
     unit: $unit
     decimals: 1
     label: average
-  - view: number
-    title: Latest
-    source: $what
-    sort: at
-    field: value
-    agg: last
-    unit: $unit
   - view: line
     title: My $what against my goal
     source: $what

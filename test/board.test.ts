@@ -372,3 +372,17 @@ test("a done column's cards are told apart from the others only by a class on th
   assert.ok(!card(el, "Garden").closest(".gz-board-col")!.classList.contains("gz-board-done"));
   for (const c of el.querySelectorAll(".gz-board-card")) assert.equal(c.getAttribute("style"), null);
 });
+
+test("in the past a card can't move: it isn't draggable and has no Move to; it can still be picked", () => {
+  const { ctx, picked } = fakeCtx();
+  const past = Object.assign(Object.create(ctx) as PanelCtx, { readOnly: true });
+  const { el } = mount({ select: "project" }, ROWS, past);
+  const garden = card(el, "Garden");
+  assert.ok(!garden.hasAttribute("draggable"));
+  assert.ok(!el.querySelector(".gz-move"));
+  garden.dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.equal(picked.at(-1)?.name, "Garden");
+  const live = mount({}, ROWS).el;
+  assert.equal(card(live, "Garden").getAttribute("draggable"), "true");
+  assert.ok(card(live, "Garden").querySelector(".gz-move"));
+});

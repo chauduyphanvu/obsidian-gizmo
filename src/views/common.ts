@@ -375,6 +375,16 @@ export function fieldControl(
   };
 }
 
+/**
+ * Shown as it was (`ctx.readOnly`), a panel that is only there to write (a button, a form, a
+ * checklist) stays in its place, faded, and takes no focus, typing or clicks.
+ */
+export function stillInPast(el: HTMLElement, ctx: PanelCtx): void {
+  if (!ctx.readOnly) return;
+  el.setAttribute("inert", "");
+  el.classList.add("gz-readonly");
+}
+
 /** A handle whose update simply redraws the panel's contents. */
 export function redraw(el: HTMLElement, draw: (data: unknown) => void) {
   return {

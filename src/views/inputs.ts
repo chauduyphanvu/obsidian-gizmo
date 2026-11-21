@@ -3,7 +3,7 @@ import { stampParts } from "../time.ts";
 import type { Panel } from "../spec.ts";
 import { THIS } from "../template.ts";
 import { labelOf } from "../format.ts";
-import { busy, fieldControl, heading, needsAction, redraw } from "./common.ts";
+import { busy, fieldControl, heading, needsAction, redraw, stillInPast } from "./common.ts";
 import { ACTION_KEYS, checkFields, isPlainObject, startOf } from "../keys.ts";
 import { addLine, fitsOneLine, underFields, verbButton } from "./addline.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
@@ -49,11 +49,14 @@ export const button: ViewDef = {
     { panel: { view: "button", label: "Took meds", save: "doses", alias: "My meds" } },
     { panel: { view: "button", label: "Took meds", save: "doses", alias: "meds!" }, errors: ["alias must be words of letters and digits (with - and '), up to 40 characters"] },
   ],
-  mount: (el, p, ctx) => placed(el, ctx, (composed) => (composed ? verbButton(el, p, ctx) : redraw(el, () => {
-    heading(el, p);
-    const b = el.createEl("button", { cls: "mod-cta gz-button", text: p.label ?? "Log" });
-    busy(b, () => ctx.runActions(p, {}));
-  }))),
+  mount: (el, p, ctx) => {
+    stillInPast(el, ctx);
+    return placed(el, ctx, (composed) => (composed ? verbButton(el, p, ctx) : redraw(el, () => {
+      heading(el, p);
+      const b = el.createEl("button", { cls: "mod-cta gz-button", text: p.label ?? "Log" });
+      busy(b, () => ctx.runActions(p, {}));
+    })));
+  },
 };
 
 /** A form with `save: this`: its fields hold the properties of the note the app sits in, saved as they change. */
@@ -102,9 +105,12 @@ export const form: ViewDef = {
     { panel: { view: "form", fields: { mood: { type: ["low", "ok"], default: "great" } }, save: "moods" }, errors: ['field "mood" default must be one of its choices: low, ok'] },
     { panel: { view: "form", fields: ["mood", "slept"], save: "moods" }, errors: ["fields as a list names fields of the block the form saves to; save to a block with fields, or give each field a type"] },
   ],
-  mount: (el, p, ctx, key) => (p.target?.kind === "this"
-    ? propertyForm(el, p, ctx)
-    : placed(el, ctx, (composed) => (composed ? lineOrFields(el, p, ctx, key) : fieldsForm(el, p, ctx)))),
+  mount: (el, p, ctx, key) => {
+    stillInPast(el, ctx);
+    return p.target?.kind === "this"
+      ? propertyForm(el, p, ctx)
+      : placed(el, ctx, (composed) => (composed ? lineOrFields(el, p, ctx, key) : fieldsForm(el, p, ctx)));
+  },
 };
 
 /**
@@ -218,7 +224,7 @@ export const checklist: ViewDef = {
     { panel: { view: "checklist", items: ["Passport"], save: "Trips/" }, errors: ["checklist saves its ticks to a list, not a folder; leave out the /"] },
     { panel: { view: "checklist", items: ["Passport", "Chargers"], save: "packed", shortcut: "pack" } },
   ],
-  mount: (el, p, ctx) => redraw(el, (saved) => {
+  mount: (el, p, ctx) => (stillInPast(el, ctx), redraw(el, (saved) => {
     const key = p.save ?? "checked";
     const checked = new Set((Array.isArray(saved) ? saved : []).map(String));
     const items = p.items!.map(String);
@@ -235,5 +241,5 @@ export const checklist: ViewDef = {
       label.createSpan({ text: item });
       box.addEventListener("change", () => void ctx.toggleChecked(key, item));
     }
-  }),
+  })),
 };

@@ -74,6 +74,11 @@ test("the same time twice gives the same page; the live app beside it shows now,
   assert.equal(a.root.innerHTML, b.root.innerHTML);
   assert.deepEqual([live.big("Last"), live.big("Rain")], ["79", "9"]);
   assert.equal(live.root.querySelector(".gz-past"), null);
+  // The form can't be used in the past: it is inert and faded; beside it, the live one can.
+  const form = (root: HTMLElement) => root.querySelector(".gz-view-form")!;
+  assert.ok(form(a.root).hasAttribute("inert") && form(a.root).classList.contains("gz-readonly"));
+  assert.ok(!form(live.root).hasAttribute("inert") && !form(live.root).classList.contains("gz-readonly"));
+  // Even a submit that gets there is refused.
   (a.root.querySelector("form input") as HTMLInputElement).value = "70";
   a.root.querySelector("form")!.dispatchEvent(new window.Event("submit"));
   await settle();

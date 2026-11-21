@@ -253,6 +253,23 @@ test("a list that is a ledger has the same headings, as list items", () => {
   assert.deepEqual([...el.querySelectorAll("li.gz-ledger-group")].map((li) => [...li.children].map((c) => c.className)), [["gz-ledger-when", "gz-ledger-total"], ["gz-ledger-when", "gz-ledger-total"]]);
   assert.deepEqual([...el.querySelectorAll("li:not(.gz-ledger-group)")].map(text), ["coffee · 4.5", "dinner · 38", "bus · 2.5"]);
   assert.deepEqual([...el.querySelectorAll("ul > li")].map((li) => li.classList.contains("gz-ledger-group")), [true, false, true, false, false]);
+  // The number the item shows is totalled as a table's column is: an average, as it has no currency.
+  assert.deepEqual(totals(el), ["avg 4.5", "avg 20.3"]);
+});
+
+test("a ledger list totals the first number its item shows; in a currency, the sum; with none, nothing", () => {
+  const rows = [
+    { at: "2026-11-18T09:05", note: "coffee", amount: 4.5, n: 1 },
+    { at: "2026-11-17T19:30", note: "dinner", amount: 38, n: 2 },
+    { at: "2026-11-17T08:10", note: "bus", amount: 2.5, n: 3 },
+  ];
+  const money = mount(list, { sort: "-at", item: "{note} · {amount}", format: { amount: "$0,0.00" } }, rows).el;
+  assert.deepEqual(totals(money), ["$4.50", "$40.50"]);
+  // The date and a field it doesn't show aren't totalled.
+  assert.deepEqual(totals(mount(list, { sort: "-at", item: "{at} {note}" }, rows).el), ["", ""]);
+  // A plain item shows a row's value.
+  const plain = mount(list, { sort: "-at" }, rows.map(({ at, amount }) => ({ at, value: amount }))).el;
+  assert.deepEqual(totals(plain), ["avg 4.5", "avg 20.3"]);
 });
 
 test("a list of one row, or of grouped rows, or with no date is a plain list", () => {

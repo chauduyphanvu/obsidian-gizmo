@@ -369,8 +369,8 @@ export default async function authoring(t) {
     expect(r.items.length && r.items[0].startsWith("Sleep"), r.items);
     expect(after.app === gallery("Apps/Sleep.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
     expect(after.state === "gizmo:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
-    // Composed: the answer (This week, Latest) before the form that adds to it, then the rest.
-    expect(JSON.stringify(after.titles) === JSON.stringify(["This week", "Latest", "Log my sleep", "My sleep against my goal", "Entries"]), after.titles);
+    // Composed: the answer (Latest, then This week) before the form that adds to it, then the rest.
+    expect(JSON.stringify(after.titles) === JSON.stringify(["Latest", "This week", "Log my sleep", "My sleep against my goal", "Entries"]), after.titles);
     await run(`for (const p of ["Sleep.md", "Tracker kit.md"]) await na.remove(p); await na.sleep(500);`);
     return `${r.before} → ${after.after} notes; ${after.titles.join(", ")}`;
   });

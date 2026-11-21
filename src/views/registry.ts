@@ -34,6 +34,11 @@ export interface SheetPick {
 /** What a mounted panel may ask of the app around it. */
 export interface PanelCtx {
   now: Date;
+  /**
+   * The app is shown as it was (the time rail, As of…), where every write is refused: a view draws
+   * what it would edit as it reads, with no control and no row action.
+   */
+  readOnly?: boolean;
   /** The drawing width inside the panel with this key. */
   width(key: string): number;
   /**

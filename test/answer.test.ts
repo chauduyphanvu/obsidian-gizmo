@@ -132,6 +132,23 @@ test("number fact: its name, a smaller figure with its unit, and one line: the c
   assert.equal(el.querySelector(".gz-label"), null);
 });
 
+test("a number whose alert is on says so under it, as headline or fact; an alert on rows says how many", () => {
+  const ready = { view: "number", title: "Ready to score", source: "s", agg: "count", label: "decisions whose day has come", alert: "> 0" };
+  const on = draw(ready, "headline", [{}, {}]);
+  assert.deepEqual(kids(on), ["gz-title gz-eyebrow", "gz-fig-row", "gz-ans-status"]);
+  const status = on.querySelector(".gz-ans-status")!;
+  assert.equal(text(status), "The alert is on");
+  assert.equal(status.querySelector("svg")!.getAttribute("aria-hidden"), "true");
+  assert.ok(!draw(ready, "headline", []).querySelector(".gz-ans-status"));
+  const fact = draw({ ...WEEK, alert: ">= 80" }, "fact", WEIGHTS);
+  assert.deepEqual(kids(fact), ["gz-title gz-fact-title", "gz-big gz-fact-fig", "gz-compare gz-fact-note", "gz-ans-status"]);
+  // Only this window's rows count, not the week before that compare reads.
+  const calls = { view: "number", title: "Calls", source: "s", where: { at: "this week" }, compare: "previous", agg: "count", alert: { back: "past" } };
+  const rows = [{ at: "2026-11-10", back: "2026-11-11" }, { at: "2026-11-17", back: "2026-11-18" }, { at: "2026-11-18", back: "2026-11-30" }];
+  assert.equal(text(draw(calls, "headline", rows).querySelector(".gz-ans-status")), "The alert is on for 1 row");
+  assert.ok(!draw({ ...calls, alert: { back: "upcoming" } }, "headline", rows.slice(0, 2)).querySelector(".gz-ans-status"));
+});
+
 test("number fact: without compare its line is the label", () => {
   const el = draw({ view: "number", title: "Streak", source: "s", agg: "count", unit: "days", label: "in a row" }, "fact", [{}, {}, {}]);
   assert.deepEqual(kids(el), ["gz-title gz-fact-title", "gz-big gz-fact-fig", "gz-label gz-fact-note"]);
@@ -203,20 +220,22 @@ test("the even-pace label stays inside the track's ends", () => {
 
 test("past the limit: the fill turns to the error colour, a status line says by how much, and whether the alert is on", () => {
   const el = draw(LIMIT, "meter", spent(2085), DEC, MONEY);
-  assert.deepEqual(kids(el), ["gz-meter-track", "gz-meter-legend", "gz-meter-status"]);
+  assert.deepEqual(kids(el), ["gz-meter-track", "gz-meter-legend", "gz-ans-status"]);
   assert.deepEqual(classes(el.querySelector(".gz-meter-fill")), ["gz-meter-fill", "gz-over"]);
   assert.equal((el.querySelector(".gz-meter-fill") as HTMLElement).style.width, "100%");
   assert.equal(text(el.querySelector(".gz-meter-legend span:last-child")), "$85.00 over");
-  const status = el.querySelector(".gz-meter-status")!;
+  const status = el.querySelector(".gz-ans-status")!;
   assert.equal(text(status), "Over the limit by $85.00 · the alert is on");
   assert.equal(status.querySelector("svg")!.getAttribute("aria-hidden"), "true");
   const quiet = draw({ ...LIMIT, alert: undefined }, "meter", spent(2085), DEC, MONEY);
-  assert.equal(text(quiet.querySelector(".gz-meter-status")), "Over the limit by $85.00");
-  // At the limit nothing is past it yet: no colour, nothing left.
+  assert.equal(text(quiet.querySelector(".gz-ans-status")), "Over the limit by $85.00");
+  // At the limit nothing is past it yet: no colour, nothing left; the alert, at >= 2000, is on.
   const at = draw(LIMIT, "meter", spent(2000), DEC, MONEY);
   assert.deepEqual(classes(at.querySelector(".gz-meter-fill")), ["gz-meter-fill"]);
-  assert.equal(at.querySelector(".gz-meter-status"), null);
+  assert.equal(text(at.querySelector(".gz-ans-status")), "The alert is on");
   assert.equal(text(at.querySelector(".gz-meter-legend")), "100% of $2,000$0.00 left");
+  const under = draw(LIMIT, "meter", spent(1999), DEC, MONEY);
+  assert.ok(!under.querySelector(".gz-ans-status"));
 });
 
 test("a progress with no date window that holds now has no tick and no amount a day", () => {
@@ -324,6 +343,8 @@ test("count-up: a new value counts up from the old over 240 ms, easing out, in w
     assert.equal(f.pending(), 0, "the first value is drawn as it is");
     handle.update(rows(9));
     assert.equal(fig(), "1");
+    // Its digits are tabular only while it counts.
+    assert.ok(el.classList.contains("gz-counting"));
     f.run(1000);
     assert.equal(fig(), "1");
     // Half way in time is seven eighths of the way: 1 + 8 × 0.875.
@@ -332,6 +353,7 @@ test("count-up: a new value counts up from the old over 240 ms, easing out, in w
     f.run(1240);
     assert.equal(fig(), "9");
     assert.equal(f.pending(), 0);
+    assert.ok(!el.classList.contains("gz-counting"));
   } finally {
     f.restore();
   }
@@ -352,6 +374,7 @@ test("count-up: a value that arrives mid-count starts from the figure shown; des
     assert.equal(f.pending(), 1, "the count in flight was stopped for the new one");
     handle.destroy!();
     assert.equal(f.pending(), 0);
+    assert.ok(!el.classList.contains("gz-counting"));
   } finally {
     f.restore();
   }

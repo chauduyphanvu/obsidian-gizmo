@@ -220,7 +220,29 @@ function drawNumber(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, 
   // A fact has one line under its figure: the change when there is one, else the label.
   const fig = drawFigure(el, slot, text, unit, slot === "fact" && change ? undefined : p.label);
   if (change) drawChangeLine(el, change, slot === "fact" ? "gz-fact-note" : "gz-ans-sub");
+  const alert = alertOn(p, value, current, now);
+  if (alert) drawStatus(el, sentence(alert));
   count.to(el, countable(p, value), (n) => fig.setText(display(p, p.field, n, now)), wholeSteps(p));
+}
+
+/**
+ * `the alert is on`, or `the alert is on for 2 rows` for an alert on rows, when the panel's alert
+ * holds for what it shows now (as the background decides it); undefined when it doesn't, or it has none.
+ */
+function alertOn(p: Panel, value: unknown, data: unknown, now: Date): string | undefined {
+  if (p.alert === undefined) return undefined;
+  if (typeof p.alert === "string") return matches(value, p.alert, now) ? "the alert is on" : undefined;
+  const n = rowsOf(data).filter(compileWhere(p.alert, now)).length;
+  return n ? `the alert is on for ${n} ${n === 1 ? "row" : "rows"}` : undefined;
+}
+
+const sentence = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
+
+/** A line under an answer that says a declared line was crossed, in the error colour with a warning icon. */
+function drawStatus(el: HTMLElement, text: string): void {
+  const status = el.createDiv({ cls: "gz-ans-status" });
+  warningIcon(status);
+  status.append(text);
 }
 
 /**
@@ -272,12 +294,9 @@ function drawProgress(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot
       part(right, exact((max - n) / days), ` a day for ${days} ${days === 1 ? "day" : "days"}`);
     }
   }
-  if (over) {
-    const status = el.createDiv({ cls: "gz-meter-status" });
-    warningIcon(status);
-    const alerting = p.alert !== undefined && (typeof p.alert === "string" ? matches(n, p.alert, now) : rowsOf(data).some(compileWhere(p.alert, now)));
-    status.append(`Over the limit by ${exact(n - max)}${alerting ? " · the alert is on" : ""}`);
-  }
+  const alert = alertOn(p, n, data, now);
+  if (over) drawStatus(el, `Over the limit by ${exact(n - max)}${alert ? ` · ${alert}` : ""}`);
+  else if (alert) drawStatus(el, sentence(alert));
   const before = count.shown;
   fill.style.width = width(n);
   if (count.to(el, countable(p, n), (x) => fig?.setText(display(p, p.field, x, now)), wholeSteps(p))) {
@@ -293,7 +312,7 @@ function warningIcon(parent: HTMLElement): void {
   const ns = "http://www.w3.org/2000/svg";
   const doc = parent.ownerDocument;
   const icon = doc.createElementNS(ns, "svg");
-  for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "gz-meter-icon" })) icon.setAttribute(k, v);
+  for (const [k, v] of Object.entries({ viewBox: "0 0 24 24", fill: "none", stroke: "currentColor", "stroke-width": "2", "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true", class: "gz-ans-icon" })) icon.setAttribute(k, v);
   for (const d of ["m21.73 18-8-14a2 2 0 0 0-3.48 0l-8 14A2 2 0 0 0 4 21h16a2 2 0 0 0 1.73-3", "M12 9v4", "M12 17h.01"]) {
     const path = doc.createElementNS(ns, "path");
     path.setAttribute("d", d);
@@ -384,8 +403,11 @@ export const text: ViewDef = {
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
   }, (slot, data) => {
     answerTitle(el, p, slot);
-    el.createDiv({ cls: `gz-text ${slot === "headline" ? "gz-ans-text" : "gz-fact-text"}`, text: panelValue(p, data, ctx.now).text });
+    const { value, text } = panelValue(p, data, ctx.now);
+    el.createDiv({ cls: `gz-text ${slot === "headline" ? "gz-ans-text" : "gz-fact-text"}`, text });
     if (p.label) el.createDiv({ cls: "gz-label gz-ans-label", text: p.label });
+    const alert = alertOn(p, value, data, ctx.now);
+    if (alert) drawStatus(el, sentence(alert));
   }),
 };
 

@@ -382,17 +382,20 @@ test("the sheet keeps its panels when the app is drawn again, and closes when th
   assert.equal(s.sheet()!.querySelector(".gz-sheet-panels")!.children.length, 0);
 });
 
-test("in the past the sheet's edits are refused as the table's are, and nothing is written", async () => {
+test("in the past the table and the sheet show what they would edit as text, with no controls or actions", async () => {
   const t0 = new Date(2026, 10, 18, 12).getTime();
-  const s = setup({ [APP]: { fm: CHOICES }, [DATA]: { fm: { spend: [{ at: "2026-11-17", amount: 5, category: "food", note: "Coffee" }] } } }, { env: (env) => pastEnv(env, t0) });
+  const app = { ...CHOICES, panels: [{ ...CHOICES.panels[0], action: "Again", save: "spend" }] };
+  const s = setup({ [APP]: { fm: app }, [DATA]: { fm: { spend: [{ at: "2026-11-17", amount: 5, category: "food", note: "Coffee" }] } } }, { env: (env) => pastEnv(env, t0) });
   await settle();
-  click(s.rows("Recent")[0]);
+  const [row] = s.rows("Recent");
+  assert.equal(row.querySelectorAll("input, select, button").length, 0);
+  assert.deepEqual([...row.querySelectorAll("td")].map(text).slice(1, 4), ["5", "food", "Coffee"]);
+  click(row);
   await settle();
-  const category = s.sheet()!.querySelector(".gz-sheet-field select.gz-edit") as HTMLSelectElement;
-  for (const o of category.querySelectorAll("option")) o.toggleAttribute("selected", o.textContent === "rent");
-  change(category);
-  await settle();
-  assert.ok(s.notices.some((n) => n.includes(PAST)), s.notices.join(" | "));
+  const sheet = s.sheet()!;
+  assert.ok(s.isOpen());
+  assert.equal(sheet.querySelectorAll(".gz-sheet-field input, .gz-sheet-field select, .gz-row-action").length, 0);
+  assert.match(text(sheet), /food/);
   assert.equal((listsIn(s.f.files.get(DATA)!.fm)!.spend as Record<string, unknown>[])[0].category, "food");
 });
 

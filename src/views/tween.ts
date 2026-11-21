@@ -11,13 +11,15 @@ function animates(el: Element): Window | undefined {
 /**
  * Count-up for one mounted figure: when its value changes while shown, it runs from the value shown
  * to the new one over COUNT_MS, easing out. The first value, one that isn't a number, and any value
- * where the window can't animate (or the reader asked for less motion) are shown as drawn.
+ * where the window can't animate (or the reader asked for less motion) are shown as drawn. While it
+ * counts, its element has the class `gz-counting`.
  */
 export class CountUp {
   /** The value on show, mid-count included; undefined before the first, or after one that isn't a number. */
   shown: number | undefined;
   private frame = 0;
   private win: Window | undefined;
+  private el: Element | undefined;
 
   /**
    * Shows `to`, already drawn as the final value: when it counts, `draw` gets each value on the way
@@ -38,9 +40,12 @@ export class CountUp {
       const n = k === 1 ? to! : from! + (to! - from!) * (1 - (1 - k) ** 3);
       this.shown = steps ? Math.round(n) : n;
       draw(this.shown);
-      this.frame = k === 1 ? 0 : win.requestAnimationFrame(step);
+      if (k === 1) this.stop();
+      else this.frame = win.requestAnimationFrame(step);
     };
     this.win = win;
+    this.el = el;
+    el.classList.add("gz-counting");
     this.shown = from;
     draw(from!);
     this.frame = win.requestAnimationFrame(step);
@@ -51,5 +56,7 @@ export class CountUp {
   stop(): void {
     if (this.frame) this.win?.cancelAnimationFrame(this.frame);
     this.frame = 0;
+    this.el?.classList.remove("gz-counting");
+    this.el = undefined;
   }
 }

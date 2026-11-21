@@ -258,6 +258,7 @@ export class AppController {
     const self = this;
     this.ctx = {
       get now() { return self.env.now(); },
+      get readOnly() { return self.env.data.at !== undefined; },
       width: (key) => this.widthOf(key),
       runActions: (p, row, how) => this.writes.runActions(p, row, how),
       ...(env.undo && { undo: (entry: string) => this.env.undo!(entry) }),
