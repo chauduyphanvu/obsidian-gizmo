@@ -5,7 +5,7 @@ import { PERIODS } from "../src/time.ts";
 import { BLOCK_KEYS, BLOCK_ONLY } from "../src/expand.ts";
 import { sourceDef } from "../src/sources/registry.ts";
 import { SOURCE_WORDS } from "../src/store.ts";
-import { KEY_HINTS, VALUE_HINTS, VIEW_HINTS, completion, suggestionsAt, suggestionsFor, type Suggestion } from "../src/hints.ts";
+import { APP_LAYOUTS, KEY_HINTS, VALUE_HINTS, VIEW_HINTS, completion, suggestionsAt, suggestionsFor, type Suggestion } from "../src/hints.ts";
 import { COMMON_KEYS, FIELD_TYPES, KEY_TYPES } from "../src/keys.ts";
 import { VIEW_DEFS } from "../src/views/registry.ts";
 import { contextAt, type Context } from "../src/yamlpos.ts";
@@ -70,9 +70,9 @@ test("the source words are the kinds of source that are one word, and each has i
 // ---- Suggestions -----------------------------------------------------------------------------------
 
 test("top-level keys depend on whether the note is an app or a component, and leave out what is typed", () => {
-  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view", "devices", "expect"]);
+  assert.deepEqual(suggested("---\n‸\n---"), ["app", "spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "view", "layout", "devices", "expect"]);
   assert.deepEqual(suggested("---\n‸\n---", true), ["component", "params", "data", "panels", "tabs", "for", "spec"]);
-  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view", "devices", "expect"]);
+  assert.deepEqual(suggested("---\napp: A\nspec: 1\ndata:\n  x:\n    source: y\n‸\n---"), ["refresh", "store", "inputs", "panels", "tabs", "use", "with", "view", "layout", "devices", "expect"]);
   assert.deepEqual(suggested("---\ncomponent: C\nparams: [a]\n‸\n---", true), ["data", "panels", "tabs", "for", "spec"]);
   assert.deepEqual(suggested(app("p‸")), ["panels", "spec", "inputs", "expect"]);
 });
@@ -86,7 +86,7 @@ test("a top-level key is matched by what it starts with, then by what it contain
 
 test("a single panel written at the top takes its view's keys too", () => {
   const keys = suggested("---\napp: A\nview: countdown\n‸\n---");
-  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "devices", "expect", "title", "tab", "span", "to", "label"]);
+  assert.deepEqual(keys, ["spec", "refresh", "store", "data", "inputs", "panels", "tabs", "use", "with", "layout", "devices", "expect", "title", "tab", "span", "to", "label"]);
   assert.deepEqual(suggested("---\ncomponent: C\nview: countdown\n‸\n---", true), ["params", "data", "panels", "tabs", "for", "spec"]);
 });
 
@@ -134,6 +134,34 @@ test("the values of view, agg, per, layout, compare and pin", () => {
   assert.deepEqual(suggested(app("panels:\n  - view: number\n    pin: ‸")), ["status"]);
   assert.deepEqual(suggested(app("data:\n  q:\n    group: at\n    per: ‸")), [...PERIODS]);
   assert.deepEqual(suggested("---\napp: A\nview: bar\nagg: ‸\n---"), [...AGGS]);
+});
+
+test("layout is an app key at the top, with composed and grid, and a panel's layout keeps its own values", () => {
+  assert.ok(suggested("---\napp: A\n‸\n---").includes("layout"));
+  assert.deepEqual(suggested(app("lay‸")), ["layout"]);
+  assert.deepEqual(suggested(app("layout: grid\n‸")).includes("layout"), false);
+  const [key] = suggestionsFor({ where: "top", position: "key", prefix: "lay", present: [], from: { line: 1, ch: 0 } }, false);
+  assert.deepEqual(key, { kind: "key", text: "layout", hint: "How the app is laid out: composed (default) or grid" });
+  assert.deepEqual(Object.keys(APP_LAYOUTS), ["composed", "grid"]);
+  for (const hint of Object.values(APP_LAYOUTS)) assert.ok(hint.length > 8 && hint.length <= 80 && !hint.includes("\n"), hint);
+  assert.deepEqual(suggested(app("layout: ‸")), ["composed", "grid"]);
+  assert.deepEqual(suggested(app("layout: g‸")), ["grid"]);
+  assert.deepEqual(suggested(app("layout: c‸")), ["composed"]);
+  assert.deepEqual(suggested(app("layout: grid‸")), []);
+  // A note that is one panel may mean the panel's own layout there.
+  assert.deepEqual(suggested("---\napp: A\nview: table\nlayout: ‸\n---"), ["composed", "grid", "cards", "year"]);
+  assert.deepEqual(suggested("---\napp: A\nview: table\nlayout: ca‸\n---"), ["cards"]);
+  // In a panel the layout is the view's: not the app's.
+  assert.deepEqual(suggested(app("panels:\n  - view: table\n    layout: ‸")), ["cards", "year"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: calendar\n    layout: y‸")), ["year"]);
+  assert.deepEqual(suggested(app("panels:\n  - view: table\n    layout: c‸")), ["cards"]);
+  assert.ok(suggested(app("panels:\n  - view: table\n    lay‸")).includes("layout"));
+  const panel = suggestionsFor({ where: "panel", position: "key", prefix: "lay", present: [], from: { line: 1, ch: 0 }, view: "table" }, false);
+  assert.deepEqual(panel, [{ kind: "key", text: "layout", hint: KEY_HINTS.layout }]);
+  // Neither a data block nor a component takes the app's layout.
+  assert.deepEqual(suggested(app("data:\n  q:\n    layout: ‸")), []);
+  assert.ok(!suggested("---\ncomponent: C\n‸\n---", true).includes("layout"));
+  assert.deepEqual(suggested("---\ncomponent: C\nlayout: ‸\n---", true), ["cards", "year"]);
 });
 
 test("source offers the kinds that are words, in a panel, a data block and at the top", () => {
