@@ -1,18 +1,27 @@
 # Gizmo
 
-**Tired of installing a new Obsidian plugin for every tracker, board, chart, and form?**
+**A note is an app.**
 
-Replace a dozen single-purpose plugins with one. Gizmo turns ordinary Markdown notes into personal apps — with buttons, forms, charts, boards, calendars, timelines, and five new views for **Obsidian Bases** — without writing code or locking your data in a hidden database.
+Gizmo turns ordinary Obsidian notes into personal apps — with buttons, forms, charts, boards, calendars, timelines, and five views for **Obsidian Bases**. Instead of installing a dozen single-purpose plugins or locking your life in a hidden database, every app you need is a plain Markdown note in your vault, with no code.
 
 Desktop & mobile · Plain Markdown · Zero runtime dependencies · No AI · No telemetry · MIT
 
-[**Install in Obsidian**](obsidian://show-plugin?id=gizmo) · [14 ready-made apps](#what-you-can-make) · [Bases views](#use-it-everywhere) · [Install](#install) · [Reference](docs/reference.md)
+[**Install in Obsidian**](https://obsidian.md/plugins?id=gizmo) · [14 ready-made apps](#what-you-can-make) · [Bases views](#use-it-everywhere) · [How it works](#how-it-works-with-your-vault) · [Reference](docs/reference.md)
 
-## Start in 30 seconds — no YAML required
+## Start in 30 seconds
 
-1. **Copy a ready-made app.** Run **Gizmo: New app from the gallery** to install any of 14 working apps (Budget, Medication log, Project board, Bills & renewals, Household chores, Trip planner, Vitals, Decision journal, and more).
-2. **Add five views to Obsidian Bases.** Open any `.base` file and pick a **Gizmo** view — board, calendar (or year heatmap), timeline, chart, or number. No app note needed.
-3. **Or make your own in three lines.** Use a reusable kit like the one below, or type a question such as `? spend food per week since sep` in **Gizmo: Do…** and let Gizmo generate the panel for you.
+1. **Copy a ready-made app** *(no YAML required)* — Run **Gizmo: New app from the gallery** to install any of 14 working apps.
+2. **Add five views to Obsidian Bases** *(no YAML required)* — Open any `.base` file and pick **Gizmo board**, **Gizmo calendar** (month or year heatmap), **Gizmo timeline**, **Gizmo chart**, or **Gizmo number**.
+3. **Or build your own in three lines** — Use a reusable kit, or ask a kind a question with `?` in **Gizmo: Do…** and let Gizmo write the panel for you.
+
+Here is the Practice app in Obsidian:
+
+<picture>
+  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/chauduyphanvu/obsidian-gizmo/main/docs/images/practice-dark.webp">
+  <img src="docs/images/practice-light.webp" alt="The Practice app: the latest session of 35 minutes, this week's average against last week, a line to log minutes, a chart of each session against a dashed goal of 30 minutes, and the entries">
+</picture>
+
+All of that is one note, with three lines of properties:
 
 ```yaml
 ---
@@ -21,13 +30,6 @@ use: "[[Tracker kit]]"
 with: {what: practice, unit: minutes, goal: 30}
 ---
 ```
-
-These three lines make this app:
-
-<picture>
-  <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/chauduyphanvu/obsidian-gizmo/main/docs/images/practice-dark.webp">
-  <img src="docs/images/practice-light.webp" alt="The Practice app: the latest session of 35 minutes, this week's average against last week, a line to log minutes, a chart of each session against a dashed goal of 30 minutes, and the entries">
-</picture>
 
 ## What you can make
 
@@ -72,28 +74,28 @@ Also included in the gallery: **Bills and renewals**, **Vitals**, **Practice**, 
 
 ## One plugin instead of a dozen
 
-- **Each new app is a note, not another plugin.** Budget, medication log, project board, habit tracker, chore rota, trip planner — all run on Gizmo with one mental model and one settings screen.
+- **Each new app is a note, not another plugin.** Budget, medication log, project board, habit tracker, chore schedule, trip planner — all run on Gizmo with one mental model and one settings screen.
 - **Readable, validated properties — no JavaScript.** No scripts, no React, and no fragile CSS snippets. When a key has a typo, Gizmo explains the fix in plain words.
 - **An answer, not a cluttered dashboard.** Gizmo lays out each app in one calm editorial column: headline figure, pace meter, single-line quick add, charts, date-grouped ledgers, and a 30-day time rail.
 - **Your data stays in your vault.** Stored in plain Markdown notes that Obsidian Bases and Dataview can read, backed by per-device append-only event logs so iCloud, Syncthing, and Obsidian Sync don't clobber concurrent edits.
-- **Undo and permissions built in.** Every app asks before it reads, fetches, sends, or writes. **Try it first** runs any app on copies of your notes, and every action can be undone.
+- **Permissions and undo built in.** Every app asks before it touches other notes, kinds, folders, secrets, or the web. **Try it first** runs any app in an isolated sandbox (reading none of your vault notes), and changes can be undone from the activity log.
 - **Save from anywhere.** A hotkey, a one-line prompt (`spend 14.5 food lunch`), an inline `;;` line, a phone shortcut, or a URL can save data without opening the app.
 
 | | Gizmo (1 plugin) | A stack of single-purpose plugins *(Dataview, Meta Bind, Tracker, Buttons, Kanban, Calendar…)* |
 | --- | --- | --- |
-| **Starting point** | 14 ready-made apps + `?` Ask generates panels for you | Wire queries, inputs, buttons, and CSS by hand |
+| **Starting point** | 14 ready-made apps + `?` Ask generates panels from your kinds | Wire queries, inputs, buttons, and CSS by hand |
 | **Mobile experience** | Built for desktop & phone (44 px touch targets, side sheets) | Varies by plugin and custom CSS |
-| **Multi-device safety** | Per-device event logs, conflict preservation, full Undo | Direct file edits with no unified undo |
-| **Planning & forecasting** | Planned rows, **What if…** previews, 30-day Time Rail | Current state only |
-| **Real-world data** | Bank / broker / health CSV import & reconciliation | Manual entry or external scripts |
-| **Security** | Static permission cards, sandboxed **Try it first**, data policy | Arbitrary JS / unrestricted plugin access |
-| **Obsidian Bases** | Adds Board, Calendar, Timeline, Chart, and Number views | Requires separate view plugins |
+| **Multi-device & history** | Per-device event logs, conflict preservation, 30-day time rail, activity log with Undo | Direct file edits with no unified history or undo |
+| **Planning & simulation** | Planned rows, **What if…** previews (up to 1 year ahead) | No built-in What if… simulation or planned-vs-actual reconciliation |
+| **Real-world data** | Bank / broker / health CSV, JSON & ICS import & reconciliation | Manual entry or external scripts |
+| **Security** | Static permission cards, isolated **Try it first** sandbox, data policy | Arbitrary JS / unrestricted plugin access |
+| **Obsidian Bases** | Adds board, calendar, timeline, chart, and number views | Requires separate view plugins |
 
 ## Use it everywhere
 
-- **Five views for Obsidian Bases:** Open any `.base` file, add a view, and pick **Gizmo Board**, **Calendar** (month grid or year heatmap), **Timeline**, **Chart**, or **Number** — with undoable card moves and no app note required.
-- **Embeds inside any note:** Drop a `gizmo` code block into a daily note to place live buttons, meters, or charts right beside your writing.
-- **Quick capture & shortcuts:** Log from anywhere with **Gizmo: Do…**, pin live metrics to the status bar, trigger apps from Apple Shortcuts / Raycast / Alfred, or run `gizmod` in the background while Obsidian is closed.
+- **Obsidian Bases views:** Switch any `.base` file or embedded base block to a Gizmo view with no app note required — including drag-and-drop board moves that log to your activity history for Undo.
+- **Embeds and lenses:** Drop a `gizmo` code block into a daily note to place live buttons, meters, or charts beside your writing, or attach a **lens** automatically to every note in a folder (such as reading progress on every book note).
+- **Quick capture & shortcuts:** Log from anywhere with **Gizmo: Do…**, pin live metrics to the status bar, trigger apps from Apple Shortcuts / Raycast / Alfred, or run [`gizmod`](#gizmod) in the background when Obsidian is closed.
 
 <table>
   <tr>
@@ -170,12 +172,12 @@ import:
 ---
 ```
 
-Apps read the rows with `source: "[[Spend]]"` and add rows with `save: "[[Spend]]"`. **Budget**, **Bills and renewals**, and **Trip planner** all share Spend, so every bill and trip cost automatically counts toward your monthly budget.
+Apps read the rows with `source: "[[Spend]]"` and add rows with `save: "[[Spend]]"`. **Budget**, **Bills and renewals**, **Trip planner**, and **Household chores** all share Spend, so bills, travel costs, and home upkeep all count toward your monthly budget automatically.
 
-- **Planned, logged, and imported rows:** Plan recurring bills or doses with `@every month from 2026-12-01 until 2027-12-01`. Logging a matching row (or accepting a bank charge) settles the planned row automatically — even flagging when a subscription went up in price. Refer to [Kinds](docs/reference.md#kinds) and [Match and reconcile](docs/reference.md#match-and-reconcile).
-- **What if…:** Run **Gizmo: What if…** or type `what if spend 900 travel flight @2026-12-03` in **Do…** to jump ahead in time, see which alerts would fire, and either **Keep as planned** or **Discard**. Refer to [What if](docs/reference.md#what-if).
-- **The ask line (`?`):** Start a line in **Gizmo: Do…** with `?` (such as `? spend by category this month`) to chart or tabulate any kind live without saving anything, then click **Add to an app…**, **Copy YAML**, or **Copy embed**. Refer to [The ask line](docs/reference.md#the-ask-line).
-- **Next:** Click the status bar counter (e.g., "3 to do") or run **Gizmo: Next** to clear planned rows whose time passed, waiting imports, or missed rhythms with `Enter`, `s` (skip), or `x` (dismiss). Refer to [Next](docs/reference.md#next).
+- **Planned & imported rows:** Plan schedules with `@every month from 2026-12-01 until 2027-12-01`; logging or importing a matching charge settles the planned row and flags price rises. Refer to [Kinds](docs/reference.md#kinds) and [Match and reconcile](docs/reference.md#match-and-reconcile).
+- **What if…:** Run **Gizmo: What if…** or prefix a **Do…** line with `what if` (such as `what if spend 900 travel flight @2026-12-03`) to test future alerts before committing. Refer to [What if](docs/reference.md#what-if).
+- **The ask line (`?`):** Query any kind in **Do…** (such as `? spend by category this month`), then click **Add to an app…**, **Copy YAML**, or **Copy embed**. Refer to [The ask line](docs/reference.md#the-ask-line).
+- **Next:** Click the status bar count or run **Gizmo: Next** and triage with `Enter` (confirm/accept), `s` (skip until tomorrow), or `x` (dismiss or refuse). Refer to [Next](docs/reference.md#next).
 
 ## Share a kind — even with people who don't use Obsidian
 
@@ -196,7 +198,7 @@ Run **Gizmo: Invite to a kind** to generate a key in Obsidian's secret storage a
       </picture>
     </td>
     <td width="60%">
-      <b>Write-only guest pages.</b> Run <b>Gizmo: Make a guest page</b> to create a single standalone HTML file and a code. A sitter, partner, or caregiver opens it on their phone — no Obsidian and no account needed — and logs entries directly to your vault. The page cannot read any of your existing rows, and you can revoke it with one click on the automation map.
+      <b>Write-only guest pages.</b> Run <b>Gizmo: Make a guest page</b> to create a single standalone HTML file and a code. A sitter, partner, or caregiver opens it on their phone — no Obsidian and no account needed — and logs entries directly to your vault. The page cannot read any of your existing rows, and you can remove it with one click on the automation map.
       <br><br>
       Refer to <a href="docs/reference.md#shared-kinds">Shared kinds</a>, and to <a href="#network-and-files">Network and files</a> for what the relay sees.
     </td>
@@ -212,19 +214,19 @@ Run **Gizmo: Invite to a kind** to generate a key in Obsidian's secret storage a
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/chauduyphanvu/obsidian-gizmo/main/docs/images/permission-dark.webp">
         <img src="docs/images/permission-light.webp" alt="A permission card that lists what the Book finder app asks for, with Allow, Try it first and Edit source">
       </picture>
-      <b>Permission first.</b> Each app lists everything it reads, fetches, sends, or writes before running. <b>Try it first</b> runs it on temporary copies of your notes.
+      <b>Permission first.</b> Each app lists everything it reads, fetches, sends, or writes before running. <b>Try it first</b> runs the app in an isolated sandbox — reading none of your vault notes and discarding everything when closed.
     </td>
     <td width="50%">
       <picture>
         <source media="(prefers-color-scheme: dark)" srcset="https://raw.githubusercontent.com/chauduyphanvu/obsidian-gizmo/main/docs/images/map-dark.webp">
         <img src="docs/images/map-light.webp" alt="The automation map: Budget reads and changes the rows of Spend and answers two shortcuts, and the Chore kind below it uses a saved secret and shares its rows through ntfy.sh">
       </picture>
-      <b>One automation map.</b> Audit every app's permissions and every shared kind contributor in one place (or export it as a Canvas). Revoke access with one click.
+      <b>One automation map.</b> Audit every app's permissions and every shared kind contributor in one place (or export it as a Canvas). Revoke app access or remove shared contributors with one click.
     </td>
   </tr>
 </table>
 
-A `Gizmo policy` note defines which folders or tags are private and which destinations may receive them. The activity log undoes any change, and **As of…** / the 30-day **Time Rail** lets you view an app at any past point.
+A `Gizmo policy` note defines which folders or tags are private and which destinations may receive them. The activity log undoes changes, and **As of…** / the 30-day **time rail** lets you view an app at any past point.
 
 ## Install
 
@@ -232,7 +234,7 @@ Gizmo 0.4.0 works with Obsidian 1.11.4 or later, on desktop and mobile.
 
 ### From Obsidian Community Plugins (recommended)
 
-1. Open [**Gizmo in Obsidian**](obsidian://show-plugin?id=gizmo), or go to **Settings → Community plugins → Browse** and search for **Gizmo**.
+1. Open [**Gizmo in Obsidian**](https://obsidian.md/plugins?id=gizmo), or go to **Settings → Community plugins → Browse** and search for **Gizmo**.
 2. Select **Install**, then **Enable**.
 3. Run **Gizmo: New app from the gallery** to copy a ready-made app, run **Gizmo: New app** to build your own, or open any `.base` file to use Gizmo's Bases views.
 
@@ -245,13 +247,64 @@ Gizmo 0.4.0 works with Obsidian 1.11.4 or later, on desktop and mobile.
 
 </details>
 
+## How it works with your vault
+
+Everything stays in plain files inside your vault — readable by Obsidian Bases and Dataview, conflict-free across sync services, and gated by explicit permissions before an app touches other notes, kinds, or the network.
+
+```mermaid
+flowchart TD
+    Vault["Your vault notes<br/>App & kind YAML · Markdown · .base · Inbox files"]
+    Vault --> Gate["Permission card & Gizmo policy<br/>Checked on first run & new permissions"]
+    Vault <-->|Read & board moves| Bases["Obsidian Bases views<br/>Board · Calendar · Timeline · Chart · Number"]
+
+    Gate --> Apps["Apps, embeds, lenses, Do… & Next<br/>Reads & edits notes · Logs rows · Time rail"]
+
+    Apps -->|What if… preview| Branch["Local .branch file<br/>This device only · Discard empties it"]
+    Apps -->|Saved rows & checklists| Logs["Per-device event logs<br/>Each device appends to its own log"]
+    Apps -->|Note edits & saved rows| Undo["Activity log<br/>Undo rows, note edits & board moves"]
+
+    Branch -->|Keep, kinds only| Logs
+    Logs -->|Markdown snapshot| DataMd["App & kind data.md<br/>Readable by Bases & Dataview"]
+    Bases -->|Board moves| Undo
+```
+
 ## Network and files
 
-Gizmo has no telemetry, no account, and no update check. In Obsidian, it reads and writes only the files of your vault and its own plugin folder. It makes network requests only in these cases:
+Gizmo has no telemetry, no account, and no update check. In Obsidian, it reads and writes only the files of your vault and its own plugin folder.
 
-- **A note names a web address**: a `source`, a feed, an image in a cell, or a request that sends data. The app does so only after you allow it, and the permission card names each address. The automation map lists them all.
-- **Install an app from a link or text** downloads the app from the address that you give, for example a GitHub Gist.
-- **A shared kind** sends its rows to the ntfy server in its `share` key, and reads the rows of the others from there. It does so only when the note has `share`, its secret holds the key, and you selected **Allow** on the kind note. No gallery note shares anything until you remove the `#` before its `share` line.
+```mermaid
+flowchart TD
+    subgraph Local["On your device (zero network by default)"]
+        Allow["Permission card & Gizmo policy<br/>Approve first · Audit & revoke on the map"]
+        Secrets["Obsidian Secret Storage<br/>API tokens & kind keys — never in notes"]
+        Vault["Your vault & Gizmo plugin<br/>Notes, data.md & per-device logs"]
+        Crypto["Local seal, sign & verify<br/>Background-work device · Keys never sent to relay"]
+
+        Allow -->|Grants access| Vault
+        Secrets -->|Host tokens| Vault
+        Secrets -->|Kind key, never sent to relay| Crypto
+        Vault <-->|Own & incoming rows| Crypto
+    end
+
+    subgraph GuestBox["Guest device (optional)"]
+        Guest["Phone guest page<br/>.html + separate code · Write-only"]
+    end
+
+    subgraph OptIn["Opt-in network (only on Preview or Allow)"]
+        Web["Web hosts<br/>Allowed note URLs, image cells & Preview link installs"]
+        Ntfy["ntfy relay<br/>Sees sealed text & topic hash only"]
+    end
+
+    Vault <-->|HTTPS requests| Web
+    Crypto <-->|Sealed text & topic hash| Ntfy
+    Guest -->|Sealed row only| Ntfy
+```
+
+It makes network requests only in these cases:
+
+- **A note names a web address**: a `source`, a feed, or a request that sends data. The app fetches only after you select **Allow**, the permission card names each host, and the automation map lists them all. For **image cells**, the URL comes from row data, so the permission card asks to load images from any `https://` site instead of naming individual hosts.
+- **Install an app from a link or text** downloads the app from the URL you provide (for example a GitHub Gist) when you select **Preview**.
+- **A shared kind** sends its rows to the ntfy server in its `share` key and reads the other members' rows from there. It does so only when the note has `share`, its secret holds the key, and you selected **Allow** on the kind note. No gallery note shares anything until you remove the `#` before its `share` line.
 
 These gallery apps use public services:
 
@@ -263,14 +316,14 @@ These gallery apps use public services:
 | Trip planner | Frankfurter (exchange rates) and Open-Meteo (weather) |
 | Trades | Yahoo Finance |
 
-**What the relay sees.** Gizmo seals each row with the key of the kind before it leaves your device. The relay sees the sealed text, its size, when it comes and goes, the address of the device that sends or reads it, and a topic made from the key. It cannot read a row, its fields, the name of the kind, or your name, and it cannot change a message. A guest page loads nothing from the web, and it can reach only the relay.
+**What the relay sees.** Gizmo seals each row with the key of the kind before it leaves your device. The relay sees the sealed text, its size, when messages arrive and are read, the device's IP address, and a topic derived from the key. It cannot read a row, its fields, the name of the kind, or your name, and it cannot alter a message. A guest page loads nothing from the web, and its CSP allows it to reach only the relay.
 
 **The limits of sharing.**
 
-- Each person with the key can read every row and add rows. Its writer can add, change, and take back a row; nobody else can, so a row that someone else wrote shows as theirs, and **Not mine** sets it aside in your vault. The invite link holds the key, so send it only to the people you share with.
-- **Remove** stops the rows of one key, in your vault only. It does not take back what that person read, and they still have the key of the kind.
-- To shut someone out, give `key` a new secret, run **Invite to a kind** to make a new key, and invite the others again.
-- The public ntfy.sh keeps a message for about 12 hours. A vault that is offline longer catches up later, from the summaries that each vault sends every hour.
+- Each person with the key can read every row and add rows. Only a row's writer can edit or retract it; rows written by others show as theirs, and **Not mine** sets a row aside in your vault. The invite link holds the key, so send it only to the people you share with.
+- **Remove** stops accepting rows from one signing key, in your vault only. It does not erase what that person already read, and they still hold the kind's key.
+- To shut someone out completely, give `key` a new secret, run **Invite to a kind** to generate a new key, and re-invite the others.
+- The public ntfy.sh keeps messages for about 12 hours. A vault that is offline longer catches up later from the hourly summaries each vault sends.
 
 Refer to [What the relay and others can see](docs/reference.md#what-the-relay-and-others-can-see).
 
@@ -278,23 +331,23 @@ Refer to [What the relay and others can see](docs/reference.md#what-the-relay-an
 
 | What | Where |
 | --- | --- |
-| Rows that an app saves | `<App> data.md` beside the app, and a log of each change in `<App> data/log/`. |
-| Rows of a kind | `<Kind> data.md` beside the kind note holds the logged rows. `<Kind> data/log/` holds the rows of all lines, in files that each device writes. |
-| What-if rows | A `.branch` file of this device in that log folder, until **Keep as planned** or **Discard**. |
+| Rows that an app saves | `<App> data.md` beside the app (or the note named in `store`), and a per-device log in `<App> data/log/`. |
+| Rows of a kind | `<Kind> data.md` beside the kind note holds logged rows. `<Kind> data/log/` holds all logged, planned, imported, and dismissed rows, in per-device files. |
+| What-if rows | A `.branch` file for this device in that log folder, until **Keep as planned** or **Discard**. |
 | The key of a shared kind | Obsidian's secret storage, never a note. |
 | A guest page | `<Kind> guest page (<name>).html` beside the kind note. Its code stays in the browser that uses it. |
-| What each device sent of a shared kind, the people you accepted, permissions, activity, and settings | The plugin folder. |
+| Shared-kind sync state, accepted writers, permissions, activity, and settings | The plugin folder (`.obsidian/plugins/gizmo/`). |
 
 ### gizmod
 
-`gizmod` is optional, and it is not part of the plugin. It is a separate Node.js program in each release, and it runs only if you start it. It works outside Obsidian:
+`gizmod` (`gizmod.mjs`, Node 20+) is optional and not part of the plugin. It is a separate Node.js script in each release and runs only if you start it. It works outside Obsidian:
 
-- It reads and writes the vault folder on disk while Obsidian is closed.
+- It reads and writes the vault folder on disk when Obsidian is closed (and takes priority for background work when running).
 - It keeps its state in `~/.config/gizmod`.
-- `gizmod install` adds a launchd agent (macOS) that starts it at each login and writes a log to `~/Library/Logs`. `gizmod uninstall` removes the agent.
-- It answers HTTP on port 7468, on this computer and on its Tailscale address, so that a phone shortcut can run an app. A request without the key of that shortcut does nothing.
+- `node gizmod.mjs install --vault <path>` adds a macOS launchd agent that starts at login and writes logs to `~/Library/Logs`. `node gizmod.mjs uninstall` removes it.
+- It answers HTTP on port 7468 (localhost and Tailscale) so a phone shortcut can run an app. Remote requests require a shortcut key, capture key, or one-time push token; unauthenticated requests are rejected.
 - It sends alerts to your phone through [ntfy](https://ntfy.sh) only if you set `GIZMOD_NTFY_URL`.
-- It sends and reads the rows of a shared kind through its relay only if you allowed that kind in Obsidian and give gizmod its key in `GIZMO_SECRET_<ID>`.
+- It syncs a shared kind through its relay only if you allowed that kind in Obsidian and pass its key in `GIZMO_SECRET_<ID>`.
 
 ## Learn more
 

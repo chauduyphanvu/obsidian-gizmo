@@ -1,7 +1,7 @@
 {
   "name": "gizmo",
   "version": "0.4.0",
-  "description": "Turn notes into personal apps with buttons, forms, charts, boards, calendars, timelines, and Bases views. Plain Markdown, no code.",
+  "description": "A note is an app. Build personal apps with buttons, forms, charts, boards, calendars, timelines, and Bases views — plain Markdown, no code.",
   "scripts": {
     "dev": "node esbuild.config.mjs",
     "build": "tsc && node esbuild.config.mjs production",
