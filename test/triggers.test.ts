@@ -120,7 +120,7 @@ test("a row alert's then runs once for each row that newly matches, never for wh
   await t.bg.start();
   await settle();
   assert.equal(tasks(t), undefined, "already due when it started: noted, not run");
-  assert.deepEqual(t.notices, ["Renewals: Due soon (1 row)"]);
+  assert.deepEqual(t.notices, ["Renewals: Due soon: days 7"]);
 
   const fm = t.f.files.get("Apps/Renewals data.md")!.fm!;
   const insurance = { what: "insurance", due: "2026-11-30", at: savedAt("2026-11-18T12:00") };

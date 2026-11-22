@@ -5,12 +5,15 @@ import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { stringify } from "yaml";
-import { adminToken, plist, runScript, serve } from "../src/node/gizmod.ts";
-import { pushText, secretFromEnv } from "../src/node/host.ts";
+import { ANSWER_MS, AnswerTokens, adminToken, plist, runScript, serve } from "../src/node/gizmod.ts";
+import { gizmodEnv, pushText, secretFromEnv } from "../src/node/host.ts";
+import { Background } from "../src/background.ts";
+import { identityText, kindKeys, newIdentity } from "../src/share-crypto.ts";
 import { NodeVault, inlineTags, splitNote } from "../src/node/vault.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
 import { PRIORITY, readBeat, runnerOf } from "../src/device.ts";
+import { stampOf } from "../src/time.ts";
 
 const made: string[] = [];
 after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
@@ -109,10 +112,10 @@ const LINK_KEY = "k".repeat(32);
 const CAPTURE_KEY = "c".repeat(32);
 
 /** A vault with Inbox allowed in Obsidian, its link keys and a capture key in data.json, and gizmod serving it without listening. */
-async function served(settings: Record<string, unknown> = {}) {
-  const wanted = permissionsOf(readSpec(INBOX, { path: "Apps/Inbox.md" })!.spec!, "Apps/Inbox.md");
+async function served(settings: Record<string, unknown> = {}, inbox: Record<string, unknown> = INBOX) {
+  const wanted = permissionsOf(readSpec(inbox, { path: "Apps/Inbox.md" })!.spec!, "Apps/Inbox.md");
   const root = vaultDir({
-    "Apps/Inbox.md": { fm: INBOX },
+    "Apps/Inbox.md": { fm: inbox },
     ".obsidian/plugins/gizmo/data.json": JSON.stringify({
       grants: { "Apps/Inbox.md": wanted },
       linkKeys: { "Apps/Inbox.md#add": LINK_KEY, "Apps/Inbox.md#open": LINK_KEY },
@@ -199,6 +202,21 @@ test("over HTTP a shortcut runs only with its link key; a request without a key,
     const answer = await t.ask("GET", "/get/Inbox/open", { auth: LINK_KEY });
     assert.deepEqual([answer.status, answer.body.value, answer.body.shown], [200, 1, "1"]);
     assert.equal((await t.ask("GET", "/get/Nowhere/open", { auth: LINK_KEY })).status, 404);
+  } finally {
+    await t.s.close();
+  }
+});
+
+test("a capture key's line whose text took the rest of it, with fields after it, is refused rather than guessed: nothing shows first what it saves", async () => {
+  const inbox = { ...INBOX, panels: [{ ...INBOX.panels[0], fields: { task: "text", mins: "number" } }, INBOX.panels[1]] };
+  const t = await served({}, inbox);
+  try {
+    const guessed = await t.ask("POST", "/do", { auth: CAPTURE_KEY, body: { line: "task call mom" } });
+    assert.deepEqual([guessed.status, guessed.body.error], [422, "“call mom” would all go in task; put it in quotes, or give mins=… by name"]);
+    assert.deepEqual(await t.rows(), []);
+    assert.equal((await t.ask("POST", "/do", { auth: CAPTURE_KEY, body: { line: 'task "call mom"' } })).status, 200);
+    assert.equal((await t.ask("POST", "/do", { auth: CAPTURE_KEY, body: { line: "task call 10" } })).status, 200);
+    assert.deepEqual(await t.rows(), ["call mom", "call"]);
   } finally {
     await t.s.close();
   }
@@ -307,5 +325,174 @@ test("a line gizmod adds to a note someone else is writing keeps their edit", as
     assert.equal(readFileSync(path, "utf8"), "# Today\nTyped meanwhile\n- from gizmod\n");
   } finally {
     await t.s.close();
+  }
+});
+
+/**
+ * Pills, allowed in Obsidian, with a daily rhythm whose deadline passed two minutes ago; gizmod last
+ * decided it a day before, so it finds that window missed as it starts, and pushes it to a stub ntfy.
+ */
+async function missedPills(tailscaleAddress: () => Promise<string | undefined>, before?: (home: string) => void) {
+  const pushes: { body: string; title?: string; actions?: string }[] = [];
+  const stub = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => {
+      pushes.push({ body, title: req.headers.title as string | undefined, actions: req.headers.actions as string | undefined });
+      res.end("ok");
+    });
+  });
+  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
+  const due = new Date(Date.now() - 2 * 60_000);
+  due.setSeconds(0, 0);
+  const by = `${String(due.getHours()).padStart(2, "0")}:${String(due.getMinutes()).padStart(2, "0")}`;
+  const pills = { app: "Pills", panels: [{ view: "button", label: "Took", save: "doses", shortcut: "took" }], expect: [{ id: "daily", every: "day", by, source: "doses", say: `nothing by ${by}` }] };
+  const root = vaultDir({
+    "Apps/Pills.md": { fm: pills },
+    ".obsidian/plugins/gizmo/data.json": JSON.stringify({ grants: { "Apps/Pills.md": permissionsOf(readSpec(pills, { path: "Apps/Pills.md" })!.spec!, "Apps/Pills.md") } }),
+    ".obsidian/plugins/gizmo/triggers/gzpills1.json": JSON.stringify({ v: 2, fired: { "Apps/Pills.md\nexpect:daily": { decided: Date.now() - 23 * 3_600_000 } } }),
+  });
+  const home = mkdtempSync(join(tmpdir(), "gizmod-home-"));
+  made.push(home);
+  writeFileSync(join(home, "devices.json"), JSON.stringify({ [resolve(root)]: "gzpills1" }));
+  before?.(home);
+  const s = await serve({ vault: root, home, listen: false, log: () => {}, tailscaleAddress, ntfyUrl: `http://127.0.0.1:${(stub.address() as { port: number }).port}/ntfy` });
+  for (let i = 0; i < 40 && !pushes.length; i++) await new Promise((r) => setTimeout(r, 50));
+  const post = async (path: string) => {
+    const req = { method: "POST", url: path, headers: {}, socket: { remoteAddress: "100.64.0.20" }, async *[Symbol.asyncIterator]() {} } as unknown as IncomingMessage;
+    let status = 0;
+    let out = "";
+    const res = { writeHead: (st: number) => { status = st; }, end: (t: string) => { out = t; } } as unknown as ServerResponse;
+    await s.handle(req, res);
+    return { status, body: JSON.parse(out) as Record<string, unknown> };
+  };
+  const doses = async () => (await s.env.data.ledger!.state("Apps/Pills data.md")).lists.get("doses")?.rows ?? [];
+  return { s, stub, pushes, due, by, home, post, doses, close: async () => { await s.close(); stub.close(); } };
+}
+
+test("a missed rhythm is pushed with a Done button to gizmod's Tailscale address, whose token logs the dose in that window once", async () => {
+  const t = await missedPills(async () => "100.64.0.7");
+  try {
+    assert.equal(t.pushes.length, 1);
+    const [push] = t.pushes;
+    assert.deepEqual([push.body, push.title], [`Pills: nothing by ${t.by}`, "Gizmo"]);
+    const m = /^http, Done, http:\/\/100\.64\.0\.7:7468(\/answer\/([0-9a-f]{48})), method=POST, clear=true$/.exec(push.actions ?? "");
+    assert.ok(m, String(push.actions));
+    const kept = readFileSync(join(t.home, "answers.json"), "utf8");
+    assert.ok(!kept.includes(m[2]) && kept.includes("took @"), "the token itself isn't kept, only what it runs");
+    const ran = await t.post(m[1]);
+    assert.deepEqual([ran.status, ran.body.ok], [200, true], JSON.stringify(ran.body));
+    assert.deepEqual((await t.doses()).map((r) => r.at), [stampOf(t.due)], "logged at the window's deadline, so the window is met");
+    const [entry] = await t.s.env.activity.list("Apps/Pills.md");
+    assert.equal(entry?.actor, "link");
+    const again = await t.post(m[1]);
+    assert.equal(again.status, 410, "a button answers once");
+    assert.equal((await t.post(`/answer/${"0".repeat(48)}`)).status, 410);
+    assert.equal((await t.doses()).length, 1);
+  } finally {
+    await t.close();
+  }
+});
+
+test("a pushed button's token runs only its own line and expires after a day; with no Tailscale address the push has no button", async () => {
+  const t = await missedPills(async () => undefined);
+  try {
+    assert.deepEqual(t.pushes.map((p) => [p.body, p.actions]), [[`Pills: nothing by ${t.by}`, undefined]]);
+    const took = { line: "took", path: "Apps/Pills.md", shortcut: "took", params: {} };
+    const old = await new AnswerTokens(t.home, () => Date.now() - ANSWER_MS - 60_000).mint(took);
+    const fresh = await new AnswerTokens(t.home).mint(took);
+    assert.equal((await t.post(`/answer/${old}`)).status, 410, "more than a day old");
+    assert.equal((await t.post(`/answer/${fresh}`)).status, 200);
+    assert.equal((await t.post(`/answer/${fresh}/x`)).status, 401, "anything else needs a key");
+    assert.equal((await t.doses()).length, 1);
+  } finally {
+    await t.close();
+  }
+});
+
+test("gizmod asks the network only for what a note names: nothing at all without share:, and a shared kind's relay with it", async () => {
+  const calls: { url: string; method: string }[] = [];
+  const fetch = (async (url: string, init?: RequestInit) => {
+    calls.push({ url, method: init?.method ?? "GET" });
+    return new Response("", { status: 200 });
+  }) as typeof globalThis.fetch;
+  const chore = { kind: "chore", fields: { task: "text" } };
+  const root = vaultDir({
+    "Kinds/Chore.md": { fm: chore },
+    "Kinds/Chore data/log/gzold000-2026-11.jsonl": `${JSON.stringify({ t: "2026-11-18T08:00:00.000Z/0", d: "gzold000", op: "add", l: "chore", row: "0000000000000001", v: { task: "Bins", at: "2026-11-18T08:00" } })}\n`,
+    "Apps/Chores.md": { fm: { app: "c", panels: [{ view: "form", save: "[[Chore]]", title: "Did" }, { view: "table", source: "[[Chore]]" }] } },
+    ".obsidian/plugins/gizmo/data.json": JSON.stringify({ grants: { "Kinds/Chore.md": [], "Apps/Chores.md": ["kind-write:Kinds/Chore.md", "kind:Kinds/Chore.md"] } }),
+  });
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch });
+  await env.vault.scan();
+  const bg = new Background(env.bgEnv);
+  await env.beat.beat();
+  await bg.start();
+  await bg.tick();
+  assert.equal(calls.length, 0, JSON.stringify(calls));
+  bg.stop();
+
+  // The same kind shared, its key in gizmod's environment as op run gives it, and allowed in Obsidian.
+  const id = await newIdentity("Ann");
+  const shared = { ...chore, share: { relay: "http://127.0.0.1:9", key: { secret: "chore-key" } } };
+  writeFileSync(join(root, "Kinds/Chore.md"), `---\n${stringify(shared)}---\n`);
+  writeFileSync(join(root, ".obsidian/plugins/gizmo/data.json"), JSON.stringify({ grants: { "Kinds/Chore.md": ["secret:chore-key", "share:Kinds/Chore.md|127.0.0.1:9"] } }));
+  process.env.GIZMO_SECRET_CHORE_KEY = identityText(id);
+  try {
+    const env2 = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch });
+    await env2.vault.scan();
+    const bg2 = new Background(env2.bgEnv);
+    await env2.beat.beat();
+    await bg2.start();
+    await bg2.tick();
+    const topic = (await kindKeys(id.key)).topic;
+    assert.ok(calls.length > 0);
+    assert.ok(calls.every((c) => c.url.startsWith(`http://127.0.0.1:9/${topic}`)), JSON.stringify(calls));
+    assert.ok(calls.some((c) => c.method === "GET" && c.url.endsWith("/json?poll=1&since=all")));
+    assert.ok(calls.some((c) => c.method === "POST"), "the row logged before is sent");
+    bg2.stop();
+  } finally {
+    delete process.env.GIZMO_SECRET_CHORE_KEY;
+  }
+});
+
+test("a Done tapped after the window was met logs nothing more; a token runs the shortcut it was made for, while its app may run", async () => {
+  const t = await missedPills(async () => "100.64.0.7");
+  try {
+    const m = /(\/answer\/[0-9a-f]{48})/.exec(t.pushes[0]?.actions ?? "");
+    assert.ok(m, String(t.pushes[0]?.actions));
+    // The dose was logged meanwhile, in its window (in Obsidian, from Next): the button is stale.
+    const own = await t.s.bg.runFrom("Apps/Pills.md", "took", { params: { at: stampOf(t.due) }, trusted: true });
+    assert.ok(own.ok, JSON.stringify(own));
+    const late = await t.post(m![1]);
+    assert.deepEqual([late.status, late.body.error], [409, "that was done already; nothing more was logged"]);
+    assert.equal((await t.doses()).length, 1);
+    assert.equal((await t.post(m![1])).status, 410, "and it is spent");
+    // A token is bound to an app and its shortcut, not to the words of its line: one whose shortcut is gone runs nothing else.
+    const elsewhere = await new AnswerTokens(t.home).mint({ line: "took", path: "Apps/Pills.md", shortcut: "taken", params: {} });
+    assert.notEqual((await t.post(`/answer/${elsewhere}`)).status, 200);
+    assert.equal((await t.doses()).length, 1);
+    // An app no longer allowed: refused, and the token isn't spent.
+    const later = await new AnswerTokens(t.home).mint({ line: "took", path: "Apps/Gone.md", shortcut: "took", params: {} });
+    assert.equal((await t.post(`/answer/${later}`)).status, 403);
+    assert.ok(readFileSync(join(t.home, "answers.json"), "utf8").includes("Apps/Gone.md"));
+  } finally {
+    await t.close();
+  }
+});
+
+test("a missed window is still pushed when the answers file can't be read or written: without a button when no token can be kept", async () => {
+  const unreadable = await missedPills(async () => "100.64.0.7", (home) => writeFileSync(join(home, "answers.json"), "{not json"));
+  try {
+    assert.equal(unreadable.pushes.length, 1);
+    assert.match(unreadable.pushes[0].actions ?? "", /^http, Done, /, "a file that can't be read is read as none");
+  } finally {
+    await unreadable.close();
+  }
+  const unwritable = await missedPills(async () => "100.64.0.7", (home) => mkdirSync(join(home, "answers.json", "x"), { recursive: true }));
+  try {
+    assert.deepEqual(unwritable.pushes.map((p) => [p.body, p.actions]), [[`Pills: nothing by ${unwritable.by}`, undefined]]);
+  } finally {
+    await unwritable.close();
   }
 });

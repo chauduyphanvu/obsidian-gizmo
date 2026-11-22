@@ -292,7 +292,7 @@ test("in the background a sum of nothing is 0 too: the status bar, a link's answ
 const GALLERY = new URL("../gallery/", import.meta.url);
 const gallery = (path: string) => parseYaml(readFileSync(new URL(path, GALLERY), "utf8").match(/^---\n([\s\S]*?)\n---/)![1]) as Record<string, unknown>;
 
-async function openEmpty(path: string, also: Record<string, { fm: Record<string, unknown> }> = {}): Promise<Element[]> {
+async function openEmpty(path: string, also: Parameters<typeof fakeBackground>[0] = {}): Promise<Element[]> {
   const t = fakeBackground({ [path]: { fm: gallery(path) }, ...also });
   t.env.opened = (p) => t.bg.opened(p);
   t.env.alerts = t.bg.alerts;
@@ -307,17 +307,41 @@ async function openEmpty(path: string, also: Record<string, { fm: Record<string,
   return [...root.querySelectorAll(".gz-panel")];
 }
 
-test("Budget with nothing logged: $0.00 this month, the whole limit left, and its records say this is the start", async () => {
-  const [month, limit, , , recent] = await openEmpty("Apps/Budget.md");
-  assert.equal(text(month.querySelector(".gz-big")), "$0.00");
-  assert.equal(text(month.querySelector(".gz-compare")), "Nothing to compare with yet");
-  assert.equal(text(limit.querySelector(".gz-meter-legend")), "0% of $2,000$2,000.00 left · $166.67 a day for 12 days");
-  assert.equal(text(recent.querySelector(".gz-empty")), "Nothing logged yet.");
+test("Budget with nothing logged: the month lands at $0.00, the whole limit left, and each list says how it fills", async () => {
+  const all = await openEmpty("Apps/Budget.md", { "Kinds/Spend.md": { fm: gallery("Kinds/Spend.md") } });
+  const panel = (title: string) => all.find((p) => text(p.querySelector(".gz-title")) === title)!;
+  const [lands, limit, spent, coming] = all;
+  assert.equal(text(lands.querySelector(".gz-big")), "$0.00");
+  assert.equal(text(limit.querySelector(".gz-meter-legend")), "0% of $2,500$2,500.00 left · $208.33 a day for 12 days");
+  assert.equal(text(spent.querySelector(".gz-compare")), "Nothing to compare with yet");
+  assert.equal(text(coming.querySelector(".gz-big")), "$0.00");
+  assert.equal(text(panel("Bills still to pay this month").querySelector(".gz-empty")), 'No bill left to pay this month. Plan one with a day still to come, e.g. 65 home "FASTNET INTERNET" @+30d.');
+  assert.equal(text(panel("Charges from the bank, not checked yet").querySelector(".gz-empty")), "No charge from the bank waits. Drop its CSV export in Inbox/Bank.");
+  assert.equal(text(panel("Recent").querySelector(".gz-empty")), "Nothing logged yet.");
 });
 
-test("Weight with nothing logged: dashes that say nothing is logged, and the chart and table say the same", async () => {
+test("Bills and renewals with nothing planned: $0.00 and none to start, and each list says how to plan one", async () => {
+  const kinds = { "Kinds/Spend.md": { fm: gallery("Kinds/Spend.md") }, "Kinds/Renewal.md": { fm: gallery("Kinds/Renewal.md") } };
+  const all = await openEmpty("Apps/Bills and renewals.md", kinds);
+  const panel = (title: string) => all.find((p) => text(p.querySelector(".gz-title")) === title)!;
+  assert.equal(text(panel("Bills in the next 30 days").querySelector(".gz-big")), "$0.00");
+  assert.equal(text(panel("Renewals to start").querySelector(".gz-big")), "0");
+  assert.equal(text(panel("Overdue").querySelector(".gz-empty")), "No bill is overdue.");
+  assert.equal(text(panel("Coming up").querySelector(".gz-empty")), "No bill planned in the next 30 days. Plan one with its day, e.g. 15.49 STREAMFLIX fun @+30d.");
+  assert.equal(text(panel("Renewals by deadline").querySelector(".gz-empty")), 'No renewal planned. Plan one with its deadline and the day to start, e.g. "Renew passport" 2027-03-14 @2027-01-13.');
+});
+
+test("Medication log with nothing logged: no doses today, no dose planned and how to plan one, and nothing in today's list", async () => {
+  const all = await openEmpty("Apps/Medication log.md", { "Kinds/Dose.md": { fm: gallery("Kinds/Dose.md") } });
+  const panel = (title: string) => all.find((p) => text(p.querySelector(".gz-title")) === title)!;
+  assert.equal(text(panel("Doses today").querySelector(".gz-big")), "0");
+  assert.equal(text(panel("Next dose").querySelector(".gz-empty, .gz-text")), "No dose planned yet.");
+  assert.equal(text(panel("Today's doses").querySelector(".gz-empty")), 'Nothing taken or planned today yet. To plan the schedule, type in Gizmo Do…, e.g. dose "Medication A" @every day 08:00 until 2027-02-28.');
+});
+
+test("Practice with nothing logged: dashes that say nothing is logged, and the chart and table say the same", async () => {
   const kit = { "Components/Tracker kit.md": { fm: gallery("Components/Tracker kit.md") } };
-  const [latest, week, , chart, entries] = await openEmpty("Apps/Weight.md", kit);
+  const [latest, week, , chart, entries] = await openEmpty("Apps/Practice.md", kit);
   assert.equal(text(latest.querySelector(".gz-big")), "—");
   assert.match(text(latest), /Nothing logged yet/);
   assert.equal(text(week.querySelector(".gz-big")), "—");
@@ -325,4 +349,37 @@ test("Weight with nothing logged: dashes that say nothing is logged, and the cha
   assert.ok(!/Nothing to compare/.test(text(week)));
   assert.equal(text(chart.querySelector(".gz-empty")), "Nothing logged in the last 6 months yet.");
   assert.equal(text(entries.querySelector(".gz-empty")), "Nothing logged yet.");
+});
+
+test("Vitals, Trades, Household chores and Trip planner with nothing logged: dashes and zeros, and each list says how it fills", async () => {
+  const kinds = (...paths: string[]) => Object.fromEntries(paths.map((p) => [p, { fm: gallery(p) }]));
+  const said = (all: Element[]) => (title: string) => {
+    const p = all.find((x) => text(x.querySelector(".gz-title")) === title)!;
+    return text(p.querySelector(".gz-empty, .gz-big"));
+  };
+  const vitals = said(await openEmpty("Apps/Vitals.md", kinds("Kinds/Measurement.md")));
+  assert.deepEqual(["Weight", "Pulse", "Sleep"].map(vitals), ["—", "—", "—"]);
+  assert.equal(vitals("Blood pressure, each sitting"), "No blood pressure yet. Type a reading's two numbers, e.g. systolic 128, then diastolic 82.");
+  assert.equal(vitals("Each measure"), "Nothing measured yet. Weigh in above, or export your phone's health data into Inbox/Health.");
+  assert.equal(vitals("From my health export, not checked yet"), "Nothing from your health export waits. Export it as CSV into Inbox/Health.");
+
+  const trades = said(await openEmpty("Apps/Trades.md", kinds("Kinds/Trade.md")));
+  assert.deepEqual(["Cost of what I hold", "Bought this month", "Realized this year", "Still to buy"].map(trades), ["$0.00", "$0.00", "$0.00", "$0.00"]);
+  assert.equal(trades("What I hold"), "No shares held. Log a buy above, e.g. VTI buy 5 312.40, or drop your broker's export in Inbox/Broker.");
+  assert.equal(trades("Realized gain each year, at average cost"), "No sell logged yet.");
+  assert.equal(trades("Planned buys"), "No buy planned. Plan one with its day, e.g. VTI 5 310 @+14d, or each month with @every month from 2026-12-01 until 2027-06-01.");
+
+  const chores = said(await openEmpty("Apps/Household chores.md", kinds("Kinds/Chore.md", "Kinds/Spend.md")));
+  assert.deepEqual(["Done this week", "Still to do this week", "Overdue", "Upkeep paid this year"].map(chores), ["0", "0", "0", "$0.00"]);
+  assert.equal(chores("Overdue turns"), "Nothing overdue.");
+  assert.equal(chores("Upkeep each month"), "No upkeep planned in the next 12 months.");
+  assert.equal(chores("What upkeep cost"), "No upkeep paid yet. Add what a job cost, e.g. 24.99 furnace filter.");
+
+  // The trip's bookings are a calendar file of its own, not rows anyone logs.
+  const ics = readFileSync(new URL("../gallery/Trips/Tokyo.ics", import.meta.url), "utf8");
+  const trip = said(await openEmpty("Apps/Trip planner.md", { ...kinds("Kinds/Spend.md", "Components/Destination weather.md"), "Trips/Tokyo.ics": { raw: ics } }));
+  assert.deepEqual(["The trip comes to", "Spent so far", "Still to come"].map(trip), ["$0.00", "$0.00", "$0.00"]);
+  assert.equal(trip("The trip's money"), "Nothing planned for the trip yet. Plan a cost with its day, e.g. 780 Hotel in Shinjuku @2027-03-14.");
+  assert.equal(trip("Expenses"), "Nothing spent on the trip yet. Type what you pay abroad in yen above, e.g. Ramen 1500.");
+  assert.equal(trip("The bank's charges in the trip's days"), "No charge from the bank in the trip's days yet.");
 });

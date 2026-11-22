@@ -8,7 +8,8 @@ import { blockKey, parseHosted } from "./hosted.ts";
 import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
 import { mapCanvas } from "./map-canvas.ts";
-import { ASK_GROUPS, buildMap, gizmoBlocks, writersOf, type Ask, type MapApp, type MapEmbed, type MapLens, type VaultMap } from "./map.ts";
+import { ASK_GROUPS, buildMap, gizmoBlocks, writersOf, type AppSummary, type Ask, type MapApp, type MapEmbed, type MapLens, type VaultMap } from "./map.ts";
+import { writersOf as storedWriters } from "./stored.ts";
 import { describePermission } from "./permissions.ts";
 import { basename } from "./store.ts";
 import { dayIn } from "./time.ts";
@@ -104,7 +105,43 @@ export class MapView extends ItemView {
     this.drawApps(list, map);
     const inNotes = box.createDiv();
     this.drawInNotes(inNotes, map);
+    this.drawShared(box, apps);
     this.drawCaptureKeys(box);
+  }
+
+  /** Each shared kind with the writers this vault decided about: Remove ends what comes from one; what came stays. */
+  private drawShared(el: HTMLElement, apps: AppSummary[]): void {
+    const shared = apps.filter((a) => a.shared);
+    if (!shared.length) return;
+    el.createEl("h4", { text: "Shared kinds" });
+    const plugin = this.plugin;
+    const waiting = plugin.background?.asks.list().filter((a) => a.id.startsWith("writer\n")) ?? [];
+    for (const a of shared) {
+      const card = el.createDiv({ cls: "gz-card gz-map-app gz-map-shared" });
+      const head = card.createDiv({ cls: "gz-map-app-head" });
+      this.link(head, a.path, a.name, "gz-title");
+      card.createDiv({ cls: "gz-muted", text: `Shared through ${a.shared!.host}. Rows from the writers you accept count as logged.` });
+      const writers = Object.entries(storedWriters(plugin.store, a.path)).sort(([, x], [, y]) => x.name.localeCompare(y.name));
+      const asked = waiting.filter((w) => w.path === a.path);
+      if (!writers.length && !asked.length) card.createDiv({ cls: "gz-muted", text: "No one else has written to it yet." });
+      const ul = card.createEl("ul", { cls: "gz-map-writer-list" });
+      for (const [writer, w] of writers) {
+        const li = ul.createEl("li");
+        li.createSpan({ text: `${w.name}${w.guest ? " (guest page)" : ""}: ${w.state === "accepted" ? "accepted" : "removed; nothing more comes in from them"}` });
+        const set = (state: "accepted" | "removed") => handler(async () => {
+          (plugin.store.writers ??= {})[`${a.path}\n${writer}`] = { ...w, state, at: Date.now() };
+          await plugin.saveSettings();
+          new Notice(state === "removed"
+            ? `${a.name}: rows from ${w.name} no longer come in. The rows of theirs already here stay; delete them like any row if you want them gone.`
+            : `${a.name}: rows from ${w.name} come in again, from what they send next`);
+          this.render();
+        });
+        const row = li.createSpan({ cls: "gz-map-actions" });
+        if (w.state === "accepted") row.createEl("button", { text: "Remove" }).addEventListener("click", set("removed"));
+        else row.createEl("button", { text: "Accept again" }).addEventListener("click", set("accepted"));
+      }
+      for (const ask of asked) ul.createEl("li", { cls: "gz-muted", text: `${ask.text.replace(/^Accept rows from (.*?) in .*$/, "$1")}: waits in Next to be accepted` });
+    }
   }
 
   /** Whether a data policy is applied, and when its note says something else, a way to review it. */

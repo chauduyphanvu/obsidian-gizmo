@@ -107,6 +107,39 @@ test("what works while the app is closed can't wait for typing or a pick", () =>
   ]);
 });
 
+test("an alert, a pin and a shortcut can read $this, the app's own note: told from its property while the app is closed, with no new permission; a property it doesn't have says so", async () => {
+  const fm = {
+    app: "Budget", limit: 100,
+    panels: [
+      { view: "number", title: "Spent", source: "spend", field: "amount", agg: "sum", alert: "> $this.limit", shortcut: "spent" },
+      { view: "number", title: "Each under the limit", source: "spend", where: { amount: "< $this.limit" }, agg: "count", pin: "status" },
+    ],
+  };
+  const r = readSpec(fm, { path: "Apps/B.md" })!;
+  assert.deepEqual(r.errors, []);
+  assert.deepEqual(permissionsOf(r.spec!, "Apps/B.md"), ["answer:spent"], "the same as with the limit typed in the alert");
+  assert.deepEqual(permissionsOf(readSpec({ ...fm, panels: [{ ...fm.panels[0], alert: "> 100" }, fm.panels[1]] }, { path: "Apps/B.md" })!.spec!, "Apps/B.md"), ["answer:spent"]);
+  const t = fakeBackground({ "Apps/B.md": { fm }, "Apps/B data.md": { fm: { spend: [{ amount: 60, at: "2026-11-18T08:00" }] } } });
+  await t.bg.start();
+  await settle();
+  assert.deepEqual([t.notices, t.out.status.map((x) => x.text)], [[], ["Each under the limit: 1"]]);
+  // A second row goes past the note's limit: told, as an alert with the number typed in it would be.
+  await t.env.store!("Apps/B data.md", "Apps/B.md").add("spend", { amount: 50, at: "2026-11-18T09:00" });
+  await t.bg.tick();
+  await settle();
+  assert.deepEqual(t.notices, ["B: Spent 110"]);
+
+  // Without the property, the panel says what is missing, not that someone must type.
+  const bare = { ...fm, limit: undefined };
+  const p = readSpec(bare, { path: "Apps/B.md" })!;
+  assert.deepEqual(p.errors, []);
+  const e = fakeBackground({ "Apps/B.md": { fm: bare } });
+  await e.bg.start();
+  assert.deepEqual(await e.bg.evaluate("Apps/B.md", p.spec!.panels[0]), { error: "alert reads $this.limit, and this note has no limit property: add it to the note's properties" });
+  // A where on it matches no row, as it always has: the pin counts none.
+  assert.equal((await e.bg.evaluate("Apps/B.md", p.spec!.panels[1]) as { shown: string }).shown, "0");
+});
+
 test("shortcuts are unique per app; record needs a URL source and asks for it", () => {
   const r = readSpec({
     app: "x",

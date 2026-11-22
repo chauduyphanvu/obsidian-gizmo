@@ -70,6 +70,14 @@ test("a dry run stops a then loop where a real run would, and never counts towar
   assert.equal((t.f.files.get("Apps/B data.md")?.fm?.b as unknown[]).length, 1);
 });
 
+test("a line that plans a row on every day says the save once, with how many times", async () => {
+  const t = fakeBackground({ "Kinds/Dose.md": { fm: { kind: "dose", shortcut: "dose", fields: { med: "text" } } } });
+  await t.bg.start();
+  const { effects } = await t.bg.previewLine("dose Ibuprofen @every day until 2026-11-21");
+  assert.deepEqual(effects, ["Save med Ibuprofen, line planned to dose in Dose data, 3 times"]);
+  assert.deepEqual(dryLines([{ app: "A", what: "go", changes: [], notices: ["Done", "Done", "Saved"], remarks: [] }]), ["Tell you: Done, 2 times", "Tell you: Saved"]);
+});
+
 test("a dry run says why a run wouldn't go ahead, as the run would", async () => {
   const t = fakeBackground(notes());
   await t.bg.start();

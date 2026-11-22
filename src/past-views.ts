@@ -6,7 +6,7 @@ import type GizmoPlugin from "./main.ts";
 import { pastText } from "./replay.ts";
 import { readSpec, type AppSpec } from "./spec.ts";
 import { basename, dataPathOf, devicesFolder } from "./store.ts";
-import { VIEW_TYPE } from "./view.ts";
+import { AppView, VIEW_TYPE } from "./view.ts";
 import { minuteIn } from "./time.ts";
 
 const DAY = 86_400_000;
@@ -16,6 +16,32 @@ const localInput = (t: number) => minuteIn(t);
 export async function openAppAt(plugin: GizmoPlugin, path: string, at: number): Promise<void> {
   const leaf = plugin.app.workspace.getLeaf("tab");
   await leaf.setViewState({ type: VIEW_TYPE, state: { file: path, past: at }, active: true });
+}
+
+/**
+ * Opens an app shown ahead (What if…) in a new tab, beside the app as it is now; `line`, a Do… line
+ * after `what if`, is saved as a what-if row first.
+ */
+export async function openAppAhead(plugin: GizmoPlugin, path: string, line?: string): Promise<void> {
+  const leaf = plugin.app.workspace.getLeaf("tab");
+  await leaf.setViewState({ type: VIEW_TYPE, state: { file: path, ahead: line === undefined ? {} : { line } }, active: true });
+}
+
+/** "What if…": the open app shown ahead, in its own tab, where its what-if rows are kept until Keep or Discard. */
+export function registerWhatIf(plugin: GizmoPlugin): void {
+  plugin.addCommand({
+    id: "what-if",
+    name: "What if…",
+    checkCallback: (checking) => {
+      const file = plugin.app.workspace.getActiveFile();
+      if (!file || !plugin.isApp(file) || !plugin.dataLayer.ledger) return false;
+      if (checking) return true;
+      const view = plugin.app.workspace.getActiveViewOfType(AppView);
+      if (view?.file === file) view.showAhead();
+      else void openAppAhead(plugin, file.path);
+      return true;
+    },
+  });
 }
 
 /** "As of…": picks the past time to show an app at. */

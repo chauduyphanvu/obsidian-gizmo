@@ -1,7 +1,7 @@
 import { Notice, Platform } from "obsidian";
 import { actionDepsOf } from "./actions.ts";
 import { Background, TICK_MS, type StatusItem } from "./background.ts";
-import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherTriggers, whereYouAre } from "./device.ts";
+import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherShareStates, otherTriggers, whereYouAre } from "./device.ts";
 import { obsidianAppEnv, pluginFile, pluginFiles, vaultFrontmatter, vaultNotes } from "./host.ts";
 import { openMap } from "./map-view.ts";
 import { dropKeys } from "./identity.ts";
@@ -9,9 +9,11 @@ import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
 import { shortcutId } from "./links.ts";
-import { captureNamesOf, destinationsOf } from "./stored.ts";
+import { captureNamesOf, destinationsOf, writersOf } from "./stored.ts";
 import { openInstall } from "./share-command.ts";
-import { isApp, notePath, storeTarget } from "./store.ts";
+import { openInvite } from "./invite-command.ts";
+import { openNext } from "./next-command.ts";
+import { isApp, isKind, notePath, storeTarget } from "./store.ts";
 import { localZone } from "./time.ts";
 
 /**
@@ -31,6 +33,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
   const commands = new Map<string, string>();
   const bar: HTMLElement[] = [];
   let pausedItem: HTMLElement | undefined;
+  let asksItem: HTMLElement | undefined;
   let shown: StatusItem[] = [];
   let stopped = false;
 
@@ -38,7 +41,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     data: plugin.dataLayer,
     frontmatter,
     notes: vaultNotes(app),
-    appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
+    appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path)) || isKind(frontmatter(f.path))).map((f) => f.path),
     isGranted: (path, wanted, asked) => plugin.isGranted(path, wanted, true, asked),
     granted: (path) => plugin.granted(path),
     policy: () => plugin.store.policy,
@@ -58,6 +61,15 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     renamed: (from, to) => void plugin.activity.rename(from, to),
     dropped: (path) => { if (dropKeys(plugin.store, path)) void plugin.saveSettings(); },
     otherTriggers: () => otherTriggers(pluginFiles(plugin), plugin.device.id),
+    shareState: pluginFile(plugin, deviceFile(DEVICE_FOLDERS.share, plugin.device.id)),
+    otherShareStates: () => otherShareStates(pluginFiles(plugin), plugin.device.id),
+    writers: (kindPath) => writersOf(plugin.store, kindPath),
+    setWriter(kindPath, writer, record) {
+      const all = (plugin.store.writers ??= {});
+      if (record) all[`${kindPath}\n${writer}`] = record;
+      else delete all[`${kindPath}\n${writer}`];
+      void plugin.saveSettings();
+    },
     linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
     captureKey: (key) => captureNamesOf(plugin.store, key),
     destinations: (path, shortcut) => destinationsOf(plugin.store, path, shortcut),
@@ -128,13 +140,32 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     },
   });
 
+  // How many asks wait, opening Next; nothing when none does. Obsidian has no status bar on mobile.
+  bg.asks.subscribe(() => {
+    if (Platform.isMobile) return;
+    const n = bg.asks.list().length;
+    if (!n) {
+      asksItem?.remove();
+      asksItem = undefined;
+      return;
+    }
+    if (!asksItem) {
+      asksItem = plugin.addStatusBarItem();
+      asksItem.addClass("gz-status", "gz-status-asks", "mod-clickable");
+      asksItem.setAttr("aria-label", "Open Next");
+      asksItem.addEventListener("click", () => openNext(plugin));
+    }
+    asksItem.setText(`${n} to do`);
+  });
+
   plugin.registerEvent(app.metadataCache.on("changed", (file) => bg.noteChanged(file.path)));
   plugin.registerEvent(app.vault.on("rename", (file) => bg.noteChanged(file.path)));
-  // A link may open Obsidian; it's answered once the apps are known. An install link only opens
-  // the install window, which writes nothing until the person says so.
+  // A link may open Obsidian; it's answered once the apps are known. An install or invite link only
+  // opens its window, which writes nothing until the person says so.
   plugin.registerObsidianProtocolHandler("gizmo", (params) => {
     app.workspace.onLayoutReady(() => {
       if (typeof params.install === "string") return openInstall(plugin, params.install);
+      if (typeof params.invite === "string") return openInvite(plugin, params.invite);
       // A capture line's receipt: opening the activity log changes nothing, whoever sent it.
       if (typeof params.activity === "string") return openActivity(plugin, undefined, params.activity);
       // A link naming no app but carrying a line is a capture line; one naming an app fills its form, even a field called line.
@@ -159,6 +190,7 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     bg.stop();
     for (const el of bar.splice(0)) el.remove();
     pausedItem?.remove();
+    asksItem?.remove();
   });
   return bg;
 }

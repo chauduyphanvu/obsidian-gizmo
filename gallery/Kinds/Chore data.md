@@ -1,0 +1,43 @@
+---
+chore:
+  - {task: "Car service", who: "Sam", area: "upkeep", at: "2026-07-25T09:15"}
+  - {task: "Replace the furnace filter", who: "Sam", area: "upkeep", at: "2026-09-13T10:30"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-10-26T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-10-27T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-10-28T20:40"}
+  - {task: "Take the bins out", who: "Sam", area: "outside", at: "2026-10-29T20:20"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-10-29T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-10-30T20:40"}
+  - {task: "Clean the bathroom", who: "Alex", area: "rooms", at: "2026-10-31T10:20"}
+  - {task: "Vacuum the house", who: "Sam", area: "rooms", at: "2026-10-31T11:20"}
+  - {task: "Groceries", who: "Alex", area: "kitchen", at: "2026-10-31T15:10"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-10-31T20:40"}
+  - {task: "Do the laundry", who: "Alex", area: "laundry", at: "2026-11-01T10:20"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-01T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-02T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-03T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-04T20:40"}
+  - {task: "Take the bins out", who: "Sam", area: "outside", at: "2026-11-05T20:33"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-05T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-06T20:40"}
+  - {task: "Clean the bathroom", who: "Alex", area: "rooms", at: "2026-11-07T10:33"}
+  - {task: "Vacuum the house", who: "Sam", area: "rooms", at: "2026-11-07T11:33"}
+  - {task: "Groceries", who: "Alex", area: "kitchen", at: "2026-11-07T15:10"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-07T20:40"}
+  - {task: "Do the laundry", who: "Alex", area: "laundry", at: "2026-11-08T10:33"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-08T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-09T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-10T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-11T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-12T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-13T20:40"}
+  - {task: "Clean the bathroom", who: "Alex", area: "rooms", at: "2026-11-14T10:46"}
+  - {task: "Vacuum the house", who: "Alex", area: "rooms", at: "2026-11-14T11:46"}
+  - {task: "Clean the gutters", who: "Alex", area: "upkeep", at: "2026-11-14T13:30"}
+  - {task: "Groceries", who: "Alex", area: "kitchen", at: "2026-11-14T15:10"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-14T20:40"}
+  - {task: "Do the laundry", who: "Alex", area: "laundry", at: "2026-11-15T10:46"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-15T20:40"}
+  - {task: "Wash the dishes", who: "Sam", area: "kitchen", at: "2026-11-16T20:40"}
+  - {task: "Wash the dishes", who: "Alex", area: "kitchen", at: "2026-11-17T20:40"}
+---

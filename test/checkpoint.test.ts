@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { logFolder } from "../src/ledger.ts";
 import { DataLayer } from "../src/datalayer.ts";
-import { IDS_KEY, Ledger, NOTE_ROWS, SETTLE_MS, rowIdOf, type LedgerIO, type LedgerState } from "../src/ledger-store.ts";
+import { IDS_KEY, Ledger, NOTE_ROWS, SETTLE_MS, isWhatIf, rowIdOf, type LedgerIO, type LedgerState } from "../src/ledger-store.ts";
 import { fakeHost } from "./support/fakes.ts";
 
 const DAY = 86_400_000;
@@ -289,4 +289,74 @@ test("a checkpoint cut to fewer rows than a list now keeps isn't used, and the n
   c.ledger.setCaps(DATA, { kp: 10_080 });
   assert.equal((await c.ledger.state(DATA)).lists.get("kp")!.rows.length, 360);
   assert.equal(logsRead(v).length, 1);
+});
+
+test("with a device's what-if branch beside the logs, every device still reads what a fold of the logs reads, and the branch reads what a fold of the logs and the branch reads", async () => {
+  /** What a fresh fold of every event and device a's branch gives, without checkpoints. */
+  const withBranch = async (v: ReturnType<typeof vault>, now: number) => {
+    const fresh = new Ledger(v.plain, () => "a", () => now, undefined, "Budget");
+    const st = await fresh.state(DATA);
+    return { ...seen(st), whatIf: [...st.lists].map(([k, l]) => [k, l.rows.filter(isWhatIf).map((r) => rowIdOf(r))]) };
+  };
+  let branched = 0;
+  for (let seed = 1; seed <= 40; seed++) {
+    let a = seed;
+    const rand = (n: number) => {
+      a = (a + 0x6d2b79f5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return Math.floor((((t ^ (t >>> 14)) >>> 0) / 4294967296) * n);
+    };
+    const v = vault();
+    const ds = ["a", "b", "c"].map((id) => ({ ...device(v, id, { now: T0 }), offline: false }));
+    // Device a's what-if, on a's clock: it reads the logs as a does and writes only its branch.
+    const ahead = new Ledger(v.io, () => "a", () => ds[0].clock.now, undefined, "Budget");
+    const made: string[] = [];
+    for (let step = 0; step < 120; step++) {
+      const which = rand(4);
+      if (which === 3) {
+        if (ds[0].offline) continue;
+        const shown = (await ahead.state(DATA)).lists.get("x")?.rows ?? [];
+        const mine = shown.filter(isWhatIf);
+        const kind = rand(6);
+        if (kind <= 2 || !mine.length) await ahead.write(DATA, [{ op: "add", l: "x", row: ahead.newRowId(), v: { n: step, whatIf: true } }]);
+        else if (kind <= 4) {
+          const r = mine[rand(mine.length)];
+          await ahead.write(DATA, [{ op: "set", l: "x", row: rowIdOf(r)!, f: "n", v: step, from: r.n }]);
+        } else await ahead.write(DATA, [{ op: "del", l: "x", row: rowIdOf(mine[rand(mine.length)])! }]);
+        if (rand(15) === 0) await ahead.discard(DATA);
+      } else {
+        const d = ds[which];
+        d.clock.now += rand(5) * 3_600_000 + (rand(4) === 0 ? rand(4) * DAY : 0);
+        for (const x of ds) if (!x.offline) x.clock.now = Math.max(x.clock.now, d.clock.now);
+        const kind = rand(10);
+        const shown = (await d.ledger.state(DATA)).lists.get("x")?.rows ?? [];
+        const ids = shown.map((r) => rowIdOf(r)!);
+        if (kind <= 2 || !ids.length) made.push(...await d.ledger.write(DATA, [{ op: "add", l: "x", row: d.ledger.newRowId(), v: { n: step } }]));
+        else if (kind <= 4) {
+          const i = rand(ids.length);
+          await d.ledger.write(DATA, [{ op: "set", l: "x", row: ids[i], f: "n", v: step, from: shown[i].n }]);
+        } else if (kind === 5) await d.ledger.write(DATA, [{ op: "del", l: "x", row: ids[rand(ids.length)] }]);
+        else if (kind === 6) await d.ledger.write(DATA, [{ op: rand(2) ? "tick" : "untick", l: "c", item: `i${rand(3)}` }]);
+        else if (kind === 7 && made.length) await d.ledger.write(DATA, [{ op: rand(3) ? "undo" : "redo", ev: [made[rand(made.length)]] }]);
+        else if (kind === 8) d.offline = !d.offline;
+        else await d.ledger.snapshot(DATA, {}, v.writeNote);
+      }
+      for (const x of ds) if (!x.offline) for (const p of v.files.keys()) x.ledger.fileChanged(p);
+      if (!ds[0].offline) for (const p of v.files.keys()) ahead.fileChanged(p);
+      for (const x of ds) {
+        if (x.offline) continue;
+        assert.deepEqual(seen(await x.ledger.state(DATA)), await truth(v, x.clock.now), `seed ${seed}, step ${step}, device ${x.id}`);
+      }
+      if (ds[0].offline) continue;
+      const st = await ahead.state(DATA);
+      const got = { ...seen(st), whatIf: [...st.lists].map(([k, l]) => [k, l.rows.filter(isWhatIf).map((r) => rowIdOf(r))]) };
+      assert.deepEqual(got, await withBranch(v, ds[0].clock.now), `seed ${seed}, step ${step}, the branch`);
+    }
+    const branch = `${logFolder(DATA)}/a.Budget.branch`;
+    if (v.files.get(branch)) branched++;
+    // Nothing but the branch ledger wrote the branch, and it wrote nothing else.
+    assert.ok([...v.files.keys()].every((p) => p === branch || p.endsWith(".jsonl") || p.includes("/checkpoint-") || p.endsWith("/base.json")), [...v.files.keys()].join(", "));
+  }
+  assert.ok(branched >= 20, `a branch held events at the end of ${branched} runs`);
 });

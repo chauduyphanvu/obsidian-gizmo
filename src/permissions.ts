@@ -5,7 +5,7 @@ import { isPlainObject } from "./keys.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { urlHost } from "./sources/url.ts";
 import type { AppSpec, Panel, PanelSpec } from "./spec.ts";
-import { appendPath, notePath, storeTarget } from "./store.ts";
+import { appendPath, basename, defaultDataPath, notePath, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
 
 /** A panel's permissions, each with the key that asks for it. */
@@ -22,11 +22,17 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
     out.push([`create:${p.target.folder}`, "save"]);
     if (p.template) out.push([`read:${notePath(storeTarget(p.template))}`, "template"]);
   }
+  // Saving to a kind adds to rows other apps read; it reads them too, to guess what a line leaves out.
+  if (p.target?.kind === "list" && p.target.at !== undefined && p.target.at !== selfPath) {
+    out.push([`kind:${p.target.at}`, "save"], [`kind-write:${p.target.at}`, "save"]);
+  }
+  // Accept and Not mine on the reconcile card change the kind's rows.
+  if (p.view === "reconcile" && p.kind && p.kind.path !== selfPath) out.push([`kind-write:${p.kind.path}`, "source"]);
   // The browser fetches an image from whatever host the row's data names, so no host can be settled from the keys.
   if (Object.values(p.cells ?? {}).includes("image")) out.push(["images", "cells"]);
   // A board moves cards by changing their group field, so it edits without an `edit` key.
-  if (p.edit?.length) out.push(...editPermissions(p, "edit"));
-  else if (p.view === "board") out.push(...editPermissions(p, "group"));
+  if (p.edit?.length) out.push(...editPermissions(p, "edit", selfPath));
+  else if (p.view === "board") out.push(...editPermissions(p, "group", selfPath));
   return out;
 }
 
@@ -84,7 +90,20 @@ export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
     for (const perm of sendPermissions(ps, spec)) out.add(perm);
   }
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
+  for (const perm of importPermissions(spec)) out.add(perm);
+  for (const perm of sharePermissions(spec)) out.add(perm);
   return [...out].sort();
+}
+
+/** A shared kind sends and takes rows through its relay, with the key its secret holds. */
+function sharePermissions(spec: AppSpec): string[] {
+  const share = spec.kind?.share;
+  return share ? [`share:${spec.kind!.path}|${share.host}`, `secret:${share.secret}`] : [];
+}
+
+/** A kind reads the new files in each folder its `import:` names. */
+function importPermissions(spec: AppSpec): string[] {
+  return (spec.kind?.imports ?? []).flatMap((m) => (m.folder === undefined ? [] : [`read:${m.folder}`]));
 }
 
 /** For each permission, the notes whose keys ask for it: the app itself or the components it uses. */
@@ -104,14 +123,18 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
     for (const perm of sendPermissions(ps, spec)) add(perm, selfPath);
   }
   if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
+  for (const perm of importPermissions(spec)) add(perm, selfPath);
+  for (const perm of sharePermissions(spec)) add(perm, selfPath);
   return out;
 }
 
 /**
  * The permission changing a panel's rows needs, asked by `key`: notes in its `from` (any note,
- * for a base), or ticking tasks in its `from`; a saved list is the app's own.
+ * for a base), ticking tasks in its `from`, or a kind's rows; a saved list is the app's own.
  */
-export function editPermissions(p: Panel, key: keyof Panel): [string, keyof Panel][] {
+export function editPermissions(p: Panel, key: keyof Panel, selfPath?: string): [string, keyof Panel][] {
+  const kind = p.kind;
+  if (kind) return kind.path === selfPath ? [] : [[`kind-write:${kind.path}`, key]];
   if (editableSource(p) === "tasks") return p.from ? [[`tasks:${p.from}`, key]] : [];
   if (editableSource(p) === "notes" && sourceDef(p.source!).id === "base") return [["edit:*", key]];
   return editableSource(p) === "notes" && p.from ? [[`edit:${p.from}`, key]] : [];
@@ -185,6 +208,24 @@ const PERMISSIONS: Record<string, PermissionKind> = {
     describe: (what) => `Tick tasks in notes in ${what}`,
     target: (what) => ({ side: "out", key: `notes:${what}`, label: "ticks tasks", text: `Notes in ${what}` }),
     changes: (what, path, inScope) => what === "*" || inScope(what, path),
+  },
+  // A kind's rows, named by the kind's note: read by any app that links to it, changed by those that save or edit.
+  kind: {
+    describe: (what) => `Read the rows of ${basename(what)}`,
+    target: (what) => ({ side: "in", key: `file:${what}`, label: "reads rows", file: what, text: basename(what) }),
+  },
+  "kind-write": {
+    describe: (what) => `Add and change rows of ${basename(what)}`,
+    target: (what) => ({ side: "out", key: `file:${what}`, label: "saves rows", file: what, text: basename(what) }),
+    changes: (what, path) => defaultDataPath(what) === path,
+  },
+  // A shared kind: its note and its relay's host, after the last `|`.
+  share: {
+    describe(what) {
+      const cut = what.lastIndexOf("|");
+      return `Share the rows of ${basename(what.slice(0, cut))} through ${what.slice(cut + 1)}: each row you add goes there sealed, and rows from the people you share it with come in`;
+    },
+    target: (what) => ({ side: "out", key: `host:${what.slice(what.lastIndexOf("|") + 1)}`, label: "shares rows with", text: what.slice(what.lastIndexOf("|") + 1) }),
   },
   answer: { describe: (what) => `Send its “${what}” value to the app that opens its link` },
   run: {

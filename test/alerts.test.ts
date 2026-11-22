@@ -81,13 +81,30 @@ test("an alert tells once when it turns true, and again only after it has been f
   await t.bg.start();
   assert.deepEqual(t.notices, []);
   await step(6);
-  assert.deepEqual(t.notices, ["Kp: Kp now 6", "Kp: Storm readings (1 row)"]);
+  assert.deepEqual(t.notices, ["Kp: Kp now 6", "Kp: Storm readings: kp_index 6"]);
   await step(7);
   assert.equal(t.notices.length, 2);
   await step(2);
   assert.equal(t.notices.length, 2);
   await step(5);
-  assert.deepEqual(t.notices.slice(2), ["Kp: Kp now 5", "Kp: Storm readings (1 row)"]);
+  assert.deepEqual(t.notices.slice(2), ["Kp: Kp now 5", "Kp: Storm readings: kp_index 5"]);
+});
+
+test("an alert on rows says what matched: a text panel's text, else the row's name and what the alert reads, and how many more", async () => {
+  const rows = [
+    { med: "Med A", on_hand: 3, days_left: 3, low: true }, { med: "Med B", on_hand: 9, days_left: 5, low: true }, { med: "Med C", on_hand: 40, days_left: 30, low: false },
+  ];
+  const t = fakeBackground({
+    "Apps/Meds.md": { fm: { app: "Meds", data: { stock: { source: "stock" } }, panels: [
+      { view: "table", title: "Running low", source: "stock", columns: ["med", "on_hand", "days_left"], labels: { days_left: "Days left" }, alert: { days_left: "<= 7" } },
+      { view: "table", title: "Low, one", source: "stock", columns: ["med", "on_hand"], where: { med: "Med A" }, alert: { low: true } },
+      { view: "text", title: "Lowest", source: "stock", sort: "days_left", limit: 1, text: "{med}: {days_left} days", alert: { low: true } },
+    ] } },
+    "Apps/Meds data.md": { fm: { stock: rows } },
+  });
+  await t.bg.start();
+  await settle();
+  assert.deepEqual(t.notices.sort(), ["Meds: Low, one: Med A", "Meds: Lowest: Med A: 3 days", "Meds: Running low: Med A, Days left 3, and 1 more"]);
 });
 
 test("an alert already true at startup is told once; editing the app doesn't tell it again", async () => {

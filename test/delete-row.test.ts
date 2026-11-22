@@ -3,10 +3,12 @@ import assert from "node:assert/strict";
 import { afterEach, test } from "node:test";
 import { describeChange, undoEntry, undoInFrontmatter, undoMessage, type Change } from "../src/activity.ts";
 import { AppController } from "../src/app.ts";
+import { AppWrites } from "../src/app-writes.ts";
 import { frontmatterStore, ledgerStore } from "../src/datastore.ts";
 import { rowIdOf } from "../src/ledger-store.ts";
 import { railModel, tickLabel } from "../src/rail.ts";
 import { pastEnv } from "../src/replay.ts";
+import { readSpec, type Panel } from "../src/spec.ts";
 import { fakeEnv, listsIn } from "./support/fakes.ts";
 import { addLine } from "./support/addline.ts";
 
@@ -247,4 +249,106 @@ test("a list kept in a note's properties deletes the row at its place while it s
   assert.equal(undoInFrontmatter({ ...change, index: 3 }, short), undefined);
   assert.deepEqual(short.spend, [SPENT.spend[0]]);
   assert.equal(undoInFrontmatter(change, {}), "spend in W data is gone");
+});
+
+test("a kind's rows can be deleted or moved in time from the sheet only where they may be changed: in an app that asks to change them, or the kind's own note; one that only reads them can't, in the sheet or by its writes", async () => {
+  const KIND = "Kinds/Spend.md";
+  const KIND_DATA = "Kinds/Spend data.md";
+  const SPEND = { kind: "spend", fields: { amount: "number", memo: "text" } };
+  const rows = { spend: [{ at: "2026-11-17T09:15", amount: 5, memo: "Coffee" }, { at: "2026-11-17T12:30", amount: 14.5, memo: "Lunch" }] };
+  const left = async (t: ReturnType<typeof fakeEnv>) => ((await t.data.ledger!.state(KIND_DATA)).lists.get("spend")?.rows ?? []).map((r) => r.memo);
+  const pick = async (o: ReturnType<typeof open>) => {
+    await settle();
+    click(o.rows("Recent")[0]);
+    await settle();
+  };
+
+  // Reads only: the sheet shows the row, with no Delete and no time to move it to; the writes refuse too.
+  const reader = open({ [KIND]: { fm: SPEND }, [KIND_DATA]: { fm: rows }, [APP]: { fm: { app: "R", panels: [{ view: "table", title: "Recent", source: "[[Spend]]", columns: ["amount", "memo"] }] } } });
+  await pick(reader);
+  assert.ok(reader.isOpen());
+  assert.deepEqual(reader.actions(), []);
+  assert.ok(!reader.sheet().querySelector("input[type=datetime-local]"));
+  const writes = new AppWrites(reader.env, { appPath: APP, hostPath: APP, dataPath: () => DATA, checklistName: (k) => k, expect: () => [], writesKind: () => false });
+  const table = { view: "table", source: "[[Spend]]", kind: { path: KIND, name: "spend" } } as Panel;
+  const [first] = (await reader.data.ledger!.state(KIND_DATA)).lists.get("spend")!.rows;
+  assert.equal(await writes.deleteRow({ p: table }, first, () => {}), undefined);
+  await writes.editRow({ p: table }, first, "at", "2026-11-16T09:15-08:00", () => {});
+  assert.deepEqual([await left(reader), (await reader.data.ledger!.state(KIND_DATA)).lists.get("spend")!.rows[0].at], [["Coffee", "Lunch"], "2026-11-17T09:15"]);
+  assert.ok(reader.notices.includes("Not deleted: this app reads the rows of Spend, and doesn't change them"), reader.notices.join(" | "));
+
+  // An app that also saves to the kind asks to change its rows: its read-only table's sheet deletes.
+  const writer = open({ [KIND]: { fm: SPEND }, [KIND_DATA]: { fm: rows }, [APP]: { fm: { app: "W", panels: [{ view: "form", save: "[[Spend]]" }, { view: "table", title: "Recent", source: "[[Spend]]", columns: ["amount", "memo"] }] } } });
+  await pick(writer);
+  assert.ok(writer.actions().includes("Delete"));
+  click([...writer.sheet().querySelectorAll(".gz-sheet-actions > button")].find((b) => text(b) === "Delete")!);
+  await settle();
+  assert.deepEqual(await left(writer), ["Lunch"]);
+});
+
+test("on a shared kind, a row someone else wrote isn't changed or deleted here: its cells read as text and say why, its sheet says so and offers Not mine, and the writes refuse; a row of this vault's is changed as before", async () => {
+  const KIND = "Kinds/Chore.md";
+  const KIND_DATA = "Kinds/Chore data.md";
+  const CHORE = { kind: "chore", fields: { task: "text", who: ["Alex", "Sam"] }, share: { relay: "https://relay.test", key: { secret: "chore-key" } } };
+  const BO = "bbbbbbbbbbbbbbbb";
+  const chores = { chore: [{ task: "Mop", who: "Sam", at: "2026-11-17T09:00" }, { task: "Dishes", who: "Alex", at: "2026-11-17T10:00", by: "Bo", writer: BO }] };
+  const o = open({ [KIND]: { fm: CHORE }, [KIND_DATA]: { fm: chores }, [APP]: { fm: { app: "W", panels: [{ view: "form", save: "[[Chore]]" }, { view: "table", title: "Chores", source: "[[Chore]]", sort: "task", columns: ["task", "who", "by"], edit: ["task", "who"] }] } } });
+  o.env.log = (entry) => o.activity.add(entry);
+  await settle();
+  const rowsNow = async () => (await o.data.ledger!.state(KIND_DATA)).lists.get("chore")!.rows;
+  const [dishes, mop] = o.rows("Chores");
+  assert.equal(dishes.querySelectorAll("input, select").length, 0, "Bo's row: nothing to type in");
+  assert.equal(dishes.getAttribute("title"), "By Bo; only Bo can change it");
+  assert.equal(mop.querySelectorAll("input, select").length, 2, "a row of mine is edited as before");
+  assert.equal(mop.getAttribute("title"), null);
+
+  // The writes refuse too, in an app and in the kind's own note.
+  const bos = (await rowsNow()).find((r) => r.writer === BO)!;
+  for (const [appPath, table] of [[APP, { view: "table", source: "[[Chore]]", kind: { path: KIND, name: "chore" } }], [KIND, { view: "table", source: "chore" }]] as const) {
+    const writes = new AppWrites(o.env, { appPath, hostPath: appPath, dataPath: () => KIND_DATA, checklistName: (k) => k, expect: () => [], writesKind: () => true });
+    await writes.editRow({ p: table as Panel }, bos, "who", "Sam", () => {});
+    assert.equal(await writes.deleteRow({ p: table as Panel }, bos, () => {}), undefined);
+  }
+  assert.equal((await rowsNow()).find((r) => r.writer === BO)!.who, "Alex");
+  assert.equal(o.notices.filter((n) => n === "Not saved: By Bo; only Bo can change it").length, 2, o.notices.join(" | "));
+  assert.equal(o.notices.filter((n) => n === "Not deleted: By Bo; only Bo can change it; Not mine sets it aside").length, 2, o.notices.join(" | "));
+
+  // Its sheet says whose it is and sets it aside with Not mine, which Undo takes back.
+  click(dishes);
+  await settle();
+  assert.equal(text(o.sheet().querySelector(".gz-sheet-theirs")), "By Bo; only Bo can change it.");
+  assert.equal(o.sheet().querySelectorAll(".gz-sheet-field input, .gz-sheet-field select").length, 0);
+  assert.deepEqual(o.actions(), ["Not mine"]);
+  click([...o.sheet().querySelectorAll(".gz-sheet-actions > button")].find((b) => text(b) === "Not mine")!);
+  await settle();
+  assert.equal((await rowsNow()).find((r) => r.writer === BO)!.line, "dismissed");
+  assert.ok(!o.isOpen());
+  assert.deepEqual(o.rows("Chores").map((tr) => (tr.querySelector("td input") as HTMLInputElement).value), ["Mop"]);
+  const [entry] = await o.activity.list(APP);
+  assert.equal(entry.what, "Set aside a row from Bo");
+  await undoEntry(entry, o.undoIO);
+  assert.equal((await rowsNow()).find((r) => r.writer === BO)!.line, undefined);
+  // A row of mine still has Delete.
+  await settle();
+  click(o.rows("Chores")[1]);
+  await settle();
+  assert.deepEqual(o.actions(), ["Delete"]);
+  assert.equal(o.sheet().querySelector(".gz-sheet-theirs"), null);
+});
+
+test("Gizmo's own fields on a kind's rows can't be edited: not in edit, not as a board's group, not through a write", async () => {
+  const KIND = "Kinds/Spend.md";
+  const SPEND = { kind: "spend", fields: { amount: "number", memo: "text" } };
+  const notes = { resolve: (link: string) => (link === "Spend" ? KIND : undefined), frontmatter: (p: string) => (p === KIND ? SPEND : undefined) };
+  const read = (panel: Record<string, unknown>) => readSpec({ app: "x", panels: [panel] }, { notes, path: APP })!.errors;
+  assert.deepEqual(read({ view: "table", source: "[[Spend]]", lines: "all", columns: ["memo", "line", "matched"], edit: ["memo", "line", "matched"] }), [
+    "panel 1: edit can't change \"line\", which Gizmo keeps on each row of a kind", "panel 1: edit can't change \"matched\", which Gizmo keeps on each row of a kind",
+  ]);
+  assert.deepEqual(read({ view: "board", source: "[[Spend]]", lines: "all", group: "writer" }), ["panel 1: edit can't change \"writer\", which Gizmo keeps on each row of a kind"]);
+  const t = fakeEnv({ [KIND]: { fm: SPEND }, "Kinds/Spend data.md": { fm: { spend: [{ at: "2026-11-17T09:15", amount: 5, memo: "Coffee" }] } } });
+  const writes = new AppWrites(t.env, { appPath: KIND, hostPath: KIND, dataPath: () => "Kinds/Spend data.md", checklistName: (k) => k, expect: () => [] });
+  const table = { view: "table", source: "[[Spend]]", kind: { path: KIND, name: "spend" } } as Panel;
+  const [row] = (await t.data.ledger!.state("Kinds/Spend data.md")).lists.get("spend")!.rows;
+  await writes.editRow({ p: table }, row, "line", "planned", () => {});
+  assert.equal((await t.data.ledger!.state("Kinds/Spend data.md")).lists.get("spend")!.rows[0].line, undefined);
 });

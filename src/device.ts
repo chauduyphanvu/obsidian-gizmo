@@ -91,7 +91,7 @@ export function whereYouAre(beats: readonly Beat[]): string | undefined {
  * The folders in the plugin's folder where each device keeps a file of its own, which a sync never has
  * to merge: its beat, what its alerts ran for, and its activity log. It reads the other devices' files.
  */
-export const DEVICE_FOLDERS = { beats: "devices", triggers: "triggers", activity: "activity" } as const;
+export const DEVICE_FOLDERS = { beats: "devices", triggers: "triggers", activity: "activity", share: "share" } as const;
 
 /** A device's own file in one of DEVICE_FOLDERS. */
 export function deviceFile(folder: string, id: string): string {
@@ -116,6 +116,11 @@ export async function beatsIn(files: PluginFiles): Promise<Beat[]> {
 /** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
 export async function otherTriggers(files: PluginFiles, id: string): Promise<string[]> {
   return (await files.folder(DEVICE_FOLDERS.triggers)).filter((f) => f.name !== id).map((f) => f.text);
+}
+
+/** The other devices' `share` files, as text: what they sent of shared kinds, for a device taking over. */
+export async function otherShareStates(files: PluginFiles, id: string): Promise<string[]> {
+  return (await files.folder(DEVICE_FOLDERS.share)).filter((f) => f.name !== id).map((f) => f.text);
 }
 
 /** The other devices' activity logs, each named for its device. */

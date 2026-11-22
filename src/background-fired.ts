@@ -1,7 +1,10 @@
 import type { BackgroundEnv } from "./background.ts";
 
-/** What an alert with `then` ran for: whether its value condition held, or which rows matched. */
-export type Fired = { on: boolean } | { rows: string[] } | { decided: number } | { paused: number; reason: string; told?: true };
+/**
+ * What an alert with `then` ran for (whether its value condition held, or which rows matched), where
+ * a rhythm got to, an app's pause, or until when an ask is skipped here.
+ */
+export type Fired = { on: boolean } | { rows: string[] } | { decided: number } | { paused: number; reason: string; told?: true } | { skipped: number };
 
 /** The version of what alerts ran for, as kept on disk. */
 const FIRED_VERSION = 2;
@@ -11,8 +14,8 @@ export const pausedKey = (path: string) => `${path}\npaused:`;
 
 /**
  * What this device's alerts ran for, where its rhythms got to and when its pauses began, by keys that
- * start with an app's path: its `triggers` file, read once, and written when it changes, one write
- * after another.
+ * start with an app's path, and the asks skipped here: its `triggers` file, read once, and written
+ * when it changes, one write after another.
  */
 export class FiredStore {
   private env: Pick<BackgroundEnv, "triggers" | "otherTriggers">;
@@ -108,13 +111,13 @@ export class FiredStore {
 
 /**
  * What a device taking over background work keeps: alerts start over (they note what is true now and
- * run their `then` only for what turns true after), while rhythms and pauses carry on. Each rhythm
- * goes on from the latest point any device decided it to, so a window nobody decided while devices
- * changed over is still decided, and one already decided elsewhere isn't decided again.
+ * run their `then` only for what turns true after), while rhythms, pauses and its own skips carry on.
+ * Each rhythm goes on from the latest point any device decided it to, so a window nobody decided
+ * while devices changed over is still decided, and one already decided elsewhere isn't decided again.
  */
 export function carryOver(mine: Record<string, Fired>, others: readonly Record<string, Fired>[]): Record<string, Fired> {
   const out: Record<string, Fired> = {};
-  for (const [key, value] of Object.entries(mine)) if ("paused" in value || "decided" in value) out[key] = value;
+  for (const [key, value] of Object.entries(mine)) if ("paused" in value || "decided" in value || "skipped" in value) out[key] = value;
   for (const fired of others) {
     for (const [key, value] of Object.entries(fired)) {
       if (!("decided" in value) || typeof value.decided !== "number") continue;

@@ -33,13 +33,29 @@ panels:
         2: partly cloudy
         3: overcast
         45: fog
-        51: drizzle
+        48: freezing fog
+        51: light drizzle
+        53: drizzle
+        55: heavy drizzle
+        56: freezing drizzle
+        57: heavy freezing drizzle
         61: light rain
         63: rain
         65: heavy rain
-        71: snow
+        66: freezing rain
+        67: heavy freezing rain
+        71: light snow
+        73: snow
+        75: heavy snow
+        77: snow grains
         80: showers
+        81: heavy showers
+        82: violent showers
+        85: snow showers
+        86: heavy snow showers
         95: thunderstorm
+        96: thunderstorm with hail
+        99: thunderstorm with heavy hail
     format: {time: date, precipitation_probability_max: "0 %"}
   - view: bar
     title: Average high and low by month, 2025

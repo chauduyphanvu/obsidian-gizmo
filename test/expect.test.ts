@@ -214,7 +214,7 @@ test("a state rule tells when a row comes to match, as an alert does, and runs i
   assert.deepEqual(t.notices, []);
   await t.env.store!("Apps/Renewals data.md", "Apps/Renewals.md").add("deadlines", { what: "lease", due: "2026-11-01" });
   await settle();
-  assert.deepEqual(t.notices, ["Renewals: Lapsed (1 row)"]);
+  assert.deepEqual(t.notices, ["Renewals: Lapsed: due 2026-11-01"]);
 });
 
 test("a value rule refuses a row from every way in: a form keeps what was typed, a link, a capture line's preview and a then are told", async () => {

@@ -1,12 +1,14 @@
 import { namesInTemplate } from "./data.ts";
 import { selectOf, typedName } from "./expand.ts";
-import { formulaReads } from "./formula.ts";
+import { alertRowFields } from "./format.ts";
+import { formulaReads, rowFormula } from "./formula.ts";
 import { isPlainObject } from "./keys.ts";
 import {
   clearance, fieldLabel, hostLabel, join, noteLabels, rank, released, scopeLabels, topLabel, vaultLabels,
   type Label, type Labels, type Policy,
 } from "./policy.ts";
 import { sourceDef } from "./sources/registry.ts";
+import { kindFiles, kindOfPanel } from "./sources/kind.ts";
 import { urlHost } from "./sources/url.ts";
 import { readSpec, saveTarget, type AppSpec, type Panel } from "./spec.ts";
 import type { NoteReader } from "./expand.ts";
@@ -26,6 +28,8 @@ export interface FlowContext {
   tags(path: string): string[];
   /** The app a `then` names, as its link resolves from `from`: its note, data note and keys; undefined when there's none. */
   thenTarget(app: string, from: string): ThenTarget | undefined;
+  /** The folders a kind's `import:` reads its files from, by the kind's note: their notes' labels are its rows' too. */
+  kindImports?(kindPath: string): string[];
 }
 
 /** An app another one runs a shortcut of with `then`. */
@@ -75,7 +79,15 @@ export interface FlowWhere {
 export function flowContext(
   policy: Policy, where: FlowWhere, notes: NoteReader, storePath: (store: string, from: string) => string, tags: (path: string) => string[],
 ): FlowContext {
-  return { policy, ...where, tags, thenTarget: (app, from) => thenTargetOf(notes, storePath, app, from) };
+  return {
+    policy, ...where, tags, thenTarget: (app, from) => thenTargetOf(notes, storePath, app, from),
+    kindImports: (path) => importFolders(readSpec(notes.frontmatter(path), { notes, path })?.spec?.kind),
+  };
+}
+
+/** The folders a kind reads files from, under its `import:` maps. */
+function importFolders(kind: AppSpec["kind"]): string[] {
+  return (kind?.imports ?? []).flatMap((m) => (m.folder === undefined ? [] : [m.folder]));
 }
 
 /** The app a `then` names, as its link resolves from `from`; undefined when there's no such app. */
@@ -107,7 +119,7 @@ function refsIn(v: unknown, out: InputRef[] = []): InputRef[] {
 }
 
 /** A place data goes, with how it's named in a violation. */
-const PLACES: Record<string, string> = { notify: "a notice", pin: "the status bar", answer: "a link's answer", images: "image cells", gizmod: "gizmod's answers" };
+const PLACES: Record<string, string> = { notify: "a notice", pin: "the status bar", answer: "a link's answer", images: "image cells", gizmod: "gizmod's answers", share: "the people it's shared with" };
 
 function placeName(place: string): string {
   return PLACES[place] ?? place;
@@ -145,13 +157,28 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   const thisLabels = ctx.lensScope ? scopeLabels(policy, ctx.lensScope) : noteLabels(policy, ctx.hostPath, ctx.tags(ctx.hostPath));
   const running = [...spec.panels, ...Object.values(spec.recorded), ...Object.values(spec.expected)];
 
+  /**
+   * The labels of a kind's rows: its data note's and its own note's, as an app's own lists take
+   * theirs, and those of the notes in each folder its `import:` reads files from.
+   */
+  const kindLabels = (ref: { path: string; name: string }): Labels => {
+    const files = kindFiles(ref);
+    const own = merged(noteLabels(policy, files.dataPath, ctx.tags(files.dataPath)), noteLabels(policy, files.appPath, ctx.tags(files.appPath)));
+    const folders = ref.path === spec.kind?.path ? importFolders(spec.kind) : ctx.kindImports?.(ref.path) ?? [];
+    return folders.reduce((l, folder) => merged(l, scopeLabels(policy, folder)), own);
+  };
+
   /** The labels of a source's data, before a panel's own keys. */
   const sourceLabels = (p: Panel): Labels => {
     if (!p.source) return { base: "public", fields: {} };
     switch (sourceDef(p.source).id) {
+      case "kind": {
+        const ref = kindOfPanel(p);
+        return ref ? kindLabels(ref) : { base: "personal", fields: {} };
+      }
       case "list": case "expect": return dataLabels;
       case "notes": case "tasks": return p.from ? scopeLabels(policy, p.from) : vaultLabels(policy);
-      case "base": return vaultLabels(policy);
+      case "base": case "asks": return vaultLabels(policy);
       case "file": return noteLabels(policy, filePath(p.source), ctx.tags(filePath(p.source)));
       case "this": return thisLabels;
       case "url": {
@@ -237,6 +264,14 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     /** What a key fills from its `{fields}`, and from the `$references` written in it. */
     const keyLabel = (key: string, text: string | undefined): Label => join(text ? namesInTemplate(text).map(nameLabel).reduce(join, "public") : "public", refsLabel(ps.template[key]));
     const templateLabel = (text: string | undefined): Label => (text ? namesInTemplate(text).map(nameLabel).reduce(join, "public") : "public");
+    /** A `row:` value: a formula's, from the fields and `$names` it reads, as a compute column's; else its placeholders' and references'. */
+    const rowValueLabel = (text: string, written: unknown): Label => {
+      const formula = rowFormula(text);
+      if (formula === undefined) return join(templateLabel(text), refsLabel(written));
+      const read = formulaReads(formula);
+      const fromRow = !read || read.fields === "*" ? join(formFields.size ? policy.typed : "public", p.source ? topLabel(rows) : "public") : read.fields.map(nameLabel).reduce(join, "public");
+      return join(fromRow, (read?.vars ?? []).map((v) => refOf({ input: v.name, path: v.path })?.label ?? "public").reduce(join, "public"));
+    };
     const fieldsWhat = (text: string, key?: string) => {
       const names = namesInTemplate(text).filter((n) => !STAMPS.has(n) && !formFields.has(n));
       const refs = key ? refsIn(ps.template[key]).flatMap((r) => { const o = refOf(r); return o && o.label !== "public" ? [o.what] : []; }) : [];
@@ -267,7 +302,8 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     const value = valueLabel(p, rows);
     const valueWhat = `${from}${p.field ? `.${p.field}` : ""}`;
     if (p.alert !== undefined) {
-      const told = typeof p.alert === "string" ? value : rows.base;
+      // An alert on rows names the fields its notice says of the first row it matched.
+      const told = typeof p.alert === "string" ? value : alertRowFields(p).map((f) => fieldLabel(rows, f)).reduce(join, rows.base);
       alertLabels[panelKey(ps)] = join(alertLabels[panelKey(ps)] ?? "public", told);
       if (!released(policy, ctx.appPath, title, "notify")) check(where, valueWhat, told, "notify", clearance(policy, "notify"));
     }
@@ -295,7 +331,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     // What a save writes, field by field: `row`'s values, else the whole row a row action was pressed on, else a form's typing.
     const rowKeys = isPlainObject(ps.template.row) ? ps.template.row : {};
     const saved: Labels = p.row
-      ? { base: "public", fields: Object.fromEntries(Object.entries(p.row).map(([k, t]) => [k, join(templateLabel(String(t)), refsLabel(rowKeys[k]))])) }
+      ? { base: "public", fields: Object.fromEntries(Object.entries(p.row).map(([k, t]) => [k, rowValueLabel(String(t), rowKeys[k])])) }
       : p.action && p.source ? { base: rows.base, fields: Object.fromEntries(Object.keys(rows.fields).map((f) => [f, fieldLabel(rows, f)])) }
         : { base: p.view === "form" ? policy.typed : "public", fields: {} };
     /** A save into notes labelled `into`: each field it writes may hold no more than the notes' own label for that field. */
@@ -303,7 +339,8 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
       if (rank(saved.base) > rank(into.base)) check(where, from, saved.base, place, into.base);
       for (const [f, l] of Object.entries(saved.fields)) if (rank(l) > rank(fieldLabel(into, f))) check(where, `${from}: ${f}`, l, place, fieldLabel(into, f));
     };
-    if (target?.kind === "list") intoNotes(basename(ctx.dataPath), dataLabels);
+    if (target?.kind === "list" && target.at !== undefined) intoNotes(basename(target.at), kindLabels({ path: target.at, name: target.name }));
+    else if (target?.kind === "list") intoNotes(basename(ctx.dataPath), dataLabels);
     if (target?.kind === "folder") intoNotes(`notes in ${target.folder}`, scopeLabels(policy, target.folder));
     if (p.append) {
       const into = appendPath(p.append);
@@ -326,8 +363,16 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     const label = (text: string | undefined) => (text ? namesInTemplate(text).map((n) => fields[n] ?? "public").reduce(join, "public") : "public");
     const into = merged(noteLabels(policy, t.dataPath, ctx.tags(t.dataPath)), noteLabels(policy, t.path, ctx.tags(t.path)));
     const saveTo = q.target ?? (q.save && q.view !== "checklist" ? saveTarget(q.save) : undefined);
-    const saved = q.row ? Object.fromEntries(Object.entries(q.row).map(([k, v]) => [k, label(String(v))])) : fields;
-    const notes = saveTo?.kind === "list" ? into : saveTo?.kind === "folder" ? scopeLabels(policy, saveTo.folder) : undefined;
+    const rowLabel = (v: string): Label => {
+      const formula = rowFormula(v);
+      if (formula === undefined) return label(v);
+      const read = formulaReads(formula);
+      return (!read || read.fields === "*" ? Object.values(fields) : read.fields.map((n) => fields[n] ?? "public")).reduce(join, "public");
+    };
+    const saved = q.row ? Object.fromEntries(Object.entries(q.row).map(([k, v]) => [k, rowLabel(String(v))])) : fields;
+    const kindAt = saveTo?.kind === "list" && saveTo.at !== undefined ? kindFiles({ path: saveTo.at, name: saveTo.name }) : undefined;
+    const notes = kindAt ? merged(noteLabels(policy, kindAt.dataPath, ctx.tags(kindAt.dataPath)), noteLabels(policy, kindAt.appPath, ctx.tags(kindAt.appPath)))
+      : saveTo?.kind === "list" ? into : saveTo?.kind === "folder" ? scopeLabels(policy, saveTo.folder) : undefined;
     if (notes) for (const [f, l] of Object.entries(saved)) if (rank(l) > rank(fieldLabel(notes, f))) check(where, what, l, via, fieldLabel(notes, f));
     if (q.notify && !released(policy, t.path, q.title ?? q.label ?? q.view, "notify")) {
       const l = label(q.notify);
@@ -343,12 +388,20 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     }
   }
 
+  // A shared kind sends each of its rows, every field, to the vaults it is shared with.
+  const shared = spec.kind;
+  if (shared?.share) {
+    const l = kindLabels(shared);
+    check(basename(shared.path), basename(shared.path), topLabel(l), "share", clearance(policy, "share"));
+  }
+
   const covered: string[] = [];
   const asked: string[] = [];
   for (const perm of wanted) {
     const [kind, ...rest] = perm.split(":");
     const what = rest.join(":");
-    const ok = kind === "read" || (kind === "net" && Object.hasOwn(policy.sinks, what.toLowerCase())) || (kind === "send" && goodSends.has(perm) && !badSends.has(perm));
+    // Reading notes, and a kind's rows, is the policy's to judge: what they hold is checked wherever it goes.
+    const ok = kind === "read" || kind === "kind" || (kind === "net" && Object.hasOwn(policy.sinks, what.toLowerCase())) || (kind === "send" && goodSends.has(perm) && !badSends.has(perm));
     (ok ? covered : asked).push(perm);
   }
   return { violations, covered, asked, alertLabels, answerLabels };
@@ -364,8 +417,10 @@ function sourceName(p: Panel, ctx: FlowContext): string {
   if (!p.source) return p.view === "form" ? "what you type" : "the panel";
   switch (sourceDef(p.source).id) {
     case "list": case "expect": return basename(ctx.dataPath);
+    case "kind": return basename(kindOfPanel(p)?.path ?? p.source);
     case "notes": case "tasks": return p.from ? `notes in ${p.from}` : "notes anywhere";
     case "base": return "a base";
+    case "asks": return "what the apps ask";
     case "file": return basename(filePath(p.source));
     case "this": return ctx.lensScope ? `notes in ${ctx.lensScope}` : basename(ctx.hostPath);
     case "url": return urlHost(p.source);

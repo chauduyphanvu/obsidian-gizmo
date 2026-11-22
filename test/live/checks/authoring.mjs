@@ -102,9 +102,14 @@ export default async function authoring(t) {
       await na.open("Apps/Broken");
       const link = [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith("panel 2"));
       link.click();
-      await na.sleep(1500);
+      // The split and its editor come when the note is read, which can take longer than a fixed wait.
+      await na.until(() => na.state() === "markdown:Apps/Broken.md" && na.view().editor?.getLine(na.view().editor.getCursor().line) === "  - view: line", 5000);
       const ed = na.view().editor;
-      const out = { text: link.textContent, state: na.state(), line: ed?.getLine(ed.getCursor().line), n: ed?.getCursor().line, focus: !!document.activeElement?.closest(".cm-content") };
+      const where = (l) => (l.getRoot() === app.workspace.rootSplit ? "main" : l.getRoot() === app.workspace.leftSplit ? "left" : l.getRoot() === app.workspace.rightSplit ? "right" : "window");
+      const out = { text: link.textContent, state: na.state(), line: ed?.getLine(ed.getCursor().line), n: ed?.getCursor().line, focus: !!document.activeElement?.closest(".cm-content"),
+        // Should it fail: every tab on Apps/Broken.md, where it is and what it shows, and the active one.
+        tabs: app.workspace.getLeavesOfType("markdown").concat(app.workspace.getLeavesOfType("gizmo")).filter((l) => l.view.file?.path === "Apps/Broken.md").map((l) => \`\${where(l)}:\${l.view.getViewType()}:\${l.getViewState().state?.source ?? ""}\`),
+        active: app.workspace.activeLeaf && \`\${where(app.workspace.activeLeaf)}:\${app.workspace.activeLeaf.view.getViewType()}:\${app.workspace.activeLeaf.view.file?.path}\` };
       ${CLOSE_OPENED}
       return out;`);
     expect(r.state === "markdown:Apps/Broken.md" && r.line === "  - view: line" && r.focus, r);
@@ -350,7 +355,9 @@ export default async function authoring(t) {
     await na.sleep(500);
     have.open = !!document.querySelector(".prompt") || !!modal?.isConnected;`;
 
-  await check("New app from the gallery: Budget (no component) is copied as written and opens as an app", async () => {
+  await check("New app from the gallery: Budget brings the Spend kind, both copied as written, and opens as an app", async () => {
+    // The capture check's own app called Spend would be a second note of the kind's name, which stops the copy.
+    await run(`await na.remove("Apps/Spend.md"); await na.sleep(500);`);
     const r = await copy("Budget");
     await t.shot("gallery-picker.png");
     const after = await run(`
@@ -358,46 +365,46 @@ export default async function authoring(t) {
       await na.until(() => na.state() === "gizmo:Budget.md", 5000);
       await na.settle();
       const { prompt } = await na.open("Budget", false);
-      return { text: await na.read("Budget.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"), after: app.vault.getMarkdownFiles().length, modal: !!document.querySelector(".prompt") };`);
-    expect(r.items.length && r.items[0].startsWith("Budget") && r.items[0].includes("Log what I spend"), r.items);
-    expect(after.text === gallery("Apps/Budget.md"), "the copy differs from gallery/Apps/Budget.md");
-    expect(after.state === "gizmo:Budget.md" && !after.problems && after.errors === 0 && after.after === r.before + 1 && !after.modal, after);
+      return { text: await na.read("Budget.md"), kind: await na.read("Spend.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"), after: app.vault.getMarkdownFiles().length, modal: !!document.querySelector(".prompt") };`);
+    expect(r.items.length && r.items[0].startsWith("Budget") && r.items[0].includes("Know where the month will end before it ends"), r.items);
+    expect(after.text === gallery("Apps/Budget.md") && after.kind === gallery("Kinds/Spend.md"), "the copies differ from gallery/Apps/Budget.md and gallery/Kinds/Spend.md");
+    expect(after.state === "gizmo:Budget.md" && !after.problems && after.errors === 0 && after.after === r.before + 2 && !after.modal, after);
     return `${after.prompt ? `asks: ${after.prompt.join("; ")}` : "opens with no prompt"}; ${r.before} → ${after.after} notes`;
   });
 
-  await check("New app from the gallery: Trip planner brings Destination weather, and asks for its permissions on first open", async () => {
+  await check("New app from the gallery: Trip planner brings Destination weather, uses the Spend that Budget brought, and asks for its permissions on first open", async () => {
     const r = await copy("Trip planner");
     const after = await run(`
       await na.until(() => na.exists("Trip planner.md") && na.exists("Destination weather.md"), 5000);
       await na.until(() => na.state() === "gizmo:Trip planner.md", 5000);
       await na.settle();
       const { prompt } = await na.open("Trip planner", false);
-      return { app: await na.read("Trip planner.md"), part: await na.read("Destination weather.md"), state: na.state(), prompt, after: app.vault.getMarkdownFiles().length,
+      return { app: await na.read("Trip planner.md"), part: await na.read("Destination weather.md"), kind: await na.read("Spend.md"), state: na.state(), prompt, after: app.vault.getMarkdownFiles().length,
         allowed: app.plugins.plugins["gizmo"].granted("Trip planner.md") };`);
     expect(r.items.length && r.items[0].startsWith("Trip planner"), r.items);
-    expect(after.app === gallery("Apps/Trip planner.md") && after.part === gallery("Components/Destination weather.md"), "the copies differ from the gallery's");
+    expect(after.app === gallery("Apps/Trip planner.md") && after.part === gallery("Components/Destination weather.md") && after.kind === gallery("Kinds/Spend.md"), "the copies differ from the gallery's");
     expect(after.state === "gizmo:Trip planner.md" && after.after === r.before + 2, after);
     expect(after.allowed === undefined && after.prompt?.some((p) => p.includes("api.open-meteo.com")), after);
     return `asks ${after.prompt.length} things; ${r.before} → ${after.after} notes`;
   });
 
-  await check("New app from the gallery: Sleep, three lines on the Tracker kit, brings the kit and opens with no problems", async () => {
-    const r = await copy("Sleep");
+  await check("New app from the gallery: Practice, three lines on the Tracker kit, brings the kit and opens with no problems", async () => {
+    const r = await copy("Practice");
     const after = await run(`
-      await na.until(() => na.exists("Sleep.md") && na.exists("Tracker kit.md"), 5000);
-      await na.until(() => na.state() === "gizmo:Sleep.md", 5000);
+      await na.until(() => na.exists("Practice.md") && na.exists("Tracker kit.md"), 5000);
+      await na.until(() => na.state() === "gizmo:Practice.md", 5000);
       await na.settle();
-      const { prompt } = await na.open("Sleep");
+      const { prompt } = await na.open("Practice");
       await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 5000);
-      return { app: await na.read("Sleep.md"), kit: await na.read("Tracker kit.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"),
+      return { app: await na.read("Practice.md"), kit: await na.read("Tracker kit.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"),
         titles: [...na.view().contentEl.querySelectorAll(".gz-panel .gz-title")].map((t) => t.textContent), after: app.vault.getMarkdownFiles().length };`);
-    expect(r.items.length && r.items[0].startsWith("Sleep"), r.items);
-    expect(r.setUp?.title === "Set up Sleep" && JSON.stringify(r.setUp.values) === JSON.stringify(["sleep", "hours", "8"]), r.setUp);
-    expect(after.app === gallery("Apps/Sleep.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
-    expect(after.state === "gizmo:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
+    expect(r.items.length && r.items[0].startsWith("Practice"), r.items);
+    expect(r.setUp?.title === "Set up Practice" && JSON.stringify(r.setUp.values) === JSON.stringify(["practice", "minutes", "30"]), r.setUp);
+    expect(after.app === gallery("Apps/Practice.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
+    expect(after.state === "gizmo:Practice.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
     // Composed: the answer (Latest, then This week) before the form that adds to it, then the rest.
-    expect(JSON.stringify(after.titles) === JSON.stringify(["Latest", "This week", "Log my sleep", "My sleep against my goal", "Entries"]), after.titles);
-    await run(`for (const p of ["Sleep.md", "Tracker kit.md"]) await na.remove(p); await na.sleep(500);`);
+    expect(JSON.stringify(after.titles) === JSON.stringify(["Latest", "This week", "Log my practice", "My practice against my goal", "Entries"]), after.titles);
+    await run(`for (const p of ["Practice.md", "Tracker kit.md"]) await na.remove(p); await na.sleep(500);`);
     return `${r.before} → ${after.after} notes; ${after.titles.join(", ")}`;
   });
 
@@ -415,11 +422,14 @@ export default async function authoring(t) {
   });
 
   await check("New app from the gallery: a note of that name in another folder counts too", async () => {
-    const r = await run(`return { before: app.vault.getMarkdownFiles().length, there: na.exists("Apps/Weight.md") };`);
-    expect(r.there, "the fixture vault has no Apps/Weight");
-    await copy("Weight");
-    const after = await run(`${HAVE_IT} return { ...have, after: app.vault.getMarkdownFiles().length, root: na.exists("Weight.md") };`);
-    expect(after.said === "You already have “Weight”." && !after.open, after);
+    const r = await run(`
+      await app.vault.create("Apps/Practice.md", "My own practice log.\\n");
+      await na.sleep(300);
+      return { before: app.vault.getMarkdownFiles().length };`);
+    await copy("Practice");
+    const after = await run(`${HAVE_IT} return { ...have, after: app.vault.getMarkdownFiles().length, root: na.exists("Practice.md") };`);
+    await run(`await na.remove("Apps/Practice.md"); await na.sleep(300);`);
+    expect(after.said === "You already have “Practice”." && !after.open, after);
     expect(after.after === r.before && !after.root, after);
     return after.said;
   });
@@ -450,7 +460,7 @@ export default async function authoring(t) {
       return { notices, after: app.vault.getMarkdownFiles().length, app: na.exists("Trip planner.md"), part: await na.read("Destination weather.md") };`);
     expect(stopped.notices.includes("“Destination weather” already exists and isn't the one “Trip planner” needs") && !stopped.app && stopped.after === second.before, stopped);
     expect(stopped.part.endsWith("My own line.\n"), "the changed component was overwritten");
-    await run(`for (const p of ["Budget.md", "Destination weather.md", "Trip planner.md"]) await na.remove(p); await na.sleep(500);`);
+    await run(`for (const p of ["Budget.md", "Destination weather.md", "Trip planner.md", "Spend.md"]) await na.remove(p); await na.sleep(500);`);
     return `reused it silently, then: ${stopped.notices.join(" | ")}`;
   });
 }

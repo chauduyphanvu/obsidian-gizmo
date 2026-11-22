@@ -7,7 +7,8 @@
     "build": "tsc && node esbuild.config.mjs production",
     "test": "node --test test/*.test.ts",
     "test:tz": "TZ=America/Los_Angeles node --test test/*.test.ts && TZ=Asia/Ho_Chi_Minh node --test test/*.test.ts",
-    "lint": "tools/lint/node_modules/.bin/eslint --config tools/lint/eslint.config.mjs ."
+    "lint": "tools/lint/node_modules/.bin/eslint --config tools/lint/eslint.config.mjs .",
+    "samples": "node tools/samples.ts"
   },
   "type": "module",
   "devDependencies": {

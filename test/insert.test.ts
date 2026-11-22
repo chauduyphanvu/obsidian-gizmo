@@ -4,6 +4,7 @@ import { insertPanel, refusalFor, skeleton, withPanels, type Edit } from "../src
 import { checkPanel } from "../src/spec.ts";
 import { VIEW_DEFS, viewDef } from "../src/views/registry.ts";
 import { parseYaml } from "./support/yaml.ts";
+import { kindIn } from "./support/fakes.ts";
 
 const ITEM = ["view: table", "source: spending", "columns: [at, amount]"];
 
@@ -174,6 +175,6 @@ for (const def of VIEW_DEFS) {
     const fm = parseYaml(apply(text, found.edit).split("\n").slice(1, -1).join("\n")) as { panels: Record<string, unknown>[] };
     const example = def.examples.find((e) => !e.errors)!.panel;
     assert.deepEqual(fm.panels, [example]);
-    assert.deepEqual(checkPanel(fm.panels[0], true).errors, []);
+    assert.deepEqual(checkPanel(fm.panels[0], true, kindIn(fm.panels[0])).errors, []);
   });
 }

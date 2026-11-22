@@ -37,6 +37,7 @@ const ROLES: Record<string, Role | ((p: Panel) => Role)> = {
   list: "records",
   checklist: "records",
   alerts: "records",
+  reconcile: "records",
 };
 
 /** A panel's role; `readsSelection`: it reads a name another panel selects, so it waits in the sheet. */

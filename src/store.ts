@@ -18,6 +18,9 @@ export const RESERVED = [...new Set([...APP_KEYS, ...COMPONENT_KEYS, "this"])].f
  */
 export const DEFINITION_KEYS = [...RESERVED, "view"];
 
+/** The top-level keys of a kind note, in the order hints offer them. */
+export const KIND_KEYS: readonly string[] = ["kind", "fields", "shortcut", "import", "match", "share", "expect", "spec"];
+
 /** Why a note's property can't be written from data: the end of a sentence, or undefined when it can. */
 export function definitionReason(key: string): string | undefined {
   if (!DEFINITION_KEYS.includes(key)) return undefined;
@@ -26,13 +29,19 @@ export function definitionReason(key: string): string | undefined {
   return "which is one of an app's own keys";
 }
 
-/** A row as a note's properties: without the keys that would make the note an app or a component. */
+/**
+ * A row as a note's properties: without the keys that would make the note an app or a component.
+ * A property called kind is an ordinary one; only together with a set of `fields` would it make
+ * the note a kind, so those fields are left out.
+ */
 export function withoutDefinition<T extends Record<string, unknown>>(row: T): T {
-  return Object.fromEntries(Object.entries(row).filter(([k]) => !DEFINITION_KEYS.includes(k))) as T;
+  const out = Object.fromEntries(Object.entries(row).filter(([k]) => !DEFINITION_KEYS.includes(k)));
+  if (isKind(out)) delete out.fields;
+  return out as T;
 }
 
 /** Kinds of source that are one word (`this` is in RESERVED): `source:` reads the kind, so a list can't be named after one. */
-export const SOURCE_WORDS = ["notes", "tasks", "expect"];
+export const SOURCE_WORDS = ["notes", "tasks", "expect", "asks"];
 
 /** A frontmatter value that is there: not missing, null or false. */
 export function isSet(v: unknown): boolean {
@@ -49,11 +58,27 @@ export function isComponent(fm: Record<string, unknown> | undefined): boolean {
 }
 
 /**
- * A note that opens as an app: an app, or a component (which shows how to use it). No data note is
- * one, and no lens shows on one.
+ * A kind: rows of one shape that belong to the vault, for any app to read. Its `kind` names the
+ * rows and its `fields` describe them; a note with only a property called kind stays a plain note.
+ */
+export function isKind(fm: Record<string, unknown> | undefined): boolean {
+  if (!fm || isSet(fm.app) || isSet(fm.component)) return false;
+  const fields = fm.fields;
+  return (typeof fm.kind === "string" || typeof fm.kind === "number") && String(fm.kind).trim() !== ""
+    && typeof fields === "object" && fields !== null && !Array.isArray(fields);
+}
+
+/** The name of a kind's rows, as its `kind` line types it. */
+export function kindName(fm: Record<string, unknown> | undefined): string | undefined {
+  return isKind(fm) ? String(fm!.kind).trim() : undefined;
+}
+
+/**
+ * A note that opens as an app: an app, a component (which shows how to use it) or a kind (which
+ * shows its rows). No data note is one, and no lens shows on one.
  */
 export function runsAsApp(fm: Record<string, unknown> | undefined): boolean {
-  return !!fm && (isSet(fm.app) || isSet(fm.component));
+  return !!fm && (isSet(fm.app) || isSet(fm.component) || isKind(fm));
 }
 
 /** A path's note name: its last part, without `.md`. */

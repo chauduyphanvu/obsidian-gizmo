@@ -13,7 +13,8 @@ import { stableJson } from "./hash.ts";
 import { SHEET_PAD, sheetWidth } from "./layout.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { ROW_INDEX } from "./sources/list.ts";
-import { isListName, type Panel } from "./spec.ts";
+import type { Panel } from "./spec.ts";
+import { rowsAreSaved } from "./sources/registry.ts";
 import { minuteIn, stampOf, toTime, wallTime } from "./time.ts";
 import { sayBelow } from "./views/addline.ts";
 import { itemText } from "./views/board.ts";
@@ -171,11 +172,16 @@ export class Sheet {
     }
     const note = rowNote(p, pick.row);
     const deletes = own && ctx.deleteRow !== undefined;
-    if (p.action || note || deletes) {
+    // Someone else's row in a shared kind: whose it is, and Not mine to set it aside here.
+    const theirs = theirsOf(o);
+    if (theirs) this.body.createEl("p", { cls: "gz-sheet-theirs gz-muted", text: `${theirs}.` });
+    const asides = theirs !== undefined && ctx.setAside !== undefined && !ctx.readOnly && pick.row.line !== "dismissed";
+    if (p.action || note || deletes || asides) {
       const actions = this.body.createDiv({ cls: "gz-sheet-actions" });
       rowAction(actions, p, ctx, () => this.shown?.pick.row ?? pick.row);
       if (note) noteLink(actions, "Open", note, ctx);
       if (deletes) this.deleteButton(actions);
+      if (asides) this.asideButton(actions);
     }
     this.shown = { ...o, shape: shapeOf(o), fields, title };
     this.fill();
@@ -195,6 +201,22 @@ export class Sheet {
       const text = `Deleted ${deletedName(p, pick.row, ctx.now)}`;
       const panel = pick.el.closest<HTMLElement>(".gz-panel");
       const done = await s.ctx.deleteRow(pick.row);
+      if (!done) return;
+      this.closeAll();
+      if (panel?.isConnected) sayBelow(panel, ctx, text, done.entry);
+    });
+  }
+
+  /** Not mine: sets the row shown aside, closes the sheet, and says so under the panel it was picked in, with Undo. */
+  private asideButton(parent: HTMLElement): void {
+    const b = parent.createEl("button", { cls: "gz-small gz-row-action", text: "Not mine", attr: { type: "button" } });
+    busy(b, async () => {
+      const s = this.shown;
+      if (!s?.ctx.setAside) return;
+      const { p, ctx, pick } = s;
+      const text = `Set aside ${deletedName(p, pick.row, ctx.now)}`;
+      const panel = pick.el.closest<HTMLElement>(".gz-panel");
+      const done = await s.ctx.setAside(pick.row);
       if (!done) return;
       this.closeAll();
       if (panel?.isConnected) sayBelow(panel, ctx, text, done.entry);
@@ -223,14 +245,19 @@ export class Sheet {
  * is edited, the note it opens, and whether the row is its own list's.
  */
 function shapeOf(o: Opened): string {
-  return stableJson([o.p, shownFields(o), rowNote(o.p, o.pick.row) ?? null, ownRow(o)]);
+  return stableJson([o.p, shownFields(o), rowNote(o.p, o.pick.row) ?? null, ownRow(o), theirsOf(o) ?? null, o.pick.row.line ?? null]);
 }
 
 /** A record of one of the app's own saved lists, shown as it is now: one the sheet can move in time and delete. */
 function ownRow(o: Opened): boolean {
   const { p, ctx, pick } = o;
-  if (!pick.record || ctx.readOnly || !isListName(p.source)) return false;
+  if (!pick.record || ctx.readOnly || !rowsAreSaved(p.source) || ctx.rowsWritable?.() === false || theirsOf(o)) return false;
   return rowIdOf(pick.row) !== undefined || typeof (pick.row as Record<symbol, unknown>)[ROW_INDEX] === "number";
+}
+
+/** Why the record shown isn't this vault's to change: someone else wrote it, in a shared kind. */
+function theirsOf(o: Opened): string | undefined {
+  return o.pick.record ? o.ctx.theirs?.(o.pick.row) : undefined;
 }
 
 /** A record's fields, as its panel shows them, with when its own list's row happened where the panel leaves that out. */

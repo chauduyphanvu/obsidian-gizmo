@@ -6,6 +6,7 @@ import type { Op } from "./ledger.ts";
 import { describePermission } from "./permissions.ts";
 import { isListName, savedFields, type AppSpec, type ComponentPreview } from "./spec.ts";
 import { basename } from "./store.ts";
+import { ROW_FIELDS } from "./kind.ts";
 import type { Row } from "./data.ts";
 import { viewDef } from "./views/registry.ts";
 import { labelOf, lineOf } from "./yamlpos.ts";
@@ -49,6 +50,47 @@ export function renderPermissionPrompt(header: HTMLElement, wanted: string[], as
   if (!app.hosted && app.env.tryFirst) row.createEl("button", { text: "Try it first" }).addEventListener("click", () => app.env.tryFirst?.());
   // An embed's keys are in the note it is drawn in, and a lens's in its component.
   if (!app.hosted) row.createEl("button", { text: "Edit source" }).addEventListener("click", () => app.env.showSource());
+}
+
+/** A kind an app reads that isn't allowed yet: what allowing it adds, what Allow grants, and whether the data policy blocks it. */
+export interface KindToAllow {
+  path: string;
+  name: string;
+  /** What allowing it lets the kind do, in words: each permission it asks for, and its asks in Next. */
+  adds: string[];
+  /** What the kind's own note would ask for, which Allow grants. */
+  asked: string[];
+  blocked: boolean;
+}
+
+/**
+ * A kind the app reads whose own note isn't allowed yet: the app shows its rows, but the kind's own
+ * work (reading its import folders, asking in Next) waits until it is. Says what allowing it adds,
+ * with Allow, which grants just what the kind's own note asks for, and a way to open the kind.
+ */
+export function renderKindToAllow(header: HTMLElement, k: KindToAllow, app: CardApp): void {
+  const card = header.createDiv({ cls: "gz-card gz-kind-allow" });
+  card.createDiv({ cls: "gz-title", text: `${k.name} isn't allowed yet` });
+  const me = basename(app.appPath);
+  card.createDiv({
+    cls: "gz-muted",
+    text: k.blocked ? `${me} reads the rows of ${k.name}, but your data policy blocks ${k.name}; open it to see why.`
+      : `${me} reads the rows of ${k.name}, but ${k.name} runs nothing of its own until you allow it. Allowing it lets ${k.name}:`,
+  });
+  if (!k.blocked) {
+    const ul = card.createEl("ul");
+    for (const a of k.adds) ul.createEl("li", { text: a });
+  }
+  const row = card.createDiv({ cls: "gz-actions" });
+  if (!k.blocked) {
+    row.createEl("button", { cls: "mod-cta", text: `Allow ${k.name}` }).addEventListener("click", handler(async () => {
+      await app.env.grant(k.path, k.asked);
+      // Allowed as if its note were opened: it reads its folders now, and its asks come with the next round.
+      app.env.opened?.(k.path);
+      app.load();
+    }));
+  }
+  row.createEl("button", { text: `Open ${k.name}` }).addEventListener("click", () => app.env.openNote(k.path, app.hostPath));
 }
 
 /** An app whose data would go somewhere the data policy keeps it from: it runs nothing, and says each flow. */
@@ -96,18 +138,20 @@ export function renderHandEdit(header: HTMLElement, note: string, changes: strin
  * added and removed.
  */
 export function editWords(ops: Op[], checklists: ReadonlySet<string>): string[] {
-  const by = new Map<string, { added: number; removed: number; ticked: string[]; unticked: string[] }>();
+  const by = new Map<string, { added: number; removed: number; changed: Set<string>; ticked: string[]; unticked: string[] }>();
   for (const o of ops) {
     if (!("l" in o)) continue;
-    const s = by.get(o.l) ?? { added: 0, removed: 0, ticked: [], unticked: [] };
+    const s = by.get(o.l) ?? { added: 0, removed: 0, changed: new Set(), ticked: [], unticked: [] };
     if (o.op === "add") s.added++;
     else if (o.op === "del") s.removed++;
+    else if (o.op === "set") s.changed.add(o.row);
     else if (o.op === "tick") s.ticked.push(o.item);
     else if (o.op === "untick") s.unticked.push(o.item);
     by.set(o.l, s);
   }
   const rows = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
   return [...by].map(([list, s]) => `${list}: ${[
+    ...(s.changed.size ? [`${rows(s.changed.size)} changed`] : []),
     ...(s.added ? [`${rows(s.added)} added or changed`] : []),
     ...(s.removed ? [`${rows(s.removed)} taken out or changed`] : []),
     ...(s.ticked.length ? [`${s.ticked.join(", ")} ${checklists.has(list) ? "ticked" : "added"}`] : []),
@@ -151,13 +195,15 @@ export function renameKey(appPath: string, r: Rename): string {
  * for in a data note that no other app shares.
  */
 export function findRenames(spec: AppSpec, lists: ReadonlyMap<string, { rows: Row[] }>, appFm: Record<string, unknown>): Rename[] {
-  const { written, whole } = savedFields(spec.panels, new Map(Object.entries(spec.blocks)), spec.store !== undefined);
+  const { written, whole } = savedFields(spec.panels, new Map(Object.entries(spec.blocks)), spec.store !== undefined, spec.kind?.path);
   const out: Rename[] = [];
+  // What Gizmo keeps on a kind's rows is no field of the person's.
+  const kept = (field: string) => spec.kind !== undefined && ROW_FIELDS.includes(field);
   for (const [list, known] of written) {
     const rows = lists.get(list)?.rows ?? [];
     if (whole.has(list) || !rows.length) continue;
     // A field saved empty is still there: an optional field nobody filled in isn't taken for a new name.
-    const had = new Set(rows.flatMap((r) => Object.keys(r).filter((k) => r[k] !== undefined)));
+    const had = new Set(rows.flatMap((r) => Object.keys(r).filter((k) => r[k] !== undefined && !kept(k))));
     const gone = [...had].filter((f) => f !== "at" && !known.has(f));
     const fresh = [...known].filter((f) => f !== "at" && !had.has(f));
     if (gone.length === 1 && fresh.length === 1) out.push({ kind: "field", list, from: gone[0], to: fresh[0], rows: rows.filter((r) => r[gone[0]] !== undefined).length });
@@ -181,7 +227,7 @@ function choicesOf(spec: AppSpec, list: string): Map<string, unknown[]> {
   const out = new Map<string, unknown[]>();
   const mixed = new Set<string>();
   for (const { panel: p } of spec.panels) {
-    if (p.target?.kind !== "list" || p.target.name !== list) continue;
+    if (p.target?.kind !== "list" || (p.target.at !== undefined && p.target.at !== spec.kind?.path) || p.target.name !== list) continue;
     for (const [field, type] of [...Object.entries(p.schema ?? {}), ...Object.entries(p.fields ?? {})]) {
       if (!Array.isArray(type)) continue;
       const had = out.get(field);
@@ -202,7 +248,8 @@ function listRename(spec: AppSpec, lists: ReadonlyMap<string, { rows: Row[] }>, 
   for (const { panel: p } of panels) {
     if (isListName(p.source)) used.add(p.source);
     if (p.view === "checklist") used.add(p.save ?? "checked");
-    if (p.target?.kind !== "list") continue;
+    // A kind's rows are the kind's, kept in its own data note.
+    if (p.target?.kind !== "list" || (p.target.at !== undefined && p.target.at !== spec.kind?.path)) continue;
     used.add(p.target.name);
     saved.add(p.target.name);
   }

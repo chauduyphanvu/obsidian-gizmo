@@ -3,7 +3,7 @@ import {
 } from "obsidian";
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
-import { registerBacktest } from "./past-views.ts";
+import { registerBacktest, registerWhatIf } from "./past-views.ts";
 import { registerBackground, type DeviceBeat } from "./background-glue.ts";
 import { registerBases } from "./bases.ts";
 import { DataLayer } from "./datalayer.ts";
@@ -19,22 +19,27 @@ import {
 } from "./host.ts";
 import { POLICY_PATH, isPolicyPath, policyHash, readPolicy, type AppliedPolicy, type Policy } from "./policy.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
-import type { AppSpec } from "./spec.ts";
+import { readSpec, type AppSpec } from "./spec.ts";
+import { kindDataPaths } from "./sources/kind.ts";
 import type { NoteReader } from "./expand.ts";
 import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import type { LensIndex } from "./lenses.ts";
 import { registerCaptureCommand } from "./capture-command.ts";
+import { registerNextCommand } from "./next-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
 import { registerNewApp } from "./new-app-command.ts";
+import { registerKindCommand } from "./kind-command.ts";
+import { registerImportCommand } from "./import-command.ts";
 import { openAppPicker, registerOpenApp } from "./open-app-command.ts";
 import { newLinkKey, shortcutId } from "./links.ts";
 import { GizmoSettings } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
+import { registerInviteCommands } from "./invite-command.ts";
 import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "./snapshots.ts";
 import { permissionsOf } from "./permissions.ts";
-import { defaultDataPath, runsAsApp } from "./store.ts";
+import { defaultDataPath, isKind, runsAsApp } from "./store.ts";
 import { logFileParts, logFolder } from "./ledger.ts";
 import { registerAuthoring } from "./suggest.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
@@ -132,13 +137,18 @@ export default class GizmoPlugin extends Plugin {
     registerGalleryCommand(this);
     registerLinkCommand(this);
     registerCaptureCommand(this);
+    registerNextCommand(this);
     registerPolicyCommand(this);
     registerShareCommands(this);
+    registerInviteCommands(this);
     registerOpenApp(this);
     registerNewApp(this);
+    registerKindCommand(this);
+    registerImportCommand(this);
     this.addRibbonIcon("layout-dashboard", "Open an app", () => openAppPicker(this));
     registerActivity(this);
     registerBacktest(this);
+    registerWhatIf(this);
     registerMap(this);
     registerBases(this);
 
@@ -352,6 +362,16 @@ export default class GizmoPlugin extends Plugin {
   /** `opened`: the app must also have been opened in its own tab (see isAllowed); `asked`: under a policy, what it doesn't cover. */
   isGranted(path: string, wanted: string[], opened = false, asked?: string[]): boolean {
     return asked ? isAllowedUnder(this.store.grants, path, asked, opened) : isAllowed(this.store.grants, path, wanted, opened);
+  }
+
+  /**
+   * The data notes an app shares with others: those of the kinds it reads or saves to, and a kind's
+   * own. What any app changed there belongs in its activity.
+   */
+  sharedData(path: string): string[] {
+    const fm = vaultFrontmatter(this.app)(path);
+    const spec = readSpec(fm, { notes: vaultNotes(this.app), path })?.spec;
+    return [...(isKind(fm) ? [defaultDataPath(path)] : []), ...(spec ? kindDataPaths(spec.panels) : [])];
   }
 
   /** What the applied data policy says of an app running here; undefined with no policy applied. */

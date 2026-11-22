@@ -1,5 +1,5 @@
 import { textOf } from "./text.ts";
-import { formatValue, localeNumber, toNumber } from "./data.ts";
+import { fillWith, formatValue, getPath, localeNumber, namesInTemplate, toNumber, type Row } from "./data.ts";
 import { periodStart, toTime, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
 
@@ -185,4 +185,38 @@ export function display(
     return formatWith(value, format, now);
   }
   return formatValue(mode === "value" ? toNumber(value) ?? value : value, p.decimals, mode !== "text");
+}
+
+/**
+ * The fields an alert on rows names in its notice: a number's own field, as the panel shows it;
+ * those a text or list panel's own words fill; else the row's name (the first column shown that isn't `at` or a field the alert reads) and each
+ * field the alert's condition reads, but a yes-or-no one, which the panel's title already says.
+ */
+export function alertRowFields(p: Pick<Panel, "view" | "text" | "item" | "columns" | "alert" | "field">): string[] {
+  if ((p.view === "number" || p.view === "progress") && p.field !== undefined) return [p.field];
+  const own = p.view === "text" ? p.text : p.view === "list" ? p.item : undefined;
+  if (own) return namesInTemplate(own);
+  const read = p.alert !== null && typeof p.alert === "object" ? Object.entries(p.alert).filter(([, c]) => typeof c !== "boolean").map(([f]) => f) : [];
+  const name = p.columns?.find((c) => c !== "at" && !read.includes(c));
+  return [...(name === undefined ? [] : [name]), ...read];
+}
+
+/** The rows an alert matched, as its notice says them: the first in a few words (see alertRowFields), and how many more. */
+export function alertRowsText(p: Panel, rows: readonly Row[], now: Date): string {
+  const [row] = rows;
+  const own = p.view === "text" ? p.text : p.view === "list" ? p.item : undefined;
+  const shown = (field: string, v: unknown) => display(p, field, v, now, "text");
+  let words = "";
+  if (row && own) words = fillWith(own, row, shown).trim();
+  else if (row) {
+    const fields = alertRowFields(p);
+    const named = p.columns?.find((c) => c !== "at") === fields[0] || ((p.view === "number" || p.view === "progress") && p.field !== undefined);
+    words = fields.flatMap((f, i) => {
+      const v = getPath(row, f);
+      if (v === undefined || v === null || v === "") return [];
+      return [i === 0 && named ? shown(f, v) : `${labelOf(p, f)} ${shown(f, v)}`];
+    }).join(", ");
+  }
+  if (!words) return `${rows.length} ${rows.length === 1 ? "row" : "rows"}`;
+  return rows.length > 1 ? `${words}, and ${rows.length - 1} more` : words;
 }

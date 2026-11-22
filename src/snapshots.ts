@@ -1,5 +1,7 @@
 import type { Host } from "./datalayer.ts";
 import type { Ledger } from "./ledger-store.ts";
+import { heldInNote } from "./kind.ts";
+import { isKind } from "./store.ts";
 
 /** How long after a change a data note's snapshot is written, in Obsidian and gizmod. */
 export const SNAPSHOT_DELAY_MS = 5000;
@@ -44,11 +46,22 @@ export class SnapshotWriter {
     this.appOf.set(dataPath, { appPath, devices });
   }
 
+  /**
+   * The note whose lists a data note keeps, as the panels reading it said; before any did, a kind's
+   * own note for its data note, whose rows it holds only some of.
+   */
+  private ownerOf(dataPath: string): { appPath: string; devices?: string } | undefined {
+    const known = this.appOf.get(dataPath);
+    if (known) return known;
+    const kind = / data\.md$/i.test(dataPath) ? dataPath.replace(/ data\.md$/i, ".md") : undefined;
+    return kind !== undefined && isKind(this.host.frontmatter(kind)) ? { appPath: kind } : undefined;
+  }
+
   private writeSnapshot(dataPath: string, s: Snapshots, ledger: Ledger): Promise<void> {
     this.snapshotted.set(dataPath, this.host.now());
-    const app = this.appOf.get(dataPath);
+    const app = this.ownerOf(dataPath);
     const appFm = (app && this.host.frontmatter(app.appPath)) || {};
-    return ledger.snapshot(dataPath, appFm, (fn) => s.writeNote(dataPath, fn), false, app?.devices ? this.deviceNotes(app.devices) : []).catch(() => {});
+    return ledger.snapshot(dataPath, appFm, (fn) => s.writeNote(dataPath, fn), false, app?.devices ? this.deviceNotes(app.devices) : [], heldInNote(appFm)).catch(() => {});
   }
 
   /**
@@ -82,8 +95,9 @@ export class SnapshotWriter {
     const s = this.snapshots;
     const ledger = this.ledger;
     if (!s || !ledger) return;
-    const app = this.appOf.get(dataPath);
-    await ledger.snapshot(dataPath, (app && this.host.frontmatter(app.appPath)) || {}, (fn) => s.writeNote(dataPath, fn), force, app?.devices ? this.deviceNotes(app.devices) : []);
+    const app = this.ownerOf(dataPath);
+    const appFm = (app && this.host.frontmatter(app.appPath)) || {};
+    await ledger.snapshot(dataPath, appFm, (fn) => s.writeNote(dataPath, fn), force, app?.devices ? this.deviceNotes(app.devices) : [], heldInNote(appFm));
   }
 
   /** Stops waiting snapshots: the plugin is going, and the runner writes them next time. */

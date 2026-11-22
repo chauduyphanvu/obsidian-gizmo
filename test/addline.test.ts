@@ -127,6 +127,102 @@ test("an empty add line: the verb, an example as its placeholder, / to focus it,
   assert.equal(line.querySelector("kbd.gz-addline-key")!.hasAttribute("hidden"), true, "no / once something is typed");
 });
 
+test("examples give a number field after the words only when no number came before it", () => {
+  const { ctx } = fakeCtx();
+  const kind = panel({
+    view: "form", title: "Add to spend", save: "spend", label: "Add",
+    fields: { amount: { type: "number", format: "$0,0.00" }, category: ["food", "home", "travel"], note: "text", local: "number", trip: "text" },
+  });
+  const { el } = mount(kind, ctx);
+  assert.equal(lineIn(el).getAttribute("placeholder"), "12.50 food lunch");
+  assert.deepEqual([...el.querySelectorAll("button.gz-addline-example")].map(text), ["9.80 coffee", "42 home groceries"]);
+  const abroad = panel({ view: "form", title: "Spent abroad", save: "spend", fields: { item: "text", yen: { type: "number", format: "¥0,0" } } });
+  assert.equal(lineIn(mount(abroad, ctx).el).getAttribute("placeholder"), "Coffee 1200", "the only number keeps its example");
+});
+
+test("a trade's examples are a ticker and a number of shares, not words about spending", () => {
+  const { ctx } = fakeCtx();
+  const trade = panel({
+    view: "form", title: "A trade", save: "trades", label: "Log",
+    fields: { symbol: "text", side: ["buy", "sell"], shares: "number", price: { type: "number", label: "Price", format: "$0,0.00" }, note: "text" },
+  });
+  const { el } = mount(trade, ctx);
+  assert.equal(lineIn(el).getAttribute("placeholder"), "VTI buy 5");
+  assert.deepEqual([...el.querySelectorAll("button.gz-addline-example")].map(text), ["QQQ 10", "AAPL sell 2"]);
+});
+
+test("a form that plans buys keeps share counts for its shares: a bill's amounts are only for a field of money", () => {
+  const { ctx } = fakeCtx();
+  const day = (n: number) => { const d = new Date(ctx.now); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const tranche = {
+    ...panel({ view: "form", title: "Plan a buy", save: "trades", label: "Plan buy", fields: { symbol: "text", shares: "number", price: { type: "number", label: "Price", format: "$0,0.00" } } }),
+    target: { kind: "list" as const, name: "trade", at: "Kinds/Trade.md" },
+  };
+  assert.equal(lineIn(mount(tranche, ctx).el).getAttribute("placeholder"), `VTI 5 @${day(20)}`);
+});
+
+test("a field labelled Chore takes chores for its examples, before the words for a task", () => {
+  const { ctx } = fakeCtx();
+  const did = panel({ view: "form", title: "Did a chore", save: "chores", label: "Done", fields: { task: { type: "text", label: "Chore" }, who: ["Alex", "Sam"] } });
+  const { el } = mount(did, ctx);
+  assert.equal(lineIn(el).getAttribute("placeholder"), "Vacuum the house Alex");
+  // Upkeep, named so by the form's labels or its title, comes before chores.
+  const plan = panel({ view: "form", title: "Plan upkeep", save: "chores", fields: { task: { type: "text", label: "Chore" }, who: ["Alex", "Sam"] }, labels: { task: "Upkeep" } });
+  assert.equal(lineIn(mount(plan, ctx).el).getAttribute("placeholder"), "Replace the furnace filter Alex");
+  const paid = panel({ view: "form", title: "Paid for upkeep", save: "spend", fields: { amount: { type: "number", label: "Paid", format: "$0,0.00" }, what: "text" } });
+  assert.equal(lineIn(mount(paid, ctx).el).getAttribute("placeholder"), "12.50 Replace the furnace filter");
+});
+
+test("a text field whose name says nothing takes its example words from what the form is called", () => {
+  const { ctx } = fakeCtx();
+  const renewal = panel({ view: "form", title: "A renewal", save: "renewals", fields: { what: "text", how: "text" } });
+  const { el } = mount(renewal, ctx);
+  assert.equal(lineIn(el).getAttribute("placeholder"), "Renew passport");
+  assert.deepEqual([...el.querySelectorAll("button.gz-addline-example")].map(text), ["Car registration", "Home insurance"]);
+});
+
+test("a form that plans rows reads like a bill or a renewal: a day still to come for when, a deadline still to come, and no choice in its examples", () => {
+  const { ctx } = fakeCtx();
+  const day = (n: number) => { const d = new Date(ctx.now); d.setDate(d.getDate() + n); return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`; };
+  const toKind = (raw: Record<string, unknown>) => ({ ...panel(raw), target: { kind: "list" as const, name: "spend", at: "Kinds/Spend.md" } });
+  const bill = toKind({
+    view: "form", title: "A bill", save: "spend", label: "Plan bill", alias: "bill",
+    fields: { amount: { type: "number", label: "Spent", format: "$0,0.00" }, note: "text", category: ["food", "home", "fun"] },
+  });
+  const { el } = mount(bill, ctx);
+  assert.equal(lineIn(el).getAttribute("placeholder"), `45 BRIGHT MOBILE @${day(20)}`);
+  assert.deepEqual([...el.querySelectorAll("button.gz-addline-example")].map(text), [`15.49 STREAMFLIX @${day(35)}`, `65 CITY POWER @${day(50)}`]);
+  // Taken, an example plans its row, as its words say.
+  click(el.querySelector("button.gz-addline-example")!);
+  assert.match([...el.querySelectorAll(".gz-pv")].map(text).at(-1)!, /^planned/);
+
+  const renew = toKind({ view: "form", title: "A renewal", save: "renewal", label: "Plan renewal", fields: { what: "text", due: { type: "date", label: "Due" }, how: "text" } });
+  const r = mount(renew, ctx).el;
+  assert.equal(lineIn(r).getAttribute("placeholder"), `Renew passport ${day(120)} @${day(20)}`);
+  assert.deepEqual([...r.querySelectorAll("button.gz-addline-example")].map(text), [`Car registration ${day(90)} @${day(35)}`, `Home insurance ${day(150)} @${day(50)}`]);
+
+  // A form that only logs keeps its examples; a due date in one is still to come, not yesterday.
+  const task = panel({ view: "form", title: "Add a task", save: "todo", fields: { task: "text", due: "date" } });
+  assert.deepEqual([...mount(task, ctx).el.querySelectorAll("button.gz-addline-example")].map(text), [`Renew passport ${day(90)}`, "Buy milk"]);
+  const weigh = panel({ view: "form", title: "Weigh", save: "w", fields: { weight: "number", on: "date" } });
+  assert.deepEqual([...mount(weigh, ctx).el.querySelectorAll("button.gz-addline-example")].map(text), ["80.8 yday", "81.0"]);
+});
+
+test("a form's labels name its fields in the add line's preview and in its fields, over the labels its fields carry", () => {
+  const { ctx } = fakeCtx();
+  const bill = panel({
+    view: "form", title: "A bill", save: "spend", label: "Plan bill",
+    fields: { amount: { type: "number", label: "Spent", format: "$0,0.00" }, note: "text", category: ["food", "home", "fun"] },
+    labels: { amount: "Amount", note: "Bill" },
+  });
+  const { el } = mount(bill, ctx);
+  typeLine(el, "15.49 STREAMFLIX fun");
+  assert.deepEqual([...el.querySelectorAll(".gz-pv-label")].map(text), ["Amount", "Bill", "category"]);
+  assert.equal(text(el.querySelector(".gz-pv-value")), "$15.49", "the field's format stays");
+  const fields = mount(bill, fakeCtx({ slot: null }).ctx).el;
+  assert.deepEqual([...fields.querySelectorAll(".gz-field > span")].map(text), ["Amount", "Bill", "category"]);
+});
+
 test("while typing: each field's value in order, a choice of six or fewer as chips, a missing value as —, and errors", () => {
   const { ctx } = fakeCtx();
   const { el } = mount(SPEND, ctx);

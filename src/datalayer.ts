@@ -137,10 +137,23 @@ export class DataLayer {
    */
   at: number | undefined;
 
-  /** `like`: the live layer a replay folds recorded lists as. */
-  constructor(host: Host, opts: { at?: number; like?: DataLayer } = {}) {
+  /**
+   * A what-if at this time still to come (ms): lists are the live ones with the what-if's own rows
+   * (see Ledger's `branch`), web answers the latest kept, and notes as they are now.
+   */
+  ahead: number | undefined;
+
+  /** What the apps ask of the person now, as `source: asks` reads it; set by the background while it runs. */
+  asks: (() => Row[]) | undefined;
+
+  /** Layers told of every change this one hears (see follow). */
+  private followers = new Set<DataLayer>();
+
+  /** `like`: the live layer a replay or a what-if folds recorded lists as; `ahead`: a what-if's name, for its branch, and its time. */
+  constructor(host: Host, opts: { at?: number; like?: DataLayer; ahead?: { name: string; at: number } } = {}) {
     this.host = host;
     this.at = opts.at;
+    this.ahead = opts.ahead?.at;
     const { filesIn, append, writeFile, fileSize } = host;
     if (filesIn && append && writeFile) {
       this.ledger = new Ledger({
@@ -150,7 +163,7 @@ export class DataLayer {
         writeFile: (path, text) => writeFile.call(host, path, text),
         frontmatter: (path) => host.frontmatter(path),
         ...(fileSize && { size: (path: string) => fileSize.call(host, path) }),
-      }, () => host.device?.() ?? "device", () => host.now(), opts.at);
+      }, () => host.device?.() ?? "device", () => host.now(), opts.at, opts.ahead?.name);
       this.ledger.onWrite = (path) => this.fileChanged(path);
       if (opts.like?.ledger) this.ledger.capsFrom(opts.like.ledger);
     }
@@ -165,6 +178,20 @@ export class DataLayer {
     this.index = undefined;
     this.queries.clear();
     this.made.clear();
+  }
+
+  /** Moves a what-if to another time still to come. */
+  setAhead(at: number): void {
+    this.ahead = at;
+    this.index = undefined;
+    this.queries.clear();
+    this.made.clear();
+  }
+
+  /** Tells `other` of each change to the vault this layer hears, until the function it gives is called. */
+  follow(other: DataLayer): () => void {
+    this.followers.add(other);
+    return () => this.followers.delete(other);
   }
 
   /** Who writes snapshots, and how; until set, none are written. */
@@ -225,8 +252,8 @@ export class DataLayer {
    * when the oldest of them was fetched. Undefined when it reads none, or one has no copy.
    */
   async cachedPanelData(source: string | undefined, p: Panel, files: AppFiles, now: Date): Promise<{ data: unknown; at: number } | undefined> {
-    // The past has no newer copy to paint first.
-    if (!source || this.at !== undefined) return undefined;
+    // The past, and a what-if, have no newer copy to paint first.
+    if (!source || this.at !== undefined || this.ahead !== undefined) return undefined;
     let at: number | undefined;
     // The source loads as usual, with each web request answered from disk.
     const offline = Object.create(this) as DataLayer;
@@ -260,7 +287,8 @@ export class DataLayer {
   ): Promise<unknown> {
     const refused = this.refused(source, headers, body, secrets);
     if (refused) return Promise.reject(refused);
-    if (this.at !== undefined) return this.answerAt(source, headers, body, this.at);
+    const at = this.at ?? this.ahead;
+    if (at !== undefined) return this.answerAt(source, headers, body, at);
     const key = cacheKey(source, headers, body);
     const hit = this.http.get(key);
     if (!force && hit && this.host.now() - hit.at < ttlMs) return hit.promise;
@@ -296,7 +324,7 @@ export class DataLayer {
     return { method: "POST", body: JSON.stringify(body, (_, v: unknown) => (typeof v === "string" ? this.withSecrets(v) : v)) };
   }
 
-  /** What a request answered at a past time, as kept; never the network. */
+  /** What a request answered at a time, as kept (for a time still to come, the latest kept); never the network. */
   private async answerAt(source: string, headers: Record<string, string> | undefined, body: string | Record<string, unknown> | undefined, at: number): Promise<unknown> {
     if (!keptOnDisk(source, headers, body)) throw new Error(`${hostOf(source)}'s answers aren't kept: the request uses a secret or sends a body`);
     const r = await this.host.responses?.at(cacheKey(source, headers, body), at);
@@ -423,6 +451,7 @@ export class DataLayer {
     const info = this.host.fileInfo(path);
     if (this.index && info) this.index.set(path, this.row(info));
     this.touch(path, before, this.index?.get(path));
+    for (const f of this.followers) f.fileChanged(path);
   }
 
   fileDeleted(path: string): void {
@@ -430,6 +459,7 @@ export class DataLayer {
     const before = this.index?.get(path);
     this.index?.delete(path);
     this.touch(path, before, undefined);
+    for (const f of this.followers) f.fileDeleted(path);
   }
 
   fileRenamed(path: string, oldPath: string): void {
@@ -443,6 +473,12 @@ export class DataLayer {
       if (sources.some((s) => key.startsWith(`${s}|`))) this.http.delete(key);
     }
     for (const s of sources) this.pending.add(urlDep(s));
+    this.queueFlush();
+  }
+
+  /** Something no file holds changed (what the apps ask): those listening for `dep` hear it with the next batch. */
+  told(dep: string): void {
+    this.pending.add(dep);
     this.queueFlush();
   }
 

@@ -23,6 +23,8 @@ export interface AppSummary {
   thens: { from: string; app: string; do: string; path?: string }[];
   /** Whether a panel appends lines to the app's own note. */
   writesSelf: boolean;
+  /** For a shared kind: the relay its rows go through. */
+  shared?: { host: string };
 }
 
 export type AppState = "allowed" | "not-opened" | "revoked" | "paused" | "blocked";
@@ -82,9 +84,9 @@ export interface VaultMap {
 /** Which of the map's groups a permission belongs to. */
 export function askGroup(perm: string): AskGroup {
   const kind = perm.split(":")[0];
-  if (kind === "read") return "Reads";
+  if (kind === "read" || kind === "kind") return "Reads";
   if (kind === "net" || kind === "secret" || perm === "images") return "Fetches";
-  if (kind === "send" || kind === "post" || kind === "answer") return "Sends";
+  if (kind === "send" || kind === "post" || kind === "answer" || kind === "share") return "Sends";
   if (kind === "run") return "Runs";
   return "Changes";
 }

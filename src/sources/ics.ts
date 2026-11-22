@@ -53,9 +53,10 @@ const pad = (n: number) => String(n).padStart(2, "0");
  * Reads the events of an iCalendar file as rows `{summary, start, end, allday, location,
  * description, uid}` with local times. Repeating events become one row per occurrence from a year
  * before `now` to a year after; a rule this reader doesn't understand leaves the event as one row.
- * Events that can't be read are left out.
+ * Events that can't be read are left out. With `stamps`, as an import keeps them, times are the
+ * same text on every device (see stampOf here): the clock of the event's own zone with its offset.
  */
-export function parseICS(text: string, now: Date): Row[] {
+export function parseICS(text: string, now: Date, stamps = false): Row[] {
   const events = eventsOf(text);
   // An edited occurrence of a repeating event comes as its own event; the original is dropped.
   const replaced = new Map<string, Set<string>>();
@@ -80,8 +81,8 @@ export function parseICS(text: string, now: Date): Row[] {
       if (!ev) continue;
       for (const k of replaced.get(ev.uid) ?? []) ev.excluded.add(k);
       const isOverride = props.some((p) => p.name === "RECURRENCE-ID");
-      if (ev.rule && !isOverride) rows.push(...occurrences(ev, ev.rule, from.getTime(), to.getTime()));
-      else rows.push(rowOf(ev, ev.start));
+      if (ev.rule && !isOverride) rows.push(...occurrences(ev, ev.rule, from.getTime(), to.getTime(), stamps));
+      else rows.push(rowOf(ev, ev.start, stamps));
     } catch {
       // One bad event doesn't spoil the calendar.
     }
@@ -267,12 +268,30 @@ function readEvent(props: Prop[]): Ev | undefined {
   };
 }
 
-function rowOf(ev: Ev, w: When): Row {
+function rowOf(ev: Ev, w: When, stamps: boolean): Row {
   const base = { summary: ev.summary };
   const rest = { location: ev.location, description: ev.description, uid: ev.uid };
   if (w.allday) return { ...base, start: dateText(w.day), end: dateText(w.day + ev.length - 1), allday: true, ...rest };
+  if (stamps) return { ...base, start: stampOf(w, 0), end: stampOf(w, ev.length), allday: false, ...rest };
   const t = instant(w);
   return { ...base, start: minuteIn(t), end: minuteIn(t + ev.length), allday: false, ...rest };
+}
+
+/**
+ * A moment of an event `ms` after `w`, as the same text on every device: the clock of the event's
+ * zone with that zone's offset then (`Z` times are `+00:00`). A floating time, which names no zone,
+ * keeps its clock as written and no offset: each device reads it as its own local time.
+ */
+function stampOf(w: When, ms: number): string {
+  const clockText = (c: number) => {
+    const d = new Date(c);
+    return `${d.getUTCFullYear()}-${pad(d.getUTCMonth() + 1)}-${pad(d.getUTCDate())}T${pad(d.getUTCHours())}:${pad(d.getUTCMinutes())}`;
+  };
+  if (!w.zone) return clockText(w.day * DAY + w.minutes * 60_000 + ms);
+  const t = instant(w) + ms;
+  const off = w.zone === "UTC" ? 0 : offsetAt(t, formatIn(w.zone)!);
+  const m = Math.round(Math.abs(off) / 60_000);
+  return `${clockText(t + off)}${off < 0 ? "-" : "+"}${pad(Math.floor(m / 60))}:${pad(m % 60)}`;
 }
 
 // ---- Recurrence -------------------------------------------------------------------------------
@@ -342,7 +361,7 @@ function* days(rule: Rule, start: number): Generator<number> {
   }
 }
 
-function occurrences(ev: Ev, rule: Rule, from: number, to: number): Row[] {
+function occurrences(ev: Ev, rule: Rule, from: number, to: number, stamps: boolean): Row[] {
   const rows: Row[] = [];
   const allday = ev.start.allday;
   // A date-only UNTIL ends at the end of that day, as the event's clock reads it.
@@ -357,7 +376,7 @@ function occurrences(ev: Ev, rule: Rule, from: number, to: number): Row[] {
     if (t > to) break;
     if (t < from) continue;
     if (keysOf(w).some((k) => ev.excluded.has(k)) || (!allday && ev.excluded.has(`d${day}`))) continue;
-    rows.push(rowOf(ev, w));
+    rows.push(rowOf(ev, w, stamps));
     if (rows.length >= MAX_ROWS) break;
   }
   return rows;

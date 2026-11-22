@@ -7,7 +7,7 @@ and the count beside it follows.
 
 ```gizmo
 app: "[[Medication log]]"
-panels: [Took meds, Doses today]
+panels: [Took Medication A, Doses today]
 ```
 
 ## Water

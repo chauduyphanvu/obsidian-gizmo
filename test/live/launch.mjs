@@ -1,13 +1,46 @@
 // Starts an isolated Obsidian on a copy of a vault: its own user-data dir and vault inside the
 // work dir, its own CDP port. `quit` stops only that instance, found by its user-data dir. It never
-// takes focus or covers other windows: see the end of `launch`.
-import { spawn, spawnSync } from "node:child_process";
+// covers other windows (see the end of `launch`), and it gives the screen back whenever it comes to
+// the front (see `guard`).
+import { execFile, spawn, spawnSync } from "node:child_process";
 import { cpSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { connect } from "./cdp.mjs";
 
 const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 const VAULT_ID = "c3d4e5f607182930";
+const run = (cmd, args) => new Promise((resolve) => execFile(cmd, args, (err, out) => resolve(err ? "" : out)));
+/** Asks the app with this pid, and only it, to hide or unhide, through AppKit; neither makes any app active. */
+const appKit = (pid, what) => ["-l", "JavaScript", "-e", `ObjC.import("AppKit"); const a = $.NSRunningApplication.runningApplicationWithProcessIdentifier(${pid}); if (!a.isNil()) a.${what};`];
+
+/**
+ * Obsidian makes itself the active app as it starts (open -g notwithstanding), and so can a window it
+ * shows later. Each time the frontmost app is this instance, found by its pid's own user-data dir,
+ * it is hidden, so macOS hands the front back to the app that had it, then unhidden, which leaves
+ * it drawn but inactive. Gives a stop function.
+ */
+function guard(userData) {
+  const ours = new Map();
+  const mine = async (pid) => {
+    if (!ours.has(pid)) ours.set(pid, (await run("ps", ["-o", "command=", "-p", String(pid)])).includes(`--user-data-dir=${userData} `));
+    return ours.get(pid);
+  };
+  let busy = false;
+  const timer = setInterval(async () => {
+    if (busy) return;
+    busy = true;
+    const asn = (await run("lsappinfo", ["front"])).trim();
+    const pid = Number((asn ? await run("lsappinfo", ["info", "-only", "pid", asn]) : "").match(/=\s*(\d+)/)?.[1] ?? 0);
+    if (pid && (await mine(pid))) {
+      await run("osascript", appKit(pid, "hide"));
+      await sleep(300);
+      await run("osascript", appKit(pid, "unhide"));
+    }
+    busy = false;
+  }, 200);
+  timer.unref();
+  return () => clearInterval(timer);
+}
 
 /**
  * `dir` must be a new folder inside the work dir; `fill(vault)` puts the notes in. The built plugin
@@ -42,10 +75,17 @@ export async function launch({ repo, dir, port, fill, vault: shared, tz }) {
   // wake-up a minute after five minutes and stretch every wait in a run.
   spawn("open", ["-g", "-n", ...(tz ? ["--env", `TZ=${tz}`] : []), "-a", "Obsidian", "--args", `--user-data-dir=${userData}`, `--remote-debugging-port=${port}`,
     "--disable-background-timer-throttling", "--disable-renderer-backgrounding", "--disable-backgrounding-occluded-windows"]);
+  const unguard = guard(userData);
   /** Stops only the instance this launch started, found by its own user-data dir. */
   const quit = () => {
-    const pids = spawnSync("pgrep", ["-f", `user-data-dir=${userData}`]).stdout.toString().trim().split("\n").filter(Boolean);
-    if (pids.length) spawnSync("kill", pids);
+    unguard();
+    const pids = (pattern) => spawnSync("pgrep", ["-f", pattern]).stdout.toString().trim().split("\n").filter(Boolean);
+    // Hidden first, it closes as an inactive app: nothing of it shows, and macOS brings nothing forward in its place.
+    const main = pids(`MacOS/Obsidian --user-data-dir=${userData} `);
+    for (const pid of main) spawnSync("osascript", appKit(pid, "hide"));
+    if (main.length) spawnSync("sleep", ["0.3"]);
+    const all = pids(`user-data-dir=${userData}`);
+    if (all.length) spawnSync("kill", all);
   };
   let page;
   for (let i = 0; i < 40 && !page; i++) {

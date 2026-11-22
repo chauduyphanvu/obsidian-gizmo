@@ -1,9 +1,10 @@
 import { textOf } from "./text.ts";
 import { hasControl } from "./control.ts";
 import { parseDuration } from "./data.ts";
-import { compileFormula, computeErrors } from "./formula.ts";
+import { compileFormula, computeErrors, rowFormula } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { RESERVED, SOURCE_WORDS, basename, isSet, storeTarget } from "./store.ts";
+import { isKindLink } from "./sources/kind.ts";
+import { RESERVED, SOURCE_WORDS, basename, isSet, kindName, storeTarget } from "./store.ts";
 import {
   InputRef, NAME, THIS, didYouMean, fillParams, firstRef, namesIn, nearMisses, parseInputs, refsIn, refusedPlaces, secretIds, stringsIn, unsafeValue, type Kit,
 } from "./template.ts";
@@ -11,7 +12,7 @@ import {
   COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
 } from "./keys.ts";
 import { viewDef } from "./views/registry.ts";
-import type { SaveTarget } from "./spec.ts";
+import type { KindRef, SaveTarget } from "./spec.ts";
 
 /** The language version this plugin reads. */
 export const SPEC_VERSION = 1;
@@ -29,7 +30,7 @@ export const BLOCK_ONLY: readonly string[] = ["fields", "record", "into"];
 /** Keys a named source in `data:` may hold. */
 export const BLOCK_KEYS: readonly string[] = [...DATA_KEYS, ...GROUP_KEYS, ...BLOCK_ONLY];
 /** Keys that say where a chain's data comes from, so only its root block holds them. */
-const ROOT_KEYS: readonly string[] = ["headers", "from", "body", "record", "into"];
+const ROOT_KEYS: readonly string[] = ["headers", "from", "lines", "body", "record", "into"];
 /** The most blocks one chain may hold, its root included. */
 export const MAX_CHAIN = 4;
 
@@ -202,13 +203,15 @@ const READS: Record<string, string> = { url: "a web address", base: "a base", ta
  * is used where it can't be (it has said why).
  */
 function blockTarget(save: string, blocks: Blocks, fill: (keys: Record<string, unknown>) => Record<string, unknown> | undefined):
-  { target: SaveTarget } | { error: string } | undefined {
+  { target: SaveTarget } | { link: string } | { error: string } | undefined {
   const typed = blocks.get(blockChain(save, blocks)[0])!;
   const root = fill({ source: typed.source, ...(typed.from === undefined ? {} : { from: typed.from }) });
   if (!root) return undefined;
   const source = String(root.source);
   const kind = sourceDef(source).id;
   if (kind === "list") return { target: { kind: "list", name: source } };
+  // A block that reads a kind saves into the kind's rows; the link is looked up where the panel is.
+  if (kind === "kind") return { link: source };
   if (Object.hasOwn(READS, kind)) return { error: `save: "${save}" reads ${READS[kind]}; name a list or a folder` };
   const from = typeof root.from === "string" ? root.from.trim() : "";
   if (!from || from.startsWith("#") || from.includes(",")) return { error: `save: "${save}" reads ${from || "no folder"}; name a folder to save notes into` };
@@ -450,26 +453,41 @@ function withoutInternal(raw: Record<string, unknown>, at: (e: string) => void):
 }
 
 /**
- * Binds the `$names` a part's formulas read as its `vars`: an input reference, filled when the
- * panel is, or a param's value, fixed now. A formula naming anything else drops the part's compute.
+ * The values of the `$names` some formulas read: an input reference, filled when the panel is, or
+ * a param's value, fixed now; undefined, once each name it doesn't know is told, when one isn't.
  */
-function withVars(part: Record<string, unknown>, scope: Scope, at: (e: string) => void): Record<string, unknown> {
-  if (!isPlainObject(part.compute)) return part;
+function varsOf(formulas: [string, string][], scope: Scope, at: (e: string) => void): Record<string, unknown> | undefined {
   const vars: Record<string, unknown> = {};
   let unknown = false;
-  for (const [column, text] of Object.entries(part.compute)) {
-    const f = compileFormula(String(text));
+  for (const [where, text] of formulas) {
+    const f = compileFormula(text);
     if ("error" in f) continue;
     for (const name of f.vars) {
       if (scope.names.has(name)) vars[name] = scope.kind === "input" ? new InputRef(name) : scope.params.get(name);
       else {
-        at(`compute.${column}: $${name} isn't an input or param`);
+        at(`${where}: $${name} isn't an input or param`);
         unknown = true;
       }
     }
   }
-  if (unknown) return Object.fromEntries(Object.entries(part).filter(([k]) => k !== "compute"));
-  return Object.keys(vars).length ? { ...part, vars } : part;
+  return unknown ? undefined : vars;
+}
+
+/**
+ * Binds the `$names` a part's formulas read: `compute`'s as its `vars`, `row`'s as its `rowVars`.
+ * A compute formula naming anything else drops the part's compute; a row formula, the whole part,
+ * which would save the wrong row.
+ */
+function withVars(part: Record<string, unknown>, scope: Scope, at: (e: string) => void): Record<string, unknown> | undefined {
+  const rowFormulas = Object.entries(isPlainObject(part.row) ? part.row : {})
+    .flatMap(([field, v]): [string, string][] => { const text = rowFormula(v); return text === undefined ? [] : [[`row.${field}`, text]]; });
+  const rowVars = rowFormulas.length ? varsOf(rowFormulas, scope, at) : {};
+  if (!rowVars) return undefined;
+  const out = Object.keys(rowVars).length ? { ...part, rowVars } : part;
+  if (!isPlainObject(part.compute)) return out;
+  const vars = varsOf(Object.entries(part.compute).map(([column, text]) => [`compute.${column}`, String(text)]), scope, at);
+  if (!vars) return Object.fromEntries(Object.entries(out).filter(([k]) => k !== "compute"));
+  return Object.keys(vars).length ? { ...out, vars } : out;
 }
 
 /**
@@ -684,8 +702,10 @@ export class Expander {
     const refuses = this.refuser(scope, at);
     if (parts.map(refuses).includes(false)) return undefined;
     const fillErrors: string[] = [];
-    const [template, ...stages] = parts.map((part) => withVars(fill(part, scope, fillErrors) as Record<string, unknown>, scope, at));
+    const bound = parts.map((part) => withVars(fill(part, scope, fillErrors) as Record<string, unknown>, scope, at));
     fillErrors.forEach(at);
+    if (bound.includes(undefined)) return undefined;
+    const [template, ...stages] = bound as Record<string, unknown>[];
     // A param's text may not finish a secret placeholder the component only began (`{$name`).
     for (const key of scope.kind === "param" ? ["source", "headers", "body"] : []) {
       const typed = new Set(stringsIn(merged.template[key]).flatMap(secretIds));
@@ -700,6 +720,22 @@ export class Expander {
     if (kept) template.kept = kept;
     if (merged.schema) template.schema = merged.schema;
     if (merged.info) template.fieldInfo = merged.info;
+    // A link names a kind: its rows are read and saved in the kind's own data note, and its fields describe them.
+    for (const key of ["source", "save"] as const) {
+      // A link to a file (a .csv, a .base) is that file, as before.
+      if (!isKindLink(template[key]) || sourceDef(template[key]).id !== "kind" || (key === "save" && template.view === "checklist")) continue;
+      const found = this.kindAt(template[key], scope, at);
+      if (!found) return undefined;
+      if (key === "source") template.kind = found.ref;
+      else {
+        template.target = { kind: "list", name: found.ref.name, at: found.ref.path };
+        template.targetFields = found.fields.types;
+      }
+      if (!template.schema) {
+        template.schema = found.fields.types;
+        if (Object.keys(found.fields.info).length) template.fieldInfo = found.fields.info;
+      }
+    }
     // A checklist's save is the list it ticks, never a block's target.
     if (typeof template.save === "string" && scope.blocks.has(template.save) && template.view !== "checklist") {
       // Where the block reads is where the save writes, so its root's keys are checked as the panel's are.
@@ -709,8 +745,18 @@ export class Expander {
         at(saving.error);
         return undefined;
       }
-      template.target = saving.target;
+      if ("link" in saving) {
+        const found = this.kindAt(saving.link, scope, at);
+        if (!found) return undefined;
+        template.target = { kind: "list", name: found.ref.name, at: found.ref.path };
+        template.targetFields = found.fields.types;
+        if (!template.schema && !schemaOf(template.save, scope.blocks)) {
+          template.schema = found.fields.types;
+          if (Object.keys(found.fields.info).length) template.fieldInfo = found.fields.info;
+        }
+      } else template.target = saving.target;
       const schema = schemaOf(template.save, scope.blocks);
+      if (schema && "target" in saving) template.targetFields = schema;
       if (schema && !template.schema) {
         template.schema = schema;
         const info = fieldInfoOf(template.save, scope.blocks);
@@ -720,6 +766,21 @@ export class Expander {
     const selected = selectOf(template);
     if (selected !== undefined && scope.selects.has(selected)) template.select = scope.selects.get(selected);
     return template;
+  }
+
+  /** The kind a link names, from the note it was typed in; tells why when it names none. */
+  private kindAt(text: string, scope: Scope, at: (e: string) => void): { ref: KindRef; fields: ReturnType<typeof readFields> } | undefined {
+    const link = storeTarget(text);
+    this.links.add(basename(link));
+    const path = this.notes?.resolve(link, scope.path);
+    const fm = path === undefined ? undefined : this.notes!.frontmatter(path);
+    if (path !== undefined) this.read[path] = fm ?? null;
+    const name = kindName(fm);
+    if (path === undefined || name === undefined) {
+      at(path === undefined ? `can't find [[${link}]]` : `[[${link}]] isn't a kind (a kind note has kind: and fields:)`);
+      return undefined;
+    }
+    return { ref: { path, name }, fields: readFields(fm!.fields as Record<string, unknown>) };
   }
 
   /**
@@ -773,10 +834,10 @@ export class Expander {
       for (const t of targets) {
         set(t, key);
         // A chain's stages and schema come with the source that named it; formula values with the formulas.
-        if (key === "source") for (const k of ["upstream", "schema", "fieldInfo"]) set(t, k);
+        if (key === "source") for (const k of ["upstream", "schema", "fieldInfo", "kind"]) set(t, k);
         if (key === "compute") set(t, "vars");
-        if (key === "save") set(t, "target");
-        if (key === "row") set(t, "kept");
+        if (key === "save") for (const k of ["target", "targetFields"]) set(t, k);
+        if (key === "row") for (const k of ["kept", "rowVars"]) set(t, k);
       }
     }
   }

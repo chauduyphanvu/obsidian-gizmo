@@ -30,7 +30,7 @@ test("panels are checked strictly", () => {
   assert.deepEqual(r?.errors, [
     "panel 1: line needs x and y",
     'panel 2: unknown key "colour"',
-    "panel 3: view must be one of number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer, calendar, board, scatter, timeline, alerts",
+    "panel 3: view must be one of number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer, calendar, board, scatter, timeline, alerts, reconcile",
   ]);
   // A stray key is reported but doesn't stop an otherwise valid panel from showing.
   assert.deepEqual(r?.spec?.panels.map((ps) => ps.panel), [{ view: "number", source: "weights" }]);

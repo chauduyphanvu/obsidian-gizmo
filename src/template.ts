@@ -1,4 +1,5 @@
 import { getPath } from "./data.ts";
+import { rowFormula } from "./formula.ts";
 import { isPlainObject } from "./keys.ts";
 
 /**
@@ -97,15 +98,18 @@ function split(text: string, names: ReadonlySet<string>): (string | InputRef)[] 
 
 /**
  * Formulas keep their text: a `$name` in one is a value the formula reads (bound by expansion as
- * the panel's `vars`), never text spliced into it.
+ * the panel's `vars`, or a `row:` formula's `rowVars`), never text spliced into it.
  */
 function formulas(key: string, k: string): boolean {
   return key === "" && k === "compute";
 }
 
+const rowFormulaText = (key: string, value: string) => key === "row" && rowFormula(value) !== undefined;
+
 /** Replaces declared input names with references; `key` is the panel key the value belongs to. */
 export function parseInputs(value: unknown, names: ReadonlySet<string>, key = ""): unknown {
   if (typeof value === "string") {
+    if (rowFormulaText(key, value)) return value;
     const parts = split(value, names);
     if (parts.length === 1 && parts[0] instanceof InputRef) return parts[0];
     return parts.some((p) => p instanceof InputRef) ? new InputText(parts, key === "source") : value;
@@ -295,12 +299,14 @@ export function didYouMean(word: string, names: Iterable<string>): string {
 /** `$words` one typo away from a declared name, e.g. `$sybmol` beside `symbol`. */
 export function nearMisses(raw: unknown, names: ReadonlySet<string>, kind: "input" | "param"): string[] {
   const words = new Set<string>();
-  const walk = (v: unknown) => {
-    if (typeof v === "string") for (const m of v.matchAll(TOKEN)) words.add(m[1]);
-    else if (Array.isArray(v)) v.forEach(walk);
-    else if (isPlainObject(v) && !(v instanceof Date)) for (const [k, x] of Object.entries(v)) if (k !== "compute") walk(x);
+  // A formula's names are checked where its vars are bound.
+  const walk = (v: unknown, key: string) => {
+    if (typeof v === "string") {
+      if (!rowFormulaText(key, v)) for (const m of v.matchAll(TOKEN)) words.add(m[1]);
+    } else if (Array.isArray(v)) v.forEach((x) => walk(x, key));
+    else if (isPlainObject(v) && !(v instanceof Date)) for (const [k, x] of Object.entries(v)) if (k !== "compute") walk(x, key || k);
   };
-  walk(raw);
+  walk(raw, "");
   const out: string[] = [];
   for (const w of words) {
     if (names.has(w)) continue;
@@ -366,6 +372,7 @@ function paramAt(value: unknown, path: string): unknown {
  */
 export function fillParams(value: unknown, params: ReadonlyMap<string, unknown>, errors: string[], key = ""): unknown {
   if (typeof value === "string") {
+    if (rowFormulaText(key, value)) return value;
     const parts = split(value, new Set(params.keys()));
     if (!parts.some((p) => p instanceof InputRef)) return value;
     if (parts.length === 1) {

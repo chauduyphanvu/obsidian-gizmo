@@ -3,7 +3,7 @@ import { rowId as ledgerRowId } from "./ledger.ts";
 import { fillLine, runActions, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor } from "./activity.ts";
 import type { AppEntry, Background, BackgroundEnv, Evaluation } from "./background.ts";
-import { captureTargets, logTime, ownAt, parseLine, whenText, type CaptureIndex, type Parsed } from "./capture.ts";
+import { captureTargets, logTime, ownAt, parseLine, plannedText, swallowed, whenText, type CaptureIndex, type Parsed } from "./capture.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import type { Row } from "./data.ts";
 import {
@@ -31,6 +31,8 @@ export interface ShortcutResult {
   /** What a shortcut that answers answered: its value, and as shown. */
   value?: unknown;
   shown?: string;
+  /** With `quiet`, what the run would have told in a notice (its `notify`, else that it's done), for the caller to tell once. */
+  told?: string;
 }
 
 /** A shortcut that answers: whether it had a value, or why not. */
@@ -65,7 +67,15 @@ export function dryLines(steps: DryStep[]): string[] {
       ...step.notices.map((n) => `Tell you: ${i > 0 && !n.startsWith(`${step.app}:`) ? `${step.app}: ${n}` : n}`),
     ];
   });
-  return lines.length ? lines : ["Nothing would change"];
+  if (!lines.length) return ["Nothing would change"];
+  // A row planned on every day of a range is one save said many times; it is said once, with the count.
+  const runs: { line: string; n: number }[] = [];
+  for (const line of lines) {
+    const last = runs.at(-1);
+    if (last?.line === line) last.n++;
+    else runs.push({ line, n: 1 });
+  }
+  return runs.map(({ line, n }) => (n > 1 ? `${line}, ${n} times` : line));
 }
 
 /** A shortcut on a panel that shows one value answers with it instead of acting. */
@@ -134,10 +144,11 @@ export class Shortcuts {
    * as that shortcut's command would with a link's values. A line that can't be read runs nothing
    * and says why only in its result, for the place it was typed to show.
    */
-  async capture(line: string, actor: Actor = "shortcut"): Promise<ShortcutResult & { parsed: Parsed }> {
+  /** With `quiet`, what it did isn't told in a notice but given back as `told`, so a window that ran it tells it once, with Undo. */
+  async capture(line: string, actor: Actor = "shortcut", quiet = false): Promise<ShortcutResult & { parsed: Parsed }> {
     const parsed = parseLine(line, this.captureIndex(), this.env.now());
     if (!parsed.ok) return { ok: false, error: parsed.error, parsed };
-    return { ...(await this.runShortcut(parsed.target.path, parsed.target.shortcut, actor, parsed.params)), parsed };
+    return { ...(await this.runShortcut(parsed.target.path, parsed.target.shortcut, actor, parsed.params, undefined, undefined, undefined, undefined, quiet)), parsed };
   }
 
   /**
@@ -156,6 +167,9 @@ export class Shortcuts {
     const { path, shortcut } = parsed.target;
     // A name that now reaches another shortcut than the one it was copied for asks again.
     const captureKeyed = captureCovers(granted, parsed.target);
+    // Run unasked, a line whose text took the rest of it would save what nobody saw first.
+    const guess = captureKeyed ? swallowed(parsed) : undefined;
+    if (guess) return this.say(`A capture link couldn't run “${line}”: ${guess}`);
     await this.runShortcut(path, shortcut, "link", parsed.params, undefined, { callbacks, captureKeyed });
   }
 
@@ -225,7 +239,9 @@ export class Shortcuts {
    * result: the panel's own `notify`, else that it's done.
    */
   /** `seed` makes the rows it saves the same rows wherever it runs: an alert's then on two runners at once saves one. */
-  private async runShortcut(appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun, seed?: string): Promise<ShortcutResult> {
+  private async runShortcut(
+    appPath: string, shortcut: string, actor: Actor, params?: Record<string, string>, chain?: string[], link?: LinkCall, dry?: DryRun, seed?: string, quiet = false,
+  ): Promise<ShortcutResult> {
     const entry = this.apps.get(appPath);
     const ps = entry?.shortcuts.get(shortcut);
     // In a dry run, what it would tell is kept with what it would change, and nothing is shown or opened.
@@ -263,7 +279,7 @@ export class Shortcuts {
       return fail(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
     }
     // Another app's then fills fields only; what it saves is logged when it runs.
-    const when: { at?: Date } | { error: string } = triggered ? {} : whenOf(p, shortcut, params, now);
+    const when: { at?: Date; plan?: Date[] } | { error: string } = triggered ? {} : whenOf(p, shortcut, params, now);
     if ("error" in when) return fail(`${entry.name}: ${when.error}`);
     if (p.view === "form" || p.view === "checklist") {
       const form = p.view === "form";
@@ -283,7 +299,7 @@ export class Shortcuts {
     if (actor === "link" && !dry) {
       const given = params ?? {};
       const lines = Object.keys(input).filter((k) => Object.hasOwn(given, k)).map((k) => `${k}: ${String(input[k])}`);
-      if (when.at) lines.push(`at: ${whenText(when.at, now)}`);
+      if (when.at) lines.push(`at: ${plannedText({ at: when.at, plan: when.plan }, now) ?? whenText(when.at, now)}`);
       if (cb.to) lines.push(`Then it tells ${cb.to} it ran`);
       const effects = async () => dryLines(await this.dryRun(entry.path, shortcut, params));
       allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`, effects);
@@ -292,24 +308,31 @@ export class Shortcuts {
     const trail = chain ?? [shortcutId(entry.path, shortcut)];
     // Said before what its `then` runs says, in the order they happen.
     let told = false;
+    let toldText: string | undefined;
     const done = () => {
       if (told || p.notify || dry) return;
       told = true;
-      say(`${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`);
+      const text = `${entry.name}: ${label} done${triggered ? ` for ${by(actor)}` : ""}`;
+      if (quiet) toldText = text;
+      else say(text);
     };
     let result: ActionResult;
     if (p.view === "checklist") {
       const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       result = await tickItem(p, String(input.item), { ...(dry ? recordingDeps(dry.overlay, base, step) : base), tellsFailure: true });
-      if (result.ok) say(`${entry.name}: ${result.already ? `${String(input.item)} was already ticked` : `ticked ${String(input.item)}`}${triggered ? ` for ${by(actor)}` : ""}`);
+      const ticked = `${entry.name}: ${result.already ? `${String(input.item)} was already ticked` : `ticked ${String(input.item)}`}${triggered ? ` for ${by(actor)}` : ""}`;
+      if (result.ok && quiet) toldText = ticked;
+      else if (result.ok) say(ticked);
     } else {
       const base: ActionDeps = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       const deps: ActionDeps = {
         ...(dry ? recordingDeps(dry.overlay, base, step) : base),
         // Why it stopped is said once, below, naming the shortcut.
         tellsFailure: true,
+        ...(quiet && { inPlace: true, quiet: true }),
         expect: entry.spec.expect,
         ...(when.at && { at: when.at }),
+        ...(when.plan && { plan: when.plan }),
         ...(seed && { rowId: ledgerRowId(`then\n${seed}`) }),
         then: async (panel, ctx) => {
           done();
@@ -318,6 +341,7 @@ export class Shortcuts {
       };
       result = await runActions(p, input, deps);
       if (result.ok) done();
+      if (quiet && result.told !== undefined) toldText = result.told;
     }
     const failed = `“${label}” didn't run${result.error ? `: ${result.error}` : ""}`;
     if (!result.ok) say(triggered ? `${entry.name}: ${failed}` : failed);
@@ -326,7 +350,7 @@ export class Shortcuts {
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
     if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: failed }));
     const entryId = await result.logged?.catch(() => undefined);
-    return result.ok ? { ok: true, entryId } : { ok: false, error: failed, entryId };
+    return result.ok ? { ok: true, entryId, ...(toldText !== undefined && { told: toldText }) } : { ok: false, error: failed, entryId };
   }
 
   /**
@@ -536,14 +560,15 @@ function readParams(p: Panel, params: Record<string, string>, now: Date): { row:
  * When a form's or button's row is logged for, from a link's `at=` (which a capture line's `@when`
  * becomes): now when none is given. Refused for a form with a field of its own called at, whose
  * value the row's stamp would take the place of, and refused whole, as any value of a link is, if
- * it holds a secret or a line break.
+ * it holds a secret or a line break. A panel that saves to a kind takes a time still to come, and
+ * `every … until …`, which plan rows.
  */
-function whenOf(p: Panel, shortcut: string, params: Record<string, string> | undefined, now: Date): { at?: Date } | { error: string } {
+function whenOf(p: Panel, shortcut: string, params: Record<string, string> | undefined, now: Date): { at?: Date; plan?: Date[] } | { error: string } {
   const raw = params?.at;
   if (raw === undefined || p.view === "checklist") return {};
   if (p.view === "form" && Object.hasOwn(p.fields ?? p.schema ?? {}, "at")) return { error: ownAt(shortcut, "at=") };
   const problem = valueProblem(new InputRef("at"), raw, true);
-  return problem ? { error: problem } : logTime(raw, now);
+  return problem ? { error: problem } : logTime(raw, now, p.target?.kind === "list" && p.target.at !== undefined);
 }
 
 /**

@@ -99,6 +99,12 @@
   "gallery:Apps/Aurora watch.md": [
     "net:services.swpc.noaa.gov"
   ],
+  "gallery:Apps/Bills and renewals.md": [
+    "kind-write:Kinds/Renewal.md",
+    "kind-write:Kinds/Spend.md",
+    "kind:Kinds/Renewal.md",
+    "kind:Kinds/Spend.md"
+  ],
   "gallery:Apps/Book finder.md": [
     "create:Books",
     "edit:Books",
@@ -108,17 +114,28 @@
     "send:openlibrary.org|typed.q"
   ],
   "gallery:Apps/Budget.md": [
-    "answer:spent"
+    "answer:lands",
+    "answer:spent",
+    "kind-write:Kinds/Spend.md",
+    "kind:Kinds/Spend.md"
   ],
   "gallery:Apps/Decision journal.md": [
     "create:Decisions",
     "edit:Decisions",
     "read:Decisions"
   ],
-  "gallery:Apps/Household chores.md": [],
-  "gallery:Apps/Medication log.md": [
-    "answer:doses-today"
+  "gallery:Apps/Household chores.md": [
+    "kind-write:Kinds/Chore.md",
+    "kind-write:Kinds/Spend.md",
+    "kind:Kinds/Chore.md",
+    "kind:Kinds/Spend.md"
   ],
+  "gallery:Apps/Medication log.md": [
+    "answer:doses-today",
+    "kind-write:Kinds/Dose.md",
+    "kind:Kinds/Dose.md"
+  ],
+  "gallery:Apps/Practice.md": [],
   "gallery:Apps/Project board.md": [
     "create:Projects",
     "edit:Projects",
@@ -131,13 +148,14 @@
     "net:feeds.npr.org",
     "read:Reading"
   ],
-  "gallery:Apps/Sleep.md": [],
   "gallery:Apps/Task inbox.md": [
     "read:Tasks",
     "tasks:Tasks",
     "write:Tasks/Inbox.md"
   ],
   "gallery:Apps/Trip planner.md": [
+    "kind-write:Kinds/Spend.md",
+    "kind:Kinds/Spend.md",
     "net:api.frankfurter.dev",
     "net:api.open-meteo.com",
     "net:archive-api.open-meteo.com",
@@ -147,11 +165,16 @@
     "send:archive-api.open-meteo.com|this.lat",
     "send:archive-api.open-meteo.com|this.lon"
   ],
-  "gallery:Apps/Watchlist.md": [
+  "gallery:Apps/Vitals.md": [
+    "kind-write:Kinds/Measurement.md",
+    "kind:Kinds/Measurement.md"
+  ],
+  "gallery:Apps/Trades.md": [
+    "kind-write:Kinds/Trade.md",
+    "kind:Kinds/Trade.md",
     "net:query1.finance.yahoo.com",
     "send:query1.finance.yahoo.com|picked.position.symbol"
   ],
-  "gallery:Apps/Weight.md": [],
   "gallery:Components/Decision review.md": [
     "edit:Decisions"
   ],

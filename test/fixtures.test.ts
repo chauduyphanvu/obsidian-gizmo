@@ -725,7 +725,7 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   assert.deepEqual(items(panelsOf(root)[2])[0], "tomorrow · Blood test with Dr. Kim");
   assert.equal(text(panelsOf(root)[0].querySelector(".gz-big")), "1 day");
   assert.equal(said(form), "Booked Blood test on 2026-11-19");
-  assert.deepEqual(t.notices, ["Appointments: Next appointment (1 row)"]);
+  assert.deepEqual(t.notices, ["Appointments: Next appointment: 1 day"]);
   assert.equal(t.out.status[0].text, "Next appointment: 1 day");
 
   // Done: it leaves what's coming up. The dentist moves to the 20th.
@@ -782,7 +782,7 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
     [["Car insurance", "2026-11-25", "7"], ["Passport", "2027-03-01", "103"]]);
   assert.equal(text(next.querySelector(".gz-big")), "7 days");
   // A week away: told once.
-  assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)"]);
+  assert.deepEqual(t.notices, ["Renewals: Coming up: Car insurance, Days left 7"]);
 
   const tick = rows()[0].querySelector('input[type="checkbox"]') as HTMLInputElement;
   tick.checked = true;
@@ -800,7 +800,7 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   await settle();
   assert.equal((t.f.files.get("Apps/Renewals data.md")!.fm!.deadlines as { due: string }[])[0].due, "2026-12-01");
   assert.equal(text(next.querySelector(".gz-big")), "13 days");
-  assert.deepEqual(t.notices, ["Renewals: Coming up (1 row)", "Renewals: Coming up (1 row)"]);
+  assert.deepEqual(t.notices, ["Renewals: Coming up: Car insurance, Days left 7", "Renewals: Coming up: Passport, Days left 13"]);
 });
 
 const FRANKFURTER = "https://api.frankfurter.dev/v2/rates";

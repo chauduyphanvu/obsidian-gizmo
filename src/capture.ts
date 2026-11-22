@@ -1,5 +1,6 @@
-import { stampOf, stampParts, toTime } from "./time.ts";
+import { daysInMonth, stampOf, stampParts, toTime } from "./time.ts";
 import type { PanelSpec } from "./spec.ts";
+import { nearMiss } from "./template.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */
 export interface CaptureTarget {
@@ -13,6 +14,8 @@ export interface CaptureTarget {
   /** A form's fields in the order they are declared, each with its type; a checklist's items. */
   fields: [string, string | string[]][];
   items: string[];
+  /** It saves to a kind, where a time still to come plans a row (see readWhen). */
+  ahead?: boolean;
 }
 
 /** Every name a capture line can start with, and the names that point at more than one shortcut. */
@@ -49,6 +52,7 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
         // A form's title says what it's for better than its button's label, as the activity log names it.
         label: p.title ?? p.label ?? shortcut, view: p.view as CaptureTarget["view"],
         fields, items: (p.items ?? []).map(String),
+        ...(p.target?.kind === "list" && p.target.at !== undefined && { ahead: true }),
       };
       all.push({ target, alias: p.alias });
       shortcutCount.set(shortcut, (shortcutCount.get(shortcut) ?? 0) + 1);
@@ -75,10 +79,11 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
 
 /**
  * What a capture line would run, or why it can't, with what could come next. `params` are what a
- * link would carry, `at=` included for a line that ends in `@when`; `at` is that time, to show.
+ * link would carry, `at=` included for a line that ends in `@when`; `at` is that time, to show, and
+ * `plan` every time an `@every` plans a row for.
  */
 export type Parsed =
-  | { ok: true; target: CaptureTarget; params?: Record<string, string>; at?: Date; next?: string }
+  | { ok: true; target: CaptureTarget; params?: Record<string, string>; at?: Date; plan?: Date[]; next?: string; rest?: string }
   | { ok: false; error: string; target?: CaptureTarget; completions: string[]; next?: string };
 
 /** One word of a line, or one `"…"` value. */
@@ -175,12 +180,18 @@ export const ownAt = (name: string, how: string) => `${name} has a field called 
 /** Why a row can't be logged for a time still to come: rows record what happened. */
 export const NOT_YET = "can't log for a time that hasn't come yet";
 
+/** The most rows one `@every` plans: a year of days. */
+export const MAX_PLANNED = 366;
+
+/** What `@every` repeats by, also written as a plural after a count (`every 3 months`). */
+const EVERY = ["day", "week", "month", "year"] as const;
+
 /**
  * A day a row is logged for, as `YYYY-MM-DD`: the words captureDate reads, except that a weekday
  * or a month and day is the latest one, today included, since what is logged has happened, and
  * `last` and a weekday is the one a week before that.
  */
-function pastDate(word: string, following: string | undefined, now: Date): { value: string; used: number } | undefined {
+export function pastDate(word: string, following: string | undefined, now: Date): { value: string; used: number } | undefined {
   const w = word.toLowerCase();
   const back = (wd: number) => (now.getDay() - wd + 7) % 7;
   const wd = weekday(w);
@@ -197,17 +208,106 @@ function pastDate(word: string, following: string | undefined, now: Date): { val
   return captureDate(word, following, now);
 }
 
+/** When a row is logged or planned for: one time, or with `plan` every time an `@every` gives, the first of them in `at`. */
+export type When = { at: Date; plan?: Date[] };
+
+const MONTH_WORD = /^(jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)$/;
+
+/**
+ * A day `from` or `until` names, as `YYYY-MM-DD`: the words a date field takes (see captureDate), or
+ * a month and a day (`dec 5`, `december 5`). A month and a day with no year, either way (`12-05`
+ * too), is the next one, today included, since a plan looks ahead.
+ */
+function dayAhead(words: readonly string[], now: Date): { value: string; used: number } | undefined {
+  const [first, second] = words.map((w) => w.toLowerCase());
+  if (first === undefined) return undefined;
+  return nextMonthDay(words, now) ?? captureDate(first, second, now);
+}
+
+/** A month and a day with no year (`dec 5`, `december 5`, `12-05`), as the next one, today included; undefined for other words. */
+function nextMonthDay(words: readonly string[], now: Date): { value: string; used: number } | undefined {
+  const [first, second] = words.map((w) => w.toLowerCase());
+  if (first === undefined) return undefined;
+  const named = MONTH_WORD.test(first) && second !== undefined && /^\d{1,2}$/.test(second) ? [MONTHS.findIndex((m) => first.startsWith(m.toLowerCase())) + 1, Number(second), 2] : undefined;
+  const dashed = /^(\d{1,2})-(\d{1,2})$/.exec(first);
+  const md = named ?? (dashed ? [Number(dashed[1]), Number(dashed[2]), 1] : undefined);
+  if (!md) return undefined;
+  const [m, d, used] = md;
+  const value = day(now.getFullYear(), m, d);
+  if (value === undefined) return undefined;
+  return { value: value < stampParts(now).date ? day(now.getFullYear() + 1, m, d) ?? value : value, used };
+}
+
+const EVERY_HELP = "say every day, week, month or year, or a count of them, until a date, e.g. @every month until 2027-06-01, @every day 08:00 until dec 5 or @every 3 months from 2026-12-12 until 2028-01-01";
+
+/**
+ * The times `every [<n>] <day|week|month|year> [from <day>] [<time>] until <day>` gives: from that
+ * day (today when no `from`), at that time of day (the time now when none), then one each n periods
+ * to the end of the `until` day, only those still to come, at most MAX_PLANNED. With neither `from`
+ * nor a time, that makes the first one n periods from now, as it always has. A month or a year keeps
+ * the first one's day, or the month's last day when it has fewer.
+ */
+function readEvery(words: readonly string[], now: Date): When | { error: string } | undefined {
+  const [, ...after] = words;
+  const count = /^\d+$/.test(after[0] ?? "") ? Number(after.shift()) : 1;
+  const [per, ...rest] = after;
+  const word = per?.toLowerCase();
+  const period = (EVERY as readonly string[]).find((p) => word === p || word === `${p}s`);
+  if (period === undefined) return per === undefined && words.length === 1 ? undefined : { error: EVERY_HELP };
+  if (count < 1) return { error: "the count after every must be 1 or more, e.g. every 3 months" };
+  let i = 0;
+  let from = stampParts(now).date;
+  if (rest[i]?.toLowerCase() === "from") {
+    const d = dayAhead(rest.slice(i + 1, i + 3), now);
+    if (!d) return { error: `from must be a day (2026-12-01, dec 1, mon, tomorrow), not “${rest.slice(i + 1).join(" ")}”` };
+    from = d.value;
+    i += 1 + d.used;
+  }
+  const time = rest[i] === undefined ? undefined : captureTime(rest[i]);
+  if (time !== undefined) i++;
+  if (rest[i]?.toLowerCase() !== "until" || i + 1 >= rest.length) return { error: EVERY_HELP };
+  const date = rest.slice(i + 1);
+  const end = dayAhead(date, now);
+  if (!end || end.used !== date.length) return { error: `until must be a date (2027-06-01, dec 5, 06-01, +30d), not “${date.join(" ")}”` };
+  const [y, m, d] = end.value.split("-").map(Number);
+  const last = new Date(y, m - 1, d, 23, 59, 59).getTime();
+  const [fy, fm, fd] = from.split("-").map(Number);
+  const [h, mi] = time ? time.split(":").map(Number) : [now.getHours(), now.getMinutes()];
+  const start = new Date(fy, fm - 1, fd, h, mi);
+  const plan: Date[] = [];
+  for (let k = 0; ; k++) {
+    const n = k * count;
+    const t = period === "day" ? new Date(fy, fm - 1, fd + n, h, mi) : period === "week" ? new Date(fy, fm - 1, fd + 7 * n, h, mi) : monthOn(start, period === "year" ? 12 * n : n);
+    if (t.getTime() > last) break;
+    if (t.getTime() <= now.getTime()) continue;
+    if (plan.length === MAX_PLANNED) return { error: `that plans more than ${MAX_PLANNED} rows; pick a nearer date or a longer period` };
+    plan.push(t);
+  }
+  return plan.length ? { at: plan[0], plan } : { error: `until ${end.value} comes before the first ${count > 1 ? "time" : period} still to come` };
+}
+
+/** The same day of the month `k` months after `start`, at its time of day; a month's last day when it has fewer days. */
+function monthOn(start: Date, k: number): Date {
+  const y = start.getFullYear() + Math.floor((start.getMonth() + k) / 12);
+  const m = (start.getMonth() + k) % 12;
+  return new Date(y, m, Math.min(start.getDate(), daysInMonth(y, m)), start.getHours(), start.getMinutes());
+}
+
 /**
  * The time the words after `@` give, every word used: a time (today), a day (at this time of day),
- * or a day and a time. Undefined when they aren't one; why not, for a time still to come.
+ * or a day and a time. Undefined when they aren't one; why not, for a time still to come. With
+ * `ahead` (a line that saves to a kind), a time still to come plans a row, and so does each time of
+ * `every <day|week|month> until <date>`.
  */
-function readWhen(words: readonly string[], now: Date): { at: Date } | { error: string } | undefined {
+function readWhen(words: readonly string[], now: Date, ahead = false): When | { error: string } | undefined {
   const [first, ...more] = words;
   if (!first) return undefined;
+  if (ahead && first.toLowerCase() === "every") return readEvery(words, now);
   let date = stampParts(now).date;
   let time = more.length ? undefined : captureTime(first);
   if (time === undefined) {
-    const d = pastDate(first, more[0], now);
+    // A line that plans looks ahead: a month and a day with no year is the next one there.
+    const d = (ahead ? nextMonthDay(words, now) : undefined) ?? pastDate(first, more[0], now);
     const rest = d ? more.slice(d.used - 1) : [];
     if (!d || rest.length > 1) return undefined;
     date = d.value;
@@ -217,7 +317,7 @@ function readWhen(words: readonly string[], now: Date): { at: Date } | { error: 
   const [y, m, dd] = date.split("-").map(Number);
   const [h, mi] = time.split(":").map(Number);
   const at = new Date(y, m - 1, dd, h, mi);
-  return at.getTime() > now.getTime() ? { error: NOT_YET } : { at };
+  return at.getTime() > now.getTime() && !ahead ? { error: NOT_YET } : { at };
 }
 
 /**
@@ -225,37 +325,51 @@ function readWhen(words: readonly string[], now: Date): { at: Date } | { error: 
  * Only when what follows the last `@` reads as a time to the line's end; anything else (an
  * address, `lunch @ cafe`, a quoted or named value) stays a value.
  */
-export function takeWhen(tokens: readonly Token[], now: Date): { tokens: Token[]; at?: Date; error?: string } {
+export function takeWhen(tokens: readonly Token[], now: Date, ahead = false): { tokens: Token[]; at?: Date; plan?: Date[]; error?: string } {
   const plain = (t: Token) => !t.quoted && t.name === undefined;
   let i = tokens.length - 1;
   while (i >= 0 && plain(tokens[i]) && !tokens[i].text.startsWith("@")) i--;
   const head = tokens[i];
   if (!head || !plain(head) || head.text.length < 2) return { tokens: [...tokens] };
-  const when = readWhen([head.text.slice(1), ...tokens.slice(i + 1).map((t) => t.text)], now);
+  const when = readWhen([head.text.slice(1), ...tokens.slice(i + 1).map((t) => t.text)], now, ahead);
   if (!when) return { tokens: [...tokens] };
-  return "error" in when ? { tokens: tokens.slice(0, i), error: when.error } : { tokens: tokens.slice(0, i), at: when.at };
+  if ("error" in when) return { tokens: tokens.slice(0, i), error: when.error };
+  return { tokens: tokens.slice(0, i), at: when.at, ...(when.plan && { plan: when.plan }) };
 }
+
 
 /**
  * A time to log a row for, as a link's `at=` gives it: the words a line takes after `@` (yday,
  * fri 13:00, 8am), or a stamp (`2026-11-19T08:14-08:00`); never one still to come.
  */
-export function logTime(text: string, now: Date): { at: Date } | { error: string } {
+export function logTime(text: string, now: Date, ahead = false): When | { error: string } {
   const typed = text.trim().replace(/^@/, "");
-  const read = readWhen(typed.split(/\s+/), now);
+  const read = readWhen(typed.split(/\s+/), now, ahead);
   if (read) return read;
   const t = /^\d{4}-\d{2}-\d{2}T/.test(typed) ? toTime(typed) : undefined;
   if (t === undefined) return { error: `at must be a time (yday, fri 13:00, 8am, 2026-11-19T08:14), not “${text}”` };
-  return t > now.getTime() ? { error: NOT_YET } : { at: new Date(t) };
+  return t > now.getTime() && !ahead ? { error: NOT_YET } : { at: new Date(t) };
 }
 
 const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A day as a preview says it: `Thu Nov 19`, with its year when not this one's. */
+export function dayText(at: Date, now: Date): string {
+  const year = at.getFullYear() === now.getFullYear() ? "" : ` ${at.getFullYear()}`;
+  return `${DAYS[at.getDay()]} ${MONTHS[at.getMonth()]} ${at.getDate()}${year}`;
+}
 
 /** A time a row is logged for, as a preview says it: `Thu Nov 19, 13:00`, with its year when not this one's. */
 export function whenText(at: Date, now: Date): string {
-  const year = at.getFullYear() === now.getFullYear() ? "" : ` ${at.getFullYear()}`;
-  return `${DAYS[at.getDay()]} ${MONTHS[at.getMonth()]} ${at.getDate()}${year}, ${stampParts(at).time}`;
+  return `${dayText(at, now)}, ${stampParts(at).time}`;
+}
+
+/** When a row saved to a kind is for, as a preview says it: planned for a time still to come, or each time of an `@every`. */
+export function plannedText(when: When, now: Date): string | undefined {
+  const plan = when.plan;
+  if (plan && plan.length > 1) return `planned ${plan.length} times, ${whenText(plan[0], now)} to ${whenText(plan[plan.length - 1], now)}`;
+  return when.at.getTime() > now.getTime() ? `planned for ${whenText(when.at, now)}` : undefined;
 }
 
 /** A number as a capture line takes it: digits, a point, a sign; no thousands separators. */
@@ -320,9 +434,10 @@ function readValue(name: string, type: string | string[], words: string[], now: 
 /**
  * Reads a capture line: the name of a shortcut, then its values. A form's values fill its fields
  * in the order they are declared, each read as its type; a text field takes one word, or the rest
- * of the line when it is the last field left; `name=value` fills a field by its name and `"…"`
- * keeps spaces in a value. A checklist takes the item to tick, a button nothing. Nothing is
- * guessed: anything unclear is an error, with what could be typed instead.
+ * of the line when it is the last field left or what follows can't be the next field's value
+ * (see strictValues); `name=value` fills a field by its name and `"…"` keeps spaces in a value. A
+ * checklist takes the item to tick, a button nothing. Nothing is guessed: anything unclear is an
+ * error, with what could be typed instead.
  */
 export function parseLine(line: string, index: CaptureIndex, now: Date): Parsed {
   // A link or a phone's shortcut could carry more than one line; like any link's value, that is refused whole.
@@ -350,10 +465,10 @@ export function parseLine(line: string, index: CaptureIndex, now: Date): Parsed 
   if ("error" in tokens) return { ok: false, error: tokens.error, target, completions: [] };
   const rest = tokens;
   if (target.view === "button") {
-    const when = takeWhen(rest, now);
+    const when = takeWhen(rest, now, target.ahead);
     if (when.error) return { ok: false, error: when.error, target, completions: [] };
     if (when.tokens.length) return { ok: false, error: `${word} takes no values`, target, completions: [] };
-    return when.at ? { ok: true, target, params: { at: stampOf(when.at) }, at: when.at } : { ok: true, target };
+    return when.at ? { ok: true, target, params: { at: atParam(when, rest) }, at: when.at, ...(when.plan && { plan: when.plan }) } : { ok: true, target };
   }
   if (target.view === "checklist") {
     const named = rest.find((t) => t.name !== undefined);
@@ -367,8 +482,15 @@ export function parseLine(line: string, index: CaptureIndex, now: Date): Parsed 
   return parseForm(target, rest, now);
 }
 
+/** What a link's `at=` carries for a line's `@when`: the time, or for an `@every`, its words, read again when it runs. */
+function atParam(when: { at?: Date; plan?: Date[] }, tokens: readonly Token[]): string {
+  if (!when.plan) return stampOf(when.at!);
+  const i = tokens.findLastIndex((t) => !t.quoted && t.name === undefined && t.text.startsWith("@"));
+  return [tokens[i].text.slice(1), ...tokens.slice(i + 1).map((t) => t.text)].join(" ");
+}
+
 function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
-  const read = parseFields(tokens, target.fields, now, { name: target.name });
+  const read = parseFields(tokens, target.fields, now, { name: target.name, ahead: target.ahead });
   const fail = (error: string, completions: string[] = [], next?: string): Parsed => ({ ok: false, error, target, completions, next });
   if (read.errors.length) return fail(read.errors[0], read.completions, read.next);
   // A form saved with nothing typed would be an empty row made by a slip of the Enter key.
@@ -379,9 +501,21 @@ function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
   // @ is run as a link's at=, which a form with a field of its own called at refuses.
   if (read.at && target.fields.some(([n]) => n === "at")) return fail(ownAt(target.name, "@"));
   const nextField = target.fields.find(([n]) => n === read.missing[0]);
-  const next = nextField ? describe(nextField[0], nextField[1]) : undefined;
-  if (!read.at) return { ok: true, target, params: read.params, next };
-  return { ok: true, target, params: { ...read.params, at: stampOf(read.at) }, at: read.at, next };
+  const next = read.rest !== undefined && read.missing.length ? `${read.missing.map((n) => `${n}=…`).join(" or ")} by name`
+    : nextField ? describe(nextField[0], nextField[1]) : undefined;
+  const rest = read.rest !== undefined && read.missing.length ? { rest: read.rest } : {};
+  if (!read.at) return { ok: true, target, params: read.params, next, ...rest };
+  return { ok: true, target, params: { ...read.params, at: atParam(read, tokens) }, at: read.at, ...(read.plan && { plan: read.plan }), next, ...rest };
+}
+
+/**
+ * Why a line whose text field took the rest of it, while fields after it stay empty, isn't run
+ * where nothing shows first what it would save (a keyed capture link, gizmod's keyed /do):
+ * undefined when no field had to.
+ */
+export function swallowed(parsed: Parsed): string | undefined {
+  if (!parsed.ok || parsed.rest === undefined) return undefined;
+  return `“${parsed.params?.[parsed.rest]}” would all go in ${parsed.rest}; put it in quotes, or give ${parsed.next ?? "the fields after it by name"}`;
 }
 
 /** What the values on a line give a form's fields. */
@@ -401,6 +535,10 @@ export interface FieldValues {
   next?: string;
   /** When the row is logged for, from a trailing `@when`; undefined for now. */
   at?: Date;
+  /** Every time an `@every` plans a row for, the first of them in `at`. */
+  plan?: Date[];
+  /** The text field that took the rest of the line though fields come after it, which then go by name. */
+  rest?: string;
 }
 
 type FieldList = readonly (readonly [string, string | string[]])[];
@@ -413,7 +551,7 @@ const isText = (type: string | string[]) => type === "text" || type === "textare
  *
  * Strict, as the Do… command reads: the other values fill the fields in the order they are
  * declared, each read as its type; a text field takes one word, or the rest of the line when it is
- * the last field left. Nothing is guessed.
+ * the last field left or the word after it can't be the next field's value. Nothing is guessed.
  *
  * Loose, as an add line reads: each value goes to the first open field it fits, wherever it is on
  * the line. A choice (written in full, or 3 letters or more of only one), a number, a date or a
@@ -422,7 +560,7 @@ const isText = (type: string | string[]) => type === "text" || type === "textare
  *
  * Either way, a trailing `@when` (see takeWhen) is the time the row is logged for, not a value.
  */
-export function parseFields(input: string | readonly Token[], fields: FieldList, now: Date, how: { name: string; loose?: boolean }): FieldValues {
+export function parseFields(input: string | readonly Token[], fields: FieldList, now: Date, how: { name: string; loose?: boolean; ahead?: boolean }): FieldValues {
   const out: FieldValues = { params: {}, missing: [], errors: [], completions: [] };
   const typed = typeof input === "string" ? tokenize(input) : input;
   if ("error" in typed) {
@@ -436,9 +574,10 @@ export function parseFields(input: string | readonly Token[], fields: FieldList,
     if (!out.errors.length) Object.assign(out, { completions, next });
     out.errors.push(error);
   };
-  const when = takeWhen(typed, now);
+  const when = takeWhen(typed, now, how.ahead);
   const tokens = when.tokens;
   if (when.at) out.at = when.at;
+  if (when.plan) out.plan = when.plan;
   if (when.error) {
     fail(when.error);
     if (!how.loose) return done(out, fields);
@@ -458,7 +597,10 @@ export function parseFields(input: string | readonly Token[], fields: FieldList,
   }
   const words = tokens.filter((t) => t.name === undefined);
   if (how.loose) looseValues(words, fields, now, params, fail);
-  else strictValues(words, fields, now, params, fail);
+  else {
+    const rest = strictValues(words, fields, now, params, fail);
+    if (rest !== undefined) out.rest = rest;
+  }
   return done(out, fields);
 }
 
@@ -469,23 +611,47 @@ function done(out: FieldValues, fields: FieldList): FieldValues {
 
 type Fail = (error: string, completions?: string[], next?: string) => void;
 
-/** The words fill the open fields in the order they are declared. */
-function strictValues(words: Token[], fields: FieldList, now: Date, params: Record<string, string>, fail: Fail): void {
+/**
+ * Whether a word reads as meant for a field of this type, though it may not be one of its values: a
+ * choice, or one a typo away (`Sma` for Sam); a number with a letter for a digit (`13O`) or a comma
+ * for a point.
+ */
+function meantFor(word: string, type: string | string[]): boolean {
+  if (Array.isArray(type)) {
+    const options = type.map((o) => String(o).toLowerCase());
+    const w = word.toLowerCase();
+    return options.includes(w) || (w.length >= 3 && nearMiss(w, options.filter((o) => o.length >= 3)) !== undefined);
+  }
+  return type === "number" && /\d/.test(word) && !NUMBER.test(word) && NUMBER.test(word.replace(/[oO]/g, "0").replace(/[lI]/g, "1").replace(",", "."));
+}
+
+/**
+ * The words fill the open fields in the order they are declared. A text field takes one word, or
+ * the rest of the line when it is the last field left or the word after it can't be the next
+ * field's value (`lunch with friends` before a number field); the fields after it then go by name.
+ * It doesn't take the rest when a later word reads as meant for a later field (see meantFor), so a
+ * typo there is told rather than kept as text.
+ */
+function strictValues(words: Token[], fields: FieldList, now: Date, params: Record<string, string>, fail: Fail): string | undefined {
   const open = fields.filter(([n]) => !Object.hasOwn(params, n));
   let w = 0;
   for (let f = 0; f < open.length && w < words.length; f++) {
     const [name, type] = open[f];
-    if (isText(type) && f === open.length - 1 && !words[w].quoted) {
+    const after = open[f + 1];
+    const next = words[w + 1];
+    const nextDoesNotFit = () => next !== undefined && !next.quoted && "error" in readValue(after[0], after[1], words.slice(w + 1).map((t) => t.text), now);
+    const meantLater = () => words.slice(w + 1).some((t) => !t.quoted && open.slice(f + 1).some(([, later]) => meantFor(t.text, later)));
+    if (isText(type) && !words[w].quoted && (after === undefined || (nextDoesNotFit() && !meantLater()))) {
       params[name] = words.slice(w).map((t) => t.text).join(" ");
-      w = words.length;
-      break;
+      return after === undefined ? undefined : name;
     }
     const v = readValue(name, type, words.slice(w).map((t) => t.text), now);
-    if ("error" in v) return fail(v.error, completionsFor(type, words[w].text), describe(name, type));
+    if ("error" in v) return void fail(v.error, completionsFor(type, words[w].text), describe(name, type));
     params[name] = v.value;
     w += v.used;
   }
   if (w < words.length) fail(`too many values: ${words.slice(w).map((t) => t.text).join(" ")}`);
+  return undefined;
 }
 
 /** Each word goes to the first open field it fits; the rest go to the first text field. */

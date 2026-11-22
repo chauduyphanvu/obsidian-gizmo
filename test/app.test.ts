@@ -6,7 +6,7 @@ import { DataLayer } from "../src/datalayer.ts";
 import { checkPanel, panelIds, type Panel } from "../src/spec.ts";
 import { seriesNames } from "../src/views/common.ts";
 import { VIEW_DEFS, type PanelCtx } from "../src/views/registry.ts";
-import { fakeHost } from "./support/fakes.ts";
+import { fakeHost, kindIn } from "./support/fakes.ts";
 import { typeLine } from "./support/addline.ts";
 
 const settle = async () => { for (let i = 0; i < 5; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -74,7 +74,7 @@ test("every view's examples draw", () => {
   };
   for (const def of VIEW_DEFS) {
     for (const ex of def.examples.filter((e) => !e.errors)) {
-      const p = checkPanel(ex.panel, true).panel as Panel;
+      const p = checkPanel(ex.panel, true, kindIn(ex.panel)).panel as Panel;
       const xField = p.group ?? p.x;
       const ys = seriesNames(p).length ? seriesNames(p) : ["count"];
       const row = (x: string, v: number) => ({ [xField!]: x, ...Object.fromEntries(ys.map((y) => [y, v])) });

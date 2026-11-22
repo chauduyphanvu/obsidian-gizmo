@@ -27,6 +27,16 @@ export function fingerprint(fm: Record<string, unknown>): string {
 /** A capture key's targets, `<app path>#<shortcut>`, under one app's path. */
 const targetsApp = (target: string, path: string) => target.startsWith(`${path}#`);
 
+/** A permission on the kind at `oldPath` (`kind:`, `kind-write:`, `share:<path>|<host>`) worded for `newPath`; undefined for any other. */
+function kindPermissionMoved(perm: string, oldPath: string, newPath: string): string | undefined {
+  for (const prefix of ["kind:", "kind-write:", "share:"]) {
+    if (!perm.startsWith(prefix + oldPath)) continue;
+    const rest = perm.slice(prefix.length + oldPath.length);
+    if (rest === "" || (prefix === "share:" && rest.startsWith("|"))) return prefix + newPath + rest;
+  }
+  return undefined;
+}
+
 /** Moves what data.json keeps for an app (its embeds' too) to its new path; true when anything moved. */
 export function moveKeys(stored: StoredData, oldPath: string, newPath: string): boolean {
   let moved = [stored.grants, stored.linkKeys ?? {}, stored.answerTo ?? {}].map((m: Record<string, unknown>) => moveGrants(m, oldPath, newPath)).some(Boolean);
@@ -36,6 +46,23 @@ export function moveKeys(stored: StoredData, oldPath: string, newPath: string): 
       names[name] = newPath + target.slice(oldPath.length);
       moved = true;
     }
+  }
+  // What apps were allowed on a kind, its sharing included, names it by path: the same note under
+  // its new path stays allowed, so moving a kind doesn't pause every app that reads it.
+  for (const [key, entry] of Object.entries(stored.grants)) {
+    if (!Array.isArray(entry)) continue;
+    const renamed = entry.map((p) => kindPermissionMoved(p, oldPath, newPath) ?? p);
+    if (renamed.every((p, i) => p === entry[i])) continue;
+    stored.grants[key] = renamed;
+    moved = true;
+  }
+  // A shared kind's writers, `<kind path>\n<writer>`, follow its note.
+  const writers = stored.writers ?? {};
+  for (const key of Object.keys(writers)) {
+    if (!key.startsWith(`${oldPath}\n`)) continue;
+    writers[newPath + key.slice(oldPath.length)] = writers[key];
+    delete writers[key];
+    moved = true;
   }
   return moved;
 }
@@ -50,6 +77,11 @@ export function dropKeys(stored: StoredData, path: string): boolean {
       dropped = true;
     }
     if (!Object.keys(names).length) delete stored.captureKeys![key];
+  }
+  for (const key of Object.keys(stored.writers ?? {})) {
+    if (!key.startsWith(`${path}\n`)) continue;
+    delete stored.writers![key];
+    dropped = true;
   }
   return dropped;
 }

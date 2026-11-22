@@ -1,11 +1,15 @@
 import { readExpect, type Expectation, areRules } from "./expect.ts";
 import { POLICY_PATH, isPolicyPath } from "./policy.ts";
-import { parseDuration, type Agg } from "./data.ts";
+import { namesInTemplate, parseDuration, toNumber, type Agg } from "./data.ts";
 import { PERIODS, stampParts, type Per } from "./time.ts";
-import { computeErrors } from "./formula.ts";
+import { computeErrors, fieldPaths, formulaReads, rowFormula, rowFormulaErrors } from "./formula.ts";
 import { fnv1a, stableJson } from "./hash.ts";
 import { rowsAreNotes, sourceDef } from "./sources/registry.ts";
-import { RESERVED, SOURCE_WORDS, appendPath, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
+import { RESERVED, SOURCE_WORDS, appendPath, basename, definitionReason, isApp, isKind, kindName, notePath, runsAsApp, storeTarget } from "./store.ts";
+import { fieldsProblem, kindApp, kindProblem } from "./kind.ts";
+import { readShare, type ShareSpec } from "./share.ts";
+import { readMatch, type MatchRule } from "./match.ts";
+import { readImports, type ImportMap } from "./import.ts";
 import {
   InputRef, InputText, NAME, THIS, didYouMean, firstRef, nearMiss, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
   type InputDef, type InputValue,
@@ -21,7 +25,7 @@ import { editErrors, editableSource } from "./edit.ts";
 import { hasControl } from "./control.ts";
 import { CONTROL_PROBLEM, controlKey } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import { aliasShortcut, backgroundKeyErrors } from "./views/alerts.ts";
+import { aliasShortcut, backgroundKeyErrors, whatIfProblem } from "./views/alerts.ts";
 
 export { parseDuration };
 
@@ -34,6 +38,8 @@ export interface Panel {
   headers?: Record<string, string>;
   pick?: string;
   from?: string;
+  /** Which of a kind's rows: `all`, or the lines to read (see kind.ts); logged rows when left out. */
+  lines?: string | string[];
   where?: Record<string, string | number | boolean>;
   sort?: string;
   limit?: number;
@@ -96,12 +102,24 @@ export interface Panel {
   schema?: Record<string, string | string[]>;
   /** Internal: the values of the `$names` its own `compute` formulas read. */
   vars?: Record<string, unknown>;
+  /** Internal: the values of the `$names` the formulas among its `row` values read. */
+  rowVars?: Record<string, unknown>;
   /** Internal: where `save` writes, settled from the keys (and the block `save` names) when checked. */
   target?: SaveTarget;
+  /** Internal: the types of the fields of the kind, or the block with `fields`, that `save` writes to. */
+  targetFields?: Record<string, string | string[]>;
   /** Internal: the secrets typed whole in its source, headers and body; its requests may fill no other. */
   secrets?: string[];
   /** Internal: what its fields (a form's own, and the schema's) say besides their types. */
   fieldInfo?: Record<string, FieldInfo>;
+  /** Internal: the kind its `source` links to, settled from the keys when checked. */
+  kind?: KindRef;
+}
+
+/** A kind a panel reads or saves to: its note, and the name of its rows. */
+export interface KindRef {
+  path: string;
+  name: string;
 }
 
 /** `then`: the app (a link or name) and shortcut to run, and the values to fill its form with, as text with `{placeholders}`. */
@@ -112,11 +130,11 @@ export interface Then {
 }
 
 /**
- * Where a panel's `save` writes: a list in the app's data note, one new note per save in a folder,
- * or the properties of the note the app sits in (`save: this`; a lens's `scope` is its `for`, which
- * writing there needs permission for).
+ * Where a panel's `save` writes: a list in the app's data note (or, with `at`, the rows of the kind
+ * whose note that is), one new note per save in a folder, or the properties of the note the app
+ * sits in (`save: this`; a lens's `scope` is its `for`, which writing there needs permission for).
  */
-export type SaveTarget = { kind: "list"; name: string } | { kind: "folder"; folder: string } | { kind: "this"; scope?: string };
+export type SaveTarget = { kind: "list"; name: string; at?: string } | { kind: "folder"; folder: string } | { kind: "this"; scope?: string };
 
 /** What `save` text names on its own: the note the app sits in, a folder when it ends in a slash (`Books/`), else a list. */
 export function saveTarget(save: string): SaveTarget {
@@ -182,6 +200,17 @@ export interface AppSpec {
   /** Component notes read while expanding (path → frontmatter), and the names of every `use` link. */
   read: Record<string, unknown>;
   links: string[];
+  /** A kind note read as the app that shows it (see readKind). */
+  kind?: KindSpec;
+}
+
+/** What a kind note says besides its rows' shape as a form: its name, how its rows pair, and the files read into it. */
+export interface KindSpec extends KindRef {
+  fields: Record<string, string | string[]>;
+  match: MatchRule;
+  imports: ImportMap[];
+  /** Shared with other vaults through a relay (see share.ts): its address and host, and the secret that holds the kind's key. */
+  share?: ShareSpec;
 }
 
 /** Where each input starts: its first choice, or today. A search box starts with no value. */
@@ -202,6 +231,8 @@ export function resolvePanel(ps: PanelSpec, values: Readonly<Record<string, unkn
   const waiting = ps.inputs.find((n) => values[n] === undefined);
   if (waiting !== undefined) return { errors: [], waiting };
   const problems: string[] = [];
+  const missing = ps.inputs.includes(THIS) ? missingProperty(ps.template, values[THIS]) : undefined;
+  if (missing) return { errors: [missing] };
   const template = ps.inputs.includes(THIS) ? absentThis(ps.template, values[THIS]) : ps.template;
   const filled = resolveInputs(template, values, problems) as Record<string, unknown>;
   if (problems.length) return { errors: problems };
@@ -234,6 +265,19 @@ function checkFilled(template: Record<string, unknown>, filled: Record<string, u
   return checkTemplate(filled, strict);
 }
 
+/**
+ * Why an alert can't be told: its condition reads a `$this` property the note doesn't have, so it
+ * would only ever compare with nothing. (A `where` on one matches no row; see absentThis.)
+ */
+function missingProperty(t: Record<string, unknown>, note: unknown): string | undefined {
+  let missing: string | undefined;
+  resolveWith(t.alert, (ref) => {
+    if (missing === undefined && ref.input === THIS && ref.path && (readRef(note, ref.path) ?? "") === "") missing = ref.path;
+    return "";
+  }, []);
+  return missing && `alert reads $this.${missing}, and this note has no ${missing} property: add it to the note's properties`;
+}
+
 /** A `where` condition no value meets: a comparison with nothing to compare against. */
 const NO_ROW = "< (none)";
 
@@ -259,7 +303,7 @@ function absentThis(t: Record<string, unknown>, note: unknown): Record<string, u
  * problems stop the panel, as a panel's own do.
  */
 function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: Panel; errors: string[] } {
-  const { upstream, schema, vars, target, secrets, kept, fieldInfo, ...keys } = t;
+  const { upstream, schema, vars, rowVars, target, targetFields, secrets, kept, fieldInfo, kind, ...keys } = t;
   const stageErrors: string[] = [];
   const stages: PipelineKeys[] = [];
   let stopped = false;
@@ -273,17 +317,57 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   if (stages.length) internal.upstream = stages;
   if (schema) internal.schema = schema as Panel["schema"];
   if (vars) internal.vars = vars as Panel["vars"];
+  if (rowVars) internal.rowVars = rowVars as Panel["rowVars"];
   if (target) internal.target = target as SaveTarget;
+  if (targetFields) internal.targetFields = targetFields as Panel["targetFields"];
   if (secrets) internal.secrets = secrets as string[];
   if (fieldInfo) internal.fieldInfo = fieldInfo as Panel["fieldInfo"];
+  if (kind) internal.kind = kind as KindRef;
   const r = checkPanel(keys, strict, internal);
   // Checking makes `row` text; values that were one whole param keep the param's type.
   if (r.panel?.row && isPlainObject(kept)) {
     const row = r.panel.row;
     r.panel.row = { ...row, ...Object.fromEntries(Object.entries(kept).filter(([k]) => k in row)) } as Panel["row"];
   }
-  const errors = [...r.errors, ...stageErrors];
+  const settled = r.panel ? settledErrors(r.panel, [...((upstream ?? []) as Stage[]).map((s, i) => ({ at: `data.${s.block}: `, compute: stages[i].compute })), { at: "", compute: r.panel.compute }]) : [];
+  const errors = [...r.errors, ...stageErrors, ...settled];
   return !r.panel || stopped ? { errors } : { panel: r.panel, errors };
+}
+
+/**
+ * `settled.<field>` in a formula reads the row that settled a planned row of a kind (see onLines in
+ * sources/list.ts): only a panel that reads a kind's planned rows, and not its logged ones too, has
+ * one, and only with `at` and the kind's fields. Each stage's formulas, told where they are.
+ */
+function settledErrors(p: Panel, stages: { at: string; compute?: Record<string, string | number> }[]): string[] {
+  const out = new Set<string>();
+  for (const s of stages) {
+    for (const [name, text] of Object.entries(s.compute ?? {})) {
+      for (const path of fieldPaths(String(text)) ?? []) {
+        if (path !== "settled" && !path.startsWith("settled.")) continue;
+        const why = settledProblem(p, path.split(".")[1]);
+        if (why) out.add(`${s.at}compute.${name}: ${why}`);
+      }
+    }
+  }
+  return [...out];
+}
+
+function settledProblem(p: Panel, field: string | undefined): string | undefined {
+  if (!p.kind) return "settled is on the planned rows of a kind; this panel's source isn't a kind";
+  const fields = ["at", ...Object.keys(p.schema ?? {}).filter((f) => f !== "at")];
+  if (field === undefined) return `settled is a row; read one of its fields, e.g. settled.${fields[1] ?? "at"}`;
+  if (!fields.includes(field)) {
+    const close = nearMiss(field, fields);
+    return `settled.${field}: ${basename(p.kind.path)} has no field “${field}”${close === undefined ? `; it has ${listed(fields)}` : ` (did you mean settled.${close}?)`}`;
+  }
+  const lines = p.lines === undefined ? ["logged"] : [p.lines].flat();
+  if (lines.includes("all")) return undefined;
+  if (!lines.includes("planned")) return "settled is on planned rows, which this panel doesn't read; add lines: planned";
+  if (lines.includes("logged")) {
+    return `settled is on a planned row that a logged row settled, which lines: [${lines.join(", ")}] leaves out, as that row stands for it; read lines: planned`;
+  }
+  return undefined;
 }
 
 /** One block's pipeline keys, checked again once its `$names` are filled. */
@@ -361,6 +445,7 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(p.source ? sourceDef(p.source).validate?.(p) ?? [] : []),
     ...(p.body !== undefined && !isUrl(p.source) ? ['"body" needs a URL source'] : []),
     ...(p.line && !p.append ? ['"line" needs "append"'] : []),
+    ...(p.lines !== undefined && (!p.source || sourceDef(p.source).id !== "kind") ? ['"lines" picks rows of a kind; give it a source that links to a kind, e.g. source: "[[Spend]]"'] : []),
     ...(p.append && isPolicyPath(appendPath(p.append)) ? [`append can't write ${basename(POLICY_PATH)}, your data policy; change it by hand`] : []),
     ...groupProblems(p),
     ...(p.span !== undefined && ![1, 2, 3, 4].includes(p.span) ? ["span must be 1, 2, 3 or 4"] : []),
@@ -369,9 +454,11 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
     ...(p.target?.kind === "this" && def.id !== "form" ? ["save: this works on a form"] : []),
     ...(p.target?.kind === "folder" && !p.target.folder ? ["save needs a folder before the /, e.g. save: Books/"] : []),
     ...definitionProblems(p, def.id),
+    ...rowFormulaProblems(p, def.id),
     ...backgroundKeyErrors(p),
   ];
   if (problems.length) return { errors: [...errors, ...problems] };
+  errors.push(...rowTypeErrors(p));
   showFields(p);
   return { panel: p, errors };
 }
@@ -488,6 +575,58 @@ function definitionProblems(p: Panel, view: string): string[] {
   });
 }
 
+/** What a `row:` value reads of the time it is saved for, besides the row's own fields. */
+const ROW_STAMPS = ["date", "time", "at"];
+
+const listed = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names.join(""));
+
+/**
+ * What the formulas among `row`'s values can't use: bad syntax, a function or `prev`, and on a form
+ * or a button, a field the row being saved won't have. A row action's row holds what its source gives.
+ */
+function rowFormulaProblems(p: Panel, view: string): string[] {
+  if (!p.row) return [];
+  const errors = rowFormulaErrors(p.row);
+  if (errors.length || (view !== "form" && view !== "button")) return errors;
+  const fields = view === "form" ? Object.keys({ ...p.schema, ...p.fields }) : [];
+  const known = [...fields, ...ROW_STAMPS];
+  return Object.entries(p.row).flatMap(([field, value]) => {
+    const text = rowFormula(value);
+    const read = text === undefined ? undefined : formulaReads(text);
+    const name = read && read.fields !== "*" ? read.fields.find((f) => !known.includes(f)) : undefined;
+    if (name === undefined) return [];
+    if (view === "button") return [`row.${field}: "${name}" isn't a field here; a button's row has only ${listed(ROW_STAMPS)}`];
+    const close = nearMiss(name, fields);
+    return [`row.${field}: "${name}" isn't a field of the form${close === undefined ? `; it has ${listed(known)}` : ` (did you mean ${close}?)`}`];
+  });
+}
+
+/**
+ * The `row` values that can't be a number, for a number field of the kind or block the panel saves
+ * to: text that isn't one, a time, a form field that holds a date, a tick or choices that aren't
+ * numbers, or text around a placeholder. A formula, or a value only known when the row is saved,
+ * is checked then.
+ */
+function rowTypeErrors(p: Panel): string[] {
+  const types = p.targetFields;
+  if (!p.row || !types) return [];
+  const form = p.view === "form" ? p.fields ?? p.schema ?? {} : {};
+  const notNumber = (type: string | string[] | undefined) =>
+    Array.isArray(type) ? !type.some((c) => toNumber(c) !== undefined) : type === "date" || type === "time" || type === "checkbox";
+  return Object.entries(p.row).flatMap(([field, value]) => {
+    if (types[field] !== "number" || typeof value !== "string" || rowFormula(value) !== undefined) return [];
+    const names = namesInTemplate(value);
+    const whole = /^\{([^{}]+)\}$/.exec(value)?.[1].trim();
+    const cant = names.length === 0
+      ? value.trim() !== "" && toNumber(value) === undefined
+      : whole !== undefined
+        ? ROW_STAMPS.includes(whole) || (Object.hasOwn(form, whole) && notNumber(form[whole]))
+        : toNumber(value.replace(/\{[^{}]+\}/g, "0")) === undefined;
+    if (!cant) return [];
+    return [`row.${field}: ${field} is a number field, and "${value}" ${names.length ? "can't be" : "isn't"} a number`];
+  });
+}
+
 /** A source that names a list in the data note or app note (not a URL, not `notes`). */
 export function isListName(source: string | undefined): source is string {
   return !!source && sourceDef(source).id === "list";
@@ -509,6 +648,7 @@ export function readSpec(
   fm: Record<string, unknown> | undefined,
   opts: { now?: Date; notes?: NoteReader; path?: string; host?: HostNote } = {},
 ): SpecResult | undefined {
+  if (fm && isKind(fm)) return readKind(fm, opts);
   if (!fm || !isApp(fm)) return undefined;
   let description = fm.app === true ? "" : String(fm.app);
   const versionError = checkVersion(fm.spec);
@@ -630,7 +770,8 @@ export function readSpec(
     }
     for (const key of ["shortcut", "pin", "alert", "then"] as const) {
       if (r.panel?.[key] === undefined) continue;
-      const n = uses.find(late);
+      // `$this` is the app's own note, which is there while the app is closed too.
+      const n = uses.find(typed);
       if (opts.host) errors.push(at(notHere(key)));
       // A form's `then` runs with what was typed in it, which it reads like its other actions do.
       else if (n !== undefined && key !== "then") errors.push(at(notLate(key, n)));
@@ -706,8 +847,15 @@ export function readSpec(
   // Data is written into the store's properties; an app's or component's own keys are no place for it.
   const stored = store === undefined ? undefined : opts.notes?.resolve(storeTarget(store), opts.path ?? "");
   const storedFm = stored === undefined ? undefined : opts.notes!.frontmatter(stored);
+  // A kind's data note holds the kind's rows, which apps read and save by linking to the kind.
+  const kindNote = stored !== undefined && / data\.md$/i.test(stored) ? stored.replace(/ data\.md$/i, ".md") : undefined;
   if (runsAsApp(storedFm)) {
-    errors.push(`store can't be an app or a component note; name a note that only holds data, e.g. store: "[[Weight log]]"`);
+    errors.push(isKind(storedFm)
+      ? `store can't be a kind note; read its rows with source: "[[${basename(stored!)}]]"`
+      : `store can't be an app or a component note; name a note that only holds data, e.g. store: "[[Weight log]]"`);
+    store = undefined;
+  } else if (kindNote !== undefined && isKind(opts.notes!.frontmatter(kindNote))) {
+    errors.push(`store can't be ${basename(stored!)}, which holds the rows of ${basename(kindNote)}; read them with source: "[[${basename(kindNote)}]]"`);
     store = undefined;
   } else if (store !== undefined && isPolicyPath(stored ?? notePath(storeTarget(store)))) {
     errors.push(`store can't be ${basename(POLICY_PATH)}, your data policy; name a note that only holds data`);
@@ -762,6 +910,38 @@ export function readSpec(
   return { spec, errors, empty: false };
 }
 
+/**
+ * Reads a kind note as the app that shows it: a line to add a row and the rows themselves, kept in
+ * the kind's own data note, where every app that links to the kind reads and saves them.
+ */
+function readKind(fm: Record<string, unknown>, opts: Parameters<typeof readSpec>[1]): SpecResult {
+  const name = kindName(fm)!;
+  const problem = kindProblem(name) ?? fieldsProblem(fm.fields as Record<string, unknown>);
+  if (problem) return { errors: [problem], empty: false };
+  if (opts?.host) return { errors: ["a kind shows in its own note, not in an embed or a lens"], empty: false };
+  const word = typeof fm.shortcut === "string" || typeof fm.shortcut === "number" ? whatIfProblem("shortcut", String(fm.shortcut)) : undefined;
+  // Told as the kind's own key; its line still shows, without the word.
+  const read = readSpec(kindApp(word ? { ...fm, shortcut: undefined } : fm, name), opts)!;
+  if (!read.spec) return read;
+  const fields = readFields(fm.fields as Record<string, unknown>).types;
+  const match = readMatch(fm.match, fields);
+  const imports = readImports(fm.import, fields);
+  const share = readShare(fm.share);
+  const path = opts?.path ?? "";
+  // Its own form adds to the kind's rows as a form of any app that saves to the kind does.
+  for (const ps of read.spec.panels) {
+    const t = ps.panel.target;
+    if (t?.kind !== "list" || t.name !== name) continue;
+    ps.panel.target = { ...t, at: path };
+    ps.template.target = ps.panel.target;
+  }
+  return {
+    ...read,
+    spec: { ...read.spec, kind: { path, name, fields, match: match.rule, imports: imports.maps, ...(share.share && { share: share.share }) } },
+    errors: [...(word ? [word] : []), ...read.errors, ...match.errors, ...imports.errors, ...share.errors],
+  };
+}
+
 function isLayout(v: unknown): v is AppSpec["layout"] {
   return v === "composed" || v === "grid";
 }
@@ -783,14 +963,16 @@ function writtenBy(p: Panel): string[] | undefined {
  * `row` keys or form fields, and the fields of the block it saves to, whose defaults are saved too.
  * `whole` holds the lists whose rows no key describes: those a row action saves whole rows to, a
  * checklist ticks or a recorded block fills. With `shared`, other apps may write the same store, so
- * no list's fields are known from this app's panels alone.
+ * no list's fields are known from this app's panels alone. `self` is the kind note being read, whose
+ * own form describes its rows.
  */
-export function savedFields(panels: readonly PanelSpec[], blocks: Blocks, shared: boolean): { written: Map<string, Set<string>>; whole: Set<string> } {
+export function savedFields(panels: readonly PanelSpec[], blocks: Blocks, shared: boolean, self?: string): { written: Map<string, Set<string>>; whole: Set<string> } {
   const written = new Map<string, Set<string>>();
   const whole = new Set([...blocks].flatMap(([name, b]) => (b.record === undefined ? [] : [typeof b.into === "string" ? b.into : `${name}_log`])));
   for (const { panel: p } of panels) {
     if (p.view === "checklist" && p.save) whole.add(p.save);
-    if (p.target?.kind !== "list") continue;
+    // A kind's rows are described by the kind's own fields, not by what this app saves into them.
+    if (p.target?.kind !== "list" || (p.target.at !== undefined && p.target.at !== self)) continue;
     const fields = writtenBy(p);
     if (!fields) whole.add(p.target.name);
     else if (!shared) written.set(p.target.name, new Set([...(written.get(p.target.name) ?? []), "at", ...fields, ...Object.keys(p.schema ?? {})]));
@@ -857,7 +1039,7 @@ function bareRefs(value: unknown, out: string[] = []): string[] {
   } else if (Array.isArray(value)) {
     for (const v of value) bareRefs(v, out);
   } else if (isPlainObject(value) && !(value instanceof Date)) {
-    for (const [k, v] of Object.entries(value)) if (k !== "vars") bareRefs(v, out);
+    for (const [k, v] of Object.entries(value)) if (k !== "vars" && k !== "rowVars") bareRefs(v, out);
   }
   return out;
 }

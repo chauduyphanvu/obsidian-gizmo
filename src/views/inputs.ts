@@ -83,10 +83,10 @@ function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
 
 export const form: ViewDef = {
   id: "form",
-  keys: [...ACTION_KEYS, "fields", "label", "shortcut", "alias", "then"],
+  keys: [...ACTION_KEYS, "fields", "labels", "label", "shortcut", "alias", "then"],
   span: 4,
   // The list it saves to, which a choice left out of its add line is guessed from.
-  implicitSource: (p) => (p.target?.kind === "this" ? THIS : p.target?.kind === "list" ? p.target.name : undefined),
+  implicitSource: (p) => (p.target?.kind === "this" ? THIS : p.target?.kind !== "list" ? undefined : p.target.at !== undefined ? p.save : p.target.name),
   validate(p) {
     // Without its own fields, a form takes those of the block it saves to.
     const fields = p.fields ?? p.schema;

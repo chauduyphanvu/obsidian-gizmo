@@ -198,10 +198,12 @@ const wentThrough = (r: RunResult | void) => !r || r.failed !== undefined || (r.
  * What to say after a run: what it wrote and what it then couldn't do, when it stopped part way;
  * the panel's `notify` as filled; else what it saved and where, if it saves anything.
  */
-function sayAfter(said: Said, p: Panel, r: RunResult | void, saved: () => string): void {
+function sayAfter(said: Said, p: Panel, r: RunResult | void, saved: () => string, whatIf: boolean): void {
   if (r?.failed !== undefined) return said.say(r.failed, r.entry);
-  if (r?.told !== undefined) return said.say(r.told, r.entry);
-  if (p.target || p.append !== undefined) said.say(saved(), r?.entry);
+  // Shown ahead, what was saved is a what-if, which a panel's own notify can't know to say.
+  const real = (text: string) => (whatIf ? `${text}; nothing real changed` : text);
+  if (r?.told !== undefined) return said.say(real(whatIf ? `What if: ${r.told}` : r.told), r.entry);
+  if (p.target || p.append !== undefined) said.say(real(saved()), r?.entry);
 }
 
 // ---- Keys ---------------------------------------------------------------------------------------
@@ -309,12 +311,23 @@ function shown(p: Panel, [name, type]: Field, value: string, now: Date): string 
   return value;
 }
 
-/** What a form saved, as it is said: its first field's value, where it went, and when for, if not now. */
-function addedText(p: Panel, value: unknown, now: Date, at?: Date): string {
+/**
+ * What a form saved, as it is said: its first field's value, where it went, and when for, if not
+ * now; for a kind, planned for a time still to come, or each time of an `@every`; in a what-if, a
+ * what-if row.
+ */
+function addedText(p: Panel, value: unknown, now: Date, at?: Date, plan?: Date[], whatIf = false): string {
   const field = fieldsOf(p)[0];
   const v = value === undefined || value === null ? "" : textOf(value);
   const what = !field || v === "" ? "" : isText(field[1]) ? ` “${v}”` : ` ${shown(p, field, v, now)}`;
-  return `Added${what} to ${whereOf(p) ?? verbOf(p)}${at ? ` for ${whenText(at, now)}` : ""}`;
+  const where = whereOf(p) ?? verbOf(p);
+  if (whatIf) {
+    const times = plan && plan.length > 1 ? ` ${plan.length} times, to ${whenText(plan[plan.length - 1], now)}` : at ? ` for ${whenText(at, now)}` : "";
+    return `Added${what} to ${where} as a what-if${times}`;
+  }
+  if (plan && plan.length > 1) return `Planned${what} in ${where} ${plan.length} times, to ${whenText(plan[plan.length - 1], now)}`;
+  if (at && at.getTime() > now.getTime()) return `Planned${what} in ${where} for ${whenText(at, now)}`;
+  return `Added${what} to ${where}${at ? ` for ${whenText(at, now)}` : ""}`;
 }
 
 // ---- Examples -----------------------------------------------------------------------------------
@@ -329,44 +342,81 @@ function numbersFor(p: Panel, name: string): string[] {
   if (/[$€£¥]/.test(format)) return ["1200", "980", "4500"];
   if (/weight|kg|lb/.test(called)) return ["81.2", "80.8", "81.0"];
   if (/sleep|slept|hour/.test(called)) return ["7.5", "8", "6.5"];
+  if (/shares|quantity|qty/.test(called)) return ["5", "10", "2"];
   return ["12", "3", "20"];
 }
 
 const WORDS: [RegExp, string[]][] = [
+  [/symbol|ticker/, ["VTI", "QQQ", "AAPL"]],
+  [/upkeep|repair/, ["Replace the furnace filter", "Test the smoke alarms", "Car service"]],
+  [/chore/, ["Vacuum the house", "Take the bins out", "Do the laundry"]],
+  [/renew|deadline/, ["Renew passport", "Car registration", "Home insurance"]],
+  [/bill|subscription/, ["BRIGHT MOBILE", "STREAMFLIX", "CITY POWER"]],
   [/task|todo/, ["Call the bank", "Renew passport", "Buy milk"]],
   [/decision|decide/, ["Take the new job", "Move in March", "Sell the car"]],
   [/project|name|title/, ["Paint the shed", "Garden beds", "Photo book"]],
   [/item|thing/, ["Coffee", "Train ticket", "Ramen"]],
 ];
 
-/** Three short texts for a field, from what it is called; `money`: the form saves an amount spent. */
+/**
+ * Three short texts for a field, from what it is called, else what its form is called (a field
+ * named `what` says nothing); `money`: the form saves an amount spent.
+ */
 function wordsFor(p: Panel, name: string, money: boolean): string[] {
   const called = `${name} ${labelOf(p, name)}`.toLowerCase();
-  return WORDS.find(([re]) => re.test(called))?.[1] ?? (money ? ["lunch", "coffee", "groceries"] : ["morning", "felt good", "with Sam"]);
+  const title = (p.title ?? "").toLowerCase();
+  // In a title, only a word that starts there counts: "Spent something" is not about a thing.
+  const found = WORDS.find(([re]) => re.test(called))?.[1] ?? WORDS.find(([re]) => new RegExp(`\\b(?:${re.source})`).test(title))?.[1];
+  return found ?? (money ? ["lunch", "coffee", "groceries"] : ["morning", "felt good", "with Sam"]);
 }
+
+/** A form that plans rows: it saves to a kind, and its label or title says it plans (`Plan bill`). */
+const plans = (p: Panel) => p.target?.kind === "list" && p.target.at !== undefined && /\bplan/i.test(`${p.label ?? ""} ${p.title ?? ""}`);
+
+/** A date field named for a day still to come: a deadline, a due date, an expiry. */
+const DEADLINE = /\b(due|deadline|expir\w*|renew\w*|until)\b/;
+
+/** A day `days` from now, as a line takes it. */
+const ahead = (now: Date, days: number) => stampParts(new Date(now.getFullYear(), now.getMonth(), now.getDate() + days)).date;
 
 /**
  * An example line from a form's fields: `k` 0 is the placeholder, with every number and choice;
  * 1 and 2 are the hint's, the first taking yesterday for a date and, beside a number, leaving the
- * choices to their defaults.
+ * choices to their defaults. A number after the words is left out once a number came before them:
+ * a second one there reads as part of the words. A date named like a deadline is one still to
+ * come; a form that plans rows ends each line with a day still to come, for when, and leaves its
+ * choices out, as a bill or a renewal reads.
  */
-function example(p: Panel, fields: Field[], k: number): string {
+function example(p: Panel, fields: Field[], k: number, now: Date): string {
   const parts: string[] = [];
+  const planning = plans(p);
   const money = fields.some(([n, t]) => t === "number" && numbersFor(p, n)[0] === "12.50");
   const first = (fits: (t: string | string[]) => boolean) => fields.find(([, t]) => fits(t))?.[0];
   // Only the first text field: the words left over go to it.
   const text = first(isText);
   const date = first((t) => t === "date");
-  const bare = k === 1 && first((t) => t === "number") !== undefined;
+  const bare = planning || (k === 1 && first((t) => t === "number") !== undefined);
+  let numbered = false;
+  let worded = false;
   for (const [name, type] of fields) {
     if (Array.isArray(type)) {
       if (bare) continue;
       const o = String(type[Math.min(k, 1) % type.length]);
       parts.push(/\s/.test(o) ? `"${o}"` : o);
-    } else if (type === "number") parts.push(numbersFor(p, name)[k]);
-    else if (name === date && k === 1) parts.push("yday");
-    else if (name === text) parts.push(wordsFor(p, name, money)[k]);
+    } else if (type === "number") {
+      if (numbered && worded) continue;
+      numbered = true;
+      const ofMoney = numbersFor(p, name)[0] === "12.50";
+      parts.push(planning && ofMoney ? ["45", "15.49", "65"][k] : numbersFor(p, name)[k]);
+    } else if (name === date && DEADLINE.test(`${name} ${labelOf(p, name)}`.toLowerCase())) {
+      if (planning || k === 1) parts.push(ahead(now, [120, 90, 150][k]));
+    } else if (name === date && k === 1) parts.push("yday");
+    else if (name === text) {
+      worded = true;
+      parts.push(wordsFor(p, name, money)[k]);
+    }
   }
+  if (planning) parts.push(`@${ahead(now, [20, 35, 50][k])}`);
   return parts.join(" ");
 }
 
@@ -381,6 +431,10 @@ function example(p: Panel, fields: Field[], k: number): string {
 export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => void): PanelHandle {
   const fields = fieldsOf(p);
   const verb = verbOf(p);
+  // A line that saves to a kind plans a row for a time still to come; in a what-if, any line takes one.
+  const ahead = ctx.whatIf !== undefined || (p.target?.kind === "list" && p.target.at !== undefined);
+  // In a what-if, times typed are read from now, not from the time the app is shown at.
+  const clock = () => ctx.whatIf ?? ctx.now;
   let rows: Row[] = [];
   const picks = new Map<string, string>();
   let refused: string | undefined;
@@ -391,7 +445,7 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
   f.createSpan({ cls: "gz-addline-verb", text: verb });
   const input = f.createEl("input", {
     cls: "gz-addline-input", type: "text",
-    attr: { "aria-label": p.title ?? p.label ?? verb, placeholder: example(p, fields, 0), autocomplete: "off", spellcheck: "false", enterkeyhint: "done" },
+    attr: { "aria-label": p.title ?? p.label ?? verb, placeholder: example(p, fields, 0, clock()), autocomplete: "off", spellcheck: "false", enterkeyhint: "done" },
   });
   const key = f.createEl("kbd", { cls: "gz-addline-key", text: "/", attr: { "aria-hidden": "true" } });
   const label = p.label ?? "Add";
@@ -405,8 +459,8 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
   const unlisten = listen(el, said, input);
 
   const read = () => {
-    const now = ctx.now;
-    const r: FieldValues = parseFields(input.value, fields, now, { name: verb, loose: true });
+    const now = clock();
+    const r: FieldValues = parseFields(input.value, fields, now, { name: verb, loose: true, ahead });
     const values = new Map<string, Value>(fields.map((field) => {
       const [name] = field;
       const picked = picks.get(name);
@@ -449,20 +503,24 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
         }
         if (v.how === "guessed") pv.createSpan({ cls: "gz-pv-guess", text: `guessed from “${v.from}”` });
       } else {
-        pv.createSpan({ cls: "gz-pv-value", text: v.value === undefined ? "—" : shown(p, field, v.value, ctx.now) });
+        pv.createSpan({ cls: "gz-pv-value", text: v.value === undefined ? "—" : shown(p, field, v.value, clock()) });
       }
     }
     if (state.r.at) {
+      const { at, plan } = state.r;
+      const now = clock();
+      const planned = plan !== undefined || at.getTime() > now.getTime();
       const pv = under.createSpan({ cls: "gz-pv" });
-      pv.createSpan({ cls: "gz-pv-label", text: "at" });
-      pv.createSpan({ cls: "gz-pv-value", text: whenText(state.r.at, ctx.now) });
+      pv.createSpan({ cls: "gz-pv-label", text: ctx.whatIf ? "what if" : planned ? "planned" : "at" });
+      const when = plan && plan.length > 1 ? `${plan.length} times, ${whenText(plan[0], now)} to ${whenText(plan[plan.length - 1], now)}` : whenText(at, now);
+      pv.createSpan({ cls: "gz-pv-value", text: when });
     }
     if (state.r.errors.length) under.createSpan({ cls: "gz-addline-error", text: state.r.errors[0] });
     if (refused !== undefined) under.createSpan({ cls: "gz-addline-error", text: `Not saved: ${refused}` });
   };
 
   const drawHint = () => {
-    const lines = [...new Set([example(p, fields, 1), example(p, fields, 2)])].filter((x) => x && x !== input.placeholder);
+    const lines = [...new Set([example(p, fields, 1, clock()), example(p, fields, 2, clock())])].filter((x) => x && x !== input.placeholder);
     if (!lines.length) return;
     under.createSpan({ cls: "gz-addline-try", text: "Try" });
     for (const line of lines) {
@@ -492,15 +550,15 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
     const state = read();
     if (!state.savable) return;
     const row: Row = Object.fromEntries(fields.map(([name, type]) => [name, typed(type, state.values.get(name)!.value)]));
-    const at = state.r.at;
+    const { at, plan } = state.r;
     saving = true;
     render();
     try {
-      const r = await ctx.runActions(p, row, { inPlace: true, ...(at && { at }) });
+      const r = await ctx.runActions(p, row, { inPlace: true, ...(at && { at }), ...(plan && { plan }) });
       if (r && r.error !== undefined) refused = r.error;
       else if (wentThrough(r)) {
         clearLine();
-        sayAfter(said, p, r, () => addedText(p, row[fields[0]?.[0]], ctx.now, at));
+        sayAfter(said, p, r, () => addedText(p, row[fields[0]?.[0]], clock(), at, plan, ctx.whatIf !== undefined), ctx.whatIf !== undefined);
       }
     } finally {
       saving = false;
@@ -570,7 +628,7 @@ export function verbButton(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandl
     b.disabled = true;
     try {
       const r = await ctx.runActions(p, {}, { inPlace: true });
-      if (wentThrough(r)) sayAfter(said, p, r, () => `Added to ${whereOf(p) ?? verbOf(p)}`);
+      if (wentThrough(r)) sayAfter(said, p, r, () => `Added to ${whereOf(p) ?? verbOf(p)}${ctx.whatIf === undefined ? "" : " as a what-if"}`, ctx.whatIf !== undefined);
     } finally {
       b.disabled = false;
     }
@@ -600,7 +658,7 @@ export function underFields(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: ()
   const unlisten = listen(el, said);
   return {
     saved(row, r) {
-      if (wentThrough(r)) sayAfter(said, p, r, () => addedText(p, row[fieldsOf(p)[0]?.[0]], ctx.now));
+      if (wentThrough(r)) sayAfter(said, p, r, () => addedText(p, row[fieldsOf(p)[0]?.[0]], ctx.whatIf ?? ctx.now, undefined, undefined, ctx.whatIf !== undefined), ctx.whatIf !== undefined);
     },
     destroy() {
       unlisten();

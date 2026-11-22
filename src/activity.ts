@@ -23,8 +23,8 @@ export type Change =
   | { kind: "note-created"; path: string; hash: string }
   | { kind: "task"; path: string; line: number; text: string; done: boolean };
 
-/** Who made an app act: the person in the app, a shortcut's command, a link, or another app's trigger. */
-export type Actor = "you" | "shortcut" | "link" | `trigger:${string}`;
+/** Who made an app act: the person in the app, a shortcut's command, a link, another app's trigger, or a folder a kind imports from. */
+export type Actor = "you" | "shortcut" | "link" | "import" | "share" | `trigger:${string}`;
 
 /** One run of an app's actions and the changes it made, newest last. */
 export interface Entry {
@@ -173,11 +173,16 @@ export class ActivityLog {
     if (this.entries.length > MAX_ENTRIES) this.entries = this.entries.slice(-MAX_ENTRIES);
   }
 
-  /** An app's entries (or everyone's), every device's, newest first. */
-  async list(app?: string): Promise<Entry[]> {
+  /**
+   * An app's entries (or everyone's), every device's, newest first. `shared` are data notes other
+   * apps write too (the kinds it reads, or its own rows when it is a kind): what any app changed
+   * there is listed with its own.
+   */
+  async list(app?: string, shared: readonly string[] = []): Promise<Entry[]> {
     await this.load();
     const all = [...this.entries, ...(await this.theirs())].sort((a, b) => a.at - b.at);
-    return all.filter((e) => app === undefined || e.app === app).reverse();
+    const touches = (e: Entry) => shared.length > 0 && e.changes.some((c) => shared.includes(c.path));
+    return all.filter((e) => app === undefined || e.app === app || touches(e)).reverse();
   }
 
   async get(id: string): Promise<Entry | undefined> {
@@ -254,6 +259,8 @@ export interface UndoIO {
 /** A value as a sentence shows it. */
 function shown(v: unknown): string {
   if (v === undefined || v === null || v === "") return "nothing";
+  // A number reads as it was saved: the log and a preview say exactly what a row holds (11.99, not 12.0).
+  if (typeof v === "number") return String(v);
   return formatValue(v, undefined, false);
 }
 
@@ -504,5 +511,7 @@ export function describeActor(a: Actor): string {
   if (a === "you") return "You";
   if (a === "shortcut") return "A shortcut";
   if (a === "link") return "A link";
+  if (a === "import") return "A file in an import folder";
+  if (a === "share") return "Someone you share the kind with";
   return `Triggered by ${a.slice("trigger:".length)}`;
 }

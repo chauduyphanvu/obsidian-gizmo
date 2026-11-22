@@ -76,7 +76,7 @@ test("each view has a role: the answer, a verb, evidence, a workspace or records
     button: "verb", form: "verb",
     line: "evidence", bar: "evidence", pie: "evidence", scatter: "evidence",
     calendar: "workspace", board: "workspace", timeline: "workspace", timer: "workspace",
-    table: "records", list: "records", checklist: "records", alerts: "records",
+    table: "records", list: "records", checklist: "records", alerts: "records", reconcile: "records",
   });
   // A year of days is evidence; a month is a place to work. A form that writes the note's own properties is too.
   assert.equal(roleOf({ view: "calendar", layout: "year" }, false), "evidence");

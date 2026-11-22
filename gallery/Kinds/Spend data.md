@@ -1,0 +1,35 @@
+---
+spend:
+  - {amount: 189, category: "transport", note: "Upkeep: car service", at: "2026-07-25T11:00"}
+  - {amount: 24.99, category: "home", note: "Upkeep: furnace filter", at: "2026-09-13T10:45"}
+  - {amount: 1450, category: "home", note: "OAKWOOD APARTMENTS", at: "2026-10-01T09:05"}
+  - {amount: 92.15, category: "food", note: "groceries", at: "2026-10-02T18:20"}
+  - {amount: 88.13, category: "home", note: "CITY POWER & LIGHT", at: "2026-10-04T08:30"}
+  - {amount: 10.99, category: "fun", note: "TUNEBOX MUSIC", at: "2026-10-05T07:00"}
+  - {amount: 13.2, category: "food", note: "lunch", at: "2026-10-06T12:40"}
+  - {amount: 104.55, category: "food", note: "groceries", at: "2026-10-09T18:00"}
+  - {amount: 39, category: "fun", note: "PEAK FITNESS", at: "2026-10-10T07:00"}
+  - {amount: 15.49, category: "fun", note: "STREAMFLIX", at: "2026-10-12T07:00"}
+  - {amount: 41.8, category: "transport", note: "fuel", at: "2026-10-14T17:30"}
+  - {amount: 38.2, category: "home", note: "METRO WATER", at: "2026-10-16T07:00"}
+  - {amount: 62, category: "fun", note: "dinner out", at: "2026-10-17T19:30"}
+  - {amount: 65, category: "home", note: "FASTNET INTERNET", at: "2026-10-18T07:00"}
+  - {amount: 76.4, category: "food", note: "groceries", at: "2026-10-20T11:00"}
+  - {amount: 1240, category: "travel", note: "Flights to Haneda and back", trip: "Tokyo", at: "2026-10-20T21:15"}
+  - {amount: 120, category: "other", note: "birthday present", at: "2026-10-24T15:00"}
+  - {amount: 45, category: "home", note: "BRIGHT MOBILE", at: "2026-10-25T07:00"}
+  - {amount: 93.7, category: "food", note: "groceries", at: "2026-10-27T18:10"}
+  - {amount: 4.5, category: "food", note: "coffee", at: "2026-10-29T08:15"}
+  - {amount: 38, category: "fun", note: "cinema", at: "2026-10-31T20:00"}
+  - {amount: 1450, category: "home", note: "OAKWOOD APARTMENTS", at: "2026-11-01T09:10"}
+  - {amount: 86.42, category: "food", note: "groceries", at: "2026-11-02T18:05"}
+  - {amount: 92.4, category: "home", note: "CITY POWER & LIGHT", at: "2026-11-04T08:20"}
+  - {amount: 10.99, category: "fun", note: "TUNEBOX MUSIC", at: "2026-11-05T07:00"}
+  - {amount: 20, category: "food", note: "farmers market, cash", at: "2026-11-07T10:30"}
+  - {amount: 48, category: "fun", note: "dinner with Sam", at: "2026-11-08T19:45"}
+  - {amount: 112.3, category: "food", note: "groceries", at: "2026-11-09T17:50"}
+  - {amount: 39, category: "fun", note: "PEAK FITNESS", at: "2026-11-10T07:00"}
+  - {amount: 44.1, category: "transport", note: "fuel", at: "2026-11-13T17:40"}
+  - {amount: 64.18, category: "food", note: "groceries", at: "2026-11-15T11:20"}
+  - {amount: 4.5, category: "food", note: "coffee", at: "2026-11-17T08:10"}
+---

@@ -193,7 +193,7 @@ export default async function apps(t) {
       return { picked, tomorrow, fm, said, notices: notices.slice(0), pinned, first, done, after: items("Coming up"), errors: na.errors() };`);
     expect(JSON.stringify(r.picked) === JSON.stringify({ title: "On 2027-01-15", items: ["Eye exam with Dr. Patel"], typed: "Blood test" }), r.picked);
     expect(r.fm?.what === "Blood test" && r.fm?.date === r.tomorrow && r.fm?.who === "Dr. Kim" && r.fm?.at, r.fm);
-    expect(r.said === `Booked Blood test on ${r.tomorrow}` && r.notices.includes("Appointments: Next appointment (1 row)") && r.pinned, r);
+    expect(r.said === `Booked Blood test on ${r.tomorrow}` && r.notices.includes("Appointments: Next appointment: 1 day") && r.pinned, r);
     expect(r.first === "tomorrow · Blood test with Dr. Kim" && r.done && !r.after.some((i) => i.includes("Blood test")) && r.errors === 0, r);
     return `${r.picked.items[0]} on ${r.picked.title.slice(3)}; booked for ${r.tomorrow}, told and pinned; ticked done`;
   });
@@ -228,7 +228,7 @@ export default async function apps(t) {
         nextAfter: panel("Next deadline").querySelector(".gz-big").textContent, done: na.text(panel("Done")), errors: na.errors() };`);
     expect(r.empty.next === "—" && r.empty.coming.includes("Nothing logged yet."), r.empty);
     expect(JSON.stringify(r.listed) === JSON.stringify([["Car insurance", r.days[0], "5"], ["Passport", r.days[1], "100"]]) && r.next === "5 days", r);
-    expect(r.notices.includes("Renewals: Coming up (1 row)"), r.notices);
+    expect(r.notices.includes("Renewals: Coming up: Car insurance, Days left 5"), r.notices);
     expect(JSON.stringify(r.after) === '["Passport"]' && r.nextAfter === "100 days" && r.done.includes(`Car insurance, due ${r.days[0]}`) && r.errors === 0, r);
     return `told: ${r.notices.find((n) => n.startsWith("Renewals"))}; done moves it; next ${r.nextAfter}`;
   });

@@ -78,7 +78,8 @@ export default async function capture(t) {
       await na.until(() => na.fm("Apps/Spend data.md")?.spend?.length === 0, 3000);
       return { row, open, notice, after: na.fm("Apps/Spend data.md")?.spend };`);
     expect(r.row?.amount === 14.5 && r.row.category === "food" && r.row.note === "lunch with Sam" && !r.open, r);
-    expect(r.notice?.startsWith("Ran “spend 14.5 food lunch with Sam”.") && Array.isArray(r.after) && r.after.length === 0, r);
+    // One notice for the line, with Undo: what the run did, not also a second one saying it ran.
+    expect(r.notice === "Spend: Add done. Undo" && Array.isArray(r.after) && r.after.length === 0, r);
     return r.notice;
   });
 

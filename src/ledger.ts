@@ -373,6 +373,16 @@ export class Folder {
     return f;
   }
 
+  /** What a row's field held before its last set, if it was ever set. */
+  setFrom(list: string, id: string, field: string): unknown {
+    return this.lists.get(list)?.cells.get(`${id}\n${field}`)?.from;
+  }
+
+  /** Whether a row stays out whatever add of it comes later: it was deleted, or the add of it was undone. */
+  isGone(list: string, id: string): boolean {
+    return this.gone.has(`${list}\n${id}`);
+  }
+
   /** Each list's rows that stay out whatever add comes later, for a snapshot to keep. */
   goneIn(list: string): string[] {
     const prefix = `${list}\n`;

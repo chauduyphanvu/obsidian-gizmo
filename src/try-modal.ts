@@ -13,7 +13,8 @@ function leftOut(wanted: string[]): string[] {
   return wanted.flatMap((perm) => {
     const kind = perm.split(":")[0];
     if (kind === "read" && !/\.[A-Za-z0-9]+$/.test(perm)) return [`${describePermission(perm)}: none of them here`];
-    if (kind === "edit" || kind === "tasks" || kind === "secret" || kind === "send" || kind === "post") return [describePermission(perm)];
+    if (kind === "kind") return [`${describePermission(perm)}: none of them here`];
+    if (kind === "kind-write" || kind === "edit" || kind === "tasks" || kind === "secret" || kind === "send" || kind === "post" || kind === "share") return [describePermission(perm)];
     if (perm === "images") return ["Load pictures: their addresses are shown instead"];
     return [];
   });

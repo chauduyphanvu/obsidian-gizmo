@@ -57,7 +57,7 @@ test("the values a key takes come from the registries", () => {
   assert.deepEqual(Object.keys(VALUE_HINTS.layout), ["cards", "year"]);
   assert.deepEqual(Object.keys(VALUE_HINTS.compare), ["previous"]);
   assert.deepEqual(Object.keys(VALUE_HINTS.pin), ["status"]);
-  assert.deepEqual(Object.keys(VALUE_HINTS.source), ["notes", "tasks", "this", "expect"]);
+  assert.deepEqual(Object.keys(VALUE_HINTS.source), ["notes", "tasks", "this", "expect", "asks"]);
   for (const [key, values] of Object.entries(VALUE_HINTS)) for (const [v, hint] of Object.entries(values)) assert.ok(hint, `${key}: ${v}`);
 });
 
@@ -165,7 +165,7 @@ test("layout is an app key at the top, with composed and grid, and a panel's lay
 });
 
 test("source offers the kinds that are words, in a panel, a data block and at the top", () => {
-  const words = ["notes", "tasks", "this", "expect"];
+  const words = ["notes", "tasks", "this", "expect", "asks"];
   assert.deepEqual(suggested(app("panels:\n  - view: list\n    source: ‸")), words);
   assert.deepEqual(suggested(app("data:\n  q:\n    source: ‸")), words);
   assert.deepEqual(suggested("---\napp: A\nview: list\nsource: ‸\n---"), words);

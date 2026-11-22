@@ -248,6 +248,20 @@ export function formulaReads(text: string): { fields: string[] | "*"; vars: { na
   }
 }
 
+/** The field paths a formula reads as written (`settled.amount`, not `settled`); undefined when it can't be read. */
+export function fieldPaths(text: string): string[] | undefined {
+  const walk = (n: Node, out: Set<string>): Set<string> => {
+    if (n.k === "field") out.add(n.path);
+    for (const k of n.k === "unary" ? [n.a] : n.k === "binary" ? [n.a, n.b] : n.k === "call" ? n.args : []) walk(k, out);
+    return out;
+  };
+  try {
+    return [...walk(parse(tokenize(text)), new Set())];
+  } catch {
+    return undefined;
+  }
+}
+
 function varsIn(n: Node, out: Set<string>): Set<string> {
   if (n.k === "var") out.add(n.name);
   else if (n.k === "unary") varsIn(n.a, out);
@@ -464,10 +478,10 @@ function settle(v: unknown): unknown {
 }
 
 /**
- * Compiles one formula. With `knownVars`, a `$name` outside it is an error. `vars` lists the
- * `$names` the formula reads. Messages have no location prefix.
+ * Compiles one formula. With `knownVars`, a `$name` outside it is an error; with `noPrev`, so is
+ * prev. `vars` lists the `$names` the formula reads. Messages have no location prefix.
  */
-export function compileFormula(text: string, knownVars?: ReadonlySet<string>): { run: Formula; vars: string[] } | { error: string } {
+export function compileFormula(text: string, knownVars?: ReadonlySet<string>, noPrev = false): { run: Formula; vars: string[] } | { error: string } {
   if (text.length > MAX_LENGTH) return { error: `the formula is longer than ${MAX_LENGTH} characters` };
   let tree: Node;
   try {
@@ -476,6 +490,7 @@ export function compileFormula(text: string, knownVars?: ReadonlySet<string>): {
     if (e instanceof FormulaError) return { error: e.message };
     throw e;
   }
+  if (noPrev && callsPrev(tree)) return { error: "prev reads the row before, and a row being saved has none" };
   const vars = [...varsIn(tree, new Set())];
   const unknown = knownVars && vars.find((v) => !knownVars.has(v));
   if (unknown) return { error: `$${unknown} isn't an input or param` };
@@ -495,6 +510,20 @@ export function computeErrors(compute: Record<string, string | number>, knownVar
   return Object.entries(compute).flatMap(([name, text]) => {
     const f = compileFormula(String(text), knownVars);
     return "error" in f ? [`compute.${name}: ${f.error}`] : [];
+  });
+}
+
+/** The formula a `row:` value holds: the text after a leading `=`; undefined for a value filled as text. */
+export function rowFormula(value: unknown): string | undefined {
+  return typeof value === "string" && value.startsWith("=") ? value.slice(1) : undefined;
+}
+
+/** Check-time problems with the formulas among a `row:` map's values, as `row.<field>: <problem>`. */
+export function rowFormulaErrors(row: Record<string, unknown>): string[] {
+  return Object.entries(row).flatMap(([field, value]) => {
+    const text = rowFormula(value);
+    const f = text === undefined ? undefined : compileFormula(text, undefined, true);
+    return f && "error" in f ? [`row.${field}: ${f.error}`] : [];
   });
 }
 

@@ -4,19 +4,53 @@ import {
 import { handler } from "./handler.ts";
 import { undoMessage } from "./activity.ts";
 import { copyText } from "./host.ts";
-import { captureLine, completed, parseLine, receipt, whenText, type Parsed } from "./capture.ts";
+import { captureLine, completed, parseLine, plannedText, receipt, whenText, type CaptureTarget, type Parsed } from "./capture.ts";
+import { parseWhatIf, whatIfLine } from "./ahead.ts";
+import { askLine } from "./ask.ts";
+import { AskPane, type AskShown } from "./ask-view.ts";
 import type GizmoPlugin from "./main.ts";
+import { openAppAhead } from "./past-views.ts";
+import { kindOfPanel } from "./sources/kind.ts";
+import { basename } from "./store.ts";
+import { AppView } from "./view.ts";
 
-/** What a line that can run runs, and for when if not now: `Budget: Spent something at Thu Nov 19, 13:00`. */
+/**
+ * What a line that can run runs, and for when if not now: `Budget: Spent something at Thu Nov 19,
+ * 13:00`; for a kind, `planned for` a time still to come, or each time of an `@every`.
+ */
 function runs(parsed: Parsed & { ok: true }): string {
-  return `${parsed.target.app}: ${parsed.target.label}${parsed.at ? ` at ${whenText(parsed.at, new Date())}` : ""}`;
+  const now = new Date();
+  const when = parsed.at && (plannedText({ at: parsed.at, plan: parsed.plan }, now) ?? `at ${whenText(parsed.at, now)}`);
+  return `${parsed.target.app}: ${parsed.target.label}${when ? ` ${when}` : ""}`;
+}
+
+/**
+ * The app a `what if` line is tried in: the app open in the active tab, when the line saves to a
+ * kind that app reads or saves to; else the app the line's shortcut is in.
+ */
+function whatIfApp(plugin: GizmoPlugin, target: CaptureTarget): string {
+  const kindIn = (path: string, shortcut?: string) => plugin.background?.spec(path)?.panels
+    .filter((ps) => shortcut === undefined || ps.panel.shortcut === shortcut)
+    .map((ps) => kindOfPanel(ps.panel)?.path)
+    .filter((p): p is string => p !== undefined) ?? [];
+  const [kind] = kindIn(target.path, target.shortcut);
+  const open = plugin.app.workspace.getActiveViewOfType(AppView)?.file?.path;
+  return kind !== undefined && open !== undefined && kindIn(open).includes(kind) ? open : target.path;
 }
 
 /** A notice saying a capture line ran, with Undo for what it changed. */
-export function capturedNotice(plugin: GizmoPlugin, line: string, entryId: string | undefined): void {
+export function capturedNotice(plugin: GizmoPlugin, line: string, told: string | undefined, entryId: string | undefined): void {
+  const text = told === undefined ? `Ran “${line}”.` : /[.!?]$/.test(told) ? told : `${told}.`;
+  // A run that changed nothing to undo is still told, once.
+  if (entryId) undoNotice(plugin, text, entryId);
+  else new Notice(text);
+}
+
+/** A notice saying what was just done, with Undo for what it changed in the activity log. */
+export function undoNotice(plugin: GizmoPlugin, text: string, entryId: string | undefined): void {
   if (!entryId) return;
   const frag = createFragment((f) => {
-    f.createSpan({ text: `Ran “${line}”. ` });
+    f.createSpan({ text: `${text} ` });
     const undo = f.createEl("a", { text: "Undo", href: "#" });
     undo.addEventListener("click", handler(async (e) => {
       e.preventDefault();
@@ -29,55 +63,65 @@ export function capturedNotice(plugin: GizmoPlugin, line: string, entryId: strin
 }
 
 /**
- * "Do…": one line that runs any app's shortcut with its values (`spend 14.5 food lunch`). Under it,
- * what comes next or what's wrong, completions for the last word (Tab takes the first), and what
- * running it would change, worked out by a dry run. Enter runs it.
+ * A capture line as Do… and Next show it: the line, under it what comes next or what's wrong,
+ * completions for the last word (Tab takes the first), and what running it would change, worked
+ * out by a dry run. Enter calls `onEnter`. With an `ask` pane (Do…), a line that starts with `?`
+ * asks a question of the vault's kinds instead, and shows the answer there (see AskPane).
  */
-class CaptureModal extends Modal {
+export class LineBox {
+  readonly input: HTMLInputElement;
   private plugin: GizmoPlugin;
-  private input!: HTMLInputElement;
-  private hint!: HTMLElement;
-  private chips!: HTMLElement;
-  private effects!: HTMLElement;
-  private parsed: Parsed | undefined;
+  private hint: HTMLElement;
+  private chips: HTMLElement;
+  private effects: HTMLElement;
+  private ask: AskPane | undefined;
+  /** What the ask line said last, for Tab to take its first completion. */
+  private asked: AskShown | undefined;
   private run = 0;
   private timer = 0;
 
-  constructor(plugin: GizmoPlugin) {
-    super(plugin.app);
+  constructor(plugin: GizmoPlugin, el: HTMLElement, placeholder: string, onEnter: () => void, ask?: (el: HTMLElement) => AskPane) {
     this.plugin = plugin;
-  }
-
-  onOpen(): void {
-    this.titleEl.setText("Do…");
-    const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture" });
-    this.input = el.createEl("input", { cls: "gz-capture-input", type: "text", attr: { placeholder: "spend 14.5 food lunch", spellcheck: "false", autocapitalize: "off" } });
+    this.input = el.createEl("input", { cls: "gz-capture-input", type: "text", attr: { placeholder, spellcheck: "false", autocapitalize: "off" } });
     this.hint = el.createDiv({ cls: "gz-capture-hint gz-muted" });
     this.chips = el.createDiv({ cls: "gz-capture-chips" });
     this.effects = el.createEl("ul", { cls: "gz-effects" });
-    el.createDiv({ cls: "gz-muted", text: "Enter runs it · Tab completes · Esc closes" });
+    this.ask = ask?.(el);
     this.input.addEventListener("input", () => this.schedule());
     this.input.addEventListener("keydown", (e) => {
+      const asking = this.asking();
       if (e.key === "Tab") {
         // What was typed since the last preview counts: the line is read again as it is now.
         const bg = this.plugin.background;
-        const now = bg ? parseLine(this.input.value, bg.captureIndex(), new Date()) : undefined;
-        const first = now && !now.ok ? now.completions[0] : undefined;
+        const now = asking ? undefined : bg ? (this.whatIf()?.parsed ?? parseLine(this.input.value, bg.captureIndex(), new Date())) : undefined;
+        const first = asking ? this.asked?.completions[0] : now && !now.ok ? now.completions[0] : undefined;
         if (first === undefined) return;
         e.preventDefault();
         this.take(first);
       } else if (e.key === "Enter" && !e.isComposing) {
         e.preventDefault();
-        void this.submit();
+        if (asking && (e.metaKey || e.ctrlKey)) this.ask!.keep();
+        else onEnter();
       }
     });
-    void this.show();
-    this.input.focus();
   }
 
-  onClose(): void {
+  /** Whether the line is a question for the ask pane, not a shortcut to run. */
+  private asking(): boolean {
+    return this.ask !== undefined && askLine(this.input.value) !== undefined;
+  }
+
+  /** A line that starts `what if`, read as a what-if: nothing real is run or worked out, so it shows only where it goes. */
+  private whatIf(): { line: string; parsed: Parsed } | undefined {
+    const bg = this.plugin.background;
+    const line = whatIfLine(this.input.value);
+    return bg && line !== undefined ? { line, parsed: parseWhatIf(line, bg.captureIndex(), new Date()) } : undefined;
+  }
+
+  /** Stops a preview waiting to be worked out, and the answer an ask drew. */
+  stop(): void {
     window.clearTimeout(this.timer);
-    this.contentEl.empty();
+    this.ask?.dispose();
   }
 
   private schedule(): void {
@@ -86,21 +130,37 @@ class CaptureModal extends Modal {
   }
 
   private take(completion: string): void {
-    this.input.value = completed(this.input.value, completion);
+    const question = this.asking() ? askLine(this.input.value) : undefined;
+    this.input.value = question === undefined ? completed(this.input.value, completion) : `? ${completed(question.trimStart(), completion)}`;
     this.input.focus();
     void this.show();
   }
 
-  private async show(): Promise<void> {
+  /** Works out what the line would do as it stands, and shows it. */
+  async show(): Promise<void> {
     const bg = this.plugin.background;
     if (!bg) return;
     const run = ++this.run;
-    const { parsed, effects } = await bg.previewLine(this.input.value);
+    const question = this.ask && askLine(this.input.value);
+    if (this.ask && question !== undefined) {
+      const shown = await this.ask.show(question);
+      if (run !== this.run) return;
+      this.asked = shown;
+      this.hint.setText(shown.hint);
+      this.hint.toggleClass("gz-error-text", shown.error);
+      this.chips.empty();
+      for (const c of shown.completions.slice(0, 12)) this.chips.createEl("button", { cls: "gz-small gz-capture-chip", text: c }).addEventListener("click", () => this.take(c));
+      this.effects.empty();
+      return;
+    }
+    this.ask?.hide();
+    const whatIf = this.whatIf();
+    const { parsed, effects } = whatIf ? { parsed: whatIf.parsed, effects: [] } : await bg.previewLine(this.input.value);
     if (run !== this.run) return;
-    this.parsed = parsed;
     this.hint.empty();
     this.hint.toggleClass("gz-error-text", !parsed.ok && this.input.value.trim() !== "");
     if (!parsed.ok && this.input.value.trim() !== "") this.hint.setText(parsed.next ? `${parsed.error} · ${parsed.next}` : parsed.error);
+    else if (parsed.ok && whatIf) this.hint.setText(`What if, in ${basename(whatIfApp(this.plugin, parsed.target))}: ${parsed.target.label}${parsed.at ? ` for ${whenText(parsed.at, new Date())}` : ""}. Nothing real changes until Keep.`);
     else if (parsed.ok) this.hint.setText(`${runs(parsed)}${parsed.next ? ` · next, ${parsed.next}` : ""}`);
     else this.hint.setText("Type a shortcut's name, then its values");
     this.chips.empty();
@@ -112,24 +172,80 @@ class CaptureModal extends Modal {
     for (const line of effects ?? []) this.effects.createEl("li", { text: line });
   }
 
-  private async submit(): Promise<void> {
+  /**
+   * Runs the line, as the Do… command does, and says so with Undo; true when it ran. A line it
+   * couldn't read is shown where it was typed; one that ran and failed has said why in a notice.
+   */
+  async submit(): Promise<boolean> {
     const bg = this.plugin.background;
     const line = this.input.value.trim();
-    if (!bg || !line) return;
+    if (!bg || !line) return false;
+    // A question saves nothing: Enter only shows its answer at once.
+    if (this.asking()) {
+      window.clearTimeout(this.timer);
+      await this.show();
+      return false;
+    }
+    const whatIf = this.whatIf();
+    if (whatIf) {
+      if (!whatIf.parsed.ok) {
+        await this.show();
+        return false;
+      }
+      await openAppAhead(this.plugin, whatIfApp(this.plugin, whatIf.parsed.target), whatIf.line);
+      return true;
+    }
     this.input.disabled = true;
     try {
-      const result = await bg.capture(line);
+      // What it did is told once, here, with Undo, not also by the run.
+      const result = await bg.capture(line, undefined, true);
       if (!result.ok) {
-        // A line it couldn't read is shown where it was typed; one that ran and failed has said why in a notice.
         if (!result.parsed.ok) await this.show();
-        return;
+        return false;
       }
-      capturedNotice(this.plugin, line, result.entryId);
-      this.close();
+      capturedNotice(this.plugin, line, result.told, result.entryId);
+      return true;
     } finally {
       this.input.disabled = false;
-      this.input.focus();
     }
+  }
+}
+
+/**
+ * "Do…": one line that runs any app's shortcut with its values (`spend 14.5 food lunch`), shown with
+ * what it would do (see LineBox). Enter runs it.
+ */
+class CaptureModal extends Modal {
+  private plugin: GizmoPlugin;
+  private box: LineBox | undefined;
+
+  constructor(plugin: GizmoPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
+  }
+
+  onOpen(): void {
+    this.titleEl.setText("Do…");
+    this.modalEl.addClass("gz-capture-modal");
+    const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture" });
+    const box = new LineBox(this.plugin, el, "spend 14.5 food lunch, or ? spend this month", () => void this.submit(), (at) => new AskPane(this.plugin, at, () => this.close()));
+    this.box = box;
+    el.createDiv({ cls: "gz-muted", text: "Enter runs it · ? asks your kinds · Tab completes · Esc closes" });
+    void box.show();
+    box.input.focus();
+  }
+
+  onClose(): void {
+    this.box?.stop();
+    this.contentEl.empty();
+  }
+
+  private async submit(): Promise<void> {
+    const box = this.box;
+    if (!box) return;
+    const ran = await box.submit();
+    if (ran) this.close();
+    else box.input.focus();
   }
 }
 

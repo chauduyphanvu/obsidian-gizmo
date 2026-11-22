@@ -55,6 +55,21 @@ test("only the frontmatter is read for uses", () => {
   assert.deepEqual(componentsNeeded(app, NOTES), []);
 });
 
+test("an app brings the kinds it reads or saves to with a whole link, from Kinds/; so does a component it uses", () => {
+  const spend = note("Kinds/Spend.md", "---\nkind: spend\nfields: {amount: number}\n---\nBody");
+  const trips = note("Kinds/Trips.md", "---\nkind: trips\nfields: {city: text}\n---\n");
+  const kit = note("Components/Kit.md", '---\ncomponent: Kit\npanels:\n  - {view: table, source: "[[Trips]]"}\n---\n');
+  const app = note("Apps/B.md", [
+    "---", "app: B", "data:", "  spend:", '    source: "[[Spend]]"', "panels:", '  - {view: form, save: "[[Spend]]"}',
+    '  - view: text', '    text: "[[Trips]]"', '  - view: table', '    source: "[[Trips]] notes"', '  - source: "[[Weather]]"', "    view: table", "---", "",
+  ].join("\n"));
+  const all = [spend, trips, kit, app, WEATHER];
+  assert.deepEqual(names(componentsNeeded(app, all)), ["Spend"], "a link that is only part of a value, or names no kind, brings nothing");
+  assert.deepEqual(names(componentsNeeded(note("Apps/C.md", '---\napp: C\npanels:\n  - use: "[[Kit]]"\n---\n'), all)), ["Kit", "Trips"]);
+  assert.deepEqual(planCopy(app, [spend], { Spend: [spend.text] }), { create: [app], reuse: ["Spend"] }, "a kind there word for word is reused");
+  assert.deepEqual(planCopy(app, [spend], { Spend: ["kind: spend"] }), { refusal: "“Spend” already exists and isn't the one “B” needs" });
+});
+
 test("an existing note with the app's name stops the copy, naming it", () => {
   assert.deepEqual(planCopy(PLAIN, [], { Plain: ["anything at all"] }), { refusal: "“Plain” already exists" });
   assert.deepEqual(planCopy(TRIP, [WEATHER], { Trip: ["x"] }), { refusal: "“Trip” already exists" });
@@ -86,9 +101,11 @@ test("an app note's name wins over its components in what is reported", () => {
 
 test("the built-in gallery holds every app and component, with the text of its note, and nothing else", () => {
   const paths = gallery.map((n) => n.path);
-  assert.ok(paths.length > 0 && paths.every((p) => /^(Apps|Components)\/[^/]+\.md$/.test(p)), paths.join(", "));
-  assert.ok(paths.includes("Apps/Trip planner.md") && paths.includes("Components/Destination weather.md"));
+  assert.ok(paths.length > 0 && paths.every((p) => /^(Apps|Components|Kinds)\/[^/]+\.md$/.test(p)), paths.join(", "));
+  assert.ok(paths.includes("Apps/Trip planner.md") && paths.includes("Components/Destination weather.md") && paths.includes("Kinds/Spend.md"));
   assert.ok(gallery.every((n) => n.text.startsWith("---\n")));
+  // A kind's sample rows sit beside it in gallery/ for the repo's own vault; a copy never takes them.
+  assert.deepEqual(paths.filter((p) => / data\.md$/.test(p)), []);
 });
 
 test("every gallery app can be copied into an empty vault, with exactly the components it uses", () => {
@@ -103,16 +120,19 @@ test("every gallery app can be copied into an empty vault, with exactly the comp
     const links = [...app.note.text.matchAll(/use:\s*"\[\[([^\]]+)\]\]"/g)].map((m) => m[1]);
     assert.deepEqual(links.filter((l) => !parts.some((p) => basename(p.path) === l)), [], app.name);
   }
-  assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Trip planner")!.note, gallery)), ["Destination weather"]);
-  assert.deepEqual(componentsNeeded(apps.find((a) => a.name === "Medication log")!.note, gallery), []);
+  assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Trip planner")!.note, gallery)), ["Destination weather", "Spend"]);
+  assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Budget")!.note, gallery)), ["Spend"]);
+  assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Medication log")!.note, gallery)), ["Dose"]);
+  assert.deepEqual(names(componentsNeeded(apps.find((a) => a.name === "Bills and renewals")!.note, gallery)), ["Spend", "Renewal"]);
 });
 
 test("an app that is a whole kit brings the kit; a second app on the same kit reuses the copy already there", () => {
-  const apps = galleryApps(gallery);
-  const [weight, sleep] = ["Weight", "Sleep"].map((n) => apps.find((a) => a.name === n)!.note);
+  const practice = galleryApps(gallery).find((a) => a.name === "Practice")!.note;
+  // A second app on the kit, as someone would make one from Practice.
+  const reading = note("Apps/Reading.md", practice.text.replace("with: {what: practice, unit: minutes, goal: 30}", "with: {what: reading, unit: pages, goal: 20}"));
   const kit = gallery.find((n) => n.path === "Components/Tracker kit.md")!;
-  assert.deepEqual(componentsNeeded(weight, gallery), [kit]);
-  assert.deepEqual(componentsNeeded(sleep, gallery), [kit]);
-  assert.deepEqual(planCopy(weight, [kit], {}), { create: [kit, weight], reuse: [] });
-  assert.deepEqual(planCopy(sleep, [kit], { "Tracker kit": [kit.text] }), { create: [sleep], reuse: ["Tracker kit"] });
+  assert.deepEqual(componentsNeeded(practice, gallery), [kit]);
+  assert.deepEqual(componentsNeeded(reading, gallery), [kit]);
+  assert.deepEqual(planCopy(practice, [kit], {}), { create: [kit, practice], reuse: [] });
+  assert.deepEqual(planCopy(reading, [kit], { "Tracker kit": [kit.text] }), { create: [reading], reuse: ["Tracker kit"] });
 });

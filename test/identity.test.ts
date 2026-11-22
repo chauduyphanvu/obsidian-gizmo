@@ -22,6 +22,22 @@ test("a rename moves everything data.json keeps for the app: grants, its embeds'
   assert.equal(moveKeys(s, "Apps/Nothing.md", "Apps/Else.md"), false);
 });
 
+test("a renamed kind keeps the apps that read it allowed: what they were allowed on its note follows the note", () => {
+  const s: StoredData = {
+    grants: {
+      "Apps/Budget.md": ["answer:spent", "kind-write:Kinds/Spend.md", "kind:Kinds/Spend.md"],
+      "Apps/Bills.md": ["kind:Kinds/Spend.md", "kind:Kinds/Spend.md.bak", "kind:Kinds/Renewal.md"],
+      "Kinds/Spend.md": ["read:Inbox/Bank", "secret:spend-key", "share:Kinds/Spend.md|ntfy.sh"],
+    },
+  };
+  assert.equal(moveKeys(s, "Kinds/Spend.md", "Money/Spend.md"), true);
+  assert.deepEqual(s.grants, {
+    "Apps/Budget.md": ["answer:spent", "kind-write:Money/Spend.md", "kind:Money/Spend.md"],
+    "Apps/Bills.md": ["kind:Money/Spend.md", "kind:Kinds/Spend.md.bak", "kind:Kinds/Renewal.md"],
+    "Money/Spend.md": ["read:Inbox/Bank", "secret:spend-key", "share:Money/Spend.md|ntfy.sh"],
+  });
+});
+
 test("a delete drops what data.json keeps for the app; a capture key keeps its other names, and goes when it has none", () => {
   const s = stored();
   assert.equal(dropKeys(s, "Apps/Meds.md"), true);

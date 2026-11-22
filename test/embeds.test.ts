@@ -317,6 +317,26 @@ test("an embed of an app runs as that app: its grants, its data note, only the p
   assert.equal(unknown.root.querySelectorAll(".gz-panel").length, 1);
 });
 
+test("an embed of panels that sit in one tab of the app shows no tab bar; panels from two tabs keep theirs", async () => {
+  const meds = {
+    app: "Take each dose on time",
+    tabs: {
+      Today: [
+        { view: "button", label: "Took meds", save: "doses" },
+        { view: "number", title: "Doses today", source: "doses", where: { at: "today" }, agg: "count" },
+      ],
+      Supply: [{ view: "number", title: "Refills", source: "doses", agg: "count" }],
+    },
+  };
+  const one = embed({ app: "[[Meds]]", panels: ["Took meds", "Doses today"] }, { "Apps/Meds.md": { fm: meds } });
+  await settle();
+  assert.equal(one.root.querySelectorAll(".gz-panel").length, 2);
+  assert.ok(!one.root.querySelector(".gz-tabs"), text(one.root.querySelector(".gz-tabs")));
+  const two = embed({ app: "[[Meds]]", panels: ["Took meds", "Refills"] }, { "Apps/Meds.md": { fm: meds } });
+  await settle();
+  assert.deepEqual([...two.root.querySelectorAll(".gz-tabs button")].map(text), ["Today", "Supply"]);
+});
+
 test("an embed of an app that can't be found says so, and draws once the note appears", async () => {
   const t = embed({ app: "[[Later]]" }, {});
   await settle();

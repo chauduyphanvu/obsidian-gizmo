@@ -4,13 +4,17 @@
  * Each step moves one replay data layer to that time, so lists come from the ledger's events up to
  * it and web answers from the response history at or before it. Nothing is written or told: a
  * `then` is only named.
+ *
+ * Run ahead (`ahead`), it looks forward from now on a what-if's layer instead: the lists stay as
+ * they are, with the what-if's rows, and only the clock each step reads them at moves.
  */
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, rowsOf } from "./data.ts";
 import { cacheKey, type DataLayer } from "./datalayer.ts";
 import { metIn, windowsDue, type Rhythm, type Window } from "./expect.ts";
+import { periodStart, shiftPeriod } from "./time.ts";
 import { stableJson } from "./hash.ts";
-import { resolvePanel, startingValues, type AppSpec, type PanelSpec, type Then } from "./spec.ts";
+import { resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then } from "./spec.ts";
 import { thisValues } from "./sources/this.ts";
 import { basename } from "./store.ts";
 import { THIS } from "./template.ts";
@@ -34,7 +38,7 @@ export interface BacktestResult {
   from: number;
   to: number;
   steps: number;
-  /** More than MAX_STEPS: the oldest were left out, and the backtest starts at `from`. */
+  /** More than MAX_STEPS: the oldest were left out, and the backtest starts at `from`; ahead, the latest, and it ends at `to`. */
   cut: boolean;
   before?: Fire[];
   after: Fire[];
@@ -46,7 +50,7 @@ export interface BacktestResult {
 }
 
 export interface BacktestJob {
-  /** A replay layer (made with `at`); the backtest moves its time. */
+  /** A replay layer (made with `at`); the backtest moves its time. Ahead, a what-if's layer, whose time it leaves. */
   layer: DataLayer;
   appPath: string;
   dataPath: string;
@@ -55,18 +59,25 @@ export interface BacktestJob {
   after: AppSpec;
   /** The latest time looked at; the earliest is the first kept data, at most SPAN_MS before. */
   to: number;
+  /**
+   * Looks forward from `from` (now) to `to` instead, at most SPAN_MS: a step at `from`, at each of
+   * `times` (the what-if's rows and planned rows), each midnight and each rhythm's deadline, worked
+   * out in `zone` as the background does; the earliest MAX_STEPS are kept. With `base`, the layer
+   * of the app as it is, what is true there at `from` is what is noted, not counted.
+   */
+  ahead?: { from: number; times: readonly number[]; zone?: string; base?: DataLayer };
   progress?(done: number, total: number): void;
   cancelled?(): boolean;
 }
 
-interface Watched { key: string; ps: PanelSpec; what: string; then?: Then }
+export interface Watched { key: string; ps: PanelSpec; what: string; then?: Then }
 
 /**
  * A spec's alerts and state rules, as the background watches them. An alert is known across the two
  * definitions by its title, or its view and source, not by where it's written: a panel added above
  * it moves it without changing what it does.
  */
-function alertsOf(spec: AppSpec): Watched[] {
+export function alertsOf(spec: AppSpec): Watched[] {
   const out: Watched[] = [];
   const seen = new Map<string, number>();
   for (const ps of spec.panels) {
@@ -85,7 +96,7 @@ function alertsOf(spec: AppSpec): Watched[] {
   return out;
 }
 
-const rhythmsOf = (spec: AppSpec) => spec.expect.filter((r): r is Rhythm => r.kind === "rhythm");
+export const rhythmsOf = (spec: AppSpec) => spec.expect.filter((r): r is Rhythm => r.kind === "rhythm");
 
 export function thenText(then: Then | undefined): string | undefined {
   return then && `${then.do} in ${basename(then.app.replace(/^\[\[|\]\]$/g, ""))}`;
@@ -101,16 +112,20 @@ function startOfDay(t: number): number {
   return new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime();
 }
 
-export async function backtest(job: BacktestJob): Promise<BacktestResult | undefined> {
-  const { layer } = job;
-  const specs: [string, AppSpec][] = job.before ? [["before", job.before], ["after", job.after]] : [["after", job.after]];
-  const files = { appPath: job.appPath, dataPath: job.dataPath, devices: job.devices };
-  const values = (spec: AppSpec, now: Date) => ({
-    ...startingValues(spec.inputs, now),
-    [THIS]: thisValues(job.appPath, layer.host.frontmatter(job.appPath), layer.host.tags(job.appPath)),
-  });
+/** The times a backtest steps at, in order, from `from` to `to`, and each rhythm's windows by deadline. */
+interface Steps {
+  from: number;
+  to: number;
+  order: number[];
+  cut: boolean;
+  deadlines: Map<string, Map<number, Window>>;
+}
 
-  // The moments something it reads changed: its lists' events and the kept answers of its requests.
+type Values = (spec: AppSpec, now: Date) => Record<string, unknown>;
+
+/** The moments something it reads changed (its lists' events, the kept answers of its requests), each midnight and each deadline, back from `to`. */
+async function stepsBack(job: BacktestJob, specs: [string, AppSpec][], values: Values): Promise<Steps> {
+  const { layer } = job;
   const changes = new Set<number>(await layer.ledger?.times(job.dataPath) ?? []);
   for (const [, spec] of specs) {
     for (const ps of [...alertsOf(spec).map((w) => w.ps), ...rhythmsOf(spec).map((r) => spec.expected[r.id]).filter((ps) => ps)]) {
@@ -142,13 +157,49 @@ export async function backtest(job: BacktestJob): Promise<BacktestResult | undef
     order = order.slice(-MAX_STEPS);
     from = order[0];
   }
+  return { from, to: job.to, order, cut, deadlines };
+}
+
+/** From now, a step at `from`, at each of `times`, each midnight and each deadline in `zone` up to `to`; the earliest MAX_STEPS. */
+function stepsAhead(job: BacktestJob, specs: [string, AppSpec][], ahead: NonNullable<BacktestJob["ahead"]>): Steps {
+  const { from, zone } = ahead;
+  let to = Math.min(job.to, from + SPAN_MS);
+  const steps = new Set([from, ...ahead.times.filter((t) => t > from && t <= to)]);
+  for (let t = shiftPeriod(periodStart(from, "day", zone), "day", 1, zone); t <= to; t = shiftPeriod(t, "day", 1, zone)) steps.add(t);
+  const deadlines = new Map<string, Map<number, Window>>();
+  for (const [which, spec] of specs) {
+    for (const rule of rhythmsOf(spec)) {
+      const by = new Map(windowsDue(rule, from, to, zone).map((w) => [w.deadline, w]));
+      deadlines.set(`${which}\n${rule.id}`, by);
+      for (const t of by.keys()) steps.add(t);
+    }
+  }
+  let order = [...steps].sort((a, b) => a - b);
+  const cut = order.length > MAX_STEPS;
+  // Going forward, what comes soonest matters most.
+  if (cut) {
+    order = order.slice(0, MAX_STEPS);
+    to = order[order.length - 1];
+  }
+  return { from, to, order, cut, deadlines };
+}
+
+export async function backtest(job: BacktestJob): Promise<BacktestResult | undefined> {
+  const { layer } = job;
+  const specs: [string, AppSpec][] = job.before ? [["before", job.before], ["after", job.after]] : [["after", job.after]];
+  const files = { appPath: job.appPath, dataPath: job.dataPath, devices: job.devices };
+  const values: Values = (spec, now) => ({
+    ...startingValues(spec.inputs, now),
+    [THIS]: thisValues(job.appPath, layer.host.frontmatter(job.appPath), layer.host.tags(job.appPath)),
+  });
+  const { from, to, order, cut, deadlines } = job.ahead ? stepsAhead(job, specs, job.ahead) : await stepsBack(job, specs, values);
 
   const errors = new Map<string, string>();
-  const read = async (spec: AppSpec, ps: PanelSpec, now: Date) => {
+  const read = async (spec: AppSpec, ps: PanelSpec, now: Date, from = layer) => {
     const r = resolvePanel(ps, values(spec, now));
     if (!r.panel) return undefined;
     try {
-      const loaded = await layer.panelData(sourceOf(r.panel), r.panel, files, { ttlMs: 0, now });
+      const loaded = await from.panelData(sourceOf(r.panel), r.panel, files, { ttlMs: 0, now });
       return { p: r.panel, rows: splitByWindow(r.panel, loaded, now).current };
     } catch (e) {
       const message = (e as Error).message;
@@ -157,23 +208,34 @@ export async function backtest(job: BacktestJob): Promise<BacktestResult | undef
     }
   };
 
+  const isOn = (p: Panel, rows: unknown, now: Date) => {
+    const alert = p.alert!;
+    return typeof alert === "string" ? matches(panelValue(p, rows, now).value, alert, now) : rowsOf(rows).some(compileWhere(alert, now));
+  };
   const fires: Record<string, Fire[]> = { before: [], after: [] };
   const on = new Map<string, boolean>();
+  const base = job.ahead?.base;
+  if (base) {
+    for (const [which, spec] of specs) {
+      for (const w of alertsOf(spec)) {
+        const got = await read(spec, w.ps, new Date(from), base);
+        if (got) on.set(`${which}\n${w.key}`, isOn(got.p, got.rows, new Date(from)));
+      }
+    }
+  }
   for (const [i, t] of order.entries()) {
     if (job.cancelled?.()) return undefined;
-    layer.setAt(t);
+    if (!job.ahead) layer.setAt(t);
     const now = new Date(t);
     for (const [which, spec] of specs) {
       for (const w of alertsOf(spec)) {
         const got = await read(spec, w.ps, now);
         if (!got) continue;
-        const { p, rows } = got;
-        const alert = p.alert!;
-        const isOn = typeof alert === "string" ? matches(panelValue(p, rows, now).value, alert, now) : rowsOf(rows).some(compileWhere(alert, now));
+        const lit = isOn(got.p, got.rows, now);
         const k = `${which}\n${w.key}`;
         // What is true at the first step is noted, not counted, as when background work starts.
-        if (isOn && on.get(k) === false) fires[which].push({ at: t, key: w.key, what: w.what, then: thenText(w.then) });
-        on.set(k, isOn);
+        if (lit && on.get(k) === false) fires[which].push({ at: t, key: w.key, what: w.what, then: thenText(w.then) });
+        on.set(k, lit);
       }
       for (const rule of rhythmsOf(spec)) {
         const w = deadlines.get(`${which}\n${rule.id}`)?.get(t);
@@ -196,7 +258,7 @@ export async function backtest(job: BacktestJob): Promise<BacktestResult | undef
   const has = new Set(fires.after.map(id));
   return {
     from,
-    to: job.to,
+    to,
     steps: order.length,
     cut,
     before,

@@ -13,19 +13,19 @@ import type { Actor } from "../activity.ts";
 import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../background.ts";
 import { DataLayer, type Host } from "../datalayer.ts";
 import { ledgerStore } from "../datastore.ts";
-import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherTriggers, whereYouAre, type PluginFiles } from "../device.ts";
+import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherShareStates, otherTriggers, whereYouAre, type PluginFiles } from "../device.ts";
 import { localZone } from "../time.ts";
 import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../responses.ts";
 import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../snapshots.ts";
-import { isApp, notePath, storeTarget } from "../store.ts";
-import { captureNamesOf, destinationsOf, linkKeyOf, type StoredData } from "../stored.ts";
+import { isApp, isKind, notePath, storeTarget } from "../store.ts";
+import { captureNamesOf, destinationsOf, linkKeyOf, writersOf, type StoredData } from "../stored.ts";
 import { NodeVault, yamlText } from "./vault.ts";
 import { vaultWrites } from "../vault-ops.ts";
 
 /** Gizmo's settings as Obsidian keeps them in data.json; gizmod only reads them. */
-export type Settings = Pick<StoredData, "grants" | "linkKeys" | "answerTo" | "captureKeys" | "policy">;
+export type Settings = Pick<StoredData, "grants" | "linkKeys" | "answerTo" | "captureKeys" | "policy" | "writers">;
 
 /** Node's fs as the history's folder adapter. */
 export const fsAdapter: FolderAdapter = {
@@ -92,6 +92,8 @@ export interface GizmodOptions {
   log?: (line: string) => void;
   now?: () => number;
   fetch?: typeof fetch;
+  /** The ntfy `Actions` header of a button that runs an alert's capture line through gizmod, if the phone can reach it. */
+  answerButton?: (notice: AlertNotice) => Promise<string | undefined>;
 }
 
 /** gizmod's vault, data layer, activity log, beat and the Background's env, put together. */
@@ -161,6 +163,7 @@ export function gizmodEnv(opts: GizmodOptions) {
 
   const io: ActionIO = {
     now: () => new Date(now()),
+    frontmatter,
     writeFrontmatter: (path, fn) => writes.writeFrontmatter(path, fn),
     updateFrontmatter: (path, fn) => writes.updateFrontmatter(path, fn),
     store: (dataPath, appPath) => ledgerStore(ledger, dataPath, () => frontmatter(appPath) ?? {}),
@@ -200,10 +203,15 @@ export function gizmodEnv(opts: GizmodOptions) {
     openUrl: () => {},
     alert(notice) {
       if (opts.macNotices) void macNotice(notice.text);
-      if (!opts.ntfyUrl) return;
-      const to = new URL(opts.ntfyUrl);
-      const body = pushText(notice, store().policy, to.host);
-      void doFetch(opts.ntfyUrl, { method: "POST", body, headers: { Title: "Gizmo" } }).catch((e: Error) => log(`couldn't push an alert: ${e.message}`));
+      const url = opts.ntfyUrl;
+      if (!url) return;
+      const body = pushText(notice, store().policy, new URL(url).host);
+      void (async () => {
+        // The button says nothing more than the push: it names gizmod's address and a token for the one line, never a key.
+        // A button that can't be made (its token can't be kept) leaves the push without one.
+        const actions = notice.answer ? await opts.answerButton?.(notice).catch((e: Error) => void log(`couldn't make a Done button (${e.message}); the push goes without it`)) : undefined;
+        await doFetch(url, { method: "POST", body, headers: { Title: "Gizmo", ...(actions && { Actions: actions }) } });
+      })().catch((e: Error) => log(`couldn't push an alert: ${e.message}`));
     },
   };
 
@@ -211,7 +219,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     data,
     frontmatter,
     notes: { resolve: (link, from) => vault.resolve(link, from), frontmatter },
-    appPaths: () => vault.notes().filter((f) => isApp(frontmatter(f.path))).map((f) => f.path),
+    appPaths: () => vault.notes().filter((f) => isApp(frontmatter(f.path)) || isKind(frontmatter(f.path))).map((f) => f.path),
     // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
     isGranted: (path, wanted, asked) => (asked ? isAllowedUnder(store().grants, path, asked, true) : isAllowed(store().grants, path, wanted, true)),
     granted: (path) => grantedOf(store().grants, path),
@@ -229,6 +237,10 @@ export function gizmodEnv(opts: GizmodOptions) {
     // gizmod never writes data.json; its own activity follows a rename it sees as a delete and a create.
     renamed: (from, to) => void activity.rename(from, to),
     otherTriggers: () => otherTriggers(files, id),
+    shareState: files.file(deviceFile(DEVICE_FOLDERS.share, id)),
+    otherShareStates: () => otherShareStates(files, id),
+    // Writers are accepted in Obsidian; gizmod follows what data.json says.
+    writers: (kindPath) => writersOf(store(), kindPath),
     // gizmod uses the keys Obsidian made; it never makes one.
     linkKey: (path, shortcut) => linkKeyOf(store(), path, shortcut),
     captureKey: (key) => captureNamesOf(store(), key),

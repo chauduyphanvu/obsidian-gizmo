@@ -41,9 +41,9 @@ test("a policy reads its labels, places and exceptions; anything it can't read i
     'unknown key "color"; a policy has labels, sinks, release, typed',
     "labels: Health/ must be one of public, personal, private, secret",
     "labels: host:x.example takes one label, not fields",
-    'sinks: "lockscreen" is neither a website nor one of notify, pin, answer, images, gizmod',
+    'sinks: "lockscreen" is neither a website nor one of notify, pin, answer, images, gizmod, share',
     "release 1 needs to: the places its value may go, e.g. [pin]",
-    "release 2: to can name notify, pin, answer, images, gizmod, not anywhere",
+    "release 2: to can name notify, pin, answer, images, gizmod, share, not anywhere",
   ]);
   assert.equal(bad.policy, undefined);
 });
@@ -299,4 +299,14 @@ test("a note's property or a picked row read in a notice, a line, a row or a for
     ],
   });
   assert.deepEqual(holdings.lines, ["Value: api.open-meteo.com: value (private) → a notice (personal)"]);
+});
+
+test("what the apps ask is the vault's: a policy holds its rows to what the most private note may go to", () => {
+  const today = { app: "t", panels: [{ view: "number", title: "To do", source: "asks", agg: "count", pin: "status" }, { view: "table", title: "Asks", source: "asks", action: "Copy", append: "Daily", line: "- {text}" }] };
+  const r = flows("Today.md", today);
+  assert.deepEqual(r.wanted, ["write:Daily.md"], "reading it asks for nothing, as view: alerts doesn't");
+  assert.deepEqual(r.lines, [
+    "To do: what the apps ask (private) → the status bar (personal)",
+    "Asks: what the apps ask: text (private) → the note Daily (personal)",
+  ]);
 });

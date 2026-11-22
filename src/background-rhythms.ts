@@ -1,4 +1,4 @@
-import { metIn, windowDay, windowsDue, type Rhythm, type Window } from "./expect.ts";
+import { metIn, plannedIn, plannedPanel, windowDay, windowsDue, type Rhythm, type Window } from "./expect.ts";
 import { rowId as ledgerRowId } from "./ledger.ts";
 import { storeOf } from "./actions.ts";
 import type { FiredStore } from "./background-fired.ts";
@@ -19,13 +19,19 @@ export class Rhythms {
   private evaluate: Background["evaluate"];
   private runThen: Background["runThen"];
   private say: (message: string) => void;
+  /** The capture line that logs a row in a missed window, when one runs as it stands (see asks.ts). */
+  private answerLine: (entry: AppEntry, rule: Rhythm, w: Window) => string | undefined;
 
-  constructor(env: BackgroundEnv, fired: FiredStore, evaluate: Background["evaluate"], runThen: Background["runThen"], say: (message: string) => void) {
+  constructor(
+    env: BackgroundEnv, fired: FiredStore, evaluate: Background["evaluate"], runThen: Background["runThen"], say: (message: string) => void,
+    answerLine: (entry: AppEntry, rule: Rhythm, w: Window) => string | undefined,
+  ) {
     this.env = env;
     this.fired = fired;
     this.evaluate = evaluate;
     this.runThen = runThen;
     this.say = say;
+    this.answerLine = answerLine;
   }
 
   /**
@@ -68,11 +74,14 @@ export class Rhythms {
       const r = ps && (await this.evaluate(entry.path, ps, true));
       if (!r || !("panel" in r)) continue;
       const rows = rowsOf(r.rows);
+      const plan = plannedPanel(ps);
+      const p = plan && (await this.evaluate(entry.path, plan, true));
+      const planned = p && "panel" in p ? rowsOf(p.rows) : [];
       // Every window missed is kept; only the newest few are told, the rest were long ago.
       const misses = due.filter((w) => !metIn(rows, rule, w, now));
       for (const [i, w] of misses.entries()) {
         const whilePaused = entry.pausedSince !== undefined && w.deadline >= entry.pausedSince;
-        await this.missed(entry, rule, w, zone, i >= misses.length - MAX_CATCH_UP, whilePaused);
+        await this.missed(entry, rule, w, zone, i >= misses.length - MAX_CATCH_UP, whilePaused, plannedIn(planned, rule, w, now));
       }
       fired[key] = { decided: due.at(-1)!.deadline };
       this.fired.save();
@@ -80,16 +89,20 @@ export class Rhythms {
     entry.pausedSince = undefined;
   }
 
-  private async missed(entry: AppEntry, rule: Rhythm, w: Window, zone: string | undefined, tell: boolean, whilePaused: boolean): Promise<void> {
+  /** `quiet`: a planned row's own ask stands in for the window, so the miss is kept and its then run, but nobody is told. */
+  private async missed(entry: AppEntry, rule: Rhythm, w: Window, zone: string | undefined, tell: boolean, whilePaused: boolean, quiet: boolean): Promise<void> {
     // Named by its date where the person is, so two devices, or one that moved zone, keep it once.
     const window = windowDay(w, zone);
     const seed = `miss\n${entry.path}\n${rule.id}\n${window}`;
     const deps = this.env.actionDeps(entry.path, entry.dataPath);
     const { already } = await storeOf(deps).add(EXPECT_MISSED, { rule: rule.id, window, at: stampOf(this.env.now()) }, { id: ledgerRowId(seed) });
     if (already || !tell) return;
-    const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}${whilePaused ? ` (${window}, missed while paused)` : ""}`;
-    this.say(text);
-    this.env.sink.alert?.({ app: entry.name, panel: rule.say ?? rule.id, text });
+    if (!quiet) {
+      const text = `${entry.name}: ${rule.say ?? `${rule.id} wasn't done by ${rule.byText}`}${whilePaused ? ` (${window}, missed while paused)` : ""}`;
+      this.say(text);
+      const answer = this.env.sink.alert && this.answerLine(entry, rule, w);
+      this.env.sink.alert?.({ app: entry.name, panel: rule.say ?? rule.id, text, ...(answer && { answer, window: { app: entry.path, rule: rule.id, start: w.start, deadline: w.deadline } }) });
+    }
     if (rule.then) await this.runThen(entry.path, rule.then, { rule: rule.id, window }, [], undefined, seed);
   }
 }

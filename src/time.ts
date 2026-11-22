@@ -44,6 +44,29 @@ function readStamp(v: string): { wall: number; moment: number } | undefined {
   return { wall, moment: Date.UTC(y, month - 1, day, hour, minute) - sign * (oh * 60 + om) * 60_000 };
 }
 
+/** Whether text is a date or a stamp in one of the forms saving writes (see readStamp), and nothing more. */
+export function isStamp(v: string): boolean {
+  return readStamp(v) !== undefined;
+}
+
+const ISO = /^(\d{4}-\d{2}-\d{2})[T ](\d{2}:\d{2})(?::\d{2}(?:\.\d{1,9})?)?(?:(Z)|([+-]\d{2}):?(\d{2}))?$/i;
+
+/**
+ * A date or time from outside (a file, another vault) as a saved stamp, the same text on every
+ * device: a date or a stamp as it is; an ISO time with its seconds dropped, keeping the clock and
+ * offset it was written with (`Z` is `+00:00`), so it reads as the same day and minute everywhere.
+ * An ISO time with no offset is floating: it keeps its clock, which each device reads as its own
+ * local time. Undefined for any other text.
+ */
+export function stampFrom(v: string): string | undefined {
+  const text = v.trim();
+  if (readStamp(text)) return text;
+  const m = ISO.exec(text);
+  if (!m) return undefined;
+  const stamp = `${m[1]}T${m[2]}${m[3] ? "+00:00" : m[4] ? `${m[4]}:${m[5]}` : ""}`;
+  return readStamp(stamp) ? stamp : undefined;
+}
+
 /** Epoch seconds, epoch ms, or a date string, as the moment it names; anything else is not a time. */
 export function toTime(v: unknown): number | undefined {
   if (v instanceof Date) return v.getTime();

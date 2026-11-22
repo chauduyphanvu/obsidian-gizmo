@@ -20,9 +20,10 @@ function panelOf(def: ViewDef, keys: Record<string, unknown>): Panel {
   return panel as Panel;
 }
 
-function mount(def: ViewDef, keys: Record<string, unknown>, rows: unknown[]) {
+/** `schema` is what expanding a panel settles from the block or kind it reads: the types of its fields. */
+function mount(def: ViewDef, keys: Record<string, unknown>, rows: unknown[], schema?: Panel["schema"]) {
   const el = document.createElement("div");
-  const handle: PanelHandle = def.mount(el, panelOf(def, keys), ctx, "k");
+  const handle: PanelHandle = def.mount(el, { ...panelOf(def, keys), ...(schema && { schema }) }, ctx, "k");
   handle.update(rows);
   return { el, handle };
 }
@@ -174,6 +175,41 @@ test("the total is the first number column, never the date; none when there is n
   const epoch = [{ at: 1_763_460_000_000, n: 2 }, { at: 1_763_373_600_000, n: 4 }];
   assert.deepEqual(totals(mount(table, { sort: "-at", columns: ["at", "n"] }, epoch).el).length, 2);
   assert.ok(totals(mount(table, { sort: "-at", columns: ["at", "n"] }, epoch).el).every((t) => t.startsWith("avg ")));
+});
+
+test("a total is drawn under the column it sums: its heading ends there, and the line runs on under the columns after it", () => {
+  const rows = [
+    { at: "2026-11-18T09:05", note: "Ramen", local: 1500, amount: 10 },
+    { at: "2026-11-18T08:00", note: "Sushi", local: 1500, amount: 15 },
+    { at: "2026-11-17T19:30", note: "Train", local: 3000, amount: 20 },
+  ];
+  const { el } = mount(table, { sort: "-at", columns: ["note", "local", "amount"], format: { local: "¥0,0", amount: "$0,0.00" } }, rows);
+  assert.deepEqual(totals(el), ["¥3,000", "¥3,000"]);
+  const cells = [...el.querySelectorAll("tbody tr.gz-ledger-group")].map((tr) => [...tr.children].map((th) => [th.getAttribute("colspan"), text(th.querySelector(".gz-ledger-total"))]));
+  assert.deepEqual(cells, [[["2", "¥3,000"], ["1", ""]], [["2", "¥3,000"], ["1", ""]]], "the yen total sits over the yen column, not the dollars");
+  assert.ok([...el.querySelectorAll("tr.gz-ledger-group th")].every((th) => th.querySelector(".gz-ledger-head")), "each part of the heading carries the line");
+  // The total in the last column, or no total: one heading over every column, as before.
+  const last = mount(table, { sort: "-at", columns: ["note", "amount"], format: { amount: "$0,0.00" } }, rows).el;
+  assert.deepEqual([...last.querySelectorAll("tr.gz-ledger-group")].map((tr) => tr.children.length), [1, 1]);
+  const action = mount(table, { sort: "-at", columns: ["note", "amount"], action: "Open", open: "{note}" }, rows).el;
+  assert.deepEqual([...action.querySelector("tr.gz-ledger-group")!.children].map((th) => th.getAttribute("colspan")), ["2", "1"], "the row action's column comes after the total");
+});
+
+test("a day whose rows are different things, by a choice column the table shows, isn't averaged; money is still summed", () => {
+  const schema = { what: ["weight", "systolic", "pulse"], value: "number", category: ["food", "home"], amount: "number" };
+  const readings = [
+    { at: "2026-11-18T08:00", what: "systolic", value: 134 }, { at: "2026-11-18T07:55", what: "pulse", value: 78 },
+    { at: "2026-11-17T07:30", what: "weight", value: 81.2 }, { at: "2026-11-17T07:20", what: "weight", value: 81.6 },
+  ];
+  const mixed = mount(table, { sort: "-at", columns: ["at", "what", "value"] }, readings, schema).el;
+  assert.deepEqual(totals(mixed), ["", "avg 81.4"], "systolic and pulse are two measures; two weights are one");
+  // The same rows without the choice column, as before.
+  assert.deepEqual(totals(mount(table, { sort: "-at", columns: ["at", "value"] }, readings).el), ["avg 106", "avg 81.4"]);
+  const spent = [
+    { at: "2026-11-18T09:05", category: "food", amount: 4.5 }, { at: "2026-11-18T08:00", category: "home", amount: 30 },
+    { at: "2026-11-17T19:30", category: "food", amount: 38 },
+  ];
+  assert.deepEqual(totals(mount(table, { sort: "-at", columns: ["at", "category", "amount"], format: { amount: "$0,0.00" } }, spent, schema).el), ["$34.50", "$38.00"]);
 });
 
 test("an edited number column is totalled too", () => {

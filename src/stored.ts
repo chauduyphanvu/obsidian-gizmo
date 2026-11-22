@@ -1,4 +1,5 @@
 import { shortcutId } from "./links.ts";
+import type { WriterRecord } from "./background-share.ts";
 import type { AppliedPolicy } from "./policy.ts";
 
 /** Gizmo's settings as kept in the plugin's data.json, shared by every device a sync reaches. */
@@ -17,10 +18,12 @@ export interface StoredData {
   policy?: AppliedPolicy;
   /** Renames in an app's keys whose saved rows the person chose to leave as they are, by renameKey. */
   leftAlone?: Record<string, true>;
+  /** `<kind path>\n<writer>` → what this vault decided about that writer of a shared kind. */
+  writers?: Record<string, WriterRecord>;
 }
 
 /** The settings kept as maps of entries, merged entry by entry; anything else is merged as one value. */
-const MAPS = ["grants", "folded", "linkKeys", "answerTo", "captureKeys", "leftAlone"] as const;
+const MAPS = ["grants", "folded", "linkKeys", "answerTo", "captureKeys", "leftAlone", "writers"] as const;
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 
@@ -152,4 +155,10 @@ export class SettingsFile {
     this.settingsQueue = run.catch(() => {});
     return run;
   }
+}
+
+/** What this vault decided about each writer of a shared kind, by writer. */
+export function writersOf(stored: Pick<StoredData, "writers">, kindPath: string): Record<string, WriterRecord> {
+  const prefix = `${kindPath}\n`;
+  return Object.fromEntries(Object.entries(stored.writers ?? {}).filter(([k]) => k.startsWith(prefix)).map(([k, v]) => [k.slice(prefix.length), v]));
 }

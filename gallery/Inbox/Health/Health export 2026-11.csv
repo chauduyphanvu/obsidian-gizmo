@@ -1,0 +1,44 @@
+Date,Type,Value,Unit,Source
+2026-11-09T06:50,Sleep,7.33,hr,Watch
+2026-11-09T07:13,Weight,80.34,kg,Scale
+2026-11-09T07:38,Systolic,129,mmHg,BP cuff
+2026-11-09T07:38,Diastolic,83,mmHg,BP cuff
+2026-11-09T07:38,Pulse,68,count/min,BP cuff
+2026-11-09T23:59,Steps,9097,count,Phone
+2026-11-10T06:50,Sleep,6.63,hr,Watch
+2026-11-10T07:14,Weight,80.04,kg,Scale
+2026-11-10T23:59,Steps,7334,count,Phone
+2026-11-11T06:50,Sleep,6.33,hr,Watch
+2026-11-11T07:15,Weight,79.94,kg,Scale
+2026-11-11T23:59,Steps,8671,count,Phone
+2026-11-12T07:16,Weight,80.34,kg,Scale
+2026-11-12T07:38,Systolic,132,mmHg,BP cuff
+2026-11-12T07:38,Diastolic,84,mmHg,BP cuff
+2026-11-12T07:38,Pulse,67,count/min,BP cuff
+2026-11-12T23:59,Steps,6908,count,Phone
+2026-11-13T06:50,Sleep,5.83,hr,Watch
+2026-11-13T07:12,Weight,79.74,kg,Scale
+2026-11-13T23:59,Steps,8245,count,Phone
+2026-11-14T06:50,Sleep,6.83,hr,Watch
+2026-11-14T07:13,Weight,80.04,kg,Scale
+2026-11-14T23:59,Steps,6482,count,Phone
+2026-11-15T06:50,Sleep,6.13,hr,Watch
+2026-11-15T07:14,Weight,79.64,kg,Scale
+2026-11-15T21:02,Systolic,0,mmHg,BP cuff
+2026-11-15T21:02,Diastolic,0,mmHg,BP cuff
+2026-11-15T21:02,Pulse,0,count/min,BP cuff
+2026-11-15T21:05,Systolic,141,mmHg,BP cuff
+2026-11-15T21:05,Diastolic,91,mmHg,BP cuff
+2026-11-15T21:05,Pulse,76,count/min,BP cuff
+2026-11-15T23:59,Steps,7819,count,Phone
+2026-11-16T06:50,Sleep,7.33,hr,Watch
+2026-11-16T07:15,Weight,80.04,kg,Scale
+2026-11-16T07:38,Systolic,125,mmHg,BP cuff
+2026-11-16T07:38,Diastolic,80,mmHg,BP cuff
+2026-11-16T07:38,Pulse,69,count/min,BP cuff
+2026-11-16T23:59,Steps,9156,count,Phone
+2026-11-17T06:50,Sleep,6.63,hr,Watch
+2026-11-17T07:16,Weight,79.84,kg,Scale
+2026-11-17T23:59,Steps,7393,count,Phone
+2026-11-18T06:50,Sleep,6.33,hr,Watch
+2026-11-18T07:12,Weight,79.74,kg,Scale

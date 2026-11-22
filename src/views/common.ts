@@ -6,7 +6,7 @@ import { display } from "../format.ts";
 import { ACTION_KEYS } from "../keys.ts";
 import { ROW_INDEX } from "../sources/list.ts";
 import { conflictsOf, rowIdOf } from "../ledger-store.ts";
-import { rowsAreNotes, sourceDef } from "../sources/registry.ts";
+import { rowsAreNotes, rowsAreSaved } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
 import type { StepName, Trace, TracedStep } from "../pipeline.ts";
 import { nearMiss } from "../template.ts";
@@ -150,7 +150,7 @@ function keptWindow(p: Panel, now: Date): Windows | undefined {
 export function emptyText(p: Panel, now: Date, fallback: string, caption = false): string {
   if (p.empty !== undefined) return p.empty;
   const w = keptWindow(p, now);
-  const logged = p.source !== undefined && sourceDef(p.source).id === "list";
+  const logged = rowsAreSaved(p.source);
   if (!w && !logged) return fallback;
   const words = w ? ` ${windowWords(w, now)}` : "";
   // A window that is over has nothing more coming, so it isn't nothing "yet".

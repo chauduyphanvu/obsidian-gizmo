@@ -55,10 +55,10 @@ test("every gallery app, shared with the components it uses, comes back word for
 
 test("the shared text says what it is and how to install it, and reads as Markdown", () => {
   const kit = gallery.find((n) => n.path === "Components/Tracker kit.md")!;
-  const weight = gallery.find((n) => n.path === "Apps/Weight.md")!;
-  const text = bundled([note("Weight", weight.text), note("Tracker kit", kit.text)], "Log my weight and watch the trend toward my goal");
-  assert.ok(text.startsWith("# Weight\n\nLog my weight and watch the trend toward my goal\n\nA Gizmo app for Obsidian: Weight and the note it uses (Tracker kit). To install it, run “Gizmo: Install an app from a link or text”"), text.slice(0, 300));
-  assert.ok(text.includes("\n````gizmo-note Weight\n---\napp: Log my weight"));
+  const practice = gallery.find((n) => n.path === "Apps/Practice.md")!;
+  const text = bundled([note("Practice", practice.text), note("Tracker kit", kit.text)], "Log how long I practise and see this week against the last and the trend toward my goal");
+  assert.ok(text.startsWith("# Practice\n\nLog how long I practise and see this week against the last and the trend toward my goal\n\nA Gizmo app for Obsidian: Practice and the note it uses (Tracker kit). To install it, run “Gizmo: Install an app from a link or text”"), text.slice(0, 300));
+  assert.ok(text.includes("\n````gizmo-note Practice\n---\napp: Log how long I practise"));
   assert.ok(text.includes("\n````gizmo-note Tracker kit\n---\ncomponent:"));
 });
 
@@ -100,19 +100,19 @@ test("installing says what it would ask for, reuses a component already there wo
   assert.deepEqual(p.asks, ["Create notes in Books", "Read notes in Books"]);
   assert.deepEqual(p.plan, { create: [{ path: "Books.md", text: books.text }], reuse: [] });
 
-  const sleep = note("Sleep", gallery.find((n) => n.path === "Apps/Sleep.md")!.text);
-  const shared = [sleep, note("Tracker kit", kit.text)];
+  const practice = note("Practice", gallery.find((n) => n.path === "Apps/Practice.md")!.text);
+  const shared = [practice, note("Tracker kit", kit.text)];
   const reused = previewInstall(shared, vault({ "Kits/Tracker kit.md": kit.text }));
   assert.ok(!("error" in reused) && !("refusal" in reused.plan));
   assert.deepEqual(reused.plan.reuse, ["Tracker kit"]);
-  assert.deepEqual(reused.plan.create.map((n) => n.path), ["Sleep.md"]);
+  assert.deepEqual(reused.plan.create.map((n) => n.path), ["Practice.md"]);
 
   const changed = previewInstall(shared, vault({ "Kits/Tracker kit.md": `${kit.text}\nmine` }));
   assert.ok(!("error" in changed));
-  assert.deepEqual(changed.plan, { refusal: "“Tracker kit” already exists and isn't the one “Sleep” needs" });
-  const taken = previewInstall(shared, vault({ "Old/sleep.md": "mine" }));
+  assert.deepEqual(changed.plan, { refusal: "“Tracker kit” already exists and isn't the one “Practice” needs" });
+  const taken = previewInstall(shared, vault({ "Old/practice.md": "mine" }));
   assert.ok(!("error" in taken));
-  assert.deepEqual(taken.plan, { refusal: "“Sleep” already exists" });
+  assert.deepEqual(taken.plan, { refusal: "“Practice” already exists" });
 });
 
 test("a link to a folder the install flattens shows as the app's own check error, and notes that act on their own are pointed out", () => {

@@ -48,6 +48,7 @@ panels:
     source: sightings
     sort: -at
     columns: [at, note]
+    format: {at: datetime}
     edit: [note]
 ---
 You get a notice when Kp reaches 5 or the forecast says it will, and the value sits in the status

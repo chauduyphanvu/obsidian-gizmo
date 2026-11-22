@@ -1,0 +1,7 @@
+Trade Date,Action,Symbol,Quantity,Price,Amount
+11/02/2026,Buy,VTI,5,310.00,-1550.00
+11/05/2026,Dividend,VTI,,,41.20
+11/09/2026,Buy,QQQ,4,560.00,-2240.00
+11/12/2026,Sell,MSFT,4,505.00,2020.00
+11/16/2026,Buy,VTI,5,312.40,-1562.00
+11/17/2026,Interest,,,,0.84

@@ -50,34 +50,43 @@ export function galleryApps(notes: GalleryNote[]): GalleryApp[] {
   return apps.sort((a, b) => a.name.localeCompare(b.name));
 }
 
-/** The names a note's panels `use`, as `use: "[[Name]]"`; anywhere in its keys, written out or inline. */
-function usedNames(text: string): string[] {
+/** A panel's `use: "[[Name]]"`, anywhere in a note's keys, written out or inline. */
+const USE = /(?:^\s*(?:-\s+)*|[{,]\s*)use:\s*["']?(?<link>\[\[[^\]]*\]\])/;
+/** A `source:` or `save:` that is one whole link, as one naming a kind is. */
+const WHOLE_LINK = /(?:^\s*(?:-\s+)*|[{,]\s*)(?:source|save):\s*(["']?)(?<link>\[\[[^\]]*\]\])\1\s*(?:[,}]|$)/;
+
+/** The names a note's frontmatter links to where `pattern` finds a link. */
+function linkedNames(text: string, pattern: RegExp): string[] {
   const names = new Set<string>();
   for (const line of frontmatter(text)) {
-    const link = /(?:^\s*(?:-\s+)*|[{,]\s*)use:\s*["']?(\[\[[^\]]*\]\])/.exec(line);
-    if (link) names.add(basename(storeTarget(link[1])));
+    const link = pattern.exec(line)?.groups?.link;
+    if (link) names.add(basename(storeTarget(link)));
   }
   return [...names];
 }
 
 /**
- * The gallery's components an app uses, and those they use in turn, each after the ones it needs.
- * A name the gallery has no component for is left out: the app's own check says if it's missing.
+ * The gallery's components an app uses, and those they use in turn, each after the ones it needs,
+ * then the kinds in Kinds/ that any of them read or save to. A name the gallery has no component
+ * or kind for is left out: the app's own check says if it's missing.
  */
 export function componentsNeeded(app: GalleryNote, notes: GalleryNote[]): GalleryNote[] {
-  const parts = new Map(notes.filter((n) => n.path.startsWith("Components/")).map((n) => [basename(n.path).toLowerCase(), n]));
+  const byName = (folder: string) => new Map(notes.filter((n) => n.path.startsWith(folder)).map((n) => [basename(n.path).toLowerCase(), n]));
+  const parts = byName("Components/");
+  const kinds = byName("Kinds/");
   const seen = new Set([app]);
   const out: GalleryNote[] = [];
+  const add = (note: GalleryNote | undefined) => {
+    if (!note || seen.has(note)) return;
+    seen.add(note);
+    if (note.path.startsWith("Components/")) visit(note);
+    out.push(note);
+  };
   const visit = (note: GalleryNote) => {
-    for (const name of usedNames(note.text)) {
-      const part = parts.get(name.toLowerCase());
-      if (!part || seen.has(part)) continue;
-      seen.add(part);
-      visit(part);
-      out.push(part);
-    }
+    for (const name of linkedNames(note.text, USE)) add(parts.get(name.toLowerCase()));
   };
   visit(app);
+  for (const note of [app, ...out]) for (const name of linkedNames(note.text, WHOLE_LINK)) add(kinds.get(name.toLowerCase()));
   return out;
 }
 

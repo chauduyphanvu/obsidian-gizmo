@@ -37,7 +37,7 @@ const stub = createServer((req, res) => {
   let body = "";
   req.on("data", (c) => { body += c; });
   req.on("end", () => {
-    if (req.url === "/ntfy" && req.method === "POST") pushes.push({ body, title: req.headers.title });
+    if (req.url === "/ntfy" && req.method === "POST") pushes.push({ body, title: req.headers.title, actions: req.headers.actions });
     res.writeHead(200, { "content-type": "application/json" });
     res.end(req.url === "/pulse" ? JSON.stringify({ now: { v: 5 } }) : "{}");
   });
@@ -199,7 +199,7 @@ try {
     return `get Pulse: ${get.out.shown}; no key ${none.status}, link key ${keyed.status}, wrong key ${wrong.status}, capture key ${captured.status}`;
   });
 
-  await check("gizmod: a rhythm missed by its deadline is pushed; one whose row came in time isn't", async () => {
+  await check("gizmod: a rhythm missed by its deadline is pushed, with a Done button only where Tailscale runs; one whose row came in time isn't", async () => {
     // The row must come before the deadline, set when the script started; a run that got here late says so.
     if (Date.now() > due.getTime() - 20_000 || due.getDate() !== new Date(due.getTime() - 150_000).getDate()) throw new Error(`started too close to ${by} to tell a row in time from a late one`);
     const took = cli("run", "Vitamins", "took");
@@ -210,7 +210,16 @@ try {
     const missed = (await until(() => note().includes("expect_missed") && note(), 15000)) || note();
     const vitamins = pushes.filter((p) => p.body.startsWith("Vitamins"));
     expect(took.code === 0 && pushed?.body === `Pills: nothing by ${by}` && vitamins.length === 0 && missed.includes("expect_missed"), { took, pushes, missed, log: log.slice(-800) });
-    return `pushed “${pushed.body}”; Vitamins quiet`;
+    // The button POSTs to gizmod's Tailscale address with a token for the one line; without Tailscale there is none.
+    if (log.includes("Tailscale isn't running here")) {
+      expect(pushed.actions === undefined, pushed);
+      return `pushed “${pushed.body}” with no button (no Tailscale here); Vitamins quiet`;
+    }
+    const url = /^http, Done, (http:\/\/[\d.]+:\d+\/answer\/[0-9a-f]{48}), method=POST, clear=true$/.exec(pushed.actions ?? "")?.[1];
+    const pressed = url && await fetch(url, { method: "POST" }).then((r) => r.status);
+    const again = url && await fetch(url, { method: "POST" }).then((r) => r.status);
+    expect(pressed === 200 && again === 410, { pushed, pressed, again });
+    return `pushed “${pushed.body}”; its Done button logged the dose once; Vitamins quiet`;
   });
 
   b = await launch({ repo, dir: join(work, "b"), port: port + 1, vault });

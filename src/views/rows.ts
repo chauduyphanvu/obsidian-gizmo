@@ -169,16 +169,24 @@ function whenText(start: number, per: Ledger["per"], now: Date): string {
 
 /**
  * What a group's heading says besides its day: a currency column's sum, or another number's
- * average; nothing when the group has no numbers.
+ * average; nothing when the group has no numbers. `kinds` are the shown columns whose field is a
+ * choice: rows that differ in one are different things (a weight and a pulse), which no average
+ * spans; money is money whatever its category, so a sum still does.
  */
-function totalText(p: Panel, column: string, rows: Row[], now: Date): string {
+function totalText(p: Panel, column: string, rows: Row[], now: Date, kinds: readonly string[] = []): string {
   const nums = rows.map((r) => toNumber(getPath(r, column))).filter((n): n is number => n !== undefined);
   if (nums.length === 0) return "";
   const sum = nums.reduce((a, b) => a + b, 0);
   if (/[$€£¥]/.test(formatFor(p, column) ?? "")) return display(p, column, sum, now);
+  if (kinds.some((k) => new Set(rows.map((r) => JSON.stringify(getPath(r, k) ?? null))).size > 1)) return "";
   const mean = sum / nums.length;
   const wholes = nums.every(Number.isInteger) && Number.isInteger(Math.round(mean * 10) / 10);
   return `avg ${display({ ...p, decimals: p.decimals ?? (wholes ? 0 : 1) }, column, mean, now)}`;
+}
+
+/** The shown fields that are a choice in the fields the panel's rows were saved with. */
+function choiceColumns(p: Panel, shown: readonly string[]): string[] {
+  return shown.filter((c) => Array.isArray(p.schema?.[c]));
 }
 
 /** Draws a ledger's group headings as its rows arrive, and keeps each heading's total. */
@@ -363,7 +371,7 @@ export function rowFields(p: Panel, row: Row): [field: string, type?: string | s
  * its cell draws it. Returns what shows the row's new values, which leaves a field being typed in alone.
  */
 export function fieldBox(box: HTMLElement, p: Panel, ctx: PanelCtx, row: Row, field: string, type?: string | string[]): (row: Row) => void {
-  const env: RowEnv = { p, ctx, columns: [field], edited: new Map(type === undefined || ctx.readOnly ? [] : [[field, type]]), current: [row] };
+  const env: RowEnv = { p, ctx, columns: [field], edited: new Map(type === undefined || ctx.readOnly || ctx.theirs?.(row) ? [] : [[field, type]]), current: [row] };
   const show = column(box, env, field, 0);
   show(row);
   return (next) => {
@@ -372,8 +380,20 @@ export function fieldBox(box: HTMLElement, p: Panel, ctx: PanelCtx, row: Row, fi
   };
 }
 
-function tableRow(body: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
+/**
+ * The env one row is drawn with: a row someone else wrote in a shared kind has no edited cell, and
+ * says why on `el`. The same row keeps who wrote it, so a row drawn again in place keeps its env.
+ */
+function rowEnv(env: RowEnv, r: Row, el: HTMLElement): RowEnv {
+  const theirs = env.edited.size ? env.ctx.theirs?.(r) : undefined;
+  if (!theirs) return env;
+  el.setAttribute("title", theirs);
+  return { ...env, edited: new Map() };
+}
+
+function tableRow(body: HTMLElement, all: RowEnv, r: Row, i: number): DrawnRow {
   const tr = body.createEl("tr");
+  const env = rowEnv(all, r, tr);
   const cells = env.columns.map((c) => column(tr.createEl("td"), env, c, i));
   for (const cell of cells) cell(r);
   if (env.p.action) rowAction(tr.createEl("td", { cls: "gz-row-actions" }), env.p, env.ctx, () => env.current[i]);
@@ -381,9 +401,10 @@ function tableRow(body: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
 }
 
 /** A card: the first picture on top, the next column as the title, the others as label and value lines. */
-function card(grid: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
-  const { p } = env;
+function card(grid: HTMLElement, all: RowEnv, r: Row, i: number): DrawnRow {
   const el = grid.createDiv({ cls: "gz-rowcard" });
+  const env = rowEnv(all, r, el);
+  const { p } = env;
   const image = env.columns.find((c) => cellKind(p, c) === "image" && !env.edited.has(c));
   const [title, ...rest] = env.columns.filter((c) => c !== image);
   const shows: ((row: Row) => void)[] = [];
@@ -429,10 +450,17 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: A
     if (look.ledger) {
       const span = env.columns.length + (p.action ? 1 : 0);
       const by = env.columns.find((c) => c !== look.ledger!.field && numbers(p, c, rows));
+      // The total ends under the column it adds up; the heading's line runs on under the columns after it.
+      const upTo = by === undefined ? span : env.columns.indexOf(by) + 1;
       groups = grouping(
         look.ledger, ctx.now, env.current,
-        () => parent.createEl("tr", { cls: "gz-ledger-group" }).createEl("th", { attr: { colspan: span } }).createDiv({ cls: "gz-ledger-head" }),
-        (of) => (by === undefined ? "" : totalText(p, by, of, ctx.now)),
+        () => {
+          const tr = parent.createEl("tr", { cls: "gz-ledger-group" });
+          const head = tr.createEl("th", { attr: { colspan: upTo } }).createDiv({ cls: "gz-ledger-head" });
+          if (upTo < span) tr.createEl("th", { attr: { colspan: span - upTo } }).createDiv({ cls: "gz-ledger-head" });
+          return head;
+        },
+        (of) => (by === undefined ? "" : totalText(p, by, of, ctx.now, choiceColumns(p, env.columns))),
       );
     }
   }
@@ -597,7 +625,7 @@ export const list: ViewDef = {
         const by = ledger && itemFields(p, rows).find((f) => f !== ledger.field && numbers(p, f, rows));
         const groups = ledger && grouping(
           ledger, ctx.now, rows, () => ul.createEl("li", { cls: "gz-ledger-group" }),
-          (of) => (by === undefined ? "" : totalText(p, by, of, ctx.now)),
+          (of) => (by === undefined ? "" : totalText(p, by, of, ctx.now, choiceColumns(p, itemFields(p, rows)))),
         );
         let i = 0;
         shownRows(el, rows, (r) => {

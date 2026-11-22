@@ -1,6 +1,7 @@
 import { fnv1a, stableJson } from "./hash.ts";
-import { DEFINITION_KEYS } from "./store.ts";
+import { DEFINITION_KEYS, KIND_KEYS, kindName } from "./store.ts";
 import { areRules } from "./expect.ts";
+import { ROW_FIELDS, lineOf } from "./kind.ts";
 import { ROW_INDEX } from "./sources/list.ts";
 import type { Row } from "./data.ts";
 import { toTime } from "./time.ts";
@@ -29,6 +30,8 @@ export const IDS_KEY = "gizmo-ids";
 const HASH_KEY = "gizmo-hash";
 /** Why a write is refused in the app as it was at a past time. */
 export const PAST = "This is the app as it was; nothing can be changed here";
+/** Why a write is refused in a what-if: only its own rows can be added, changed or taken out. */
+export const AHEAD = "This is a what-if; only what-if rows can be added, changed or removed here";
 
 /** What snapshots kept in the data note before checkpoints kept it: taken out at the next snapshot. */
 const CONFLICTS_KEY = "gizmo-conflicts";
@@ -64,6 +67,26 @@ export function rowIdOf(row: unknown): string | undefined {
   const id = row && typeof row === "object" ? (row as Record<symbol, unknown>)[ROW_ID] : undefined;
   return typeof id === "string" ? id : undefined;
 }
+
+/** Marks a row a what-if branch added (see Ledger's `branch`), not enumerable, as ROW_ID is. */
+const WHAT_IF = Symbol("what-if row");
+
+export function isWhatIf(row: unknown): boolean {
+  return !!row && typeof row === "object" && (row as Record<symbol, unknown>)[WHAT_IF] === true;
+}
+
+/** Marks a kind's row set aside from the planned line (its own ask dismissed), not enumerable. */
+const ASIDE_PLAN = Symbol("planned row set aside");
+
+/** Whether a kind's row is a planned row set aside through its own ask, not a row from a file or another vault set aside. */
+export function isSetAsidePlan(row: unknown): boolean {
+  return !!row && typeof row === "object" && (row as Record<symbol, unknown>)[ASIDE_PLAN] === true;
+}
+
+/** Marks a row handed out without the `matched` it holds, which names no logged row any more. */
+const STALE_MATCH = Symbol("matched names no logged row");
+
+const filled = (v: unknown) => v !== undefined && v !== null && v !== "";
 
 /**
  * The lists a data note holds as a person or a snapshot wrote them: row lists and checklists, without
@@ -197,6 +220,8 @@ export interface LedgerState {
   undone: Set<string>;
   /** The data note's lists differ from what the last snapshot wrote: someone edited it. */
   handEdited: boolean;
+  /** Whether a row stays out of a list whatever add of it comes: it was deleted, or the add of it undone. */
+  gone(list: string, id: string): boolean;
 }
 
 /**
@@ -225,11 +250,24 @@ export class Ledger {
    */
   until: number | undefined;
 
-  constructor(io: LedgerIO, device: () => string, now: () => number, until?: number) {
+  /**
+   * A what-if: beside each data note's logs, this device's file `<device>.<branch>.branch` is folded
+   * in too and is where every write goes. Not being a `.jsonl` log, no other ledger, checkpoint or
+   * snapshot reads it.
+   */
+  private branch: string | undefined;
+
+  constructor(io: LedgerIO, device: () => string, now: () => number, until?: number, branch?: string) {
     this.io = io;
     this.device = device;
     this.now = now;
     this.until = until;
+    this.branch = branch;
+  }
+
+  /** This ledger's branch file beside a data note's logs; undefined for a ledger that has none. */
+  private branchFile(dataPath: string): string | undefined {
+    return this.branch === undefined ? undefined : `${logFolder(dataPath)}/${this.device()}.${this.branch}.branch`;
   }
 
   private log(dataPath: string): NoteLog {
@@ -241,14 +279,14 @@ export class Ledger {
     return n;
   }
 
-  /** A file changed: when it is one of a data note's logs, that note is read again. */
+  /** A file changed: when it is one of a data note's logs, or this ledger's branch, that note is read again. */
   fileChanged(path: string): string | undefined {
-    if (!path.endsWith(".jsonl") || !logFileParts(path)) {
+    const folder = path.slice(0, path.lastIndexOf("/"));
+    const dataPath = `${folder.replace(/\/log$/, "")}.md`;
+    if ((!path.endsWith(".jsonl") || !logFileParts(path)) && path !== this.branchFile(dataPath)) {
       this.versions.set(path, (this.versions.get(path) ?? 0) + 1);
       return undefined;
     }
-    const folder = path.slice(0, path.lastIndexOf("/"));
-    const dataPath = `${folder.replace(/\/log$/, "")}.md`;
     const n = this.notes.get(dataPath);
     if (!n) return dataPath;
     n.dirty.add(path);
@@ -264,7 +302,8 @@ export class Ledger {
    */
   private async refresh(dataPath: string, all = false): Promise<NoteLog> {
     const n = this.log(dataPath);
-    const present = this.io.filesIn(logFolder(dataPath)).filter((p) => logFileParts(p));
+    const branch = this.branchFile(dataPath);
+    const present = this.io.filesIn(logFolder(dataPath)).filter((p) => logFileParts(p) || p === branch);
     for (const p of [...n.files.keys(), ...n.skipped]) if (!present.includes(p)) {
       n.files.delete(p);
       n.skipped.delete(p);
@@ -455,21 +494,34 @@ export class Ledger {
       n.reset = false;
     }
     const lists = new Map<string, { rows: Row[]; conflicts: Conflict[] }>();
-    for (const [name, l] of n.folder.lists_()) {
+    const branch = this.branchFile(dataPath);
+    const whatIf = new Set(branch ? n.files.get(branch)?.events.flatMap((e) => (e.op === "add" ? [e.row] : [])) : []);
+    const kind = kindName(appFm);
+    const folded = n.folder;
+    for (const [name, l] of folded.lists_()) {
       const byRow = new Map<string, { field: string; value: unknown; by: string }[]>();
       for (const c of l.conflicts) byRow.set(c.row, [...(byRow.get(c.row) ?? []), { field: c.field, value: c.value, by: c.by }]);
+      // A kind's row is settled (or paired) only while the row its `matched` names is there and
+      // logged, worked out here so an undo, a take-back from another vault and every device agree.
+      const logged = name === kind ? new Set(l.rows.flatMap((r, i) => (lineOf(r) === "logged" ? [l.ids[i]] : []))) : undefined;
       lists.set(name, {
         rows: l.rows.map((r, i) => {
           const id = l.ids[i];
+          const stale = logged !== undefined && filled(r.matched) && !logged.has(String(r.matched));
           const kept = n.out.get(id);
-          // A row keeps its place among the rows as handed out; one whose place changed is made again.
-          if (kept && (kept as Record<symbol, unknown>)[ROW_INDEX] === i) return kept;
+          // A row keeps its place among the rows as handed out; one whose place changed is made again,
+          // and so is one a what-if's add of its id came to name or stopped naming, or whose `matched` came to name a row gone.
+          if (kept && (kept as Record<symbol, unknown>)[ROW_INDEX] === i && isWhatIf(kept) === whatIf.has(id) && ((kept as Record<symbol, unknown>)[STALE_MATCH] === true) === stale) return kept;
           // Its id, and its place in the list for what still finds rows that way.
           const row = { ...r };
+          if (stale) delete row.matched;
           Object.defineProperty(row, ROW_ID, { value: id });
           Object.defineProperty(row, ROW_INDEX, { value: i });
           const conflicts = byRow.get(id);
           if (conflicts) Object.defineProperty(row, ROW_CONFLICTS, { value: conflicts });
+          if (whatIf.has(id)) Object.defineProperty(row, WHAT_IF, { value: true });
+          if (stale) Object.defineProperty(row, STALE_MATCH, { value: true });
+          if (name === kind && lineOf(r) === "dismissed" && folded.setFrom(name, id, "line") === "planned") Object.defineProperty(row, ASIDE_PLAN, { value: true });
           n.out.set(id, row);
           return row;
         }),
@@ -479,7 +531,8 @@ export class Ledger {
     // From every event, not only those the fold started past: an undo a checkpoint holds still counts.
     const settled = n.checkpoint?.settled ?? -Infinity;
     const undone = undoneEvents(visible().filter((e) => wallOf(e) > settled), n.checkpoint?.undone);
-    n.state = { lists, ticked: new Map(n.folder.ticked), undone, handEdited: handEdited && live };
+    const folder = n.folder;
+    n.state = { lists, ticked: new Map(folder.ticked), undone, handEdited: handEdited && live, gone: (list, id) => folder.isGone(list, id) };
     return n.state;
   }
 
@@ -594,9 +647,11 @@ export class Ledger {
     if (!ops.length) return [];
     const n = await this.refresh(dataPath);
     const now = this.now();
-    const d = this.device();
+    const branch = this.branchFile(dataPath);
+    // A what-if names its own writer, so its events never share an id with this device's real ones.
+    const d = branch === undefined ? this.device() : `${this.device()}.${this.branch}`;
     const events = ops.map((op) => ({ ...op, t: this.clock.next(now), d }));
-    const path = logFile(dataPath, d, new Date(now));
+    const path = branch ?? logFile(dataPath, d, new Date(now));
     // The file appended to is read first, so what's kept of it goes on from all it holds.
     if (n.skipped.delete(path)) await this.read(n, path);
     const text = events.map(eventLine).join("");
@@ -615,6 +670,25 @@ export class Ledger {
     return events.map(eventId);
   }
 
+  /** Empties this ledger's branch beside a data note's logs, taking every what-if row there away; a branch never written stays unwritten. */
+  async discard(dataPath: string): Promise<void> {
+    const path = this.branchFile(dataPath);
+    if (path === undefined || !this.io.filesIn(logFolder(dataPath)).includes(path)) return;
+    await this.io.writeFile(path, "");
+    this.fileChanged(path);
+    this.onWrite(path);
+  }
+
+  /** Takes some what-if rows out of this ledger's branch beside a data note's logs, by their ids, leaving the others there. */
+  async prune(dataPath: string, ids: ReadonlySet<string>): Promise<void> {
+    const path = this.branchFile(dataPath);
+    if (path === undefined || !this.io.filesIn(logFolder(dataPath)).includes(path)) return;
+    const { events } = parseLog(await this.io.readFile(path));
+    await this.io.writeFile(path, events.filter((e) => !("row" in e && ids.has(e.row))).map(eventLine).join(""));
+    this.fileChanged(path);
+    this.onWrite(path);
+  }
+
   /** A new row's id, as this device would give it now. */
   newRowId(): string {
     return newRowId(this.device(), `${this.now()}:${Math.random()}`);
@@ -624,10 +698,12 @@ export class Ledger {
    * Writes the folded lists back into the data note, with where they were folded to and the ids of
    * their rows. Before the first one, what the note held is kept as the base later folds start from.
    * A note edited by hand is left as it is, unless `force` (after Import, or to discard the edit).
+   * `only` keeps some of a list's rows out of the note (a kind's note holds its logged rows); the
+   * ids written say which rows it holds.
    */
   async snapshot(
     dataPath: string, appFm: Record<string, unknown>, writeNote: (fn: (fm: Record<string, unknown>) => void) => Promise<void>,
-    force = false, devices: Record<string, unknown>[] = [],
+    force = false, devices: Record<string, unknown>[] = [], only?: (list: string, row: Row) => boolean,
   ): Promise<void> {
     const fm = this.io.frontmatter(dataPath);
     if (readMark(fm) === undefined) {
@@ -649,7 +725,10 @@ export class Ledger {
     // A list typed in the app note stays there until an event changes it; then the data note keeps it, as an edit always did.
     const kept = new Set([...Object.keys(fm ?? {}), ...devices.flatMap(listNames), ...[...n.files.values()].flatMap((f) => f.events.flatMap((e) => ("l" in e ? [e.l] : [])))]);
     // A recorded list keeps its newest rows in the note.
-    const shown = (name: string, rows: Row[]) => (n.caps[name] !== undefined ? rows.slice(-NOTE_ROWS) : rows);
+    const shown = (name: string, rows: Row[]) => {
+      const held = only ? rows.filter((r) => only(name, r)) : rows;
+      return n.caps[name] !== undefined ? held.slice(-NOTE_ROWS) : held;
+    };
     await writeNote((note) => {
       for (const [name, l] of state.lists) if (kept.has(name)) note[name] = shown(name, l.rows).map((r) => ({ ...r }));
       for (const [name, items] of state.ticked) if (kept.has(name) && !state.lists.has(name)) note[name] = [...items];
@@ -672,7 +751,8 @@ export class Ledger {
 
   /**
    * What a hand edit changed against the folded lists, as events that would make the log say the
-   * same: rows added or removed (an edited row is both), items ticked or unticked.
+   * same: rows added or removed (an edited row is both), items ticked or unticked. A kind's rows
+   * keep their ids (others point at them): an edited row is its fields set.
    */
   async importOps(dataPath: string, given?: Record<string, unknown>): Promise<Op[]> {
     const fm = this.io.frontmatter(dataPath);
@@ -683,17 +763,24 @@ export class Ledger {
     const note = listsOf(fm);
     // The rows the note was written with, by their ids: a recorded list's older rows were never in it.
     const written = isRecord(fm?.[IDS_KEY]) ? fm[IDS_KEY] : {};
+    const kind = kindName(appFm);
     const wrote = (name: string) => {
       const l = folded.lists.get(name) ?? { rows: [], ids: [] };
       const ids = written[name];
-      if (!Array.isArray(ids)) return l;
-      const keep = new Set(ids.map(String));
+      // Without the ids it was written with, a kind's note still held only its logged rows.
+      const keep = Array.isArray(ids) ? new Set(ids.map(String)) : name === kind ? new Set(l.ids.filter((_, i) => lineOf(l.rows[i]) === "logged")) : undefined;
+      if (!keep) return l;
       const at = l.ids.flatMap((id, i) => (keep.has(id) ? [i] : []));
       return { rows: at.map((i) => l.rows[i]), ids: at.map((i) => l.ids[i]) };
     };
     const ops: Op[] = [];
     for (const [name, { rows }] of Object.entries(note.lists)) {
       const had = wrote(name);
+      if (name === kind) {
+        const pointed = new Set((folded.lists.get(name)?.rows ?? []).flatMap((r) => (filled(r.matched) ? [String(r.matched)] : [])));
+        ops.push(...keptIds(name, rows, had, () => this.newRowId(), pointed));
+        continue;
+      }
       const left = had.rows.map((r) => stableJson(r));
       for (const r of rows) {
         const i = left.indexOf(stableJson(r));
@@ -715,6 +802,52 @@ export class Ledger {
     }
     return ops;
   }
+}
+
+/**
+ * A hand edit of a kind's rows as events that keep each row's id: a row of the note is paired with
+ * one it was written with, the same row first, then the rest in their order, and what differs is
+ * set field by field. A row with no pair is added; one written that the note no longer has is
+ * taken out. A new row never takes over the id of a row gone, and with it what that row was: the
+ * id of a row that holds fields Gizmo keeps (another vault's row, say) goes only to a row with
+ * those fields as they were, and that of a row others point at (a planned row's `matched`) only
+ * to one at the same time.
+ */
+function keptIds(list: string, rows: Row[], had: { rows: Row[]; ids: string[] }, newId: () => string, pointed: ReadonlySet<string>): Op[] {
+  const left = had.rows.map((r) => stableJson(r));
+  const paired: [Row, number][] = [];
+  const unpaired: Row[] = [];
+  for (const r of rows) {
+    const i = left.indexOf(stableJson(r));
+    if (i < 0) {
+      unpaired.push(r);
+      continue;
+    }
+    left[i] = "\u0000";
+  }
+  const rest = left.flatMap((k, i) => (k === "\u0000" ? [] : [i]));
+  const same = (r: Row, i: number, f: string) => stableJson(r[f]) === stableJson(had.rows[i][f]);
+  const kept = (r: Row, i: number) => ROW_FIELDS.every((f) => same(r, i, f)) && (!pointed.has(had.ids[i]) || same(r, i, "at"));
+  const taken = new Set<number>();
+  const fresh: Row[] = [];
+  for (const r of unpaired) {
+    const i = rest.find((j) => !taken.has(j) && kept(r, j));
+    if (i === undefined) fresh.push(r);
+    else {
+      taken.add(i);
+      paired.push([r, i]);
+    }
+  }
+  const ops: Op[] = [];
+  for (const [r, i] of paired) {
+    const was = had.rows[i];
+    for (const f of new Set([...Object.keys(was), ...Object.keys(r)])) {
+      if (stableJson(was[f]) !== stableJson(r[f])) ops.push({ op: "set", l: list, row: had.ids[i], f, v: r[f], from: was[f] });
+    }
+  }
+  for (const r of fresh) ops.push({ op: "add", l: list, row: newId(), v: r });
+  for (const i of rest.filter((j) => !taken.has(j))) ops.push({ op: "del", l: list, row: had.ids[i] });
+  return ops;
 }
 
 function readMark(fm: Record<string, unknown> | undefined): SnapshotMark | undefined {
@@ -750,9 +883,10 @@ function withDevices(base: FoldBase, devices: Record<string, unknown>[]): FoldBa
   return { lists, ticked: base.ticked };
 }
 
-/** What an app note holds that isn't the app: lists typed there. */
+/** What an app note holds that isn't the app: lists typed there. A kind note's own keys (its `match:` rules) are none. */
 function appLists(appFm: Record<string, unknown>): Record<string, unknown> {
-  return Object.fromEntries(Object.entries(appFm).filter(([k, v]) => !DEFINITION_KEYS.includes(k) && !(k === "expect" && areRules(v))));
+  const kind = kindName(appFm) !== undefined;
+  return Object.fromEntries(Object.entries(appFm).filter(([k, v]) => !DEFINITION_KEYS.includes(k) && !(kind && KIND_KEYS.includes(k)) && !(k === "expect" && areRules(v))));
 }
 
 /** A base with the app note's own lists for those it lacks: lists typed there, not the keys that define the app. */

@@ -9,8 +9,10 @@
  */
 import { textOf } from "./text.ts";
 import { compileWhere, getPath, type Row } from "./data.ts";
+import { lineOf } from "./kind.ts";
+import { isSetAsidePlan } from "./ledger-store.ts";
 import { calendarOf, dayIn, daysInMonth, minuteIn, periodStart, shiftPeriod, toTime } from "./time.ts";
-import type { Then } from "./spec.ts";
+import type { PanelSpec, Then } from "./spec.ts";
 
 export type Every = "day" | "week" | "month";
 
@@ -162,6 +164,33 @@ export function metIn(rows: readonly unknown[], rule: Rhythm, w: Window, now: Da
     const t = toTime(getPath(r, "at"));
     return t !== undefined && t >= w.start && t <= w.deadline && keep(r);
   });
+}
+
+/**
+ * Whether a planned row of the rule's source, or one set aside through its own ask, falls in the
+ * window by its deadline (and matches the rule's where): the planned row's own ask stands in for
+ * the window's, so the rule asks and tells nothing of it. A row set aside that was never planned
+ * (from a file, or another vault's) stands in for nothing. `rows` are the source's rows on those lines.
+ */
+export function plannedIn(rows: readonly unknown[], rule: Rhythm, w: Window, now: Date): boolean {
+  const keep = rule.where ? compileWhere(rule.where, now) : () => true;
+  return rows.some((r) => {
+    if (r === null || typeof r !== "object") return false;
+    const line = lineOf(r as Row);
+    const plan = line === "planned" || (line === "dismissed" && isSetAsidePlan(r) && (r as Row).writer === undefined);
+    const t = toTime(getPath(r, "at"));
+    return plan && t !== undefined && t >= w.start && t <= w.deadline && keep(r);
+  });
+}
+
+/**
+ * The rhythm's panel reading its kind's planned rows and those set aside instead of the logged
+ * ones (see plannedIn); undefined when it reads no kind, which has none.
+ */
+export function plannedPanel(ps: PanelSpec): PanelSpec | undefined {
+  if (!ps.panel.kind) return undefined;
+  const lines = ["planned", "dismissed"];
+  return { ...ps, template: { ...ps.template, lines }, panel: { ...ps.panel, lines } };
 }
 
 /** Why a row may not be written to `list`: the first value rule it breaks, in words. */

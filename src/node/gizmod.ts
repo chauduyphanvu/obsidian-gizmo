@@ -7,21 +7,22 @@
  *   node gizmod.mjs run <app> <shortcut> [field=value …]    (and get, do "<line>", dry, status)
  *   node gizmod.mjs install --vault <path> [--label com.gizmo.gizmod] | uninstall [--label …]
  *
- * State lives in ~/.config/gizmod (GIZMOD_HOME): this vault's device id and the admin token the
- * command line uses, which is taken only from this computer. Secrets come from the environment
- * (GIZMO_SECRET_<ID>), which run.sh fills through `op run`, never from a file.
+ * State lives in ~/.config/gizmod (GIZMOD_HOME): this vault's device id, the admin token the
+ * command line uses, which is taken only from this computer, and the tokens of the buttons pushed
+ * with missed rhythms. Secrets come from the environment (GIZMO_SECRET_<ID>), which run.sh fills
+ * through `op run`, never from a file.
  */
 import { execFile } from "node:child_process";
-import { randomBytes } from "node:crypto";
+import { createHash, randomBytes } from "node:crypto";
 import { existsSync, promises as fs, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { Background } from "../background.ts";
+import { Background, type AlertNotice } from "../background.ts";
 import { dryLines, type ShortcutResult } from "../background-shortcuts.ts";
-import { parseLine } from "../capture.ts";
+import { parseLine, swallowed } from "../capture.ts";
 import { captureCovers } from "../links.ts";
 import { gizmodEnv } from "./host.ts";
 
@@ -58,6 +59,100 @@ export async function adminToken(home = homeDir()): Promise<string> {
   await fs.writeFile(path, token, { mode: 0o600 });
   return token;
 }
+
+/** How long a pushed button answers. */
+export const ANSWER_MS = 24 * 3_600_000;
+
+/**
+ * What a pushed button runs: the shortcut its capture line reached when it was pushed, by the app's
+ * path, with the line's values; and the rhythm's window it answers, by the rule's app and id.
+ */
+export interface Answer {
+  line: string;
+  path: string;
+  shortcut: string;
+  params: Record<string, string>;
+  window?: { app: string; rule: string; start: number; deadline: number };
+}
+
+const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+
+/** A kept answer as the file holds it; undefined for anything else, such as a file from before or one cut short. */
+function answerOf(v: unknown): { answer: Answer; until: number } | undefined {
+  if (!isRecord(v) || typeof v.until !== "number" || !isRecord(v.answer)) return undefined;
+  const a = v.answer;
+  if (typeof a.line !== "string" || typeof a.path !== "string" || typeof a.shortcut !== "string" || !isRecord(a.params) || !Object.values(a.params).every((x) => typeof x === "string")) return undefined;
+  return { answer: a as unknown as Answer, until: v.until };
+}
+
+/**
+ * The tokens pushed buttons carry, each good for one answer (see Answer), once, within ANSWER_MS.
+ * The push goes through the ntfy server, so a token is never a key: it runs its own shortcut and
+ * nothing else. Kept in GIZMOD_HOME as hashes, so the file alone answers nothing; one read or write
+ * at a time, each write whole (a file that can't be read is read as none).
+ */
+export class AnswerTokens {
+  private path: string;
+  private now: () => number;
+  private queue: Promise<unknown> = Promise.resolve();
+
+  constructor(home: string, now: () => number = Date.now) {
+    this.path = join(home, "answers.json");
+    this.now = now;
+  }
+
+  /** A new token for `answer`. */
+  mint(answer: Answer): Promise<string> {
+    return this.change((kept) => {
+      const token = randomBytes(24).toString("hex");
+      kept[hashOf(token)] = { answer, until: this.now() + ANSWER_MS };
+      return token;
+    });
+  }
+
+  /** What a token was made for, leaving it there; undefined for one used, too old, or never made. */
+  peek(token: string): Promise<Answer | undefined> {
+    return this.change((kept) => kept[hashOf(token)]?.answer, false);
+  }
+
+  /** What a token was made for, forgotten as it is given; undefined for one used, too old, or never made. */
+  take(token: string): Promise<Answer | undefined> {
+    return this.change((kept) => {
+      const key = hashOf(token);
+      const answer = kept[key]?.answer;
+      delete kept[key];
+      return answer;
+    });
+  }
+
+  /** Reads the tokens kept, drops those too old or unreadable, changes them with `fn` and, with `write`, writes them back whole. */
+  private change<T>(fn: (kept: Record<string, { answer: Answer; until: number }>) => T, write = true): Promise<T> {
+    const run = this.queue.then(async () => {
+      let read: unknown;
+      try {
+        read = existsSync(this.path) ? JSON.parse(await fs.readFile(this.path, "utf8")) : {};
+      } catch {
+        read = {};
+      }
+      const kept: Record<string, { answer: Answer; until: number }> = {};
+      for (const [k, v] of Object.entries(isRecord(read) ? read : {})) {
+        const a = answerOf(v);
+        if (a && a.until > this.now()) kept[k] = a;
+      }
+      const out = fn(kept);
+      if (!write) return out;
+      await fs.mkdir(dirname(this.path), { recursive: true, mode: 0o700 });
+      const part = `${this.path}.${process.pid}.part`;
+      await fs.writeFile(part, JSON.stringify(kept), { mode: 0o600 });
+      await fs.rename(part, this.path);
+      return out;
+    });
+    this.queue = run.catch(() => {});
+    return run;
+  }
+}
+
+const hashOf = (token: string) => createHash("sha256").update(token).digest("hex");
 
 /** This computer's Tailscale address, or undefined when Tailscale isn't running here. */
 async function tailscaleIp(): Promise<string | undefined> {
@@ -127,6 +222,8 @@ export interface ServeOptions {
   macNotices?: boolean;
   /** Listen on the Tailscale address too (checked again every five minutes). */
   tailscale?: boolean;
+  /** Finds this computer's Tailscale address, where a phone reaches gizmod; tests give their own. */
+  tailscaleAddress?: () => Promise<string | undefined>;
   /** Listen at all; tests may call `handle` instead. */
   listen?: boolean;
   log?: (line: string) => void;
@@ -138,7 +235,21 @@ export async function serve(opts: ServeOptions): Promise<Served> {
   const vaultPath = resolve(opts.vault);
   const id = await deviceId(home, vaultPath);
   const token = await adminToken(home);
-  const env = gizmodEnv({ vault: vaultPath, device: id, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, log });
+  const port = opts.port ?? DEFAULT_PORT;
+  const answers = new AnswerTokens(home);
+  const findTailnet = opts.tailscale === false ? async () => undefined : opts.tailscaleAddress ?? tailscaleIp;
+  // Looked up at once, so a miss pushed as gizmod starts can carry its button.
+  let tailnet = findTailnet();
+  // A pushed miss's button: ntfy's phone app POSTs to gizmod's Tailscale address with a token for
+  // the shortcut its line reaches now.
+  const answerButton = async (notice: AlertNotice) => {
+    const ip = await tailnet;
+    const parsed = ip && notice.answer ? parseLine(notice.answer, bg.captureIndex(), new Date()) : undefined;
+    if (!parsed?.ok) return undefined;
+    const token = await answers.mint({ line: notice.answer!, path: parsed.target.path, shortcut: parsed.target.shortcut, params: parsed.params ?? {}, ...(notice.window && { window: notice.window }) });
+    return `http, Done, http://${ip}:${port}/answer/${token}, method=POST, clear=true`;
+  };
+  const env = gizmodEnv({ vault: vaultPath, device: id, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, log, answerButton });
   await env.vault.scan();
   const bg = new Background(env.bgEnv);
   env.beat.onStartOver = () => bg.startOver();
@@ -162,11 +273,27 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     };
     try {
       const url = new URL(req.url ?? "/", "http://gizmod");
+      const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+      if (req.method === "POST" && parts[0] === "answer" && parts.length === 2) {
+        // A pushed button: its token is all it carries, good once for the shortcut it was made for,
+        // while that app may run and the window it answers still waits.
+        const gone = "that button was used already, or is more than a day old";
+        const answer = await answers.peek(parts[1]);
+        if (!answer) throw new HttpError(410, gone);
+        if (!bg.mayRun(answer.path)) throw new HttpError(403, `${answer.path.replace(/^.*\//, "").replace(/\.md$/, "")} isn't allowed to run now; open it in Obsidian`);
+        const w = answer.window;
+        if (w && (await bg.rhythmMet(w.app, w.rule, w))) {
+          await answers.take(parts[1]);
+          return reply(409, { ok: false, error: "that was done already; nothing more was logged" });
+        }
+        if (!(await answers.take(parts[1]))) throw new HttpError(410, gone);
+        const r = await bg.runFrom(answer.path, answer.shortcut, { params: answer.params, captureKeyed: true });
+        return reply(statusOf(r), { ok: r.ok, error: r.error });
+      }
       const auth = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
       // The admin token is the computer's own user: taken only from this computer.
       const trusted = auth !== undefined && auth === token && isLoopback(req.socket.remoteAddress);
       if (!auth) throw new HttpError(401, "a key is needed: the shortcut's link key, a capture key, or on this computer the admin token");
-      const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
       const target = (name: string) => {
         const found = bg.appFor(name);
         if ("error" in found) throw new HttpError(404, found.error);
@@ -203,6 +330,8 @@ export async function serve(opts: ServeOptions): Promise<Served> {
         const { name, path, shortcut } = parsed.target;
         // A key runs only the names it was made for, and only while each still reaches the same shortcut.
         if (!captureCovers(names, parsed.target)) throw new HttpError(403, `that key doesn't cover “${name}”`);
+        const guess = swallowed(parsed);
+        if (guess) return reply(422, { ok: false, error: guess });
         const r = await bg.runFrom(path, shortcut, { params: parsed.params, captureKeyed: true });
         return reply(statusOf(r), { ok: r.ok, error: r.error, entryId: r.entryId });
       }
@@ -217,10 +346,10 @@ export async function serve(opts: ServeOptions): Promise<Served> {
   const listenOn = (address: string) => new Promise<void>((done) => {
     const server = createServer((req, res) => void handle(req, res));
     server.on("error", (e) => {
-      log(`couldn't listen on ${address}:${opts.port ?? DEFAULT_PORT}: ${e.message}`);
+      log(`couldn't listen on ${address}:${port}: ${e.message}`);
       done();
     });
-    server.listen(opts.port ?? DEFAULT_PORT, address, () => {
+    server.listen(port, address, () => {
       servers.set(address, server);
       done();
     });
@@ -228,8 +357,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
   let addressTimer: ReturnType<typeof setInterval> | undefined;
   if (opts.listen !== false) {
     await listenOn("127.0.0.1");
-    const follow = async () => {
-      const ip = opts.tailscale === false ? undefined : await tailscaleIp();
+    const follow = async (ip: string | undefined) => {
       for (const [address, server] of servers) {
         if (address !== "127.0.0.1" && address !== ip) {
           server.close();
@@ -239,9 +367,9 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       if (ip && !servers.has(ip)) await listenOn(ip);
       if (!ip && opts.tailscale !== false) log("Tailscale isn't running here: listening on this computer only");
     };
-    await follow();
-    addressTimer = setInterval(() => void follow(), ADDRESS_EVERY_MS);
-    log(`listening on ${[...servers.keys()].map((a) => `${a}:${opts.port ?? DEFAULT_PORT}`).join(", ")}`);
+    await follow(await tailnet);
+    addressTimer = setInterval(() => void (tailnet = findTailnet()).then(follow), ADDRESS_EVERY_MS);
+    log(`listening on ${[...servers.keys()].map((a) => `${a}:${port}`).join(", ")}`);
   }
 
   return {

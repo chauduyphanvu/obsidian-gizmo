@@ -1,0 +1,76 @@
+---
+dose:
+  - {med: "Medication B", at: "2026-10-24T08:01"}
+  - {med: "Medication A", at: "2026-10-24T08:18"}
+  - {med: "Medication A", refill: 30, at: "2026-10-24T10:00"}
+  - {med: "Medication B", refill: 56, at: "2026-10-24T10:05"}
+  - {med: "Medication B", at: "2026-10-24T20:14"}
+  - {med: "Medication B", at: "2026-10-25T08:08"}
+  - {med: "Medication A", at: "2026-10-25T08:25"}
+  - {med: "Medication B", at: "2026-10-25T20:21"}
+  - {med: "Medication A", at: "2026-10-26T08:02"}
+  - {med: "Medication B", at: "2026-10-26T08:15"}
+  - {med: "Medication B", at: "2026-10-26T20:28"}
+  - {med: "Medication A", at: "2026-10-27T08:09"}
+  - {med: "Medication B", at: "2026-10-27T08:22"}
+  - {med: "Medication B", at: "2026-10-27T20:05"}
+  - {med: "Medication A", at: "2026-10-28T08:16"}
+  - {med: "Medication B", at: "2026-10-28T08:29"}
+  - {med: "Medication B", at: "2026-10-29T08:06"}
+  - {med: "Medication A", at: "2026-10-29T08:23"}
+  - {med: "Medication B", at: "2026-10-29T20:19"}
+  - {med: "Medication A", at: "2026-10-30T08:00"}
+  - {med: "Medication B", at: "2026-10-30T08:13"}
+  - {med: "Medication B", at: "2026-10-30T20:26"}
+  - {med: "Medication A", at: "2026-10-31T08:07"}
+  - {med: "Medication B", at: "2026-10-31T08:20"}
+  - {med: "Medication B", at: "2026-10-31T20:03"}
+  - {med: "Medication A", at: "2026-11-01T08:07"}
+  - {med: "Medication B", at: "2026-11-01T08:20"}
+  - {med: "Medication B", at: "2026-11-01T20:03"}
+  - {med: "Medication A", at: "2026-11-02T08:14"}
+  - {med: "Medication B", at: "2026-11-02T08:27"}
+  - {med: "Medication B", at: "2026-11-02T20:10"}
+  - {med: "Medication B", at: "2026-11-03T08:04"}
+  - {med: "Medication B", at: "2026-11-03T20:17"}
+  - {med: "Medication B", at: "2026-11-04T08:11"}
+  - {med: "Medication A", at: "2026-11-04T08:28"}
+  - {med: "Medication B", at: "2026-11-04T20:24"}
+  - {med: "Medication A", at: "2026-11-05T08:05"}
+  - {med: "Medication B", at: "2026-11-05T08:18"}
+  - {med: "Medication B", at: "2026-11-05T20:01"}
+  - {med: "Medication B", at: "2026-11-06T08:25"}
+  - {med: "Medication A", at: "2026-11-06T10:40"}
+  - {med: "Medication B", at: "2026-11-06T20:08"}
+  - {med: "Medication B", at: "2026-11-07T08:02"}
+  - {med: "Medication A", at: "2026-11-07T08:19"}
+  - {med: "Medication B", at: "2026-11-07T20:15"}
+  - {med: "Medication B", at: "2026-11-08T08:09"}
+  - {med: "Medication A", at: "2026-11-08T08:26"}
+  - {med: "Medication A", at: "2026-11-09T08:03"}
+  - {med: "Medication B", at: "2026-11-09T08:16", note: "dizzy for an hour after"}
+  - {med: "Medication B", at: "2026-11-09T20:29"}
+  - {med: "Medication A", at: "2026-11-10T08:10"}
+  - {med: "Medication B", at: "2026-11-10T08:23"}
+  - {med: "Medication B", at: "2026-11-10T20:06"}
+  - {med: "Medication B", at: "2026-11-11T08:00"}
+  - {med: "Medication A", at: "2026-11-11T08:17"}
+  - {med: "Medication B", at: "2026-11-11T20:13"}
+  - {med: "Medication B", at: "2026-11-12T08:07"}
+  - {med: "Medication B", at: "2026-11-12T20:20"}
+  - {med: "Medication A", at: "2026-11-13T08:01"}
+  - {med: "Medication B", at: "2026-11-13T08:14"}
+  - {med: "Medication B", at: "2026-11-13T20:27"}
+  - {med: "Medication A", at: "2026-11-14T08:08"}
+  - {med: "Medication B", at: "2026-11-14T08:21"}
+  - {med: "Medication A", at: "2026-11-15T08:15", note: "took it with food"}
+  - {med: "Medication B", at: "2026-11-15T08:28"}
+  - {med: "Medication B", at: "2026-11-15T20:11"}
+  - {med: "Medication B", at: "2026-11-16T08:05"}
+  - {med: "Medication A", at: "2026-11-16T08:22"}
+  - {med: "Medication A", refill: 30, at: "2026-11-16T17:30"}
+  - {med: "Medication B", at: "2026-11-16T20:18"}
+  - {med: "Medication B", at: "2026-11-17T08:12"}
+  - {med: "Medication A", at: "2026-11-17T08:29"}
+  - {med: "Medication B", at: "2026-11-17T20:25"}
+---

@@ -1,0 +1,145 @@
+import { FuzzySuggestModal, Modal, Notice, parseYaml, type App, type TFile } from "obsidian";
+import { vaultNotes } from "./host.ts";
+import { carriedOps, convertible, planKind, type KindPlan } from "./kind-convert.ts";
+import type { Op } from "./ledger.ts";
+import type GizmoPlugin from "./main.ts";
+import { readSpec, type AppSpec } from "./spec.ts";
+import { basename, defaultDataPath, isApp } from "./store.ts";
+
+/** Says what making the kind does, line by line, before anything is written. */
+class KindModal extends Modal {
+  private appName: string;
+  private plan: KindPlan;
+  private rows: number;
+  private make: () => Promise<string | undefined>;
+
+  constructor(app: App, appName: string, plan: KindPlan, rows: number, make: () => Promise<string | undefined>) {
+    super(app);
+    this.appName = appName;
+    this.plan = plan;
+    this.rows = rows;
+    this.make = make;
+  }
+
+  onOpen(): void {
+    const { plan, appName } = this;
+    const kind = basename(plan.path);
+    this.titleEl.setText(`Make ${plan.list} a kind`);
+    const el = this.contentEl.createDiv({ cls: "gizmo gz-kind-plan" });
+    el.createEl("p", { text: `Any app can then read these rows with source: "[[${kind}]]" and add to them with save: "[[${kind}]]".` });
+    const list = el.createEl("ul");
+    list.createEl("li", { text: `Makes the note ${plan.path}, with the fields ${appName} gives ${plan.list}.` });
+    list.createEl("li", { text: this.rows === 1 ? "Carries its 1 row over." : `Carries its ${this.rows} rows over.` });
+    const lines = list.createEl("li", { text: `Changes ${plan.changed.length === 1 ? "this line" : "these lines"} of ${appName}:` });
+    for (const c of plan.changed) lines.createEl("pre", { text: `${c.from.trim()}  →  ${c.to.trim()}` });
+    list.createEl("li", { text: `${appName} then asks once for your OK to read and change the rows of ${kind}.` });
+    el.createEl("p", {
+      cls: "gz-muted",
+      text: `${appName}'s own copy of the rows stays in ${appName} data, where nothing reads it any more. To go back, put the ${plan.changed.length === 1 ? "line" : "lines"} back and delete ${kind}.`,
+    });
+    const said = el.createDiv({ cls: "gz-new-app-problem" });
+    const row = el.createDiv({ cls: "modal-button-container" });
+    row.createEl("button", { text: "Cancel" }).addEventListener("click", () => this.close());
+    const go = row.createEl("button", { cls: "mod-cta", text: "Make the kind" });
+    go.addEventListener("click", () => {
+      go.disabled = true;
+      void this.make().then((failed) => {
+        if (!failed) return this.close();
+        said.setText(failed);
+        go.disabled = false;
+      });
+    });
+  }
+
+  onClose(): void {
+    this.contentEl.empty();
+  }
+}
+
+/** Picks which of an app's lists to make a kind of, when it saves into more than one. */
+class ListPicker extends FuzzySuggestModal<string> {
+  private lists: string[];
+  private picked: (list: string) => void;
+
+  constructor(app: App, lists: string[], picked: (list: string) => void) {
+    super(app);
+    this.lists = lists;
+    this.picked = picked;
+    this.setPlaceholder("Which list becomes a kind?");
+  }
+
+  getItems(): string[] {
+    return this.lists;
+  }
+
+  getItemText(item: string): string {
+    return item;
+  }
+
+  onChooseItem(item: string): void {
+    this.picked(item);
+  }
+}
+
+/** The list's rows as the app keeps them now, each as an add to the kind's rows (see carriedOps). */
+async function carried(plugin: GizmoPlugin, file: TFile, fm: Record<string, unknown>, list: string): Promise<Op[]> {
+  const ledger = plugin.dataLayer.ledger;
+  if (!ledger) return [];
+  const state = await ledger.state(defaultDataPath(file.path), fm);
+  return carriedOps(list, state.lists.get(list)?.rows ?? [], () => ledger.newRowId());
+}
+
+async function offer(plugin: GizmoPlugin, file: TFile, fm: Record<string, unknown>, spec: AppSpec, list: string): Promise<void> {
+  const { app } = plugin;
+  const appText = await app.vault.read(file);
+  const plan = planKind({
+    appPath: file.path, appText, fm, spec, list, notes: vaultNotes(app), parse: parseYaml,
+    taken: (path) => app.vault.getAbstractFileByPath(path) !== null,
+  });
+  if ("error" in plan) return void new Notice(plan.error, 12_000);
+  const shown = (await carried(plugin, file, fm, list)).length;
+  const make = async (): Promise<string | undefined> => {
+    try {
+      // The rows as they are at the click, not as the modal opened on.
+      const adds = await carried(plugin, file, fm, list);
+      // The kind and its rows first: if the app's lines can't be changed after, nothing is lost and the app still reads its own list.
+      await app.vault.create(plan.path, plan.text);
+      const kindData = defaultDataPath(plan.path);
+      plugin.dataLayer.noteApp(kindData, plan.path);
+      await plugin.dataLayer.ledger?.write(kindData, adds);
+      await plugin.dataLayer.snapshotNow(kindData, false).catch(() => undefined);
+      let changed = false;
+      await app.vault.process(file, (now) => {
+        changed = now === appText;
+        return changed ? plan.appText : now;
+      });
+      if (!changed) return `${basename(plan.path)} is made, but ${file.basename} changed meanwhile; point its source and save at "[[${basename(plan.path)}]]" yourself`;
+      new Notice(`${basename(plan.path)} is a kind now, with ${adds.length} ${adds.length === 1 ? "row" : "rows"} from ${file.basename}`);
+      return undefined;
+    } catch (e) {
+      return `Couldn't make the kind: ${(e as Error).message}`;
+    }
+  };
+  new KindModal(app, file.basename, plan, shown, make).open();
+}
+
+/** "Make a list a kind": an app's own saved list becomes rows every app can read, with the rows it has. */
+export function registerKindCommand(plugin: GizmoPlugin): void {
+  plugin.addCommand({
+    id: "make-kind",
+    name: "Make a list a kind",
+    checkCallback: (checking) => {
+      const file = plugin.app.workspace.getActiveFile();
+      const fm = file ? plugin.app.metadataCache.getFileCache(file)?.frontmatter : undefined;
+      if (!file || !fm || !isApp(fm)) return false;
+      if (checking) return true;
+      const spec = readSpec(fm, { notes: vaultNotes(plugin.app), path: file.path })?.spec;
+      if (!spec) return void new Notice(`${file.basename} has a problem to fix before one of its lists can become a kind`);
+      const lists = convertible(spec);
+      if (!lists.length) return void new Notice(`${file.basename} saves no rows of its own to make a kind of`);
+      if (lists.length === 1) void offer(plugin, file, fm, spec, lists[0]);
+      else new ListPicker(plugin.app, lists, (list) => void offer(plugin, file, fm, spec, list)).open();
+      return true;
+    },
+  });
+}

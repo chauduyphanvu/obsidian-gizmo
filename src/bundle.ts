@@ -3,7 +3,7 @@ import { hasControl, maskControl } from "./control.ts";
 import { violationText, type Verdict } from "./flows.ts";
 import type { NoteReader } from "./expand.ts";
 import { planCopy, type Plan } from "./gallery.ts";
-import { isApp, isComponent, storeTarget } from "./store.ts";
+import { isApp, isKind, isComponent, storeTarget } from "./store.ts";
 import { readComponentPreview, readSpec, type AppSpec } from "./spec.ts";
 import { describePermission, permissionsOf } from "./permissions.ts";
 
@@ -158,6 +158,7 @@ export function previewInstall(notes: BundleNote[], target: InstallTarget): Inst
   const extras = notes.slice(1).flatMap((n) => {
     const other = fms.get(pathOf(n.name));
     if (isApp(other)) return [`${n.name} is an app of its own`];
+    if (isKind(other)) return [`${n.name} is a kind: its rows start empty, and any app here can read and add to them`];
     if (other && isComponent(other) && other.for !== undefined && other.for !== null) return [`${n.name} shows on every note in ${textOf(other.for)}`];
     return [];
   });

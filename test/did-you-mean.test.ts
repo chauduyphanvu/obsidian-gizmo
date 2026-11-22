@@ -181,7 +181,7 @@ const NOTE = [
 const note = (...panel: string[]) => [...NOTE, ...panel, "---"].join("\n");
 
 test("after source:, the app's blocks and saved lists come first, then the kinds of source", () => {
-  assert.deepEqual(offered(note("  - view: number", `    source: ${MARK}`)), ["spend", "month", "water", "notes", "tasks", "this", "expect"]);
+  assert.deepEqual(offered(note("  - view: number", `    source: ${MARK}`)), ["spend", "month", "water", "notes", "tasks", "this", "expect", "asks"]);
   assert.deepEqual(offered(note("  - view: number", `    source: m${MARK}`)), ["month"]);
 });
 

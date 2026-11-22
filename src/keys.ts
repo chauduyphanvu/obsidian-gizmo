@@ -12,7 +12,7 @@ export type KeyType =
   | "boolean" | "json" | "format" | "valueMap" | "alert" | "compute" | "textMap" | "edit" | "then";
 
 /** Keys expansion adds to a panel. They have no YAML type, so typing one is an unknown key. */
-export const INTERNAL_KEYS = ["upstream", "schema", "vars", "target", "secrets", "kept", "fieldInfo"] as const;
+export const INTERNAL_KEYS = ["upstream", "schema", "vars", "rowVars", "target", "targetFields", "secrets", "kept", "fieldInfo", "kind"] as const;
 export type InternalKey = (typeof INTERNAL_KEYS)[number];
 /** A key that can be typed on a panel. */
 export type PanelKey = Exclude<keyof Panel, InternalKey>;
@@ -30,7 +30,7 @@ export const KEY_TYPES: Record<PanelKey, KeyType> = {
   open: "string", edit: "edit", format: "format", labels: "textMap", values: "valueMap", cells: "textMap",
   layout: "string", compare: "string", goal: "number", stack: "boolean", body: "json", start: "string",
   end: "string", shortcut: "string", alias: "string", pin: "string", alert: "alert", detail: "string", of: "where",
-  then: "then", empty: "string",
+  then: "then", empty: "string", lines: "names",
 };
 
 /** What a wrong value should have been, for the types whose names don't say it plainly. */
@@ -203,7 +203,7 @@ export function startOf(info: FieldInfo | undefined, now: Date): unknown {
 /** Keys every view accepts. */
 export const COMMON_KEYS = ["view", "title", "tab", "span"] as const;
 /** Keys that say where a panel's data comes from and how rows are narrowed. */
-export const DATA_KEYS = ["source", "headers", "body", "pick", "from", "where", "sort", "limit", "compute"] as const;
+export const DATA_KEYS = ["source", "headers", "body", "pick", "from", "lines", "where", "sort", "limit", "compute"] as const;
 /** Keys that turn rows into one row per group or period. */
 export const GROUP_KEYS = ["group", "per"] as const;
 /**

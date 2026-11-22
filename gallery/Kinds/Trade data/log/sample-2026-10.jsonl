@@ -1,0 +1,5 @@
+{"t":"2026-10-25T17:00:00.000Z/0","d":"sample","op":"add","l":"trade","row":"04b0098b2c9c2ee0","v":{"symbol":"VTI","side":"buy","shares":5,"price":310,"at":"2026-11-16T09:30","line":"planned"}}
+{"t":"2026-10-25T17:00:00.000Z/1","d":"sample","op":"add","l":"trade","row":"0eca472c89d15817","v":{"symbol":"VTI","side":"buy","shares":5,"price":310,"at":"2026-12-01T09:30","line":"planned"}}
+{"t":"2026-10-25T17:00:00.000Z/2","d":"sample","op":"add","l":"trade","row":"f46340de4512da0b","v":{"symbol":"VTI","side":"buy","shares":5,"price":310,"at":"2027-01-04T09:30","line":"planned"}}
+{"t":"2026-10-25T17:00:00.000Z/3","d":"sample","op":"add","l":"trade","row":"3061742ba7ef6410","v":{"symbol":"VTI","side":"buy","shares":5,"price":310,"at":"2027-02-01T09:30","line":"planned"}}
+{"t":"2026-10-25T17:00:00.000Z/4","d":"sample","op":"add","l":"trade","row":"78617660c5a8711e","v":{"symbol":"VTI","side":"buy","shares":5,"price":310,"at":"2027-03-01T09:30","line":"planned"}}

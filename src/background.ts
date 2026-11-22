@@ -3,9 +3,10 @@ import type { Actor, LogStore, NewEntry } from "./activity.ts";
 import type { CaptureIndex, Parsed } from "./capture.ts";
 import type { DryStep } from "./dryrun.ts";
 import { splitByWindow } from "./compare.ts";
-import type { Row } from "./data.ts";
+import { rowsOf, type Row } from "./data.ts";
+import { metIn, type Rhythm } from "./expect.ts";
 import type { DataLayer } from "./datalayer.ts";
-import { fileDep, nameDep } from "./deps.ts";
+import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { FiredStore, pausedKey } from "./background-fired.ts";
 import { MAX_SAMPLES, Recorder, recordJobs, type RecordJob } from "./background-record.ts";
 import { RenameMatcher } from "./background-renames.ts";
@@ -13,6 +14,13 @@ import { Shortcuts, brokenShortcuts, labelOf, shortcutFields, type DryRun, type 
 import { Rhythms } from "./background-rhythms.ts";
 import { Pauses } from "./background-pauses.ts";
 import { Watch } from "./background-watch.ts";
+import { Imports } from "./background-imports.ts";
+import { Asks, type AskFeed } from "./background-asks.ts";
+import { Shares, type WriterRecord } from "./background-share.ts";
+import { askRows, type Ask } from "./asks.ts";
+import { askPath, seenValues, type AskKind } from "./ask.ts";
+import { logFolder } from "./ledger.ts";
+import type { Imported } from "./import.ts";
 import { fingerprint } from "./identity.ts";
 import type { NoteReader } from "./expand.ts";
 import type { ShortcutLink } from "./links.ts";
@@ -78,6 +86,10 @@ export interface AlertNotice {
   panel: string;
   text: string;
   label?: Label;
+  /** The capture line that answers it (a missed window logged inside the window), when one runs as it stands. */
+  answer?: string;
+  /** The rhythm's window it is about, by the rule's app and id. */
+  window?: { app: string; rule: string; start: number; deadline: number };
 }
 
 /** What the background needs from Obsidian; the glue passes the real thing, tests fakes. */
@@ -105,6 +117,13 @@ export interface BackgroundEnv {
   triggers?: LogStore;
   /** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
   otherTriggers?(): Promise<string[]>;
+  /** Where this device keeps what it read from and sent to the relays of shared kinds; and the other devices' files, for one taking over. */
+  shareState?: LogStore;
+  otherShareStates?(): Promise<string[]>;
+  /** What this vault decided about each writer of a shared kind, by writer (see background-share.ts). */
+  writers?(kindPath: string): Record<string, WriterRecord>;
+  /** Keeps a decision about a writer; undefined where none may be made (gizmod reads data.json, never writes it). */
+  setWriter?(kindPath: string, writer: string, record: WriterRecord | undefined): void;
   /** An app note renamed on another device, seen here as a delete and a create: what this device keeps elsewhere (its activity) follows. */
   renamed?(from: string, to: string): void;
   /** An app note gone for good (PENDING_MS with no create to match): what is kept for it elsewhere (data.json) can go. */
@@ -171,6 +190,8 @@ export interface AppEntry {
   fingerprint: string;
   /** When it took over what another path kept (a rename): until its grant arrives too, that is kept rather than forgotten. */
   carried?: number;
+  /** A kind whose import folders were read since it was indexed. */
+  imported?: boolean;
   stop(): void;
 }
 
@@ -191,6 +212,9 @@ export class Background {
   private shortcuts: Shortcuts;
   private watch: Watch;
   private pauses: Pauses;
+  private imports: Imports;
+  private askQueue: Asks;
+  private shares: Shares;
   /** Told when the apps it knows, or what one of them is, change. */
   private indexListeners = new Set<() => void>();
   /** By watched panel key, what each alert with `then` already ran for; read once from `env.triggers`. */
@@ -198,13 +222,16 @@ export class Background {
 
   /** Alerts true now across the vault, for `view: alerts`. */
   readonly alerts: AlertFeed;
+  /** What the allowed apps ask of the person, oldest first: for Next, the status bar and `source: asks`. */
+  readonly asks: AskFeed;
 
   constructor(env: BackgroundEnv) {
     this.env = env;
     this.fired = new FiredStore(env);
     this.recorder = new Recorder(env, (appPath, ps, force) => this.evaluate(appPath, ps, force), (message) => this.say(message));
     this.rhythms = new Rhythms(env, this.fired, (appPath, ps, force) => this.evaluate(appPath, ps, force),
-      (fromPath, then, ctx, chain, dry, seed) => this.runThen(fromPath, then, ctx, chain, dry, seed), (message) => this.say(message));
+      (fromPath, then, ctx, chain, dry, seed) => this.runThen(fromPath, then, ctx, chain, dry, seed), (message) => this.say(message),
+      (entry, rule, w) => this.askQueue.lineFor(entry, rule, w));
     this.shortcuts = new Shortcuts(env, {
       apps: this.apps,
       lookup: (path) => this.apps.get(path) ?? (this.running ? this.index(path) : undefined),
@@ -225,10 +252,24 @@ export class Background {
       say: (message) => this.say(message),
     });
     this.alerts = this.watch.alerts;
+    this.imports = new Imports(env, { granted: (entry) => this.granted(entry), say: (message) => this.say(message) });
+    this.shares = new Shares(env, { granted: (entry) => this.granted(entry), say: (message) => this.say(message) });
+    this.askQueue = new Asks(env, {
+      apps: this.apps,
+      fired: this.fired,
+      granted: (entry) => this.granted(entry),
+      evaluate: (appPath, ps, force) => this.evaluate(appPath, ps, force),
+      captureIndex: () => this.captureIndex(),
+    });
+    this.asks = this.askQueue.feed;
+    env.data.asks = () => askRows(this.asks.list());
     this.pauses = new Pauses(env, {
       fired: this.fired,
       verdictNow: (entry) => this.verdictNow(entry),
-      hide: (path) => this.watch.hide(path),
+      hide: (path) => {
+        this.watch.hide(path);
+        this.askQueue.drop(path);
+      },
       forget: (path) => this.forget(path),
       say: (message) => this.say(message),
     });
@@ -247,6 +288,7 @@ export class Background {
     for (const entry of this.apps.values()) entry.stop();
     this.apps.clear();
     this.watch.clear();
+    this.askQueue.clear();
     this.indexListeners.clear();
   }
 
@@ -283,6 +325,7 @@ export class Background {
         })),
         thens: panels.filter((p) => p.then && p.alert === undefined).map((p) => ({ from: labelOf(p, p.view), ...resolved(p.then!) })),
         writesSelf: panels.some((p) => p.append !== undefined && appendPath(p.append) === e.path),
+        ...(e.spec.kind?.share && { shared: { host: e.spec.kind.share.host } }),
       };
     });
   }
@@ -310,13 +353,15 @@ export class Background {
 
   /**
    * An app was opened (or just allowed): what it records is sampled now if due, a problem with it
-   * is told again, and its pins and alerts are evaluated if they never were.
+   * is told again, its pins and alerts are evaluated if they never were, and a kind reads its
+   * import folders if it never has.
    */
   opened(appPath: string): void {
     const entry = this.running ? this.apps.get(appPath) ?? this.index(appPath) : undefined;
     if (!entry || !this.granted(entry)) return;
     for (const job of entry.records) void this.recorder.sample(entry, job, true).catch(() => {});
     if (entry.checkedAt === undefined) void this.watch.check(entry);
+    if (!entry.imported) void this.imports.folders(entry);
   }
 
   private async work(entry: AppEntry): Promise<void> {
@@ -325,6 +370,32 @@ export class Background {
     for (const job of entry.records) await this.recorder.sample(entry, job, false).catch(() => {});
     if (entry.checkedAt === undefined || this.env.now().getTime() - entry.checkedAt >= entry.refreshMs) await this.watch.check(entry);
     await this.rhythms.run(entry).catch(() => {});
+    if (!entry.imported) await this.imports.folders(entry);
+    if (entry.spec.kind?.share) await this.shares.run(entry);
+    await this.askQueue.check(entry);
+  }
+
+  /** Reads a shared kind's relay and sends what waits now, rather than on the next tick. */
+  share(kindPath: string): Promise<void> {
+    const entry = this.apps.get(kindPath);
+    return entry ? this.shares.run(entry) : Promise.resolve();
+  }
+
+  /** Keeps an ask out of the queue on this device until tomorrow. */
+  skipAsk(id: string): Promise<void> {
+    return this.askQueue.skip(id);
+  }
+
+  /** Answers an ask that changes a row, or dismisses one for good; what it did, as the Next window tells it. */
+  settleAsk(ask: Ask, how: "answer" | "dismiss"): Promise<{ ok: boolean; error?: string; entryId?: string; what?: string }> {
+    return this.askQueue.settle(ask, how);
+  }
+
+  /** Reads a file into a kind under one of its `import:` maps, as a person asked; what it did, or why not. */
+  async importFile(kindPath: string, map: string, path: string, actor: Actor): Promise<Imported | { error: string }> {
+    const entry = this.apps.get(kindPath) ?? this.index(kindPath);
+    if (!entry?.spec.kind) return { error: `${basename(kindPath)} isn't a kind` };
+    return this.imports.file(entry, map, path, actor);
   }
 
   private granted(entry: AppEntry): boolean {
@@ -397,8 +468,34 @@ export class Background {
     return this.shortcuts.previewLine(line);
   }
 
-  capture(line: string, actor?: Actor): Promise<ShortcutResult & { parsed: Parsed }> {
-    return this.shortcuts.capture(line, actor);
+  /**
+   * The vault's kinds as the ask line reads them: each one's name, shortcut and fields, the values
+   * its rows hold (on every line), and how a panel beside it links to it.
+   */
+  async askKinds(): Promise<AskKind[]> {
+    const now = this.env.now();
+    const out: AskKind[] = [];
+    for (const entry of this.apps.values()) {
+      const kind = entry.spec.kind;
+      if (!kind) continue;
+      const files = { appPath: entry.path, dataPath: entry.dataPath, devices: entry.devices };
+      let rows: Row[] = [];
+      try {
+        rows = rowsOf(await this.env.data.rawData(kind.name, { view: "table", source: kind.name, lines: "all" }, files, { ttlMs: 0, now }));
+      } catch {
+        // Its rows can't be read now: its choices are still known.
+      }
+      const shortcut = entry.spec.panels.find((ps) => ps.panel.view === "form")?.panel.alias;
+      const ask: AskKind = { path: entry.path, name: kind.name, ...(shortcut !== undefined && { shortcut }), fields: kind.fields, seen: seenValues(kind.fields, rows) };
+      // `[[Spend]]` finds the note by name from beside it; when another note of that name is nearer, its path does.
+      if (this.env.notes.resolve(basename(entry.path), askPath(ask)) !== entry.path) ask.link = `[[${entry.path.replace(/\.md$/i, "")}]]`;
+      out.push(ask);
+    }
+    return out;
+  }
+
+  capture(line: string, actor?: Actor, quiet?: boolean): Promise<ShortcutResult & { parsed: Parsed }> {
+    return this.shortcuts.capture(line, actor, quiet);
   }
 
   runCaptureLink(params: Record<string, string>): Promise<void> {
@@ -407,6 +504,22 @@ export class Background {
 
   runFrom(appPath: string, shortcut: string, opts: { params?: Record<string, string>; key?: string; captureKeyed?: boolean; trusted?: boolean }): Promise<ShortcutResult> {
     return this.shortcuts.runFrom(appPath, shortcut, opts);
+  }
+
+  /** Whether an app may run now: one there is, allowed, and not stopped by the data policy. */
+  mayRun(appPath: string): boolean {
+    const entry = this.apps.get(appPath) ?? (this.running ? this.index(appPath) : undefined);
+    return !!entry && this.granted(entry);
+  }
+
+  /** Whether a row met a rhythm's window by its deadline, as the rule reads its rows now; undefined when the rule isn't there to read. */
+  async rhythmMet(appPath: string, ruleId: string, w: { start: number; deadline: number }): Promise<boolean | undefined> {
+    const entry = this.apps.get(appPath);
+    const rule = entry?.spec.expect.find((r): r is Rhythm => r.kind === "rhythm" && r.id === ruleId);
+    const ps = rule && entry!.spec.expected[rule.id];
+    const r = ps && (await this.evaluate(appPath, ps, true));
+    if (!rule || !r || !("panel" in r)) return undefined;
+    return metIn(rowsOf(r.rows), rule, { ...w, end: w.deadline }, this.env.now());
   }
 
   appFor(name: string): { path: string } | { error: string } {
@@ -466,6 +579,7 @@ export class Background {
       old.stop();
       this.apps.delete(from);
       this.watch.hide(from);
+      this.askQueue.drop(from);
     }
     this.renames.renamed(from, to);
     this.carry(from, to);
@@ -483,6 +597,7 @@ export class Background {
     old.stop();
     this.apps.delete(old.path);
     this.watch.hide(old.path);
+    this.askQueue.drop(old.path);
     this.pauses.drop(old.path);
     const twin = this.renames.went(old.path, old.fingerprint, this.env.now().getTime());
     if (twin) this.carried(old.path, twin);
@@ -527,6 +642,8 @@ export class Background {
     this.pauses.drop(path);
     // An alert's `then` that is dropped starts over, noting what is true when it's back.
     this.fired.drop(path, keep);
+    // An app read again, keeping some of what it watches, works out its asks again instead.
+    if (!keep.size) this.askQueue.drop(path);
     if (dropped) this.watch.publish();
   }
 
@@ -555,7 +672,10 @@ export class Background {
     for (const cb of [...this.indexListeners]) cb();
     if (!this.running) return entry;
     this.shortcuts.publishCommands();
-    if (entry) void this.watch.check(entry);
+    if (entry) {
+      void this.watch.check(entry);
+      void this.askQueue.check(entry);
+    } else this.askQueue.drop(path);
     return entry;
   }
 
@@ -592,17 +712,29 @@ export class Background {
     this.env.data.ledger?.setCaps(dataPath, Object.fromEntries(entry.records.map((j) => [j.list, MAX_SAMPLES])));
     this.env.data.noteApp(dataPath, path, entry.devices);
     const definitionDeps = [fileDep(path), ...spec.links.map(nameDep)];
+    const importDeps = Imports.foldersOf(entry).map(folderDep);
     const files = { appPath: path, dataPath: entry.dataPath, devices: entry.devices };
     const start = this.valuesOf(path, spec, this.env.now());
-    const dataDeps = entry.watched.flatMap(({ ps }) => {
+    const depsOf = (ps: PanelSpec) => {
       const p = resolvePanel(ps, start).panel;
       return p ? this.env.data.depsOf(sourceOf(p), p, files) : [];
-    });
-    entry.stop = this.env.data.subscribe([...definitionDeps, ...dataDeps], (changed) => {
+    };
+    const dataDeps = entry.watched.flatMap(({ ps }) => depsOf(ps));
+    // What its asks come from: the rows its rhythms count, its misses, and a kind's own rows.
+    const rhythms = spec.expect.filter((r) => r.kind === "rhythm" && spec.expected[r.id]);
+    const askDeps = [
+      ...rhythms.flatMap((r) => depsOf(spec.expected[r.id])),
+      ...(rhythms.length || spec.kind ? [fileDep(dataPath), folderDep(logFolder(dataPath))] : []),
+    ];
+    entry.stop = this.env.data.subscribe([...definitionDeps, ...dataDeps, ...importDeps, ...askDeps], (changed) => {
       if (this.apps.get(path) !== entry) return;
       // A new definition makes a new entry, which evaluates itself.
       if (definitionDeps.some((d) => changed.has(d)) && this.index(path) !== entry) return;
       if (this.running && dataDeps.some((d) => changed.has(d))) void this.watch.check(entry);
+      if (this.running && importDeps.some((d) => changed.has(d))) void this.imports.folders(entry);
+      if (this.running && askDeps.some((d) => changed.has(d))) void this.askQueue.check(entry);
+      // A row saved to a shared kind goes out now; the relay is read on the tick.
+      if (this.running && spec.kind?.share && askDeps.some((d) => changed.has(d))) void this.shares.run(entry, false);
     });
     this.apps.set(path, entry);
     return entry;

@@ -1,6 +1,8 @@
 import type { Placement } from "../compose.ts";
 import type { Row } from "../data.ts";
 import type { Trace } from "../pipeline.ts";
+import type { Reconcile } from "../match.ts";
+import type { ReconcileActs } from "../reconcile-card.ts";
 import type { Panel } from "../spec.ts";
 import { board } from "./board.ts";
 import { calendar } from "./calendar.ts";
@@ -8,6 +10,7 @@ import { alerts, type AlertFeed } from "./alerts.ts";
 import { bar, line } from "./chart.ts";
 import { button, checklist, form } from "./inputs.ts";
 import { pie } from "./pie.ts";
+import { reconcile } from "./reconcile.ts";
 import { list, table } from "./rows.ts";
 import { scatter } from "./scatter.ts";
 import { timeline } from "./timeline.ts";
@@ -40,14 +43,20 @@ export interface PanelCtx {
    * what it would edit as it reads, with no control and no row action.
    */
   readOnly?: boolean;
+  /**
+   * The app is shown ahead (What if…): what it saves are what-if rows, for any time, and times
+   * typed are read from this one, now, not from `now`, the time shown.
+   */
+  whatIf?: Date;
   /** The drawing width inside the panel with this key. */
   width(key: string): number;
   /**
    * Runs a panel's actions; says why when a value rule refused the row, so a form can keep what was
    * typed. `inPlace`: the panel tells its `notify` itself, beside it, rather than in a notice;
-   * `at`: what it saves is logged for that time rather than now.
+   * `at`: what it saves is logged for that time rather than now; `plan`: each time a row saved to a
+   * kind is planned for.
    */
-  runActions(p: Panel, row: Row, how?: { inPlace?: boolean; at?: Date }): Promise<RunResult | void>;
+  runActions(p: Panel, row: Row, how?: { inPlace?: boolean; at?: Date; plan?: Date[] }): Promise<RunResult | void>;
   toggleChecked(key: string, item: string): Promise<void>;
   clearChecked(key: string): Promise<void>;
   openNote(path: string): void;
@@ -77,6 +86,15 @@ export interface PanelCtx {
    */
   deleteRow?(row: Row): Promise<{ entry?: string } | undefined>;
   /**
+   * Why a row this panel shows can't be changed or deleted here: someone else wrote it, in a shared
+   * kind ("By Bo; only Bo can change it"). Undefined, or absent, when it can.
+   */
+  theirs?(row: Row): string | undefined;
+  /** Not mine: sets aside a row of a shared kind that someone else wrote, kept in the activity log; as deleteRow. Absent outside an app. */
+  setAside?(row: Row): Promise<{ entry?: string } | undefined>;
+  /** Whether this panel may change the saved rows it shows: not a kind's rows its app only reads. Absent: it may. */
+  rowsWritable?(): boolean;
+  /**
    * Writes one field of a `save: this` form as a property of the note the app sits in; the panel
    * updates when the write lands. Absent outside an app.
    */
@@ -93,6 +111,13 @@ export interface PanelCtx {
   undo?(entry: string): Promise<string>;
   /** Alerts true now across the vault, when the plugin's background service runs. */
   alerts?: AlertFeed;
+  /**
+   * For `view: reconcile`: the rows the panel's kind read from a file that wait to be checked (no
+   * card when none waits, and then what says a file waits unread while the kind isn't allowed), the
+   * kind's fields, and what Accept and Not mine do there. Undefined
+   * where nothing may be changed: the past, a what-if, a try.
+   */
+  reconcile?(p: Panel): Promise<({ card?: Reconcile; fields: string[]; waiting?: string } & ReconcileActs) | undefined>;
   /** In a try before Allow, where nothing drawn may reach out of Obsidian. */
   preview?: boolean;
   /**
@@ -161,7 +186,7 @@ export interface ViewDef {
 export const VIEW_DEFS: readonly ViewDef[] = [
   number, text, line, bar, pie, table, list, button, form, checklist, countdown, progress, timer,
   calendar, board, scatter, timeline,
-  alerts,
+  alerts, reconcile,
 ];
 
 const BY_ID = new Map(VIEW_DEFS.map((d) => [d.id, d]));

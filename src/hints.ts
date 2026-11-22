@@ -3,10 +3,10 @@ import { PERIODS } from "./time.ts";
 import { BLOCK_KEYS, blockChain, componentParams, panelEntries, readBlocks, schemaOf } from "./expand.ts";
 import { FIELD_KEYS } from "./spec.ts";
 import { sourceDef } from "./sources/registry.ts";
-import { APP_KEYS, COMPONENT_KEYS } from "./store.ts";
+import { APP_KEYS, COMPONENT_KEYS, KIND_KEYS } from "./store.ts";
 import { COMMON_KEYS, FIELD_TYPES, isPlainObject, readFields } from "./keys.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import { contextAt, noteKind, valueBeside, type Context, type Position } from "./yamlpos.ts";
+import { contextAt, isKindNote, noteKind, valueBeside, type Context, type Position } from "./yamlpos.ts";
 
 /** One plain-language line for every key a note can hold: the note's own, a panel's, a data block's. */
 export const KEY_HINTS: Record<string, string> = {
@@ -23,6 +23,10 @@ export const KEY_HINTS: Record<string, string> = {
   with: "Give the component its params, e.g. with: {symbol: AAPL}",
   expect: "What this app's data should do: a row by a time (every, by), what each row holds (check), what no row matches (none)",
   component: "Makes this note a reusable component; the text says what it is",
+  kind: "Makes this note a kind: rows of one shape that any app can read and add to; the text names the rows",
+  import: "Ways to read a file into the kind's rows, by name: field → column, at for when, folder to watch",
+  match: "How a file's or planned row pairs with a logged one: field → exact, a number or 2d; default: numbers exact, at 2d",
+  share: "Share the rows with other vaults through an ntfy server: share: {relay: \"https://ntfy.sh\", key: {secret: chore-key}}",
   params: "Names this component takes, each with an optional default",
   for: "Show this component on every note in a folder or tag, e.g. Books/ or \"#book\"",
   // Every panel
@@ -35,6 +39,7 @@ export const KEY_HINTS: Record<string, string> = {
   headers: "Request headers for a web source, e.g. {authorization: \"Bearer {secret:key}\"}",
   pick: "Dig into the response with a path, e.g. features or hourly.time",
   from: "Which notes to read, for notes or tasks: a folder (Books) or a #tag, commas for several",
+  lines: "Which rows of a kind: logged (the default), planned, attested, dismissed, or all",
   where: "Keep only matching rows, e.g. {status: done, rating: \"> 3\"}",
   sort: "Order rows by a field; a leading - sorts high to low",
   limit: "Keep only the first N rows",
@@ -76,7 +81,7 @@ export const KEY_HINTS: Record<string, string> = {
   notify: "A message to show once it's done",
   select: "Name the clicked row so other panels can read $name.field",
   action: "Give each row a button with this label; it runs save, append or open",
-  row: "What to save, one {field} per name: row: {title: \"{title}\"}",
+  row: "What to save, one {field} per name, or =formula: row: {title: \"{title}\", usd: \"=yen / $this.rate\"}",
   name: "The new note's file name, e.g. \"{title}\"",
   template: "A note whose text becomes the body of each new note",
   open: "Open this note afterwards, e.g. \"{path}\"",
@@ -119,6 +124,7 @@ export const VIEW_HINTS: Record<string, string> = {
   scatter: "A dot per row, x against y",
   timeline: "A bar per row from its start to its end",
   alerts: "Every alert that is true right now, across the vault",
+  reconcile: "A kind's rows read from a file, to accept or set aside",
 };
 
 const AGG_HINTS: Record<(typeof AGGS)[number], string> = {
@@ -166,6 +172,7 @@ export const VALUE_HINTS: Record<string, Record<string, string>> = {
     tasks: "One row per checkbox task in the notes in from",
     this: "One row: the properties of the note this app sits in",
     expect: "One row per window of each rhythm under expect: rule, window, met",
+    asks: "One row per thing any app asks of you now, as Next lists them: app, text, due",
   },
   fields: Object.fromEntries(FIELD_TYPES.map((t) => [t, FIELD_HINTS[t] ?? ""])),
 };
@@ -198,7 +205,9 @@ function panelKeys(view: string): string[] | undefined {
 }
 
 /** What can be typed as a key here, in the order to offer it. */
-function keysFor(ctx: Context, isComponent: boolean): readonly string[] {
+function keysFor(ctx: Context, isComponent: boolean, isKind: boolean): readonly string[] {
+  // A kind note has only its own top-level keys; its fields are names the person chooses.
+  if (isKind) return ctx.where === "top" ? KIND_KEYS : [];
   switch (ctx.where) {
     case "top": {
       const own = ctx.view && !isComponent ? panelKeys(ctx.view) ?? [] : [];
@@ -313,10 +322,10 @@ function ranked(words: readonly string[], prefix: string): string[] {
  * typed; with `own`, those include the app's own sources and fields. Nothing when the position
  * takes free text, or the one thing left is what is already typed.
  */
-export function suggestionsFor(ctx: Context, isComponent: boolean, own?: OwnNames): Suggestion[] {
-  const values = valuesFor(ctx, isComponent, own);
+export function suggestionsFor(ctx: Context, isComponent: boolean, own?: OwnNames, isKind = false): Suggestion[] {
+  const values = isKind ? {} : valuesFor(ctx, isComponent, own);
   const out: Suggestion[] = ctx.position === "key"
-    ? ranked(keysFor(ctx, isComponent).filter((k) => !ctx.present.includes(k)), ctx.prefix)
+    ? ranked(keysFor(ctx, isComponent, isKind).filter((k) => !ctx.present.includes(k)), ctx.prefix)
       .map((text) => ({ kind: "key", text, hint: (ctx.where === "top" && TOP_HINTS[text]) || KEY_HINTS[text] || "" }))
     : ranked(Object.keys(values), ctx.prefix).map((text) => ({ kind: "value", text, hint: values[text] }));
   return out.length === 1 && out[0].text === ctx.prefix ? [] : out;
@@ -337,7 +346,8 @@ export function completion(s: Suggestion, after: string): string {
 export function suggestionsAt(
   lines: string[], line: number, ch: number, frontmatter?: () => Record<string, unknown> | undefined,
 ): { from: Position; prefix: string; suggestions: Suggestion[] } | undefined {
-  const kind = noteKind(lines);
+  const isKind = isKindNote(lines);
+  const kind = noteKind(lines) ?? (isKind ? "kind" : undefined);
   const ctx = kind && contextAt(lines, line, ch);
   if (!ctx || (ctx.position === "key" && !ctx.prefix)) return undefined;
   const named = ctx.position === "value" && (ctx.key === "source" || (FIELD_KEYS as readonly string[]).includes(ctx.key ?? ""));
@@ -347,6 +357,6 @@ export function suggestionsAt(
     const source = valueBeside(lines, line, ch, "source");
     own = { sources: names.sources, fields: (source !== undefined && names.fields[source]) || {} };
   }
-  const suggestions = suggestionsFor(ctx, kind === "component", own);
+  const suggestions = suggestionsFor(ctx, kind === "component", own, isKind);
   return suggestions.length ? { from: ctx.from, prefix: ctx.prefix, suggestions } : undefined;
 }

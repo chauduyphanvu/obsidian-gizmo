@@ -179,6 +179,12 @@ export function noteKind(raw: string[]): "app" | "component" | undefined {
   return topKey(fm, "component") !== undefined ? "component" : undefined;
 }
 
+/** Whether the note is a kind, from its top-level keys as typed: `kind` with `fields`, and neither `app` nor `component`. */
+export function isKindNote(raw: string[]): boolean {
+  const fm = frontmatter(raw);
+  return !!fm && noteKind(raw) === undefined && topKey(fm, "kind") !== undefined && topKey(fm, "fields") !== undefined;
+}
+
 type Hop = { key: string } | { item: true };
 
 /**

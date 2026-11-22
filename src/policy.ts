@@ -52,7 +52,7 @@ export interface Release {
 /** The policy as read from its note: labels for data, what each place may receive, exceptions. */
 export interface Policy {
   labels: LabelRule[];
-  /** Hosts and the places named by word (notify, pin, answer, images, gizmod), each with what it may receive. */
+  /** Hosts and the places named by word (notify, pin, answer, images, gizmod, share), each with what it may receive. */
   sinks: Record<string, Label>;
   release: Release[];
   /** The label of what you type into an app's text inputs and forms. */
@@ -60,11 +60,11 @@ export interface Policy {
 }
 
 /** Places named by a word rather than a host. */
-export const SINK_WORDS = ["notify", "pin", "answer", "images", "gizmod"] as const;
+export const SINK_WORDS = ["notify", "pin", "answer", "images", "gizmod", "share"] as const;
 export type SinkWord = (typeof SINK_WORDS)[number];
 
 /** What each place named by a word may receive when the policy doesn't say. */
-const DEFAULT_SINKS: Record<SinkWord, Label> = { notify: "personal", pin: "personal", answer: "personal", images: "public", gizmod: "personal" };
+const DEFAULT_SINKS: Record<SinkWord, Label> = { notify: "personal", pin: "personal", answer: "personal", images: "public", gizmod: "personal", share: "personal" };
 
 /** What a note's data is when no rule labels it: it's yours, but not secret. */
 export const DEFAULT_LABEL: Label = "personal";

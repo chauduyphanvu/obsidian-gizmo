@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { captureDate, captureLine, captureTargets, captureTime, completed, parseFields, parseLine, receipt, type CaptureApp } from "../src/capture.ts";
+import { captureDate, captureLine, captureTargets, captureTime, completed, parseFields, parseLine, receipt, swallowed, type CaptureApp } from "../src/capture.ts";
 import { readSpec } from "../src/spec.ts";
 import { fakeBackground, savedAt } from "./support/fakes.ts";
 
@@ -47,6 +47,26 @@ test("a text field before others takes one word, or a quoted value; name=value f
   assert.deepEqual(ok('trip "flat white" 4.5 yday 8am yes').params, { item: "flat white", local: "4.5", on: "2026-11-18", at: "08:00", paid: "true" });
   assert.deepEqual(ok('trip local=3 item="tram ticket"').params, { item: "tram ticket", local: "3" });
   assert.deepEqual(ok("spend note=parking 6 transport").params, { amount: "6", category: "transport", note: "parking" });
+});
+
+test("a text field before others takes the rest of the line when the word after it can't be the next field's value", () => {
+  const spend = app("Kinds/Spend.md", { kind: "spend", shortcut: "spend", fields: { amount: "number", category: ["food", "travel"], note: "text", local: "number", trip: "text" } });
+  const index = captureTargets([spend]);
+  const read = (line: string) => {
+    const r = parseLine(line, index, NOW);
+    assert.ok(r.ok, `${line}: ${"error" in r ? r.error : ""}`);
+    return r;
+  };
+  assert.deepEqual(read("spend 14.5 food lunch with friends").params, { amount: "14.5", category: "food", note: "lunch with friends" });
+  assert.deepEqual(read("spend 40 food dinner for 2").params, { amount: "40", category: "food", note: "dinner for 2" }, "a number further on is part of the words");
+  assert.deepEqual(read("spend 14.5 food lunch with friends @yday").params?.note, "lunch with friends");
+  // The word after it fits the next field: one word, as before; quoted, it is one value whatever follows.
+  assert.deepEqual(read("spend 12 travel taxi 1800 Tokyo").params, { amount: "12", category: "travel", note: "taxi", local: "1800", trip: "Tokyo" });
+  assert.deepEqual(read('spend 14.5 food "lunch with friends" 12').params, { amount: "14.5", category: "food", note: "lunch with friends", local: "12" });
+  assert.deepEqual(read("spend 14.5 food lunch with friends trip=Tokyo").params, { amount: "14.5", category: "food", note: "lunch with friends", trip: "Tokyo" });
+  // The fields after the words can only be given by name now.
+  assert.equal(read("spend 14.5 food lunch with friends").next, "local=… or trip=… by name");
+  assert.equal(read("spend 14.5 food lunch").next, "local: a number");
 });
 
 test("dates: words, offsets, weekdays and calendar dates, all from today", () => {
@@ -298,4 +318,59 @@ test("a capture link that can't be read is told only in Obsidian, and runs nothi
   await t.bg.runCaptureLink({ key: "ck1", line: "spend lots", "x-error": "shortcuts://x-callback-url/err" });
   assert.deepEqual(t.notices, ["A capture link couldn't run “spend lots”: amount must be a number, not “lots”"]);
   assert.deepEqual(t.out.opened, []);
+});
+
+test("a line run quietly tells nothing itself and gives back what it would have said, for the window that ran it to say once", async () => {
+  const t = fakeBackground({
+    "Apps/Chores.md": { fm: { app: "c", panels: [
+      { view: "form", title: "Did a chore", fields: { task: "text" }, save: "chores", label: "Log", shortcut: "did" },
+      { view: "form", title: "Water", fields: { glasses: "number" }, save: "water", shortcut: "drank", notify: "Drank {glasses}" },
+      { view: "checklist", items: ["milk", "eggs"], save: "shop", shortcut: "shop" },
+    ] } },
+  });
+  await t.bg.start();
+  const did = await t.bg.capture("did vacuum", undefined, true);
+  assert.deepEqual([did.ok, did.told, t.notices], [true, "Chores: Log done", []]);
+  const drank = await t.bg.capture("drank 2", undefined, true);
+  assert.deepEqual([drank.ok, drank.told, t.notices], [true, "Drank 2", []], "its own notify, once");
+  const shop = await t.bg.capture("shop milk", undefined, true);
+  assert.deepEqual([shop.ok, shop.told, t.notices], [true, "Chores: ticked milk", []]);
+  // Not quiet, as a link or a command runs: told as before.
+  await t.bg.capture("did dishes");
+  assert.deepEqual(t.notices, ["Chores: Log done"]);
+});
+
+test("a text field doesn't take the rest of the line over a later word meant for a later field: a choice a typo away, or a number with a letter in it, is told", () => {
+  const chore = app("Kinds/Chore.md", { kind: "chore", shortcut: "chore", fields: { task: "text", who: ["Alex", "Sam"], area: ["kitchen", "yard"] } });
+  const bp = app("Apps/Meds.md", { app: "Meds", panels: [{ view: "form", title: "BP", save: "bp", shortcut: "bp", fields: { arm: "text", systolic: "number", diastolic: "number" } }] });
+  const spend = app("Kinds/Spend.md", { kind: "spend", shortcut: "spend", fields: { amount: "number", category: ["food", "travel"], note: "text", local: "number", trip: "text" } });
+  const index = captureTargets([chore, bp, spend]);
+  const read = (line: string) => parseLine(line, index, NOW);
+  assert.deepEqual(read("chore dishes Sma kitchen"), { ...read("chore dishes Sma kitchen"), ok: false, error: "who must be one of Alex, Sam" });
+  assert.deepEqual(read("bp left 13O 85"), { ...read("bp left 13O 85"), ok: false, error: "systolic must be a number, not “13O”" });
+  assert.deepEqual(read("chore wash dishes kitchen"), { ...read("chore wash dishes kitchen"), ok: false }, "an exact choice further on isn't kept as text either");
+  const fine = read("chore dishes Sam kitchen");
+  assert.ok(fine.ok && fine.rest === undefined);
+  assert.deepEqual(fine.params, { task: "dishes", who: "Sam", area: "kitchen" });
+  // Words that only look like words still go together, as before.
+  for (const [line, note] of [["spend 14.5 food lunch with friends", "lunch with friends"], ["spend 40 food dinner for 2", "dinner for 2"], ["spend 9 food salad bar", "salad bar"]]) {
+    const r = read(line);
+    assert.ok(r.ok, line);
+    assert.equal(r.params?.note, note);
+    assert.equal(r.rest, "note", "and say that they did, for where nothing is shown first");
+  }
+  assert.equal(swallowed(read("spend 14.5 food lunch with friends")), "“lunch with friends” would all go in note; put it in quotes, or give local=… or trip=… by name");
+  assert.equal(swallowed(read('spend 14.5 food "lunch with friends"')), undefined);
+  assert.equal(swallowed(read("spend 14.5 food lunch")), undefined, "one word is no guess");
+});
+
+test("a keyed capture link, which runs without showing what it saves, refuses a line whose text took the rest of it rather than guess", async () => {
+  const t = fakeBackground({ "Apps/Budget.md": { fm: { app: "b", panels: [{ view: "form", alias: "spend", save: "spend", fields: { amount: "number", note: "text", local: "number" } }] } } });
+  t.captureKeys.set("ck1", { spend: "Apps/Budget.md#spend" });
+  await t.bg.start();
+  await t.bg.runCaptureLink({ key: "ck1", line: "spend 6 lunch with friends" });
+  assert.equal(t.f.files.get("Apps/Budget data.md"), undefined);
+  assert.deepEqual(t.notices, ["A capture link couldn't run “spend 6 lunch with friends”: “lunch with friends” would all go in note; put it in quotes, or give local=… by name"]);
+  await t.bg.runCaptureLink({ key: "ck1", line: 'spend 6 "lunch with friends"' });
+  assert.deepEqual((t.f.files.get("Apps/Budget data.md")?.fm?.spend as Record<string, unknown>[]).map((r) => r.note), ["lunch with friends"]);
 });

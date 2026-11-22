@@ -3,12 +3,13 @@ import { test } from "node:test";
 import { checkPanel } from "../src/spec.ts";
 import { KEY_TYPES } from "../src/keys.ts";
 import { VIEW_DEFS } from "../src/views/registry.ts";
+import { kindIn } from "./support/fakes.ts";
 
 for (const def of VIEW_DEFS) {
   test(`${def.id}: every example checks out`, () => {
     assert.ok(def.examples.length > 0, "needs at least one example");
     for (const ex of def.examples) {
-      assert.deepEqual(checkPanel(ex.panel, true).errors, ex.errors ?? [], JSON.stringify(ex.panel));
+      assert.deepEqual(checkPanel(ex.panel, true, kindIn(ex.panel)).errors, ex.errors ?? [], JSON.stringify(ex.panel));
     }
   });
 

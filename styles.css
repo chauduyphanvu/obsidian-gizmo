@@ -269,6 +269,10 @@
 .gizmo .gz-table tr.gz-ledger-group th { padding: 18px 0 0; border: 0; color: var(--text-muted); font-size: 12.5px; font-weight: 600; font-variant-numeric: tabular-nums; }
 .gizmo .gz-table tbody > tr.gz-ledger-group:first-child th { padding-top: 0; }
 .gizmo .gz-ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--size-4-3); margin: 0 var(--size-4-2); padding-bottom: 6px; border-bottom: 1px solid var(--background-modifier-border); }
+/* A total under a column before the last: the heading ends at that column, and its line runs on unbroken under the rest. */
+.gizmo .gz-table tr.gz-ledger-group:has(> th + th) > th { vertical-align: bottom; }
+.gizmo .gz-table tr.gz-ledger-group th:has(+ th) .gz-ledger-head { margin-right: 0; padding-right: var(--size-4-2); }
+.gizmo .gz-table tr.gz-ledger-group th + th .gz-ledger-head { margin-left: 0; }
 
 /* A list that is a ledger: the same headings, items as rows without bullets. */
 .gizmo .gz-list.gz-ledger { list-style: none; padding-left: 0; font-size: 14px; }
@@ -293,9 +297,10 @@
 
 /* An edited cell reads as text, in its column's colour and size; under the pointer its row outlines
    the fields, and the one pointed at (or with focus) is a field. Its text lines up with the column's, the field's edge reaching into the
-   cell's padding. */
+   cell's padding. Its own padding is set here because Obsidian's phone layout pads inputs 16px a side, which leaves a narrow
+   number column room for two digits. */
 .gizmo .gz-table input.gz-edit:not([type="checkbox"]),
-.gizmo .gz-table textarea.gz-edit { width: calc(100% + 2 * var(--size-4-2)); min-width: 4em; margin: 0 calc(-1 * var(--size-4-2)); }
+.gizmo .gz-table textarea.gz-edit { width: calc(100% + 2 * var(--size-4-2)); min-width: 4em; margin: 0 calc(-1 * var(--size-4-2)); padding-left: var(--size-4-2); padding-right: var(--size-4-2); }
 .gizmo .gz-table select.gz-edit { margin-left: calc(-1 * var(--size-4-2)); }
 .gizmo .gz-table .gz-edit:not([type="checkbox"]),
 .gizmo .gz-rowcard .gz-edit:not([type="checkbox"]) { background-color: transparent; border-color: transparent; box-shadow: none; }
@@ -846,6 +851,7 @@
   .gizmo button.gz-sheet-close { width: 44px; height: 44px; }
   .gizmo button.gz-addline-more { min-height: 44px; }
   .gizmo button.gz-addline-go { min-height: 44px; }
+  .gizmo.gz-next .gz-next-buttons button { min-height: 44px; padding: 0 18px; }
   /* The track takes a touch 10 px above and below its line, over the scale under it, with room kept
      above for the row over it. */
   .gizmo .gz-rail .gz-rail-track { margin-top: 13px; }
@@ -1035,8 +1041,8 @@ button.gz-lens-toggle {
 /* == rail: the time rail under the title == */
 /* Every change the app made in 30 days is a tick on a line; the handle stands at the time shown. */
 .gizmo .gz-rail { margin-top: 20px; }
-/* The past's banner, saying what can't be shown as it was, stands a little apart from the rail. */
-.gizmo .gz-rail-slot:has(+ .gz-past) .gz-rail { margin-bottom: 16px; }
+/* A card under the rail (the past's banner, rows to check, a hand edit) stands a little apart from its dates. */
+.gizmo .gz-rail-slot:has(+ .gz-card) .gz-rail { margin-bottom: 16px; }
 /* Beside the rail, which names the moment shown, the banner only says what that means. */
 .gizmo .gz-header:has(.gz-rail) .gz-past-when { display: none; }
 .gizmo .gz-header:has(.gz-rail) .gz-past-text::first-letter { text-transform: uppercase; }
@@ -1356,6 +1362,8 @@ button.gz-lens-toggle {
 .gizmo .gz-map-app ul, .gizmo .gz-map-writers ul { margin: var(--size-4-1) 0 0; padding-left: 1.2em; }
 .gizmo .gz-map-acts, .gizmo .gz-map-last { margin-top: var(--size-4-2); }
 .gizmo .gz-map-shortcut .gz-map-actions { margin-left: var(--size-4-2); }
+.gizmo .gz-map-writer-list li { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); padding: var(--size-2-1) 0; }
+.gizmo.gz-share input[type="text"] { width: 100%; margin: var(--size-4-1) 0 var(--size-4-2); }
 .gizmo .gz-map-shortcut .gz-new { margin-right: var(--size-4-1); }
 .gizmo.gz-share .gz-effects li { color: var(--text-normal); }
 .gizmo.gz-dry .gz-dry-fields { display: flex; flex-wrap: wrap; gap: var(--size-4-2) var(--size-4-4); margin-bottom: var(--size-4-2); }
@@ -1368,10 +1376,38 @@ button.gz-lens-toggle {
 .gizmo.gz-capture .gz-capture-hint { margin: var(--size-4-2) 0 var(--size-4-1); min-height: 1.4em; }
 .gizmo.gz-capture .gz-capture-chips { display: flex; flex-wrap: wrap; gap: var(--size-4-1); margin-bottom: var(--size-4-2); }
 .gizmo.gz-capture .gz-effects:empty { display: none; }
+/* The ask line: the answer drawn as its panel, the YAML it stands for under it, and Keep */
+.modal.gz-capture-modal.gz-asking { width: min(820px, 94vw); }
+.gizmo.gz-capture .gz-ask { margin: var(--size-4-1) 0 var(--size-4-3); }
+.gizmo.gz-capture .gz-ask-help { margin: 0; padding-left: 1.2em; color: var(--text-muted); font-size: var(--font-ui-small); }
+.gizmo.gz-capture .gz-ask-body { display: grid; gap: var(--size-4-3); transition: opacity 150ms; }
+.gizmo.gz-capture .gz-ask-body.is-stale { opacity: 0.45; }
+.gizmo.gz-capture .gz-ask-answer { border: 1px dashed var(--background-modifier-border); border-radius: var(--radius-m); }
+.gizmo.gz-capture .gz-ask-answer > .gizmo { padding: var(--size-4-3); max-width: none; }
+/* No app title above it, so the answer starts at the top of its box. */
+.gizmo.gz-capture .gz-ask-answer .gz-body > :first-child { margin-top: 0; }
+.gizmo.gz-capture .gz-ask-yaml { margin-top: var(--size-4-1); white-space: pre; overflow-x: auto; user-select: text; }
+/* Next: one ask at a time; its keys act on the window, not on a line, until the line is chosen */
+.gizmo.gz-next:focus { outline: none; }
+.gizmo.gz-next .gz-next-text { margin: var(--size-4-1) 0 var(--size-4-3); font-size: var(--font-ui-medium); font-weight: var(--font-semibold); }
+.gizmo.gz-next .gz-next-empty { margin: var(--size-4-2) 0; color: var(--text-muted); }
+.gizmo.gz-next .gz-next-buttons { margin: var(--size-4-3) 0 var(--size-4-2); }
 .gizmo.gz-activity .gz-activity-focus { background: var(--background-modifier-hover); border-radius: var(--radius-s); }
 
 /* The ledger: a data note edited by hand, and a cell two devices set at once */
 .gizmo .gz-hand-edit { border-color: var(--text-warning); }
+/* A kind's rows read from a file, waiting to be accepted or set aside */
+.gizmo .gz-reconcile-counts { display: flex; flex-wrap: wrap; gap: var(--size-4-1) var(--size-4-4); color: var(--text-muted); font-size: var(--font-ui-small); }
+.gizmo .gz-reconcile-n { font-weight: var(--font-semibold); color: var(--text-normal); font-variant-numeric: tabular-nums; }
+.gizmo .gz-reconcile-rows { list-style: none; padding: 0; }
+/* What a row says wraps in its own box; the buttons keep their width at the right, level with its first line. */
+.gizmo .gz-reconcile-rows li { display: flex; align-items: flex-start; gap: var(--size-4-2); padding: var(--size-4-1) 0; border-top: 1px solid var(--background-modifier-border); }
+.gizmo .gz-reconcile-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; padding-top: var(--size-2-2); }
+.gizmo .gz-reconcile-rows li .gz-actions { flex: none; margin: 0 0 0 auto; }
+/* Narrow, the buttons go under what the row says, so its words keep the width. */
+.gizmo.gz-narrow .gz-reconcile-rows li { flex-wrap: wrap; }
+.gizmo.gz-narrow .gz-reconcile-what { flex-basis: 100%; }
+.gizmo.gz-narrow .gz-reconcile-rows li .gz-actions { margin: 0; }
 .gizmo .gz-conflict {
   margin-left: var(--size-4-1);
   font-size: var(--font-ui-smaller);
@@ -1390,6 +1426,20 @@ button.gz-lens-toggle {
 /* An app as it was, and backtests */
 .gizmo .gz-past { display: flex; align-items: center; gap: var(--size-4-2); border-color: var(--interactive-accent); }
 .gizmo .gz-past-back { margin-left: auto; }
+/* An app shown ahead (What if…): its card lists the what-if rows and what the app's rules would do. */
+.gizmo .gz-ahead { display: block; }
+/* Beside the time rail, which has its own, the card's Back to now isn't shown twice. */
+.gizmo .gz-header:has(.gz-rail) .gz-ahead .gz-past-back { display: none; }
+.gizmo .gz-ahead-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); }
+.gizmo .gz-ahead-pick { display: inline-flex; align-items: center; gap: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-small); }
+.gizmo .gz-ahead-head { margin-top: var(--size-4-3); font-size: var(--font-ui-small); font-weight: 600; color: var(--text-muted); }
+.gizmo .gz-ahead-rows, .gizmo .gz-ahead-lines { margin: var(--size-4-1) 0 0; padding-left: var(--size-4-5); }
+.gizmo .gz-ahead-rows li { display: flex; align-items: center; justify-content: space-between; gap: var(--size-4-2); }
+.gizmo .gz-ahead-body > .gz-muted { margin-top: var(--size-4-2); font-size: var(--font-ui-small); }
+.gizmo .gz-ahead-actions { display: flex; flex-wrap: wrap; gap: var(--size-4-2); margin-top: var(--size-4-3); }
+.gizmo .gz-ahead-said:not(:empty) { display: flex; align-items: center; gap: var(--size-4-2); margin-top: var(--size-4-2); }
+.gizmo .gz-rail-tick.gz-rail-mark { width: 3px; margin-left: -1px; background: var(--interactive-accent); opacity: 0.9; }
+.gizmo .gz-rail.is-ahead .gz-rail-label { color: var(--text-accent); }
 /* In the past a panel that only writes (a button, a form, a checklist) stays in place, faded; it is inert. */
 .gizmo .gz-panel.gz-readonly { opacity: 0.45; }
 .gizmo .gz-activity-then { font-size: var(--font-ui-small); }

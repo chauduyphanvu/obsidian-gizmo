@@ -3,6 +3,7 @@ import { rowIdOf } from "./ledger-store.ts";
 import type { FiredStore } from "./background-fired.ts";
 import type { AppEntry, Background, BackgroundEnv, StatusItem } from "./background.ts";
 import { compileWhere, matches, rowsOf, type Row } from "./data.ts";
+import { alertRowsText } from "./format.ts";
 import { stableJson } from "./hash.ts";
 import type { Then } from "./spec.ts";
 import type { AlertFeed, AlertItem } from "./views/alerts.ts";
@@ -129,7 +130,7 @@ export class Watch {
       this.active.set(key, { appPath: entry.path, app: entry.name, title, text });
       // Told when it turns true, not again until it has been false, a restart between included.
       if (was !== true) {
-        const told = `${entry.name}: ${title} ${matching === undefined ? text : `(${text})`}`;
+        const told = `${entry.name}: ${title}${matching === undefined ? ` ${text}` : `: ${alertRowsText(p, rows!, now)}`}`;
         if (!this.env.quietAlerts?.()) this.say(told);
         if (this.env.runsBackground()) this.env.sink.alert?.({ app: entry.name, panel: title, text: told, label: this.verdictNow(entry)?.alertLabels[panelKey(ps)] });
       }

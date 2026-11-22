@@ -40,7 +40,7 @@ class ActivityModal extends Modal {
   }
 
   private async render(): Promise<void> {
-    const listed = await this.plugin.activity.list(this.app_);
+    const listed = await this.plugin.activity.list(this.app_, this.app_ ? this.plugin.sharedData(this.app_) : []);
     // An entry of ledger events is undone as the ledger says, whichever device undid it.
     const ledger = this.plugin.dataLayer.ledger;
     const paths = new Set(listed.flatMap((e) => eventsOf(e)?.map((x) => x.path) ?? []));

@@ -1,0 +1,13 @@
+---
+trade:
+  - {symbol: "VTI", side: "buy", shares: 20, price: 255.1, at: "2025-03-10T10:05"}
+  - {symbol: "VTI", side: "buy", shares: 15, price: 268.4, at: "2025-06-02T09:45"}
+  - {symbol: "AAPL", side: "buy", shares: 10, price: 225, at: "2025-09-15T11:20"}
+  - {symbol: "AAPL", side: "sell", shares: 5, price: 241.5, at: "2025-11-20T14:10"}
+  - {symbol: "VTI", side: "buy", shares: 10, price: 289.75, at: "2026-02-03T10:00"}
+  - {symbol: "QQQ", side: "buy", shares: 6, price: 512.3, at: "2026-05-12T09:50"}
+  - {symbol: "VTI", side: "sell", shares: 10, price: 304.2, at: "2026-08-18T15:30"}
+  - {symbol: "SPY", side: "buy", shares: 4, price: 618.9, at: "2026-10-01T10:30"}
+  - {symbol: "VTI", side: "buy", shares: 5, price: 310, at: "2026-11-02T10:15", note: "the plan's first tranche"}
+  - {symbol: "QQQ", side: "buy", shares: 4, price: 560, at: "2026-11-09T09:40"}
+---

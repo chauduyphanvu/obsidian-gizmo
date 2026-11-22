@@ -33,6 +33,11 @@ export function aliasShortcut(alias: string): string | undefined {
   return id || undefined;
 }
 
+/** Why a shortcut or alias can't have this name: `what`, or words starting `what if`, which Do… reads as a what-if. */
+export function whatIfProblem(key: "shortcut" | "alias", name: string): string | undefined {
+  return /^what(?:\s+if(?:\s|$)|$)/i.test(name.trim()) ? `${key} can't be "${name}": Do… reads a line that starts with "what if" as a what-if` : undefined;
+}
+
 /**
  * Problems with the keys that make a panel work while its app is closed: `shortcut` (an id for a
  * command and a link), `pin` (to the status bar) and `alert`. A condition on the value is only for
@@ -42,6 +47,8 @@ export function backgroundKeyErrors(p: Panel): string[] {
   return [
     ...(p.shortcut !== undefined && !SHORTCUT.test(p.shortcut) ? ["shortcut must be lowercase letters, digits and -"] : []),
     ...(p.alias !== undefined && !ALIAS.test(p.alias) ? ["alias must be words of letters and digits (with - and '), up to 40 characters"] : []),
+    ...[p.shortcut === undefined ? undefined : whatIfProblem("shortcut", p.shortcut), p.alias === undefined ? undefined : whatIfProblem("alias", p.alias)]
+      .filter((e): e is string => e !== undefined),
     ...(p.pin !== undefined && p.pin !== "status" ? ["pin must be status"] : []),
     ...(typeof p.alert === "string" && p.view !== "number" && p.view !== "progress"
       ? [`alert on a ${p.view} needs a field, e.g. alert: {amount: "> 100"}`] : []),

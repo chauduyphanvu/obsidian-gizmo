@@ -2,13 +2,17 @@ import { noteText, withLine } from "../../src/actions.ts";
 import { ActivityLog, type UndoIO } from "../../src/activity.ts";
 import type { AppEnv } from "../../src/app.ts";
 import { Background, type AlertNotice, type PausedApp } from "../../src/background.ts";
+import type { WriterRecord } from "../../src/background-share.ts";
+import { writersOf } from "../../src/stored.ts";
 import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
 import { DataLayer, type FileInfo, type Host } from "../../src/datalayer.ts";
 import { isAllowed, isAllowedUnder } from "../../src/grants.ts";
 import { ledgerStore, type DataStore } from "../../src/datastore.ts";
 import { policyHash, type Policy } from "../../src/policy.ts";
 import { tickLine } from "../../src/sources/tasks.ts";
-import { storeTarget } from "../../src/store.ts";
+import { isKindLink } from "../../src/sources/kind.ts";
+import type { Panel } from "../../src/spec.ts";
+import { defaultDataPath, isKind, storeTarget } from "../../src/store.ts";
 import { parseYaml } from "./yaml.ts";
 import { stampOf, toTime } from "../../src/time.ts";
 
@@ -358,11 +362,16 @@ export function fakeBackground(
   const policy = { rules: opts.policy };
   /** Where the person is, as the beats say: the zone rhythms' deadlines are worked out in; this machine's own when undefined. */
   const where = { zone: undefined as string | undefined };
+  /** What this vault decided about writers of shared kinds, as data.json keeps it; and this device's share file. */
+  const writers: Record<string, WriterRecord> = {};
+  const shareState = { text: undefined as string | undefined };
+  /** The other devices' share files, as text, for a device taking over. */
+  const otherShareStates: string[] = [];
   const bg = new Background({
     data: t.data,
     frontmatter: t.env.frontmatter,
     notes: t.env.notes,
-    appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined).map(([path]) => path),
+    appPaths: () => [...t.f.files].filter(([, n]) => n.fm?.app !== undefined || isKind(n.fm)).map(([path]) => path),
     isGranted: (path, wanted, asked) => !denied.has(path)
       && (!opts.seen || (asked ? isAllowedUnder(t.grants, path, asked, true) : isAllowed(t.grants, path, wanted, true))),
     granted: (path) => (opts.seen && Object.hasOwn(t.grants, path) ? [...t.grants[path]] : undefined),
@@ -371,6 +380,8 @@ export function fakeBackground(
     actionDeps: (appPath, dataPath, actor) => ({
       now, dataPath, appPath,
       store: t.env.store!(dataPath, appPath),
+      kindStore: (kindPath) => t.env.store!(defaultDataPath(kindPath), kindPath),
+      frontmatter: t.env.frontmatter,
       writeFrontmatter: t.env.writeFrontmatter,
       appendLine: t.env.appendLine,
       createNote: t.env.createNote,
@@ -382,6 +393,13 @@ export function fakeBackground(
     now,
     triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },
     otherTriggers: async () => [...others],
+    shareState: { read: async () => shareState.text, write: async (text) => { shareState.text = text; } },
+    otherShareStates: async () => [...otherShareStates],
+    writers: (kindPath) => writersOf({ writers }, kindPath),
+    setWriter: (kindPath, writer, record) => {
+      if (record) writers[`${kindPath}\n${writer}`] = record;
+      else delete writers[`${kindPath}\n${writer}`];
+    },
     renamed: (from, to) => { out.renamed.push([from, to]); },
     dropped: (path) => { out.dropped.push(path); },
     linkKey: (path, shortcut, create) => {
@@ -429,6 +447,19 @@ export function fakeBackground(
     where,
     triggers,
     others,
+    writers,
+    shareState,
+    otherShareStates,
     advance: (ms: number) => { clock += ms; t.f.advance(ms); },
   };
+}
+
+/**
+ * What expanding a panel would add for a source that links to a kind, for checking a view's example
+ * alone, with no vault to find the kind in: `[[Spend]]` is a kind of that name.
+ */
+export function kindIn(raw: Record<string, unknown>): Partial<Panel> {
+  if (!isKindLink(raw.source)) return {};
+  const name = raw.source.trim().slice(2, -2);
+  return { kind: { path: `Kinds/${name}.md`, name: name.toLowerCase() } };
 }

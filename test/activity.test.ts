@@ -272,6 +272,19 @@ test("each change reads as a sentence", () => {
   ]);
 });
 
+test("a saved row's numbers read as they were saved, not rounded", () => {
+  const said = ([
+    { kind: "row-added", path: "Kinds/Spend data.md", list: "spend", row: { amount: 11.99, note: "SPOTIFY USA" } },
+    { kind: "row-added", path: "Kinds/Spend data.md", list: "spend", row: { amount: 132.47, note: "HARDWARE DEPOT" } },
+    { kind: "row-added", path: "Kinds/Spend data.md", list: "spend", row: { amount: 1450, note: "OAKWOOD" } },
+  ] satisfies Entry["changes"]).map(describeChange);
+  assert.deepEqual(said, [
+    "Saved amount 11.99, note SPOTIFY USA to spend in Spend data",
+    "Saved amount 132.47, note HARDWARE DEPOT to spend in Spend data",
+    "Saved amount 1450, note OAKWOOD to spend in Spend data",
+  ]);
+});
+
 test("another device's entry kept as ledger events can be undone here, and shows undone wherever it was undone", async () => {
   const fm = { app: "W", panels: [{ view: "button", label: "Coffee", save: "cups" }] };
   const t = open(fm);

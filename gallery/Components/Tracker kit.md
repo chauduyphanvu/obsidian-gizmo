@@ -1,9 +1,9 @@
 ---
 component: Log a number each time I measure it, and see this week against the last and the trend toward my goal
 params:
-  what: weight
-  unit: kg
-  goal: 75
+  what: practice
+  unit: minutes
+  goal: 30
 panels:
   - view: form
     title: Log my $what
@@ -48,13 +48,14 @@ panels:
     format: {at: date}
     edit: [value, note]
 ---
-A whole app in one component, for anything you measure now and then and want to see move toward a
-goal: your weight, how long you slept, your resting heart rate. Use it with the word for what you
-measure, its unit and your goal:
+A whole app in one component, for one number you log now and then and want to see move toward a
+goal: the minutes you practise, the pages you read, the kilometres you run. Use it with the word for
+what you log, its unit and your goal, as Practice does:
 
-    app: Log my weight and watch the trend toward my goal
+    app: Log how long I practise and see this week against the last and the trend toward my goal
     use: "[[Tracker kit]]"
-    with: {what: weight, unit: kg, goal: 75}
+    with: {what: practice, unit: minutes, goal: 30}
 
-Each entry is saved in the app's data note, in a list named after what you measure, so one app can
-use the kit twice for two things. It asks for nothing. Opened on its own it tracks weight, its default.
+Each entry is saved in the app's data note, in a list named after what you log, so one app can use
+the kit twice for two things. It asks for nothing. Opened on its own it tracks practice, its
+default. For several measures of yourself kept together, with targets and an import, see Vitals.
