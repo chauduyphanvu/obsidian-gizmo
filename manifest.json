@@ -3,7 +3,7 @@
   "name": "Gizmo",
   "version": "0.4.0",
   "minAppVersion": "1.11.4",
-  "description": "Turn a note's frontmatter into a working app.",
+  "description": "Turn notes into personal apps with buttons, forms, charts, boards, calendars, timelines, and Bases views. Plain Markdown, no code.",
   "author": "Vu Chau",
   "isDesktopOnly": false
 }
