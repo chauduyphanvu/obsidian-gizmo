@@ -51,13 +51,13 @@ export default async function map(t) {
       await na.sleep(500);
       const state = await na.until(() => {
         const c = [...document.querySelectorAll(".workspace-leaf.mod-active .gz-map .gz-map-app")].find((c) => c.querySelector(".gz-title")?.textContent === "Meds");
-        return c?.querySelector(".gz-map-state")?.textContent === "Never opened" && "Never opened";
+        return c?.querySelector(".gz-map-state")?.textContent === "Not allowed: you revoked it" && "Not allowed: you revoked it";
       }, 3000);
       const reopened = await na.open("Apps/Meds");
       const back = await na.until(() => pinned(), 5000);
       return { before, pinGone: !!pinGone, wrote: count() !== doses, notices, state, prompt: reopened.prompt, back: !!back };`);
     expect(r.before && r.pinGone && !r.wrote && r.notices.includes("Open Meds once to allow it"), r);
-    expect(r.state === "Never opened" && r.prompt?.length && r.back, r);
+    expect(r.state === "Not allowed: you revoked it" && r.prompt?.length && r.back, r);
     return r.notices.join(" | ");
   });
 

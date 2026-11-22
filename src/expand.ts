@@ -5,7 +5,7 @@ import { compileFormula, computeErrors } from "./formula.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, basename, isSet, storeTarget } from "./store.ts";
 import {
-  InputRef, NAME, THIS, fillParams, firstRef, namesIn, nearMisses, parseInputs, refsIn, refusedPlaces, secretIds, stringsIn, unsafeValue, type Kit,
+  InputRef, NAME, THIS, didYouMean, fillParams, firstRef, namesIn, nearMisses, parseInputs, refsIn, refusedPlaces, secretIds, stringsIn, unsafeValue, type Kit,
 } from "./template.ts";
 import {
   COMMON_KEYS, DATA_KEYS, GROUP_KEYS, INTERNAL_KEYS, KEY_TYPES, checkFields, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey,
@@ -127,7 +127,7 @@ export function readBlocks(value: unknown, errors: string[], names: ReadonlySet<
     const block: Record<string, unknown> = {};
     for (const [key, v] of Object.entries(raw)) {
       if (!BLOCK_KEYS.includes(key)) {
-        errors.push(`${at}: ${key in KEY_TYPES ? `"${key}" belongs on the panel, not in data` : `unknown key "${key}"`}`);
+        errors.push(`${at}: ${key in KEY_TYPES ? `"${key}" belongs on the panel, not in data` : `unknown key "${key}"${didYouMean(key, BLOCK_KEYS)}`}`);
         continue;
       }
       if (v === null || v === undefined) continue;

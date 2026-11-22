@@ -27,6 +27,8 @@ import type { LensIndex } from "./lenses.ts";
 import { registerCaptureCommand } from "./capture-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
+import { registerNewApp } from "./new-app-command.ts";
+import { openAppPicker, registerOpenApp } from "./open-app-command.ts";
 import { newLinkKey, shortcutId } from "./links.ts";
 import { GizmoSettings } from "./settings.ts";
 import { registerShareCommands } from "./share-command.ts";
@@ -55,6 +57,8 @@ export default class GizmoPlugin extends Plugin {
   private grantListeners = new Set<() => void>();
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
+  /** The "Show the app" action in the header of each tab showing an app note's text. */
+  private showAppActions = new WeakMap<MarkdownView, HTMLElement>();
   private unloading = false;
 
   /** The settings in use. */
@@ -90,6 +94,7 @@ export default class GizmoPlugin extends Plugin {
       this.dataLayer.fileChanged(file.path);
       // The map says when the policy note no longer matches what was applied.
       if (isPolicyPath(file.path)) this.grantsChanged();
+      this.syncShowAppActions();
     }));
     // Notes that change reach the data layer through the metadata event above; any other file only through here.
     this.registerEvent(this.app.vault.on("modify", (file) => {
@@ -103,6 +108,9 @@ export default class GizmoPlugin extends Plugin {
 
     this.routeAppNotes();
     this.app.workspace.onLayoutReady(() => this.openAppsAsApps());
+    this.app.workspace.onLayoutReady(() => this.syncShowAppActions());
+    this.registerEvent(this.app.workspace.on("layout-change", () => this.syncShowAppActions()));
+    this.registerEvent(this.app.workspace.on("file-open", () => this.syncShowAppActions()));
     // A delete may be half of a rename another device made, arriving by sync: what is kept for the
     // app waits (see identity.ts), and data.json isn't written for what another device did.
     this.registerEvent(this.app.vault.on("delete", (file) => {
@@ -126,6 +134,9 @@ export default class GizmoPlugin extends Plugin {
     registerCaptureCommand(this);
     registerPolicyCommand(this);
     registerShareCommands(this);
+    registerOpenApp(this);
+    registerNewApp(this);
+    this.addRibbonIcon("layout-dashboard", "Open an app", () => openAppPicker(this));
     registerActivity(this);
     registerBacktest(this);
     registerMap(this);
@@ -137,10 +148,7 @@ export default class GizmoPlugin extends Plugin {
       checkCallback: (checking) => {
         const view = this.app.workspace.getActiveViewOfType(MarkdownView);
         if (!view?.file || !this.isApp(view.file)) return false;
-        if (!checking) {
-          this.sourceLeaves.delete(view.leaf);
-          void view.leaf.setViewState({ type: VIEW_TYPE, state: { file: view.file.path } });
-        }
+        if (!checking) void this.showApp(view);
         return true;
       },
     });
@@ -170,6 +178,7 @@ export default class GizmoPlugin extends Plugin {
     this.dataLayer?.dispose();
     // Without this, open app tabs turn into empty placeholders when the plugin is turned off.
     this.unloading = true;
+    this.syncShowAppActions();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) {
       const file = (leaf.view as AppView).file;
       if (file) void leaf.setViewState({ type: "markdown", state: { file: file.path } });
@@ -261,18 +270,83 @@ export default class GizmoPlugin extends Plugin {
   }
 
   /**
-   * Shows the note's source with the cursor at the start of a line, which is scrolled into view.
+   * Shows an app note's YAML as text for the app shown in `from`: in a tab already showing the
+   * note's text, else in a new one beside the app, which stays in view and redraws as each edit is
+   * saved. A phone has no room beside it, so there the app's own tab turns into the source; an app
+   * in a sidebar gets its source in a tab of the main area. Gives the tab the source is in.
    */
-  async showSourceAt(leaf: WorkspaceLeaf, file: TFile, line: number): Promise<void> {
+  async editSource(from: WorkspaceLeaf, file: TFile): Promise<WorkspaceLeaf> {
+    const { workspace } = this.app;
+    const open = workspace.getLeavesOfType("markdown").find((l) => {
+      const { state } = l.getViewState();
+      return state?.file === file.path && state.mode === "source";
+    });
+    if (open) {
+      await workspace.revealLeaf(open);
+      if (open.getViewState().state?.source !== true) await this.showSource(open, file);
+      workspace.setActiveLeaf(open, { focus: true });
+      return open;
+    }
+    const root = from.getRoot();
+    const leaf = Platform.isPhone ? from
+      : root === workspace.leftSplit || root === workspace.rightSplit ? workspace.getLeaf("tab")
+      : workspace.createLeafBySplit(from, "vertical");
     await this.showSource(leaf, file);
+    return leaf;
+  }
+
+  /**
+   * Shows the note's source for the app in `from`, as editSource does, with the cursor on a line,
+   * at its start or at `ch`, scrolled into view.
+   */
+  async showSourceAt(from: WorkspaceLeaf, file: TFile, line: number, ch = 0): Promise<void> {
+    const leaf = await this.editSource(from, file);
     const view = leaf.view;
     if (!(view instanceof MarkdownView)) return;
     // The editor may still be loading the note's text.
     for (let tries = 0; tries < 20 && view.editor.lineCount() <= line; tries++) await new Promise((r) => window.setTimeout(r, 50));
-    const at = { line, ch: 0 };
+    const at = { line, ch };
     view.editor.setCursor(at);
     view.editor.scrollIntoView({ from: at, to: at }, true);
     view.editor.focus();
+  }
+
+  /**
+   * From a tab showing an app note's text: back to the app when another tab shows it (beside it, as
+   * Edit source leaves it), closing this one; else this tab shows the app.
+   */
+  private async showApp(view: MarkdownView): Promise<void> {
+    const file = view.file;
+    if (!file || !this.isApp(file)) return;
+    const { workspace } = this.app;
+    const shown = workspace.getLeavesOfType(VIEW_TYPE).find((l) => l.getViewState().state?.file === file.path);
+    if (shown) {
+      view.leaf.detach();
+      await workspace.revealLeaf(shown);
+      workspace.setActiveLeaf(shown, { focus: true });
+      return;
+    }
+    this.sourceLeaves.delete(view.leaf);
+    await view.leaf.setViewState({ type: VIEW_TYPE, state: { file: file.path } });
+  }
+
+  /**
+   * Gives each tab showing an app note's text (Source mode, Live Preview or Reading) a "Show the app"
+   * action, once, and takes it from a tab whose note isn't an app, or no longer is.
+   */
+  private syncShowAppActions(): void {
+    for (const leaf of this.app.workspace.getLeavesOfType("markdown")) {
+      const view = leaf.view;
+      if (!(view instanceof MarkdownView)) continue;
+      const wanted = !this.unloading && !!view.file && this.isApp(view.file);
+      const action = this.showAppActions.get(view);
+      if (wanted && !action) {
+        this.showAppActions.set(view, view.addAction("layout-dashboard", "Show the app", () => void this.showApp(view)));
+      } else if (!wanted && action) {
+        action.remove();
+        this.showAppActions.delete(view);
+      }
+    }
   }
 
   /** `opened`: the app must also have been opened in its own tab (see isAllowed); `asked`: under a policy, what it doesn't cover. */

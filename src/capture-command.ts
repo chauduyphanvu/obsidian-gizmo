@@ -4,8 +4,13 @@ import {
 import { handler } from "./handler.ts";
 import { undoMessage } from "./activity.ts";
 import { copyText } from "./host.ts";
-import { captureLine, completed, parseLine, receipt, type Parsed } from "./capture.ts";
+import { captureLine, completed, parseLine, receipt, whenText, type Parsed } from "./capture.ts";
 import type GizmoPlugin from "./main.ts";
+
+/** What a line that can run runs, and for when if not now: `Budget: Spent something at Thu Nov 19, 13:00`. */
+function runs(parsed: Parsed & { ok: true }): string {
+  return `${parsed.target.app}: ${parsed.target.label}${parsed.at ? ` at ${whenText(parsed.at, new Date())}` : ""}`;
+}
 
 /** A notice saying a capture line ran, with Undo for what it changed. */
 export function capturedNotice(plugin: GizmoPlugin, line: string, entryId: string | undefined): void {
@@ -96,7 +101,7 @@ class CaptureModal extends Modal {
     this.hint.empty();
     this.hint.toggleClass("gz-error-text", !parsed.ok && this.input.value.trim() !== "");
     if (!parsed.ok && this.input.value.trim() !== "") this.hint.setText(parsed.next ? `${parsed.error} · ${parsed.next}` : parsed.error);
-    else if (parsed.ok) this.hint.setText(`${parsed.target.app}: ${parsed.target.label}${parsed.next ? ` · next, ${parsed.next}` : ""}`);
+    else if (parsed.ok) this.hint.setText(`${runs(parsed)}${parsed.next ? ` · next, ${parsed.next}` : ""}`);
     else this.hint.setText("Type a shortcut's name, then its values");
     this.chips.empty();
     for (const c of parsed.ok ? [] : parsed.completions.slice(0, 12)) {
@@ -182,7 +187,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
 
   renderSuggestion(s: LineSuggestion, el: HTMLElement): void {
     if (s.kind === "run") {
-      el.createDiv({ cls: "gz-suggest-key", text: `Run in ${s.parsed.target.app}: ${s.parsed.target.label}` });
+      el.createDiv({ cls: "gz-suggest-key", text: `Run in ${runs(s.parsed)}` });
       for (const line of s.effects) el.createDiv({ cls: "gz-suggest-hint", text: line });
     } else if (s.kind === "complete") {
       el.createDiv({ cls: "gz-suggest-key", text: s.text });

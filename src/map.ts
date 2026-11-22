@@ -25,7 +25,7 @@ export interface AppSummary {
   writesSelf: boolean;
 }
 
-export type AppState = "allowed" | "not-opened" | "paused" | "blocked";
+export type AppState = "allowed" | "not-opened" | "revoked" | "paused" | "blocked";
 export type AskGroup = "Reads" | "Fetches" | "Sends" | "Changes" | "Runs";
 export const ASK_GROUPS: readonly AskGroup[] = ["Reads", "Fetches", "Sends", "Changes", "Runs"];
 
@@ -97,10 +97,16 @@ export function everyWords(ms: number): string {
   return minutes === 1 ? "every minute" : `every ${minutes} minutes`;
 }
 
-function stateOf(grants: Record<string, string[]>, key: string, wanted: string[], verdict?: Verdict): AppState {
+/**
+ * `acted`: the activity log holds something the app did. Opening an app leaves a grant, even for one
+ * that asks for nothing, and Revoke takes it away but leaves the app's activity; so an app with
+ * activity and no grant was revoked, and one with neither was never opened.
+ */
+function stateOf(grants: Record<string, string[]>, key: string, wanted: string[], verdict: Verdict | undefined, acted: boolean): AppState {
   if (verdict?.violations.length) return "blocked";
   if (verdict ? isAllowedUnder(grants, key, verdict.asked, true) : isAllowed(grants, key, wanted, true)) return "allowed";
-  return grantedOf(grants, key) === undefined ? "not-opened" : "paused";
+  if (grantedOf(grants, key) !== undefined) return "paused";
+  return acted ? "revoked" : "not-opened";
 }
 
 /**
@@ -141,7 +147,7 @@ export function buildMap(apps: AppSummary[], grants: Record<string, string[]>, l
       path: a.path,
       name: a.name,
       description: a.description,
-      state: stateOf(grants, a.path, a.wanted, a.verdict),
+      state: stateOf(grants, a.path, a.wanted, a.verdict, last !== undefined),
       asks,
       ...(a.verdict && { policy: { violations: a.verdict.violations.map(violationText) } }),
       acts,

@@ -155,9 +155,13 @@ export function sortRows(rows: unknown[], sort: string | undefined): unknown[] {
   return keyed.map((k) => k.row);
 }
 
-/** One value from rows: `share` is the fraction of them that `of` keeps (none of nothing). */
+/**
+ * One value from rows: `share` is the fraction of them that `of` keeps (none of nothing). A sum of
+ * no rows is 0, but rows that all lack the field have no sum: that is more likely a typo than a zero.
+ */
 export function aggregate(rows: unknown[], field: string | undefined, agg: Agg, of?: (row: unknown) => boolean): unknown {
   if (agg === "count") return rows.length;
+  if (agg === "sum" && rows.length === 0) return 0;
   if (agg === "share") return rows.length ? rows.filter(of ?? (() => false)).length / rows.length : undefined;
   const values = rows.map((r) => getPath(r, field));
   if (agg === "first") return values[0];

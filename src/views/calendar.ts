@@ -3,7 +3,7 @@ import { stampParts } from "../time.ts";
 import { display, formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { svg } from "./chart.ts";
-import { groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
+import { groupedTotals, heading, picks, roving, selectable, seriesNames } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
@@ -71,8 +71,12 @@ function daysOf(p: Panel, data: unknown, now: Date): Days {
   };
 }
 
-/** Moves focus between days with the arrow keys; `across` is how many days a step to the right or left is. */
+/**
+ * Makes the days one Tab stop and moves focus between them with the arrow keys; `across` is how many
+ * days a step to the right or left is. Home and End go to the first and last day shown.
+ */
 function arrowKeys(root: Element, across: number, down: number): void {
+  roving(root);
   root.addEventListener("keydown", (e) => {
     const key = (e as KeyboardEvent).key as keyof typeof KEYS;
     const from = (e.target as Element).closest?.("[data-date]")?.getAttribute("data-date");
@@ -108,6 +112,7 @@ function markDay(el: Element, p: Panel, ctx: PanelCtx, days: Days, date: string,
 
 function drawMonth(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: number, month: number): void {
   const grid = el.createDiv({ cls: "gz-cal-grid" });
+  arrowKeys(grid, 1, 7);
   // 5 January 2026 is a Monday.
   for (let i = 0; i < 7; i++) grid.createDiv({ cls: "gz-cal-dow", text: new Date(2026, 0, 5 + i).toLocaleDateString(undefined, { weekday: "short" }) });
   const lead = (new Date(year, month, 1).getDay() + 6) % 7;
@@ -121,7 +126,6 @@ function drawMonth(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: n
     if (v) cell.createSpan({ cls: "gz-cal-val", text: days.show(date) });
     markDay(cell, p, ctx, days, date, today);
   }
-  arrowKeys(grid, 1, 7);
 }
 
 function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: number, width: number): void {
@@ -143,6 +147,9 @@ function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: nu
   const root = svg("svg", {
     width: at(weeks) - GAP, height: TOP + at(7) - GAP, class: "gz-cal-year", role: "group", "aria-label": String(year),
   }, scroller);
+  // Up and down are days here, left and right whole weeks. The keys and the focus are listened for
+  // around the heatmap: Chromium puts an SVG element that listens for the focus in the Tab order.
+  arrowKeys(scroller, 7, 1);
   const today = stampParts(ctx.now).date;
   for (const c of cells) {
     if (c.month) svg("text", { x: at(c.col), y: TOP - 7, class: "gz-heat-month" }, root).textContent = c.month;
@@ -151,12 +158,10 @@ function drawYear(el: HTMLElement, p: Panel, ctx: PanelCtx, days: Days, year: nu
     markDay(rect, p, ctx, days, c.date, today);
     if (c.date > today && !days.step(c.date)) rect.classList.add("gz-future");
   }
-  // Up and down are days here, left and right whole weeks.
-  arrowKeys(root, 7, 1);
   const show = drawCaption(el, p, days, today);
   const dayOf = (e: Event) => (e.target as Element).closest?.("[data-date]")?.getAttribute("data-date");
-  for (const type of ["mouseover", "focusin"]) root.addEventListener(type, (e) => { const date = dayOf(e); if (date) show(date); });
-  for (const type of ["mouseleave", "focusout"]) root.addEventListener(type, () => show(today));
+  for (const [type, on] of [["mouseover", root], ["focusin", scroller]] as const) on.addEventListener(type, (e) => { const date = dayOf(e); if (date) show(date); });
+  for (const [type, on] of [["mouseleave", root], ["focusout", scroller]] as const) on.addEventListener(type, () => show(today));
   // Too narrow for the whole year (a phone), it opens scrolled to show today rather than January.
   const now = cells.find((c) => c.date === today);
   if (now) scroller.scrollLeft = Math.max(0, at(now.col + 1) + 4 * (size + GAP) - width);

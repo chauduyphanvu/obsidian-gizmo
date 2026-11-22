@@ -226,13 +226,15 @@ export default async function interaction(t) {
       await na.open("Scratch/Rooms");
       const el = na.view().contentEl;
       const bars = () => [...el.querySelectorAll(".gz-view-bar path.gz-bar")];
+      // A bar is named by its x, then its value: "kitchen: 2".
+      const room = (b) => b.getAttribute("aria-label").split(":")[0];
       const list = () => na.text(el.querySelector(".gz-view-list"));
       // Composed, the list waits for a pick out of sight.
       const hidden = () => el.querySelector(".gz-view-list").classList.contains("gz-collapsed");
       const waiting = hidden();
-      bars().find((b) => b.getAttribute("aria-label") === "kitchen").dispatchEvent(new MouseEvent("click", { bubbles: true }));
+      bars().find((b) => room(b) === "kitchen").dispatchEvent(new MouseEvent("click", { bubbles: true }));
       await na.sleep(600);
-      const opacity = bars().map((b) => b.getAttribute("aria-label") + " " + getComputedStyle(b).opacity);
+      const opacity = bars().map((b) => room(b) + " " + getComputedStyle(b).opacity);
       const picked = list();
       const shown = !hidden();
       const sheet = el.querySelector(".gz-sheet.is-open");

@@ -2,18 +2,22 @@
  * The side sheet of an app in its own tab: a row, card, bar or day picked in the app opens here,
  * beside it, rather than as a detail under the rows. It shows what was picked (its name, its detail
  * sentence or value, and a record's fields, edited in place where its panel edits them), the panels
- * that read the pick, and the record's actions. One per app; the controller moves the panels in and
- * out, and this draws the rest. It sits in the app's shell but is placed against the tab's content
- * box, so it stays where it is while the app scrolls under it.
+ * that read the pick, and the record's actions. A row of one of the app's own saved lists can also
+ * be moved in time and deleted here. One per app; the controller moves the panels in and out, and
+ * this draws the rest. It sits in the app's shell but is placed against the tab's content box, so it
+ * stays where it is while the app scrolls under it.
  */
 import { getPath, toNumber, type Row } from "./data.ts";
 import { display, labelOf } from "./format.ts";
 import { stableJson } from "./hash.ts";
 import { SHEET_PAD, sheetWidth } from "./layout.ts";
-import type { Panel } from "./spec.ts";
-import { toTime, wallTime } from "./time.ts";
+import { rowIdOf } from "./ledger-store.ts";
+import { ROW_INDEX } from "./sources/list.ts";
+import { isListName, type Panel } from "./spec.ts";
+import { minuteIn, stampOf, toTime, wallTime } from "./time.ts";
+import { sayBelow } from "./views/addline.ts";
 import { itemText } from "./views/board.ts";
-import { detailText, noteLink, rowNote, seriesNames } from "./views/common.ts";
+import { busy, detailText, noteLink, rowNote, seriesNames } from "./views/common.ts";
 import type { PanelCtx, SheetPick } from "./views/registry.ts";
 import { fieldBox, listItem, rowAction, rowFields } from "./views/rows.ts";
 
@@ -43,9 +47,11 @@ export class Sheet {
   private kicker: HTMLElement;
   private body: HTMLElement;
   private shown: Shown | undefined;
+  private closeAll: () => void;
 
-  /** `close` is what the close button does. */
+  /** `close` is what the close button does, and deleting the row shown. */
   constructor(doc: Document, icon: DrawIcon, close: () => void) {
+    this.closeAll = close;
     // Made in the app's own document (a pop-out has its own), and mounted later.
     this.el = doc.createDocumentFragment().createEl("aside", { cls: "gz-sheet", attr: { role: "dialog", "aria-modal": "false", tabindex: "-1" } });
     const top = this.el.createDiv({ cls: "gz-sheet-top" });
@@ -149,23 +155,50 @@ export class Sheet {
     this.el.setAttribute("aria-label", kicker);
     const title = before(this.body.createEl("h2", { cls: "gz-sheet-title" }));
     const fields: ((row: Row) => void)[] = [];
-    const shown = pick.record ? rowFields(p, pick.row) : [];
+    const own = ownRow(o);
+    const shown = shownFields(o);
     if (shown.length) {
       const box = before(this.body.createDiv({ cls: "gz-sheet-fields" }));
       for (const [field, type] of shown) {
         const line = box.createDiv({ cls: "gz-sheet-field" });
-        line.createSpan({ cls: "gz-sheet-label", text: labelOf(p, field) });
-        fields.push(fieldBox(line.createDiv({ cls: "gz-sheet-value" }), p, ctx, pick.row, field, type));
+        const label = labelOf(p, field);
+        line.createSpan({ cls: "gz-sheet-label", text: label });
+        const value = line.createDiv({ cls: "gz-sheet-value" });
+        // Its own list's row moves in time here, unless its panel edits that field its own way.
+        const moves = own && field === "at" && type === undefined && wallTime(pick.row.at) !== undefined;
+        fields.push(moves ? whenBox(value, ctx, pick.row, label) : fieldBox(value, p, ctx, pick.row, field, type));
       }
     }
     const note = rowNote(p, pick.row);
-    if (p.action || note) {
+    const deletes = own && ctx.deleteRow !== undefined;
+    if (p.action || note || deletes) {
       const actions = this.body.createDiv({ cls: "gz-sheet-actions" });
       rowAction(actions, p, ctx, () => this.shown?.pick.row ?? pick.row);
       if (note) noteLink(actions, "Open", note, ctx);
+      if (deletes) this.deleteButton(actions);
     }
     this.shown = { ...o, shape: shapeOf(o), fields, title };
     this.fill();
+  }
+
+  /**
+   * Delete: takes the row shown out of its list, closes the sheet, and says so under the panel it was
+   * picked in, with Undo, as a line says what it saved.
+   */
+  private deleteButton(parent: HTMLElement): void {
+    const b = parent.createEl("button", { cls: "gz-small gz-row-action mod-warning", text: "Delete", attr: { type: "button" } });
+    busy(b, async () => {
+      const s = this.shown;
+      if (!s?.ctx.deleteRow) return;
+      const { p, ctx, pick } = s;
+      // Named while it is still there, and said under its panel, which stays when the row's element goes.
+      const text = `Deleted ${deletedName(p, pick.row, ctx.now)}`;
+      const panel = pick.el.closest<HTMLElement>(".gz-panel");
+      const done = await s.ctx.deleteRow(pick.row);
+      if (!done) return;
+      this.closeAll();
+      if (panel?.isConnected) sayBelow(panel, ctx, text, done.entry);
+    });
   }
 
   /** Writes the title, and the line under it when there is something to say. */
@@ -185,9 +218,82 @@ export class Sheet {
   }
 }
 
-/** What a sheet's fields and actions are drawn from: the panel's keys, the fields shown and how each is edited, and the note it opens. */
+/**
+ * What a sheet's fields and actions are drawn from: the panel's keys, the fields shown and how each
+ * is edited, the note it opens, and whether the row is its own list's.
+ */
 function shapeOf(o: Opened): string {
-  return stableJson([o.p, o.pick.record ? rowFields(o.p, o.pick.row) : [], rowNote(o.p, o.pick.row) ?? null]);
+  return stableJson([o.p, shownFields(o), rowNote(o.p, o.pick.row) ?? null, ownRow(o)]);
+}
+
+/** A record of one of the app's own saved lists, shown as it is now: one the sheet can move in time and delete. */
+function ownRow(o: Opened): boolean {
+  const { p, ctx, pick } = o;
+  if (!pick.record || ctx.readOnly || !isListName(p.source)) return false;
+  return rowIdOf(pick.row) !== undefined || typeof (pick.row as Record<symbol, unknown>)[ROW_INDEX] === "number";
+}
+
+/** A record's fields, as its panel shows them, with when its own list's row happened where the panel leaves that out. */
+function shownFields(o: Opened): [field: string, type?: string | string[]][] {
+  if (!o.pick.record) return [];
+  const fields = rowFields(o.p, o.pick.row);
+  if (ownRow(o) && !fields.some(([f]) => f === "at") && wallTime(o.pick.row.at) !== undefined) fields.push(["at"]);
+  return fields;
+}
+
+/**
+ * When a row of the app's own list happened, as a date and time to move it to: stamped with this
+ * device's offset and written through the panel's edits, so the move is kept and can be undone. A
+ * time still to come is put back, and refused there with why.
+ */
+function whenBox(box: HTMLElement, ctx: PanelCtx, row: Row, label: string): (row: Row) => void {
+  let current = row;
+  const shownAt = (r: Row) => {
+    const t = wallTime(r.at);
+    return t === undefined ? "" : minuteIn(t);
+  };
+  const input = box.createEl("input", { cls: "gz-edit", type: "datetime-local", attr: { "aria-label": label } });
+  input.addEventListener("change", () => {
+    const was = shownAt(current);
+    const t = toTime(input.value);
+    if (t === undefined || input.value === was) {
+      input.value = was;
+      return;
+    }
+    if (t > ctx.now.getTime()) input.value = was;
+    void (async () => {
+      const focused = input.ownerDocument.activeElement === input;
+      input.disabled = true;
+      try {
+        await ctx.editRow(current, "at", stampOf(new Date(t)));
+      } finally {
+        input.disabled = false;
+        if (focused) input.focus();
+      }
+    })();
+  });
+  const show = (r: Row) => {
+    current = r;
+    input.setAttr("max", minuteIn(ctx.now.getTime()));
+    if (input.ownerDocument.activeElement !== input) input.value = shownAt(r);
+  };
+  show(row);
+  return show;
+}
+
+/**
+ * A row as the notice that it was deleted names it: as its list's item or its card says it, else
+ * its first few values as the sheet shows them, and its time only when it has nothing else.
+ */
+function deletedName(p: Panel, row: Row, now: Date): string {
+  if (p.item !== undefined && p.view === "list") return listItem(p, row, now);
+  if (p.item !== undefined && p.view === "board") return itemText(p, row, now);
+  const values = (fields: string[]) => fields.flatMap((f) => {
+    const v = getPath(row, f);
+    return v === undefined || v === null || v === "" ? [] : [display(p, f, v, now, "text")];
+  });
+  const words = values(rowFields(p, row).map(([f]) => f).filter((f) => f !== "at")).slice(0, 3);
+  return (words.length ? words : values(["at"])).join(" · ") || "a row";
 }
 
 /**

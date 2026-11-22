@@ -1,7 +1,7 @@
 // Authoring: error links, the data inspector, key autocomplete, a component's Copy.
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import { NET } from "./apps.mjs";
+import { CLOSE_OPENED, NET, TABS } from "./apps.mjs";
 
 const AUTHORING = `---
 app: Authoring check
@@ -63,12 +63,15 @@ export default async function authoring(t) {
 
   await check("a panel error link opens the source as text with the cursor on that panel and focus in the editor", async () => {
     const r = await run(`
+      ${TABS}
       await na.open("Scratch/Authoring");
       [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith("panel 2")).click();
       await na.sleep(1500);
       const v = na.view();
       const ed = v.editor;
-      return { type: v.getViewType(), source: v.getState().source, cursor: ed?.getCursor(), line: ed?.getLine(ed.getCursor().line), focus: !!document.activeElement?.closest(".cm-content") };`);
+      const out = { type: v.getViewType(), source: v.getState().source, cursor: ed?.getCursor(), line: ed?.getLine(ed.getCursor().line), focus: !!document.activeElement?.closest(".cm-content") };
+      ${CLOSE_OPENED}
+      return out;`);
     expect(r.type === "markdown" && r.source === true && r.cursor.line === 15 && r.cursor.ch === 0 && r.line === "  - view: gauge" && r.focus, r);
     return `line ${r.cursor.line}: ${r.line}`;
   });
@@ -76,14 +79,17 @@ export default async function authoring(t) {
   await check("the data block and input links land on their lines", async () => {
     const lines = [];
     for (const [prefix, want] of [["data.doses", 3], ['input "unused"', 10]]) {
-      // The link left this tab on the source; the command turns it back into the app.
+      // The link opens the source beside the app, closed again after; should this tab be on the source, the command turns it back into the app.
       const r = await run(`
+        ${TABS}
         await na.open("Scratch/Authoring");
         if (na.view().getViewType() === "markdown") { app.commands.executeCommandById("gizmo:open-as-app"); await na.settle(); }
         [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith(${JSON.stringify(prefix)})).click();
         await na.sleep(1500);
         const ed = na.view().editor;
-        return { c: ed.getCursor(), l: ed.getLine(ed.getCursor().line) };`);
+        const at = { c: ed.getCursor(), l: ed.getLine(ed.getCursor().line) };
+        ${CLOSE_OPENED}
+        return at;`);
       lines.push(`${prefix} → ${r.c.line}: ${r.l}`);
       expect(r.c.line === want, lines);
     }
@@ -92,12 +98,15 @@ export default async function authoring(t) {
 
   await check("Broken: the panel 2 link lands on panel 2", async () => {
     const r = await run(`
+      ${TABS}
       await na.open("Apps/Broken");
       const link = [...na.view().contentEl.querySelectorAll("button.gz-error-link")].find((b) => b.textContent.startsWith("panel 2"));
       link.click();
       await na.sleep(1500);
       const ed = na.view().editor;
-      return { text: link.textContent, state: na.state(), line: ed?.getLine(ed.getCursor().line), n: ed?.getCursor().line, focus: !!document.activeElement?.closest(".cm-content") };`);
+      const out = { text: link.textContent, state: na.state(), line: ed?.getLine(ed.getCursor().line), n: ed?.getCursor().line, focus: !!document.activeElement?.closest(".cm-content") };
+      ${CLOSE_OPENED}
+      return out;`);
     expect(r.state === "markdown:Apps/Broken.md" && r.line === "  - view: line" && r.focus, r);
     return `${r.text} → line ${r.n}: ${r.line}`;
   });
@@ -322,8 +331,24 @@ export default async function authoring(t) {
     const items = await picker(name);
     await press("Enter");
     await t.sleep(800);
-    return { ...r, items };
+    // A kit with params asks for your values first, filled in with the gallery's: Copy takes them as they are.
+    const setUp = await run(`
+      const modal = [...document.querySelectorAll(".modal")].find((m) => m.querySelector(".modal-title")?.textContent.startsWith("Set up "));
+      if (!modal) return null;
+      const out = { title: modal.querySelector(".modal-title").textContent, values: [...modal.querySelectorAll("input")].map((i) => i.value) };
+      na.button("Copy", modal).click();
+      await na.sleep(800);
+      return out;`);
+    return { ...r, items, setUp };
   });
+
+  // An app you have already is offered to open instead: what that says and offers, then Cancel, which leaves it.
+  const HAVE_IT = `
+    const modal = await na.until(() => [...document.querySelectorAll(".modal")].find((m) => m.textContent.includes("You already have")), 3000);
+    const have = { said: modal?.querySelector("p")?.textContent, buttons: modal ? [...modal.querySelectorAll("button")].map((b) => b.textContent) : [] };
+    if (modal) na.button("Cancel", modal).click();
+    await na.sleep(500);
+    have.open = !!document.querySelector(".prompt") || !!modal?.isConnected;`;
 
   await check("New app from the gallery: Budget (no component) is copied as written and opens as an app", async () => {
     const r = await copy("Budget");
@@ -367,6 +392,7 @@ export default async function authoring(t) {
       return { app: await na.read("Sleep.md"), kit: await na.read("Tracker kit.md"), state: na.state(), prompt, errors: na.errors(), problems: na.text().includes("keys have problems"),
         titles: [...na.view().contentEl.querySelectorAll(".gz-panel .gz-title")].map((t) => t.textContent), after: app.vault.getMarkdownFiles().length };`);
     expect(r.items.length && r.items[0].startsWith("Sleep"), r.items);
+    expect(r.setUp?.title === "Set up Sleep" && JSON.stringify(r.setUp.values) === JSON.stringify(["sleep", "hours", "8"]), r.setUp);
     expect(after.app === gallery("Apps/Sleep.md") && after.kit === gallery("Components/Tracker kit.md"), "the copies differ from the gallery's");
     expect(after.state === "gizmo:Sleep.md" && after.prompt === undefined && after.errors === 0 && !after.problems && after.after === r.before + 2, after);
     // Composed: the answer (Latest, then This week) before the form that adds to it, then the rest.
@@ -379,22 +405,23 @@ export default async function authoring(t) {
     const r = await run(`
       const f = na.file("Budget.md");
       await app.vault.modify(f, (await app.vault.read(f)) + "\\nMy own line.\\n");
-      return { mark: na.notices.length, before: app.vault.getMarkdownFiles().length, text: await na.read("Budget.md") };`);
+      return { before: app.vault.getMarkdownFiles().length, text: await na.read("Budget.md") };`);
     await copy("Budget");
-    const after = await run(`
-      const notices = await na.noticesSince(${r.mark}, "already exists");
-      return { notices, after: app.vault.getMarkdownFiles().length, text: await na.read("Budget.md"), modal: !!document.querySelector(".prompt") };`);
-    expect(after.notices.includes("“Budget” already exists") && after.after === r.before && after.text === r.text && !after.modal, after);
-    return after.notices.join(" | ");
+    const after = await run(`${HAVE_IT}
+      return { ...have, after: app.vault.getMarkdownFiles().length, text: await na.read("Budget.md") };`);
+    expect(after.said === "You already have “Budget”." && after.buttons.includes("Open yours") && after.buttons.includes("Cancel") && !after.open, after);
+    expect(after.after === r.before && after.text === r.text, after);
+    return after.said;
   });
 
   await check("New app from the gallery: a note of that name in another folder counts too", async () => {
-    const r = await run(`const mark = na.notices.length; return { mark, before: app.vault.getMarkdownFiles().length, there: na.exists("Apps/Weight.md") };`);
+    const r = await run(`return { before: app.vault.getMarkdownFiles().length, there: na.exists("Apps/Weight.md") };`);
     expect(r.there, "the fixture vault has no Apps/Weight");
     await copy("Weight");
-    const after = await run(`const notices = await na.noticesSince(${r.mark}, "already exists"); return { notices, after: app.vault.getMarkdownFiles().length, root: na.exists("Weight.md") };`);
-    expect(after.notices.includes("“Weight” already exists") && after.after === r.before && !after.root, after);
-    return after.notices.join(" | ");
+    const after = await run(`${HAVE_IT} return { ...have, after: app.vault.getMarkdownFiles().length, root: na.exists("Weight.md") };`);
+    expect(after.said === "You already have “Weight”." && !after.open, after);
+    expect(after.after === r.before && !after.root, after);
+    return after.said;
   });
 
   await check("New app from the gallery: a component that is already there word for word is reused; one that differs stops it", async () => {

@@ -15,7 +15,11 @@ import { dayIn } from "./time.ts";
 
 export const MAP_VIEW = "gizmo-map";
 
-const STATE_WORDS: Record<MapApp["state"], string> = { "allowed": "Allowed", "not-opened": "Never opened", "paused": "Paused (asks for more)", "blocked": "Blocked by your policy" };
+const STATE_WORDS: Record<MapApp["state"], string> = {
+  "allowed": "Allowed", "not-opened": "Never opened", "revoked": "Not allowed: you revoked it", "paused": "Paused (asks for more)", "blocked": "Blocked by your policy",
+};
+/** A state as the summary counts it: "2 allowed, 1 revoked". */
+const countWords = (s: MapApp["state"]) => (s === "revoked" ? "revoked" : STATE_WORDS[s].toLowerCase());
 
 /**
  * Every app in the vault on one page: what each may do, what makes it act and when it last
@@ -91,10 +95,10 @@ export class MapView extends ItemView {
     head.createEl("button", { text: "Save as canvas" }).addEventListener("click", () => void saveMapCanvas(plugin));
     this.drawPolicy(box, map);
     if (this.note) this.drawWriters(box, this.note, apps, activity);
-    const counts = (["allowed", "blocked", "not-opened", "paused"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
+    const counts = (["allowed", "blocked", "not-opened", "revoked", "paused"] as const).map((s) => [s, map.apps.filter((a) => a.state === s).length] as const);
     box.createDiv({
       cls: "gz-muted gz-map-summary",
-      text: `${map.apps.length} ${map.apps.length === 1 ? "app" : "apps"}: ${counts.filter(([, n]) => n).map(([s, n]) => `${n} ${STATE_WORDS[s].toLowerCase()}`).join(", ") || "none yet"}`,
+      text: `${map.apps.length} ${map.apps.length === 1 ? "app" : "apps"}: ${counts.filter(([, n]) => n).map(([s, n]) => `${n} ${countWords(s)}`).join(", ") || "none yet"}`,
     });
     const list = box.createDiv({ cls: "gz-map-apps" });
     this.drawApps(list, map);
@@ -194,7 +198,7 @@ export class MapView extends ItemView {
     head.createSpan({ cls: `gz-map-state is-${a.state}`, text: STATE_WORDS[a.state] });
     const actions = head.createDiv({ cls: "gz-map-actions" });
     actions.createEl("button", { text: "Activity" }).addEventListener("click", () => openActivity(this.plugin, a.path));
-    if (a.state !== "not-opened") {
+    if (a.state !== "not-opened" && a.state !== "revoked") {
       actions.createEl("button", { text: "Revoke" }).addEventListener("click", handler(async () => {
         await this.plugin.revoke(a.path);
         new Notice(`${a.name} is stopped; open it to allow it again`);

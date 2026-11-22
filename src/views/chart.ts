@@ -1,9 +1,9 @@
 import { textOf } from "../text.ts";
-import { extent, formatValue, getPath, seriesOf, type Point, type Row } from "../data.ts";
-import { periodStart, shiftPeriod, toTime, type Per } from "../time.ts";
-import { formatErrors, formatFor, formatWith, labelFor, mapped } from "../format.ts";
+import { extent, formatValue, getPath, rowsOf, seriesOf, type Point, type Row } from "../data.ts";
+import { dateWindow, periodStart, shiftPeriod, toTime, type Per } from "../time.ts";
+import { formatErrors, formatFor, formatWith, labelFor, labelOf, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
-import { groupedTotals, heading, picks, selectable, seriesNames } from "./common.ts";
+import { LEFT_RIGHT, describeChart, emptyText, groupedTotals, heading, listed, picks, roving, selectable, seriesNames, whyEmpty } from "./common.ts";
 import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 
@@ -16,6 +16,8 @@ const GUTTER = 64;
 export const MAX_SERIES = 6;
 /** Bars are at most this wide, with a gap between neighbours and rounded data ends. */
 const BAR_MAX = 46, GAP = 2, RADIUS = 4;
+/** Most categories a chart's summary names one by one; past this it gives the highest and lowest. */
+const NAMED = 6;
 
 export function svg<K extends keyof SVGElementTagNameMap>(tag: K, attrs: Record<string, string | number>, parent: Element): SVGElementTagNameMap[K] {
   // In the parent's own document: a pop-out window has its own.
@@ -46,6 +48,40 @@ function formatTime(t: number, span: number, per?: Per): string {
   return d.toLocaleDateString(undefined, { month: "short", year: "numeric" });
 }
 
+/** How the points of a time axis are told apart in words, which the axis's few labels don't need to. */
+interface TimeNames {
+  /** The point's day, period or time: "Nov 16", "November 2026", "1:00 PM". */
+  date(i: number): string;
+  /** As a name of its own: "Nov 16", "Week of Nov 16". */
+  name(i: number): string;
+  /** Inside a sentence: "on Nov 16", "in the week of Nov 16", "at 1:00 PM". */
+  at(i: number): string;
+}
+
+/**
+ * Names the points by their period, else by day with the time of day when they have one (only the
+ * time when they are all one day); the year when they span more than one.
+ */
+function timeNames(keys: number[], per?: Per): TimeNames {
+  const dates = keys.map((t) => new Date(t));
+  const years = new Set(dates.map((d) => d.getFullYear())).size > 1;
+  const day: Intl.DateTimeFormatOptions = years ? { month: "short", day: "numeric", year: "numeric" } : { month: "short", day: "numeric" };
+  const clock = !per && dates.some((d) => d.getHours() !== 0 || d.getMinutes() !== 0);
+  const oneDay = clock && new Set(dates.map((d) => d.toDateString())).size === 1;
+  const date = (i: number) => {
+    const d = dates[i];
+    if (per === "year") return String(d.getFullYear());
+    if (per === "month") return d.toLocaleDateString(undefined, { month: "long", year: "numeric" });
+    if (oneDay) return d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" });
+    return d.toLocaleString(undefined, clock ? { ...day, hour: "numeric", minute: "2-digit" } : day);
+  };
+  return {
+    date,
+    name: (i) => (per === "week" ? `Week of ${date(i)}` : date(i)),
+    at: (i) => (per === "week" ? `in the week of ${date(i)}` : `${per === "month" || per === "year" ? "in" : oneDay ? "at" : "on"} ${date(i)}`),
+  };
+}
+
 /**
  * A bar from the baseline y0 to the value at y1, square at the baseline and rounded at the value;
  * square at both ends when `round` is false (a segment inside a stack).
@@ -72,14 +108,22 @@ export interface ChartOptions {
   per?: Per;
   /** The text of a category on the x axis (not a time axis). */
   category?(x: unknown): string;
-  /** Selection hook: called with each bar drawn and the x value it stands for. */
-  mark?(el: SVGElement, x: unknown): void;
+  /** Selection hook: called with each bar drawn, the x value it stands for, and what the bar says (its x and value). */
+  mark?(el: SVGElement, x: unknown, label: string): void;
   /** A dashed line at this value, labelled in a gutter right of the plot, inside the axis range. */
   goal?: number;
   /** Bars of several series become one bar each, their total, with the parts told above. */
   stack?: boolean;
   /** The moment it is: the last bar of a time axis is the current one while its period holds this. */
   now?: Date;
+  /** What the chart is called in its summary for screen readers; else what it plots. */
+  title?: string;
+  /** The date window the chart covers ("last 6 months"), said after its name. */
+  window?: string;
+  /** What the x axis is, heading its column in the table of points. */
+  xName?: string;
+  /** What it says when there is nothing to draw; else that there is no data to chart yet. */
+  empty?: string;
 }
 
 /** Each x's total across the series. */
@@ -97,13 +141,11 @@ export function legendItem(parent: HTMLElement, colour: string, name: string): H
   return item;
 }
 
-export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOptions): void {
+/** Draws the chart; with nothing to draw, says so instead and gives back the line that says it. */
+export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOptions): HTMLElement | undefined {
   const W = Math.max(280, Math.round(opts.width));
   const all = series.flatMap((s) => s.points);
-  if (all.length === 0) {
-    parent.createDiv({ cls: "gz-empty", text: "No data to chart yet." });
-    return;
-  }
+  if (all.length === 0) return parent.createDiv({ cls: "gz-empty", text: opts.empty ?? "No data to chart yet." });
   // One shared x axis: times in order, or categories in the order they first appear.
   const isTime = all.every((p) => toTime(p.x) !== undefined);
   const keyOf = (x: unknown) => (isTime ? toTime(x)! : textOf(x ?? ""));
@@ -168,8 +210,18 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     return +opts.now >= start && +opts.now < shiftPeriod(start, per, 1);
   };
 
+  const times = isTime ? timeNames(keys as number[], opts.per) : undefined;
+  /** A point's x in words, more exactly than the axis labels it: for a bar's name and the table of points. */
+  const pointName = (i: number) => times?.name(i) ?? xLabel(i);
+  /** Each series' value at i, by name, for a stack's bar. */
+  const parts = (i: number) => values.flatMap((byIndex, s) => {
+    const y = byIndex.get(i);
+    return y === undefined ? [] : [`${name(s)} ${fmt(y, s)}`];
+  }).join(", ");
+
   const wrap = parent.createDiv({ cls: "gz-chart" });
-  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg", role: "img" }, wrap);
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg" }, wrap);
+  if (opts.mark) roving(wrap, LEFT_RIGHT);
 
   for (const t of niceTicks(yMin, yMax)) {
     const y = sy(t);
@@ -201,31 +253,34 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
   } else if (oneBar) {
     const w = Math.max(1, Math.min(BAR_MAX, bandW - GAP));
     const zero = sy(0);
-    for (const [i, y] of totals) {
-      if (y === 0) continue;
+    // Left to right, not in the data's order, so the arrow keys step through the bars as they are seen.
+    for (let i = 0; i < n; i++) {
+      const y = totals.get(i);
+      if (y === undefined || y === 0) continue;
       const over = opts.goal !== undefined && y > opts.goal;
       const bar = svg("path", { d: barPath(sx(i) - w / 2, w, zero, sy(y)), class: classes("gz-bar", current(i) && "is-now", over && "is-over") }, root);
       barAt.set(i, bar);
-      opts.mark?.(bar, label.get(keys[i]));
+      opts.mark?.(bar, label.get(keys[i]), `${pointName(i)}: ${fmt(y)}${stacked ? ` (${parts(i)})` : ""}`);
     }
   } else {
     const m = series.length;
     const w = Math.max(1, Math.min(BAR_MAX, (bandW - GAP * m) / m));
     const zero = sy(0);
-    values.forEach((byIndex, s) => {
-      for (const [i, y] of byIndex) {
-        if (y === 0) continue;
+    // Left to right, so the arrow keys step through the bars in the order they are seen.
+    for (let i = 0; i < n; i++) {
+      values.forEach((byIndex, s) => {
+        const y = byIndex.get(i);
+        if (y === undefined || y === 0) return;
         const x = sx(i) - (m * w + (m - 1) * GAP) / 2 + s * (w + GAP);
         const bar = svg("path", { d: barPath(x, w, zero, sy(y)), class: classes("gz-bar", colour(s)) }, root);
-        opts.mark?.(bar, label.get(keys[i]));
-      }
-    });
+        opts.mark?.(bar, label.get(keys[i]), `${pointName(i)}, ${name(s)}: ${fmt(y, s)}`);
+      });
+    }
   }
 
   if (opts.goal !== undefined) {
     const y = sy(opts.goal);
     svg("line", { x1: L, x2: W - right, y1: y, y2: y, class: "gz-goal" }, root);
-    root.setAttribute("aria-label", `goal ${fmt(opts.goal)}`);
   }
   const hoverDots = isLine ? series.map((_, s) => svg("circle", { r: 4, class: classes("gz-hover-dot", colour(s)), visibility: "hidden" }, root)) : [];
   if (isLine) {
@@ -320,13 +375,85 @@ export function renderChart(parent: HTMLElement, series: Series[], opts: ChartOp
     showPoint(best);
   });
   // A bar under the pointer or focused is the point shown, wherever in its band the pointer is.
-  for (const on of ["pointerover", "focusin"]) {
-    root.addEventListener(on, (e) => {
-      const at = [...barAt].find(([, bar]) => bar === e.target);
-      if (at) showPoint(at[0]);
-    });
+  const showBar = (e: Event) => {
+    const at = [...barAt].find(([, bar]) => bar === e.target);
+    if (at) showPoint(at[0]);
+  };
+  root.addEventListener("pointerover", showBar);
+  root.addEventListener("pointerleave", () => showPoint());
+  // The focus is listened for around the chart: Chromium puts an SVG element that listens for it in the Tab order.
+  wrap.addEventListener("focusin", showBar);
+  wrap.addEventListener("focusout", () => showPoint());
+
+  // For screen readers: a sentence of what the chart shows, and a table of every point.
+  const names = listed(series.map((_, s) => name(s)));
+  const title = opts.title ?? (isTime ? `${names}${opts.per ? ` by ${opts.per}` : ""}` : `${names}${opts.xName ? ` by ${opts.xName}` : ""}`);
+  const totalled = stacked || series.length === 1 ? totals : undefined;
+  const goal = opts.goal === undefined ? "" : `, goal ${plain(opts.goal)}`;
+  // Over time, several series are told by their latest values, and a stack by the parts of its latest bar.
+  const latest = times && (stacked || !totalled) ? `; latest ${latestValues()}` : "";
+  describeChart(root, `${title}${opts.window ? `, ${opts.window}` : ""}: ${totalled ? oneSeries(totalled) : manySeries()}${goal}${latest}`, {
+    caption: title,
+    head: [opts.xName ?? "x", ...series.map((_, s) => name(s)), ...(stacked ? ["Total"] : [])],
+    rows: keys.map((_, i) => [
+      pointName(i),
+      ...values.map((byIndex, s) => {
+        const y = byIndex.get(i);
+        return y === undefined ? "–" : fmt(y, s);
+      }),
+      ...(stacked ? [fmt(totals.get(i) ?? 0)] : []),
+    ]),
+  });
+
+  /** A value without the panel's unit, after the first two have said it; a `format` keeps its own symbols. */
+  function plain(v: number, s = 0): string {
+    return opts.format?.(v, s) ?? formatValue(v, opts.decimals);
   }
-  for (const off of ["pointerleave", "focusout"]) root.addEventListener(off, () => showPoint());
+  function noun(count: number): string {
+    if (opts.per) return count === 1 ? opts.per : `${opts.per}s`;
+    if (isTime) return count === 1 ? "entry" : "entries";
+    return count === 1 ? "group" : "groups";
+  }
+  /**
+   * One value at each x (one series, or a stack's totals): over time, how many, the first and the
+   * last with when, then the lowest and highest unless those were just said; categories by name,
+   * or the highest and lowest of many.
+   */
+  function oneSeries(byIndex: Map<number, number>): string {
+    const pts = [...byIndex].sort((a, b) => a[0] - b[0]);
+    const count = `${pts.length} ${noun(pts.length)}`;
+    const ranked = [...pts].sort((a, b) => a[1] - b[1]);
+    const [lo, hi] = [ranked[0], ranked[ranked.length - 1]];
+    if (!times) {
+      if (pts.length <= NAMED) return pts.map(([i, y]) => `${xLabel(i)} ${fmt(y)}`).join(", ");
+      return `${count}, highest ${xLabel(hi[0])} ${fmt(hi[1])}, lowest ${xLabel(lo[0])} ${fmt(lo[1])}`;
+    }
+    const [first, last] = [pts[0], pts[pts.length - 1]];
+    if (pts.length === 1) return `${count}, ${fmt(first[1])} ${times.at(first[0])}`;
+    const ends = [first[1], last[1]];
+    const extremes = [
+      ...(ends.includes(lo[1]) ? [] : [`lowest ${plain(lo[1])}`]),
+      ...(ends.includes(hi[1]) ? [] : [`highest ${plain(hi[1])}`]),
+    ];
+    return [`${count} from ${fmt(first[1])} ${times.at(first[0])} to ${fmt(last[1])} ${times.at(last[0])}`, ...extremes].join(", ");
+  }
+  /** Several series side by side: the span of time they cover, or the categories by name. */
+  function manySeries(): string {
+    const count = `${n} ${noun(n)}`;
+    if (!times) {
+      const shown = keys.slice(0, NAMED).map((_, i) => xLabel(i));
+      return `${count}: ${listed(n > NAMED ? [...shown, `${n - NAMED} more`] : shown)}`;
+    }
+    return n === 1 ? `${count}, ${times.at(0)}` : `${count} from ${times.date(0)} to ${times.date(n - 1)}`;
+  }
+  /** Each series' last value; for a stack, its parts at its last bar. */
+  function latestValues(): string {
+    if (stacked) return parts(Math.max(...totals.keys()));
+    return values.flatMap((byIndex, s) => {
+      if (byIndex.size === 0) return [];
+      return [`${name(s)} ${fmt(byIndex.get(Math.max(...byIndex.keys()))!, s)}`];
+    }).join(", ");
+  }
 }
 
 function createDivBefore(parent: HTMLElement, before: Element, cls: string): HTMLElement {
@@ -345,7 +472,7 @@ function rowAt(data: unknown, x: string, at: unknown, series: Series[]): Row {
 function chartView(kind: "line" | "bar"): ViewDef {
   return {
     id: kind,
-    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "of", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", ...(kind === "bar" ? ["select", "detail", "stack"] : [])],
+    keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "of", "label", "unit", "decimals", "format", "labels", "values", "goal", "alert", "empty", ...(kind === "bar" ? ["select", "detail", "stack"] : [])],
     span: 4,
     needsSource: true,
     validate(p: Panel) {
@@ -396,15 +523,20 @@ function chartView(kind: "line" | "bar"): ViewDef {
         const x = p.group ?? p.x!;
         const ys = seriesNames(p);
         const series = (ys.length ? ys : ["count"]).map((y) => ({ name: y, label: labelFor(p, y), points: seriesOf(last, x, y) }));
-        const mark = picks(p) ? (bar: SVGElement, at: unknown) => selectable(bar, p, ctx, rowAt(last, x, at, series), String(at)) : undefined;
+        const mark = picks(p) ? (bar: SVGElement, at: unknown, label: string) => selectable(bar, p, ctx, rowAt(last, x, at, series), label) : undefined;
         const format = (v: number, s: number) => {
           const f = formatFor(p, series[s].name);
           return f === undefined ? undefined : formatWith(v, f, ctx.now);
         };
         const category = (at: unknown) => mapped(p, x, at) ?? textOf(at ?? "");
-        renderChart(el, series, {
+        const within = p.where?.[x];
+        const empty = renderChart(el, series, {
           kind, unit: p.unit, decimals: p.decimals, format, category, width: width ?? ctx.width(key), per: p.per, mark, goal: p.goal, stack: p.stack, now: ctx.now,
+          title: p.title ?? p.label, xName: labelOf(p, x), window: typeof within === "string" && dateWindow(within, ctx.now) ? within : undefined,
+          // Rows with nothing to plot aren't an empty panel.
+          empty: rowsOf(last).length ? undefined : emptyText(p, ctx.now, "No data to chart yet."),
         });
+        if (empty) whyEmpty(el, p, ctx, empty);
       };
       return {
         update(data) { last = data; draw(); },

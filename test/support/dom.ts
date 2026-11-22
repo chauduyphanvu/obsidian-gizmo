@@ -35,6 +35,7 @@ Object.assign(window.DocumentFragment.prototype, {
     this.appendChild(el);
     return el;
   },
+  createDiv(this: DocumentFragment & { createEl: Function }, o?: Info | string) { return this.createEl("div", o); },
 });
 Object.assign(proto, {
   createEl(this: Element, tag: string, o?: Info | string) {
@@ -89,6 +90,13 @@ for (const target of [window.Element.prototype, window.HTMLElement.prototype] as
   });
 }
 
+// linkedom lays nothing out, so nothing scrolls; each element asked to be shown is kept, with how,
+// for tests that check what was brought into view.
+const scrolled: { el: Element; options: unknown }[] = [];
+Object.assign(window.Element.prototype, {
+  scrollIntoView(this: Element, options?: unknown) { scrolled.push({ el: this, options }); },
+});
+
 // Obsidian's globals: the document in front (one window here) and a detached div.
 const createDiv = (o?: Info | string) => {
   const el = document.createElement("div");
@@ -97,4 +105,4 @@ const createDiv = (o?: Info | string) => {
 };
 Object.assign(globalThis, { window, document, activeDocument: document, createDiv });
 
-export { document };
+export { document, scrolled };

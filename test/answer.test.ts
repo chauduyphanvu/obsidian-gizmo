@@ -4,9 +4,8 @@ import { test } from "node:test";
 import type { Placement } from "../src/compose.ts";
 import { checkPanel, type Panel } from "../src/spec.ts";
 import { daysUntil } from "../src/time.ts";
-import { mountView } from "../src/views/common.ts";
+import { mountView, windowName } from "../src/views/common.ts";
 import { viewDef, type PanelCtx, type PanelHandle } from "../src/views/registry.ts";
-import { windowName } from "../src/views/value.ts";
 
 // Friday 20 November 2026, 19:42.
 const NOW = new Date(2026, 10, 20, 19, 42);
@@ -89,10 +88,14 @@ test("the change: less, under one percent, the same, and nothing to compare with
   assert.equal(same.hasAttribute("aria-label"), false);
   assert.equal(text(change([{ at: "2026-11-04", amount: 200 }])), "Nothing to compare with yet");
   assert.equal(text(change([])), "Nothing to compare with yet");
-  // Nothing this month: the figure is a dash and there is no change to tell.
+  // Nothing this month: a sum of nothing is $0.00, and is compared as any other value is.
   const empty = draw(MONTH, "headline", [{ at: "2026-10-04", amount: 200 }]);
-  assert.equal(text(empty.querySelector(".gz-big")), "—");
-  assert.equal(empty.querySelector(".gz-compare"), null);
+  assert.equal(text(empty.querySelector(".gz-big")), "$0.00");
+  assert.equal(text(empty.querySelector(".gz-compare")), "↓ 100% less than Oct 1–20 · $200.00");
+  // An average of nothing is a dash, with no change to tell.
+  const dash = draw({ ...MONTH, agg: "avg" }, "headline", [{ at: "2026-10-04", amount: 200 }]);
+  assert.equal(text(dash.querySelector(".gz-big")), "—");
+  assert.ok(!dash.querySelector(".gz-compare"));
   // A missing value is a faint dash, without the unit.
   const none = draw({ view: "number", title: "Latest", source: "s", field: "value", agg: "last", unit: "kg" }, "fact", []);
   assert.equal(text(none.querySelector(".gz-big")), "—");
@@ -399,7 +402,8 @@ test("count-up is skipped with reduced motion, for words from values, for a date
   assert.equal(settle(sky, "headline", { code: 0 }, { code: 3 }), 0);
   const due = { view: "number", title: "Due", source: "s", field: "at", format: "date" };
   assert.equal(settle(due, "headline", { at: 1.79e12 }, { at: 1.8e12 }), 0);
-  assert.equal(settle({ ...MONTH, compare: undefined, where: undefined }, "headline", [], [{ amount: 5 }]), 0, "from nothing shown");
+  // A sum of nothing shows $0.00; the largest of nothing shows no value.
+  assert.equal(settle({ ...MONTH, agg: "max", compare: undefined, where: undefined }, "headline", [], [{ amount: 5 }]), 0, "from nothing shown");
 });
 
 test("count-up: a countdown and a progress figure count too", () => {

@@ -16,7 +16,7 @@ const INLINE = "panels: is written on one line; put each panel on its own line u
 const WORDS = /^(true|false|yes|no|on|off|null|y|n|~)$/i;
 
 /** A value as it can be typed: plain when YAML would read it back as the same text, else in quotes. */
-function scalar(value: unknown, flow: boolean): string {
+export function scalar(value: unknown, flow: boolean): string {
   if (typeof value !== "string") return String(value);
   // A list or set on one line can't hold commas or colons in a plain value.
   const safe = flow ? /^[A-Za-z][\w ./@+%-]*$/ : /^[A-Za-z][\w .:/@+%?=&$,-]*$/;
@@ -112,4 +112,27 @@ export function insertPanel(text: string, item: string[]): Insertion {
   }
   const after = { line: last, ch: lines[last].length };
   return { edit: { from: after, to: after, text: eol + added.join(eol) }, cursor };
+}
+
+/** The text with the edit made, its places found by line and column as an editor finds them. */
+function applyEdit(text: string, edit: Edit): string {
+  const starts = [0];
+  for (const m of text.matchAll(/\r?\n/g)) starts.push(m.index + m[0].length);
+  const offset = (p: Position) => starts[p.line] + p.ch;
+  return text.slice(0, offset(edit.from)) + edit.text + text.slice(offset(edit.to));
+}
+
+/**
+ * The note's text with these panels added one after another, as Insert panel adds each (see
+ * insertPanel), and where the cursor goes in the first of them; or why they can't be added.
+ */
+export function withPanels(text: string, items: string[][]): { text: string; cursor: Position } | { refusal: string } {
+  let cursor: Position | undefined;
+  for (const item of items) {
+    const found = insertPanel(text, item);
+    if ("refusal" in found) return found;
+    text = applyEdit(text, found.edit);
+    cursor ??= found.cursor;
+  }
+  return { text, cursor: cursor ?? { line: 0, ch: 0 } };
 }

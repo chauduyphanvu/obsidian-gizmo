@@ -1,6 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { insertPanel, refusalFor, skeleton, type Edit } from "../src/insert.ts";
+import { insertPanel, refusalFor, skeleton, withPanels, type Edit } from "../src/insert.ts";
 import { checkPanel } from "../src/spec.ts";
 import { VIEW_DEFS, viewDef } from "../src/views/registry.ts";
 import { parseYaml } from "./support/yaml.ts";
@@ -154,6 +154,15 @@ test("strings that YAML would read as something else, or that need quotes, are q
     "a: plain words", 'b: "2027-10-03"', 'c: "true"', 'd: "{title} · {author}"', 'e: "> 5"', 'f: "I expect: this"', 'g: "#book"', 'h: "$0,0.00"', 'i: "7"',
     "j: https://api.example.com/x?a=1", 'k: "- Took meds"', 'l: ""', 'm: {1: low, amount: "$0", "odd key": "x:y"}', 'n: [a b, "c,d", e]', "o: []", "p: {}",
   ]);
+});
+
+test("several panels go in one after another, as Insert panel puts each, with the cursor in the first", () => {
+  const text = ["---", "app: Water", "panels:", "- view: alerts", "---", "Notes"].join("\r\n");
+  const out = withPanels(text, [["view: button", "label: Drank a glass"], ["view: countdown", "to: 2027-01-01"]]);
+  assert.ok("text" in out);
+  assert.equal(out.text, ["---", "app: Water", "panels:", "- view: alerts", "- view: button", "  label: Drank a glass", "- view: countdown", "  to: 2027-01-01", "---", "Notes"].join("\r\n"));
+  assert.deepEqual(out.cursor, { line: 5, ch: "  label: ".length });
+  assert.deepEqual(withPanels("---\napp: Water\nview: countdown\n---", [["view: button"]]), { refusal: refusalFor("---\napp: Water\nview: countdown\n---") });
 });
 
 for (const def of VIEW_DEFS) {

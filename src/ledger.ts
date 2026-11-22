@@ -10,7 +10,10 @@ import type { Row } from "./data.ts";
 export type Op =
   /** A row added to list `l`, with id `row` and value `v`. */
   | { op: "add"; l: string; row: string; v: Row }
-  /** Field `f` of a row set to `v`; `from` is what the writer saw there, for telling conflicts. */
+  /**
+   * Field `f` of a row set to `v`; `from` is what the writer saw there, for telling conflicts. A `v`
+   * left out of the line (undefined) takes the field out of the row.
+   */
   | { op: "set"; l: string; row: string; f: string; v: unknown; from: unknown }
   /** A row taken out. */
   | { op: "del"; l: string; row: string }
@@ -302,7 +305,8 @@ export class Folder {
           // A set that saw the value before it settles the cell.
           l.conflicts = l.conflicts.filter((c) => !(c.row === e.row && c.field === e.f));
         }
-        row[e.f] = e.v;
+        if (e.v === undefined) delete row[e.f];
+        else row[e.f] = e.v;
         l.cells.set(key, { value: e.v, from: e.from, t: e.t, d: e.d });
         break;
       }

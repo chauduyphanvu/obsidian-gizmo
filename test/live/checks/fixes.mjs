@@ -1,4 +1,5 @@
 // What the last fix rounds changed, seen in Obsidian.
+import { CLOSE_OPENED, TABS } from "./apps.mjs";
 
 const COVERS = `---
 app: My records, with their sleeves
@@ -61,6 +62,7 @@ export default async function fixes(t) {
 
   await check("Edit source, from the view action and from the prompt's button, shows the YAML as text", async () => {
     const r = await run(`
+      ${TABS}
       await na.open("Apps/Habits");
       [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Edit source").click();
       await na.sleep(1000);
@@ -70,7 +72,9 @@ export default async function fixes(t) {
       const { prompt } = await na.open("Scratch/Records", false);
       na.button("Edit source").click();
       await na.sleep(1000);
-      return { action, prompt, button: ${RAW_YAML} };`);
+      const button = ${RAW_YAML};
+      ${CLOSE_OPENED}
+      return { action, prompt, button };`);
     for (const [from, s] of [["action", r.action], ["button", r.button]]) {
       expect(s.state.startsWith("markdown:") && s.source === true && s.head?.startsWith("---|app: ") && !s.table, { from, ...s });
     }

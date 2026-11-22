@@ -130,7 +130,9 @@ test("a selectable bar or slice is named by what it shows", () => {
   const picked: unknown[] = [];
   const c = { ...ctx, select: (_: string, row: unknown) => picked.push(row), selected: () => undefined } as unknown as PanelCtx;
   const p = draw(pie, { source: "s", group: "weathercode", values: SKY, select: "w" }, grouped, c);
-  assert.deepEqual([...p.querySelectorAll("path.gz-slice")].map((s) => s.getAttribute("aria-label")), ["Clear", "Overcast"]);
+  // The legend entries are what the keyboard and screen readers pick with; the slices are for the pointer.
+  assert.deepEqual([...p.querySelectorAll(".gz-legend-item")].map((s) => s.getAttribute("aria-label")), ["Clear: 5, 71%", "Overcast: 2, 29%"]);
+  assert.equal(p.querySelector("svg")!.getAttribute("aria-label"), "count by weathercode: Clear 71%, Overcast 29%; total 7");
   (p.querySelector("path.gz-slice") as HTMLElement).dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(picked, [{ weathercode: 0, count: 5 }]);
 });

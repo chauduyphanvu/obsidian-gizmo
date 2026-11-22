@@ -344,12 +344,12 @@ test("a base that can't be read shows why in its panel", async () => {
   f.flush();
   await settle();
   // A list needs and, or or not above it.
-  assert.ok(root.querySelector(".gz-error")!.textContent!.endsWith("[[Books.base]] has a filter Gizmo can't read: [\"file.hasLink(\\\"Textbook\\\")\"]"));
+  assert.ok(root.querySelector(".gz-error")!.textContent!.endsWith("[[Books.base]] has a filter Gizmo can't read: [\"file.hasLink(\\\"Textbook\\\")\"]Try againShow in source"));
   f.others.set("Bases/Books.base", "filters:\n  or:\n    - file.hasLink(\"Textbook\")");
   data.fileChanged("Bases/Books.base");
   f.flush();
   await settle();
-  assert.match(root.querySelector(".gz-error")!.textContent!, /\[\[Books\.base\]\] uses file\.hasLink, which Gizmo can't read$/);
+  assert.match(root.querySelector(".gz-error")!.textContent!, /\[\[Books\.base\]\] uses file\.hasLink, which Gizmo can't readTry againShow in source$/);
 });
 
 test("a base whose view has its own filters is the panel's error, so nothing it would show unfiltered can be edited", async () => {
@@ -359,7 +359,7 @@ test("a base whose view has its own filters is the panel's error, so nothing it 
   data.fileChanged("Bases/Books.base");
   f.flush();
   await settle();
-  assert.match(root.querySelector(".gz-error")!.textContent!, /\[\[Books\.base\]\] filters its view "Reading"; Gizmo reads only the base's own filters$/);
+  assert.match(root.querySelector(".gz-error")!.textContent!, /\[\[Books\.base\]\] filters its view "Reading"; Gizmo reads only the base's own filtersTry againShow in source$/);
   assert.equal(root.querySelector("tbody select"), null);
   assert.deepEqual(writes, []);
 });

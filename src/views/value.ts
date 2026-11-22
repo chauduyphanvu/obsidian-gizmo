@@ -4,7 +4,7 @@ import { DAY, daysUntil, periodStart, shiftPeriod } from "../time.ts";
 import { display, formatErrors, formatFor, formatWith, mapped } from "../format.ts";
 import { streak } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { heading } from "./common.ts";
+import { dayName, emptyText, heading, whyEmpty, windowName, windowWord } from "./common.ts";
 import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 import { CountUp } from "./tween.ts";
@@ -20,10 +20,12 @@ function checkAgg(p: Panel): string[] {
  * What a number, progress or text panel shows for its data: its value (a progress panel's is a
  * number, 0 when there is none; a text panel's is its text), that value as text under the panel's
  * `values`, `format` and `decimals`, and the `unit` that goes beside it (none when a format or
- * values already speak for it). The views draw this, and the status bar and alerts say it again.
+ * values already speak for it). A text panel with no rows says its `empty` text, when it has one.
+ * The views draw this, and the status bar and alerts say it again.
  */
 export function panelValue(p: Panel, data: unknown, now: Date): { value: unknown; text: string; unit?: string } {
   if (p.view === "text") {
+    if (p.empty !== undefined && noRows(data)) return { value: p.empty, text: p.empty };
     const scope = Array.isArray(data) ? { ...(data[0] as Row), rows: data, count: data.length } : data;
     const text = fillWith(p.text ?? "", scope, (path, v) => display(p, path, v, now, "text"));
     return { value: text, text };
@@ -32,6 +34,22 @@ export function panelValue(p: Panel, data: unknown, now: Date): { value: unknown
   const value = p.view === "progress" ? toNumber(found) ?? 0 : found;
   const unit = p.unit && formatFor(p, p.field) === undefined && mapped(p, p.field, value) === undefined ? p.unit : undefined;
   return { value, text: display(p, p.field, value, now), unit };
+}
+
+const noRows = (data: unknown) => Array.isArray(data) && data.length === 0;
+
+/** What these come to over no rows is a number (0), which says it already. */
+const ZERO_OVER_NONE = ["count", "sum", "streak"];
+
+/**
+ * The line a number or progress panel with no rows shows under its value: its `empty` text, else,
+ * when that leaves it no value (a last, an average…), that nothing is logged. Undefined when it
+ * has rows, or its data isn't rows.
+ */
+function emptyNote(p: Panel, data: unknown, now: Date): string | undefined {
+  if (!noRows(data)) return undefined;
+  const agg = p.agg ?? (p.field ? "last" : "count");
+  return p.empty !== undefined || !ZERO_OVER_NONE.includes(agg) ? emptyText(p, now, "Nothing here yet", true) : undefined;
 }
 
 function checkCompare(p: Panel): string[] {
@@ -90,29 +108,6 @@ type AnswerSlot = "headline" | "fact" | "meter";
 function answerSlot(ctx: PanelCtx): AnswerSlot | undefined {
   const slot = ctx.place?.()?.slot;
   return slot === "headline" || slot === "fact" || slot === "meter" ? slot : undefined;
-}
-
-const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
-const dayName = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
-
-/**
- * A window as the dates it covers: `Oct 1`, `Oct 1–20`, `Sep 28 – Oct 4`; its last day is the one
- * before its end. A window that ends in another year than now says which.
- */
-export function windowName([from, to]: readonly [number, number], now: Date): string {
-  const a = new Date(from), b = new Date(Math.max(from, to - 1));
-  const year = b.getFullYear() === now.getFullYear() ? "" : `, ${b.getFullYear()}`;
-  if (a.toDateString() === b.toDateString()) return `${dayName(a)}${year}`;
-  if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) return `${dayName(a)}–${b.getDate()}${year}`;
-  return `${dayName(a)} – ${dayName(b)}${year}`;
-}
-
-/** The window before, in a word where one fits (`last week`, `last month`, `last year`, `the day before`), else its dates. */
-function windowWord(w: Windows, now: Date): string {
-  const { per, n } = w.step;
-  if (n === 1) return per === "day" ? "the day before" : `last ${per}`;
-  if (per === "month" && n === 12 && new Date(w.current[0]).getMonth() === 0) return "last year";
-  return windowName(w.previous, now);
 }
 
 /** A compare line: what is shown, a faint ending, and the same in words for a screen reader. */
@@ -215,11 +210,18 @@ function drawNumber(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, 
   answerTitle(el, p, slot);
   const { current, previous } = splitByWindow(p, data, now);
   const { value, text, unit } = panelValue(p, current, now);
-  const windows = previous && compareWindows(p.where, now);
-  const change = windows ? changeOf(p, now, value, previous, windows, slot === "fact") : undefined;
-  // A fact has one line under its figure: the change when there is one, else the label.
-  const fig = drawFigure(el, slot, text, unit, slot === "fact" && change ? undefined : p.label);
-  if (change) drawChangeLine(el, change, slot === "fact" ? "gz-fact-note" : "gz-ans-sub");
+  const fact = slot === "fact";
+  // An empty window's note takes the place of the change.
+  const note = emptyNote(p, current, now);
+  const windows = note === undefined && previous && compareWindows(p.where, now);
+  const change = windows ? changeOf(p, now, value, previous, windows, fact) : undefined;
+  // A fact has one line under its figure: the note or the change when there is one, else the label.
+  const fig = drawFigure(el, slot, text, unit, fact ? note ?? (change ? undefined : p.label) : p.label);
+  // A fact's note is the line drawFigure put last.
+  let noteLine = fact && note ? el.lastElementChild as HTMLElement : undefined;
+  if (change) drawChangeLine(el, change, fact ? "gz-fact-note" : "gz-ans-sub");
+  else if (note && !fact) noteLine = el.createDiv({ cls: "gz-label gz-ans-label", text: note });
+  if (note || text === "—") whyEmpty(el, p, ctx, noteLine);
   const alert = alertOn(p, value, current, now);
   if (alert) drawStatus(el, sentence(alert));
   count.to(el, countable(p, value), (n) => fig.setText(display(p, p.field, n, now)), wholeSteps(p));
@@ -259,9 +261,12 @@ function drawProgress(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot
   const max = p.max ?? 100;
   const of = `${display(p, p.field, max, now)}${unit ? ` ${unit}` : ""}`;
   let fig: HTMLElement | undefined;
+  // As a meter, the number above it says what an empty window has.
   if (slot !== "meter") {
     answerTitle(el, p, slot);
-    fig = drawFigure(el, slot, text, `/ ${of}`, p.label);
+    const note = emptyNote(p, data, now);
+    fig = drawFigure(el, slot, text, `/ ${of}`, slot === "fact" ? note ?? p.label : p.label);
+    if (note) whyEmpty(el, p, ctx, slot === "headline" ? el.createDiv({ cls: "gz-label gz-ans-label", text: note }) : el.lastElementChild as HTMLElement);
   }
   const fieldFormat = p.field === undefined ? undefined : p.fieldInfo?.[p.field]?.format;
   const exact = (x: number) => (fieldFormat ? formatWith(x, fieldFormat, now) : amountOf(p, x, now));
@@ -338,7 +343,7 @@ const BAD_FORMAT = 'format "$0.0.0" isn\'t a number pattern or one of date, time
 
 export const number: ViewDef = {
   id: "number",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert", "then", "shortcut"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "label", "unit", "decimals", "format", "values", "compare", "pin", "alert", "then", "shortcut", "empty"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p), ...checkCompare(p)],
@@ -349,6 +354,7 @@ export const number: ViewDef = {
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", format: "$0.0.0" }, errors: [BAD_FORMAT] },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", where: { at: "this week" }, compare: "previous", format: "$0,0.00" } },
     { panel: { view: "number", title: "Doses today", source: "doses", where: { at: "today" }, agg: "count", shortcut: "doses-today" } },
+    { panel: { view: "number", title: "Doses today", source: "doses", where: { at: "today" }, agg: "count", empty: "No doses yet today. Tap the button above." } },
     { panel: { view: "number", source: "spending", agg: "count", where: { at: "last 7 days" }, compare: "last" }, errors: ["compare must be previous"] },
     { panel: { view: "number", source: "spending", field: "amount", agg: "sum", compare: "previous" }, errors: ["compare needs a date window in where, e.g. where: {at: this week}"] },
     { panel: { view: "number", source: "spending", agg: "count", where: { category: "food" }, compare: "previous" }, errors: ["compare needs a date window in where, e.g. where: {at: this week}"] },
@@ -375,15 +381,18 @@ export const number: ViewDef = {
     const row = el.createDiv({ cls: "gz-big" });
     row.createSpan({ text });
     if (unit) row.createSpan({ cls: "gz-unit", text: unit });
-    // The label says what the value is, so it sits under it; the change comes after.
+    // The label says what the value is, so it sits under it; the change comes after, or an empty window's note instead.
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
-    if (previous) drawChange(el, p, ctx.now, value, previous);
+    const note = emptyNote(p, current, ctx.now);
+    const noteLine = note ? el.createDiv({ cls: "gz-label", text: note }) : undefined;
+    if (!note && previous) drawChange(el, p, ctx.now, value, previous);
+    if (note || text === "—") whyEmpty(el, p, ctx, noteLine);
   }, (slot, data, count) => drawNumber(el, p, ctx, slot, data, count)),
 };
 
 export const text: ViewDef = {
   id: "text",
-  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values", "pin", "alert", "then"],
+  keys: [...DATA_KEYS, "text", "label", "decimals", "format", "values", "pin", "alert", "then", "empty"],
   span: 1,
   validate: (p) => [...(p.text ? [] : ["text needs a text template"]), ...formatErrors(p)],
   examples: [
@@ -401,11 +410,13 @@ export const text: ViewDef = {
     heading(el, p);
     el.createDiv({ cls: "gz-text", text: panelValue(p, data, ctx.now).text });
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
+    if (p.empty !== undefined && noRows(data)) whyEmpty(el, p, ctx);
   }, (slot, data) => {
     answerTitle(el, p, slot);
     const { value, text } = panelValue(p, data, ctx.now);
     el.createDiv({ cls: `gz-text ${slot === "headline" ? "gz-ans-text" : "gz-fact-text"}`, text });
     if (p.label) el.createDiv({ cls: "gz-label gz-ans-label", text: p.label });
+    if (p.empty !== undefined && noRows(data)) whyEmpty(el, p, ctx);
     const alert = alertOn(p, value, data, ctx.now);
     if (alert) drawStatus(el, sentence(alert));
   }),
@@ -413,7 +424,7 @@ export const text: ViewDef = {
 
 export const progress: ViewDef = {
   id: "progress",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert", "then", "shortcut"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "field", "agg", "of", "max", "label", "unit", "decimals", "format", "alert", "then", "shortcut", "empty"],
   span: 1,
   needsSource: true,
   validate: (p) => [...checkAgg(p), ...formatErrors(p)],
@@ -433,6 +444,8 @@ export const progress: ViewDef = {
     const bar = el.createDiv({ cls: "gz-progress" }).createDiv({ cls: "gz-progress-fill" });
     bar.style.width = `${Math.max(0, Math.min(100, ((value as number) / max) * 100))}%`;
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
+    const note = emptyNote(p, data, ctx.now);
+    if (note) whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-label", text: note }));
   }, (slot, data, count) => drawProgress(el, p, ctx, slot, data, count), ["headline", "fact", "meter"]),
 };
 
@@ -445,6 +458,7 @@ export const countdown: ViewDef = {
     { panel: { view: "countdown", to: "2027-10-03", label: "Benefits renewal" } },
     { panel: { view: "countdown", to: "soon" }, errors: ['"to" is not a date'] },
     { panel: { view: "countdown", to: "2027-01-01", unit: "days" }, errors: ['"unit" doesn\'t apply to countdown'] },
+    { panel: { view: "countdown", to: "2027-01-01", empty: "Nothing yet" }, errors: ['"empty" doesn\'t apply to countdown'] },
   ],
   mount: (el, p, ctx) => answerView(el, ctx, () => {
     heading(el, p);

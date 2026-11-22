@@ -1,5 +1,6 @@
 import type { Placement } from "../compose.ts";
 import type { Row } from "../data.ts";
+import type { Trace } from "../pipeline.ts";
 import type { Panel } from "../spec.ts";
 import { board } from "./board.ts";
 import { calendar } from "./calendar.ts";
@@ -43,9 +44,10 @@ export interface PanelCtx {
   width(key: string): number;
   /**
    * Runs a panel's actions; says why when a value rule refused the row, so a form can keep what was
-   * typed. `inPlace`: the panel tells its `notify` itself, beside it, rather than in a notice.
+   * typed. `inPlace`: the panel tells its `notify` itself, beside it, rather than in a notice;
+   * `at`: what it saves is logged for that time rather than now.
    */
-  runActions(p: Panel, row: Row, how?: { inPlace?: boolean }): Promise<RunResult | void>;
+  runActions(p: Panel, row: Row, how?: { inPlace?: boolean; at?: Date }): Promise<RunResult | void>;
   toggleChecked(key: string, item: string): Promise<void>;
   clearChecked(key: string): Promise<void>;
   openNote(path: string): void;
@@ -69,6 +71,12 @@ export interface PanelCtx {
    */
   editRow(row: Row, field: string, value: unknown): Promise<void>;
   /**
+   * Deletes a record this panel shows from the app's saved list it came from, kept in the activity
+   * log; gives the log's entry, for Undo, or undefined when nothing was deleted (and the problem was
+   * told). Absent outside an app.
+   */
+  deleteRow?(row: Row): Promise<{ entry?: string } | undefined>;
+  /**
    * Writes one field of a `save: this` form as a property of the note the app sits in; the panel
    * updates when the write lands. Absent outside an app.
    */
@@ -87,12 +95,32 @@ export interface PanelCtx {
   alerts?: AlertFeed;
   /** In a try before Allow, where nothing drawn may reach out of Obsidian. */
   preview?: boolean;
+  /**
+   * In an app's own tab, what a panel that shows nothing can find out about why (see whyEmpty).
+   * Absent elsewhere (an embed, a lens, a try), where neither the note's source nor Inspect data
+   * is at hand.
+   */
+  why?: EmptyWhy;
+}
+
+/** What a panel that shows nothing can ask about why. */
+export interface EmptyWhy {
+  /** Whether its source gave anything, before any step, on the load it shows; runs no step. */
+  hasData(): boolean;
+  /** Its steps run again over what its source gave, telling what each one kept. */
+  trace(): Trace;
+  /** Puts the cursor on the panel's line in the note's source, beside the app. */
+  showInSource(): void;
+  /** Opens Inspect data at the panel's source. */
+  seeAnswer(): void;
 }
 
 /** How running a panel's actions went, for a view that says so beside it. */
 export interface RunResult {
   /** Why nothing was saved, when a value rule refused the row. */
   error?: string;
+  /** Why the run stopped after writing part of what it does, said with what it wrote, which `entry` undoes. */
+  failed?: string;
   /** False when the run stopped on a problem it has already told (a note that exists, a failed write). */
   ok?: boolean;
   /** The activity log's entry for what the run changed, once kept. */

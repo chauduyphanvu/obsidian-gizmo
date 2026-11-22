@@ -115,7 +115,7 @@ test("an error in a tab is a link to that panel's line", () => {
     "---",
   ];
   const errors = readSpec(frontmatter(lines), { path: APP })!.errors;
-  assert.deepEqual(errors, ['tabs.Score panel 2: "unit" doesn\'t apply to table', 'tabs.Track record panel 1: "layout" doesn\'t apply to number']);
+  assert.deepEqual(errors, ['tabs.Score panel 2: "unit" doesn\'t apply to table', 'tabs.Track record panel 1: "layout" doesn\'t apply to number; it works on table and calendar']);
   assert.deepEqual(labelOf(errors[0]), { kind: "tab", tab: "Score", n: 2 });
   assert.deepEqual(errors.map((e) => lineOf(lines, e)), [9, 13]);
   assert.equal(lineOf(lines, "tabs.Score panel 3: x"), undefined);

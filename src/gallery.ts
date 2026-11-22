@@ -1,3 +1,6 @@
+import { componentParams, linkOf } from "./expand.ts";
+import { scalar } from "./insert.ts";
+import { isPlainObject } from "./keys.ts";
 import { POLICY_PATH } from "./policy.ts";
 import { basename, storeTarget } from "./store.ts";
 
@@ -100,4 +103,87 @@ export function planCopy(app: GalleryNote, components: GalleryNote[], existing: 
     else return { refusal: `“${name}” already exists and isn't the one “${appName}” needs` };
   }
   return { create: [...create, app], reuse };
+}
+
+/** A param of the kit an app is: the value the app gives it, else the kit's default; `given` when the app's `with:` names it. */
+export interface KitParam {
+  name: string;
+  value: string | number | undefined;
+  given: boolean;
+}
+
+/** A note's frontmatter, parsed; undefined when it has none or it isn't a set of keys. */
+function keysOf(text: string, parse: (yaml: string) => unknown): Record<string, unknown> | undefined {
+  const lines = frontmatter(text);
+  if (!lines.length) return undefined;
+  try {
+    const keys = parse(lines.join("\n"));
+    return isPlainObject(keys) ? keys : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+/**
+ * What to ask for when copying an app that is one whole kit (`use:` and `with:` at the top of its
+ * note, the kit among `components`): each param the kit takes, with the value the app gives it, else
+ * the kit's default. None for an app that isn't one, or whose kit takes a param a text field can't
+ * hold (a list, a set of keys, true or false).
+ */
+export function kitParams(app: GalleryNote, components: GalleryNote[], parse: (yaml: string) => unknown): KitParam[] {
+  const keys = keysOf(app.text, parse);
+  const link = keys && linkOf(keys.use);
+  const kit = link === undefined ? undefined : components.find((c) => basename(c.path).toLowerCase() === basename(link).toLowerCase());
+  const params = kit && componentParams(keysOf(kit.text, parse)?.params);
+  if (!keys || !params) return [];
+  const given = isPlainObject(keys.with) ? keys.with : {};
+  const out: KitParam[] = [];
+  for (const [name, fallback] of params) {
+    const value = (Object.hasOwn(given, name) ? given[name] : fallback) ?? undefined;
+    if (value !== undefined && typeof value !== "string" && typeof value !== "number") return [];
+    out.push({ name, value, given: Object.hasOwn(given, name) });
+  }
+  return out;
+}
+
+/** A note's text with its top-level `with:` (and any lines it runs on to) replaced by `line`, or `line` added after `use:`. */
+function withLine(text: string, line: string): string {
+  const eol = text.includes("\r\n") ? "\r\n" : "\n";
+  const lines = text.split(/\r?\n/);
+  const end = lines.findIndex((l, i) => i > 0 && l.trimEnd() === "---");
+  const top = (key: string) => lines.findIndex((l, i) => i > 0 && i < end && new RegExp(`^${key}\\s*:`).test(l));
+  const at = top("with");
+  if (at < 0) {
+    lines.splice(top("use") + 1, 0, line);
+    return lines.join(eol);
+  }
+  let last = at;
+  while (last + 1 < end && /^\s/.test(lines[last + 1])) last++;
+  lines.splice(at, last - at + 1, line);
+  return lines.join(eol);
+}
+
+/**
+ * The app's note with the values typed for its kit's params (see kitParams) in its `with:`, written
+ * on one line so YAML reads each back as typed. A field left empty, or a number field that doesn't
+ * hold a number, keeps the value it started with; a param the app didn't name is written only when
+ * it changed. With nothing changed, the note is exactly as the gallery wrote it.
+ */
+export function setUp(app: GalleryNote, params: KitParam[], typed: Readonly<Record<string, string>>): GalleryNote {
+  const values = params.map((p) => {
+    const text = (typed[p.name] ?? "").trim();
+    if (text === "") return p.value;
+    if (typeof p.value !== "number") return text;
+    const n = Number(text);
+    return Number.isFinite(n) ? n : p.value;
+  });
+  if (values.every((v, i) => v === params[i].value)) return app;
+  const entries = params.flatMap((p, i) => (values[i] !== undefined && (p.given || values[i] !== p.value) ? [`${p.name}: ${scalar(values[i], true)}`] : []));
+  return { path: app.path, text: withLine(app.text, `with: {${entries.join(", ")}}`) };
+}
+
+/** What an app will ask for when it's first opened, in one line, worded as the install preview words it. */
+export function askLine(asks: readonly string[]): string {
+  if (!asks.length) return "It asks for nothing: it only keeps its own data beside it.";
+  return `When you open it, it will ask your OK to ${asks.map((a) => a.charAt(0).toLowerCase() + a.slice(1)).join("; ")}.`;
 }

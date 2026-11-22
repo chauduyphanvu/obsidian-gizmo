@@ -8,8 +8,11 @@ import { ROW_INDEX } from "./sources/list.ts";
 import { sourceDef } from "./sources/registry.ts";
 import type { Panel } from "./spec.ts";
 import type { RunResult } from "./views/registry.ts";
-import { frontmatterStore, type DataStore } from "./datastore.ts";
+import { frontmatterStore, type DataStore, type Edit } from "./datastore.ts";
+import { leftBehind, type Rename } from "./app-cards.ts";
 import { rowIdOf } from "./ledger-store.ts";
+import { NOT_YET } from "./capture.ts";
+import { toTime } from "./time.ts";
 
 /** What a write to a note that was renamed or deleted since it was shown says. */
 const GONE = "That note is gone";
@@ -25,6 +28,14 @@ export interface WriteSite {
   checklistName(key: string): string;
   /** The app's rules under `expect:`, as it reads now. */
   expect(): readonly Expectation[];
+}
+
+/** What bringing rows along with a rename did, as the activity log says it. */
+function renameDone(r: Rename, n: number): string {
+  const rows = `${n} ${n === 1 ? "row" : "rows"}`;
+  if (r.kind === "field") return `Moved ${r.from} into ${r.to} in ${rows} of ${r.list}`;
+  if (r.kind === "choice") return `Changed ${r.field} ${r.from} to ${r.to} in ${rows} of ${r.list}`;
+  return `Moved ${rows} from ${r.from} to ${r.to}`;
 }
 
 /** A drawn panel, whose checked keys are read as they are when a write needs them. */
@@ -125,6 +136,12 @@ export class AppWrites {
       const index = symbols[ROW_INDEX];
       const id = rowIdOf(row);
       if (typeof index !== "number" && id === undefined) return;
+      // A saved row says when it happened, so it isn't moved to a time still to come.
+      if (field === "at" && (toTime(value) ?? -Infinity) > this.env.now().getTime()) {
+        this.env.notify(`Not saved: ${NOT_YET}`);
+        reload();
+        return;
+      }
       const store = this.store();
       const name = m.p.source!;
       const refused = refusal(this.site.expect(), name, { ...row, [field]: value }, this.env.now());
@@ -146,6 +163,73 @@ export class AppWrites {
     }
   }
 
+  /**
+   * Deletes a row a panel shows from the saved list it reads, kept in the activity log so Undo can
+   * put it back; gives the log's entry once kept. Undefined when nothing was deleted: the row isn't
+   * one of a saved list's, or it changed or went meanwhile, which is told, and `reload` shows the
+   * rows as they are.
+   */
+  async deleteRow(m: Drawn, row: Row, reload: () => void): Promise<{ entry?: string } | undefined> {
+    if (editableSource(m.p) !== "list") return undefined;
+    const index = (row as Record<symbol, unknown>)[ROW_INDEX];
+    const id = rowIdOf(row);
+    if (typeof index !== "number" && id === undefined) return undefined;
+    try {
+      const store = this.store();
+      const name = m.p.source!;
+      const r = await store.delete(name, { id, index: typeof index === "number" ? index : undefined, shown: row });
+      if ("row" in r) {
+        const change: Change = { kind: "row-deleted", path: store.dataPath, list: name, row: r.row, ...(r.index !== undefined && { index: r.index }), ...(r.event && { event: r.event }) };
+        return { entry: await this.log(m.p.title ?? name, [change]) };
+      }
+      this.env.notify(r.refused === "gone" ? "That row is gone; reload" : "That row has changed; reload");
+      reload();
+    } catch (e) {
+      this.env.notify(`Couldn't delete: ${(e as Error).message}`);
+    }
+    return undefined;
+  }
+
+  /**
+   * Brings a saved list's rows along with a rename in the app's keys, in one write: the old field's
+   * values moved into the new field, the old choice changed to the new, or the old list's rows moved
+   * to the new list. Kept in the activity log as one entry of every row's change, so one Undo puts
+   * them all back.
+   */
+  async moveRenamed(r: Rename): Promise<void> {
+    try {
+      const store = this.store();
+      const list = r.kind === "list" ? r.from : r.list;
+      const edits: Edit[] = [];
+      (await store.rows(list)).forEach((row) => {
+        if (!leftBehind(r, row)) return;
+        const index = (row as Record<symbol, unknown>)[ROW_INDEX];
+        const ref = { id: rowIdOf(row), index: typeof index === "number" ? index : undefined, shown: row };
+        if (r.kind === "field") edits.push({ op: "set", list, ref, field: r.to, value: row[r.from] }, { op: "set", list, ref, field: r.from, value: undefined });
+        else if (r.kind === "choice") edits.push({ op: "set", list, ref, field: r.field, value: r.value });
+        else edits.push({ op: "add", list: r.to, row: { ...row } }, { op: "delete", list, ref });
+      });
+      if (!edits.length) return;
+      const done = await store.batch(edits);
+      if ("refused" in done) {
+        this.env.notify("Those rows changed meanwhile; nothing was moved");
+        return;
+      }
+      const path = store.dataPath;
+      const changes = edits.map((e, i): Change => {
+        const { row, event, index } = done[i];
+        const kept = { ...(event && { event }) };
+        if (e.op === "add") return { kind: "row-added", path, list: e.list, row, ...kept };
+        if (e.op === "delete") return { kind: "row-deleted", path, list: e.list, row, ...(index !== undefined && { index }), ...kept };
+        return { kind: "row-edited", path, list: e.list, row, field: e.field, from: e.ref.shown[e.field], to: e.value, ...kept };
+      });
+      const n = edits.length / (r.kind === "choice" ? 1 : 2);
+      void this.log(renameDone(r, n), changes);
+    } catch (e) {
+      this.env.notify(`Couldn't move them: ${(e as Error).message}`);
+    }
+  }
+
   /** Ticks the task a row shows, in a note of the panel's `from`; when it has moved or changed, shows the notes as they are. */
   private async tickTask(m: Drawn, row: Row, done: unknown, reload: () => void): Promise<void> {
     const { path, line, text } = row;
@@ -159,12 +243,13 @@ export class AppWrites {
     reload();
   }
 
-  /** `inPlace`: the panel tells its `notify` itself, so it isn't also a notice. */
-  async runActions(p: Panel, row: Row, how?: { inPlace?: boolean }): Promise<RunResult> {
+  /** `inPlace`: the panel tells its `notify` itself, so it isn't also a notice; `at`: what it saves is logged for then. */
+  async runActions(p: Panel, row: Row, how?: { inPlace?: boolean; at?: Date }): Promise<RunResult> {
     const env = this.env;
     const appPath = this.site.appPath;
     const r = await runActions(p, row, {
       ...actionDepsOf(env, appPath, this.site.dataPath()),
+      ...(how?.at && { at: how.at }),
       expect: this.site.expect(),
       log: (what, changes) => this.log(what, changes),
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
@@ -172,8 +257,9 @@ export class AppWrites {
       // A try lists what the run tells among what it does, in order, as well as saying it in place.
       quiet: how?.inPlace && !env.preview,
     });
-    if (r.error) return { error: r.error, ok: false };
     const entry = await r.logged;
+    if (r.partly !== undefined) return { failed: `${r.partly}: ${r.error}`, ok: false, ...(entry !== undefined && { entry }) };
+    if (r.error) return { error: r.error, ok: false };
     return { ok: r.ok, ...(entry !== undefined && { entry }), ...(r.told !== undefined && { told: r.told }) };
   }
 }

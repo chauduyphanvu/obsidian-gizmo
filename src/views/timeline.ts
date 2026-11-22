@@ -4,7 +4,7 @@ import { formatErrors } from "../format.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { itemText } from "./board.ts";
-import { heading, noteLink, picks, rowNote, selectable, shownRows } from "./common.ts";
+import { UP_DOWN, emptyText, heading, noteLink, picks, rove, roving, rowNote, selectable, shownRows, whyEmpty } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
@@ -45,7 +45,8 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
     if (skipped) el.createDiv({ cls: "gz-label", text: `${skipped} without a date` });
   };
   if (rows.length === 0) {
-    el.createDiv({ cls: "gz-empty", text: "Nothing here yet." });
+    // Rows without a start are there, so the panel isn't empty: it has nothing it can draw.
+    whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: skipped ? "Nothing here yet." : emptyText(p, ctx.now, "Nothing here yet.") }));
     skippedNote();
     return;
   }
@@ -73,6 +74,7 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
   const lines = body.createDiv({ cls: "gz-tl-grid", attr: { "aria-hidden": "true" } });
   for (const t of ticks) lines.createDiv({ cls: "gz-tl-line", attr: { style: left(t.at) } });
   const list = body.createDiv({ cls: "gz-tl-rows" });
+  roving(list, UP_DOWN);
 
   shownRows(el, rows, (row) => {
     const { start, end } = items.get(row)!;
@@ -87,13 +89,14 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
     const mark = line.createDiv({ cls: "gz-tl-track" }).createDiv({
       // A bar that ended before today is finished; an item that starts after today is drawn as an outline.
       cls: [kind, ...(end !== undefined && end < today ? ["gz-tl-done"] : []), ...(start >= tomorrow ? ["gz-tl-future"] : [])],
-      attr: { style: end === undefined ? left(start) : `${left(start)}; width: ${(((end - start) / (to - from)) * 100).toFixed(3)}%`, title: detail, tabindex: 0 },
+      attr: { style: end === undefined ? left(start) : `${left(start)}; width: ${(((end - start) / (to - from)) * 100).toFixed(3)}%`, title: detail },
     });
     if (picks(p, ctx, true)) {
       selectable(mark, p, ctx, row, detail, true);
     } else {
       mark.setAttribute("role", "img");
       mark.setAttribute("aria-label", detail);
+      rove(mark);
     }
   });
 
@@ -105,7 +108,7 @@ function drawTimeline(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, w
 
 export const timeline: ViewDef = {
   id: "timeline",
-  keys: [...DATA_KEYS, "start", "end", "item", "label", "format", "values", "select", "detail"],
+  keys: [...DATA_KEYS, "start", "end", "item", "label", "format", "values", "select", "detail", "empty"],
   span: 4,
   needsSource: true,
   validate: (p) => [...(p.start ? [] : ["timeline needs start (a date field)"]), ...formatErrors(p)],

@@ -735,7 +735,7 @@ test("Watchlist: pick a symbol, see its move, record a buy, and pick a position 
   assert.equal(text(price.querySelector(".gz-big")), "508.29USD");
   assert.equal(text(move.querySelector(".gz-big")), "0.40%");
   assert.ok(chart.querySelector(".gz-chart-svg"));
-  assert.equal(text(positions.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(positions.querySelector(".gz-empty")), "Nothing logged yet.");
   assert.ok(waitsForPick(worth));
 
   const record = async (symbol: string, date: string, shares: string, paid: string) => {
@@ -807,7 +807,7 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   assert.equal(text(forecast.querySelector(".gz-goal-label")), "Goal 5");
   assert.deepEqual([...expected.querySelectorAll("li")].map(text), ["2026-11-18T21:00:00 · Kp 5.67"]);
   assert.ok(record.querySelector(".gz-chart-svg"));
-  assert.equal(text(sightings.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(sightings.querySelector(".gz-empty")), "Nothing logged yet.");
 
   // Saw one: the button, then a note on it in the table; and one more from a link with the app closed.
   click(root.querySelector("button.gz-button")!);
@@ -925,7 +925,7 @@ test("Movers (test vault): pick one of the biggest moves, note why it happened, 
   assert.deepEqual([...moves.querySelectorAll("tbody tr")].map((tr) => [...tr.querySelectorAll("td")].map(text)),
     [["session 5", "99.00", "-3.41"], ["session 3", "103.00", "2.49"]]);
   assert.ok(waitsForPick(form));
-  assert.equal(text(why.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(why.querySelector(".gz-empty")), "Nothing logged yet.");
 
   click(moves.querySelector("tbody tr")!);
   await settle();

@@ -3,14 +3,17 @@ import { rowId as ledgerRowId } from "./ledger.ts";
 import { fillLine, runActions, tickItem, type ActionDeps, type ActionResult } from "./actions.ts";
 import { describeAhead, type Actor } from "./activity.ts";
 import type { AppEntry, Background, BackgroundEnv, Evaluation } from "./background.ts";
-import { captureTargets, parseLine, type CaptureIndex, type Parsed } from "./capture.ts";
+import { captureTargets, logTime, ownAt, parseLine, whenText, type CaptureIndex, type Parsed } from "./capture.ts";
 import { Overlay, recordingDeps, type DryStep } from "./dryrun.ts";
 import type { Row } from "./data.ts";
 import {
   answerParams, appOfShortcut, appsNamed, captureCovers, formRow, pickItem, readCallbacks, readLink, shortcutId, shortcutLink, withParams,
   type Callbacks, type ShortcutLink,
 } from "./links.ts";
+import { panelEntries } from "./expand.ts";
+import { isPlainObject } from "./keys.ts";
 import { resolvePanel, type AppSpec, type Panel, type PanelSpec, type Then } from "./spec.ts";
+import { aliasShortcut } from "./views/alerts.ts";
 import { clearance, rank, released } from "./policy.ts";
 import { basename, storeTarget } from "./store.ts";
 import { InputRef, valueProblem } from "./template.ts";
@@ -234,6 +237,8 @@ export class Shortcuts {
       return { ok: false, error: message };
     };
     const openApp = (path: string) => (dry ? void step.remarks.push(`Open ${basename(path)} for you to fill in`) : this.env.sink.openApp(path));
+    const problem = entry?.broken.get(shortcut);
+    if (entry && problem !== undefined) return fail(`“${entry.name}”'s shortcut “${shortcut}” has a problem: ${problem}`);
     if (!entry || !ps) return fail(`${entry?.name ?? basename(appPath)} has no shortcut “${shortcut}”`);
     if (!this.granted(entry)) return fail(`Open ${entry.name} once to allow it`);
     const now = this.env.now();
@@ -257,6 +262,9 @@ export class Shortcuts {
     if (triggered && p.view === "button" && params && Object.keys(params).length) {
       return fail(`${entry.name}: “${shortcut}” is a button and takes no values; take fill out of ${by(actor)}'s then`);
     }
+    // Another app's then fills fields only; what it saves is logged when it runs.
+    const when: { at?: Date } | { error: string } = triggered ? {} : whenOf(p, shortcut, params, now);
+    if ("error" in when) return fail(`${entry.name}: ${when.error}`);
     if (p.view === "form" || p.view === "checklist") {
       const form = p.view === "form";
       if (!params && triggered) return fail(`${entry.name}: “${shortcut}” is a ${p.view}; give ${by(actor)}'s then a fill with ${form ? "its values" : "item"}`);
@@ -265,7 +273,8 @@ export class Shortcuts {
         say(`${entry.name}: ${form ? "fill in the form" : "tick an item"}`);
         return { ok: false, error: form ? "the form needs its values" : "say which item to tick" };
       }
-      const read = readParams(p, params, now);
+      // Logged for another day, a field's default of today means that day.
+      const read = readParams(p, params, when.at ?? now);
       if ("error" in read) return fail(`${entry.name}: ${read.error}`);
       input = read.row;
     }
@@ -274,6 +283,7 @@ export class Shortcuts {
     if (actor === "link" && !dry) {
       const given = params ?? {};
       const lines = Object.keys(input).filter((k) => Object.hasOwn(given, k)).map((k) => `${k}: ${String(input[k])}`);
+      if (when.at) lines.push(`at: ${whenText(when.at, now)}`);
       if (cb.to) lines.push(`Then it tells ${cb.to} it ran`);
       const effects = async () => dryLines(await this.dryRun(entry.path, shortcut, params));
       allowed = await this.linkMayRun(entry, p, shortcut, link, lines, `A link asks to run “${label}” in ${entry.name}`, effects);
@@ -290,13 +300,16 @@ export class Shortcuts {
     let result: ActionResult;
     if (p.view === "checklist") {
       const base = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
-      result = await tickItem(p, String(input.item), dry ? recordingDeps(dry.overlay, base, step) : base);
+      result = await tickItem(p, String(input.item), { ...(dry ? recordingDeps(dry.overlay, base, step) : base), tellsFailure: true });
       if (result.ok) say(`${entry.name}: ${result.already ? `${String(input.item)} was already ticked` : `ticked ${String(input.item)}`}${triggered ? ` for ${by(actor)}` : ""}`);
     } else {
       const base: ActionDeps = this.env.actionDeps(entry.path, entry.dataPath, dry ? undefined : actor);
       const deps: ActionDeps = {
         ...(dry ? recordingDeps(dry.overlay, base, step) : base),
+        // Why it stopped is said once, below, naming the shortcut.
+        tellsFailure: true,
         expect: entry.spec.expect,
+        ...(when.at && { at: when.at }),
         ...(seed && { rowId: ledgerRowId(`then\n${seed}`) }),
         then: async (panel, ctx) => {
           done();
@@ -306,10 +319,11 @@ export class Shortcuts {
       result = await runActions(p, input, deps);
       if (result.ok) done();
     }
+    const failed = `“${label}” didn't run${result.error ? `: ${result.error}` : ""}`;
+    if (!result.ok) say(triggered ? `${entry.name}: ${failed}` : failed);
     if (dry) return { ok: result.ok };
     if (allowed && result.ok && cb.success) this.env.sink.openUrl(withParams(cb.success, { result: "done" }));
     // Only a link with its key hears why it failed; any other could be a page finding out what's there.
-    const failed = `“${label}” didn't run${result.error ? `: ${result.error}` : ""}`;
     if (allowed === "keyed" && !result.ok && cb.error) this.env.sink.openUrl(withParams(cb.error, { errorMessage: failed }));
     const entryId = await result.logged?.catch(() => undefined);
     return result.ok ? { ok: true, entryId } : { ok: false, error: failed, entryId };
@@ -516,6 +530,40 @@ function readParams(p: Panel, params: Record<string, string>, now: Date): { row:
   if (problem) return { error: problem };
   if (p.view === "checklist") return pickItem((p.items ?? []).map(String), params);
   return formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, params, now);
+}
+
+/**
+ * When a form's or button's row is logged for, from a link's `at=` (which a capture line's `@when`
+ * becomes): now when none is given. Refused for a form with a field of its own called at, whose
+ * value the row's stamp would take the place of, and refused whole, as any value of a link is, if
+ * it holds a secret or a line break.
+ */
+function whenOf(p: Panel, shortcut: string, params: Record<string, string> | undefined, now: Date): { at?: Date } | { error: string } {
+  const raw = params?.at;
+  if (raw === undefined || p.view === "checklist") return {};
+  if (p.view === "form" && Object.hasOwn(p.fields ?? p.schema ?? {}, "at")) return { error: ownAt(shortcut, "at=") };
+  const problem = valueProblem(new InputRef("at"), raw, true);
+  return problem ? { error: problem } : logTime(raw, now);
+}
+
+/**
+ * The shortcuts an app's own panels name that aren't indexed because their panel has a problem
+ * that stops it, each with the first problem readSpec gave for that panel, so a link or a `then`
+ * naming one hears that rather than that there's no such shortcut.
+ */
+export function brokenShortcuts(fm: Record<string, unknown>, spec: AppSpec, errors: readonly string[]): Map<string, string> {
+  const listed = Array.isArray(fm.panels) || (fm.tabs !== undefined && fm.tabs !== null);
+  const entries = fm.use !== undefined ? [] : listed ? panelEntries(fm, []) : fm.view !== undefined ? [{ raw: fm, label: "" }] : [];
+  const out = new Map<string, string>();
+  for (const { raw, label } of entries) {
+    if (!isPlainObject(raw)) continue;
+    const id = typeof raw.shortcut === "string" ? raw.shortcut : typeof raw.alias === "string" ? aliasShortcut(raw.alias) : undefined;
+    if (id === undefined || out.has(id) || spec.panels.some((ps) => ps.panel.shortcut === id)) continue;
+    // A note that is one panel gives its problems without a label.
+    const problem = label ? errors.find((e) => e.startsWith(`${label}: `))?.slice(label.length + 2) : errors[0];
+    if (problem !== undefined) out.set(id, problem);
+  }
+  return out;
 }
 
 /** The values a shortcut takes from a link: a form's fields, a checklist's item; a button takes none. */

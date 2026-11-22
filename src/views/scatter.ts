@@ -5,7 +5,7 @@ import { rowsFromArrays } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { timeTicks } from "./axis.ts";
 import { B, H, L, R, T, niceTicks, svg } from "./chart.ts";
-import { heading, picks, selectable, seriesNames } from "./common.ts";
+import { LEFT_RIGHT, describeChart, emptyText, heading, picks, rove, roving, selectable, seriesNames, whyEmpty } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
 
@@ -39,11 +39,12 @@ function dotsOf(p: Panel, data: unknown): { dots: Dot[]; isTime: boolean } {
 function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, width: number): void {
   const { dots, isTime } = dotsOf(p, data);
   if (dots.length === 0) {
-    el.createDiv({ cls: "gz-empty", text: "No data to chart yet." });
+    whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: rowsOf(data).length ? "No data to chart yet." : emptyText(p, ctx.now, "No data to chart yet.") }));
     return;
   }
   const W = Math.max(280, Math.round(width));
-  const shown = dots.slice(0, MAX_DOTS);
+  // Left to right, so the arrow keys step through the dots in the order they are seen.
+  const shown = dots.slice(0, MAX_DOTS).sort((a, b) => a.x - b.x);
   const [xMin, xMax] = pad(extent(shown.map((d) => d.x)), isTime ? DAY / 2 : 1, 0.04);
   const [yMin, yMax] = pad(extent(shown.map((d) => d.y)), 1, 0.08);
   const sx = (x: number) => L + ((x - xMin) / (xMax - xMin)) * (W - L - R);
@@ -59,7 +60,8 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
   const fmtX = (v: unknown) => mapped(p, xName, v) ?? formatted(xName, v, () => formatValue(v));
 
   const wrap = el.createDiv({ cls: "gz-chart" });
-  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg", role: "group", "aria-label": `${labelOf(p, yName)} by ${labelOf(p, xName)}` }, wrap);
+  const root = svg("svg", { viewBox: `0 0 ${W} ${H}`, class: "gz-chart-svg" }, wrap);
+  roving(wrap, LEFT_RIGHT);
   for (const t of niceTicks(yMin, yMax)) {
     svg("line", { x1: L, x2: W - R, y1: sy(t), y2: sy(t), class: "gz-gridline" }, root);
     svg("text", { x: L - 8, y: sy(t) + 4, class: "gz-axis", "text-anchor": "end" }, root).textContent = tick(yName, t);
@@ -75,7 +77,7 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
   const texts = new WeakMap<Element, string>();
   for (const d of shown) {
     const text = p.item ? fillWith(p.item, d.row, (path, v) => display(p, path, v, ctx.now, "text")) : `${fmtX(getPath(d.row, xName))}, ${fmtY(d.y)}`;
-    const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "gz-scatter-dot", tabindex: 0 }, root);
+    const dot = svg("circle", { cx: sx(d.x), cy: sy(d.y), r: RADIUS, class: "gz-scatter-dot" }, root);
     svg("title", {}, dot).textContent = text;
     texts.set(dot, text);
     if (picks(p)) {
@@ -83,11 +85,25 @@ function drawScatter(el: HTMLElement, p: Panel, ctx: PanelCtx, data: unknown, wi
     } else {
       dot.setAttribute("role", "img");
       dot.setAttribute("aria-label", text);
+      rove(dot);
     }
   }
-  // One listener each rather than a pair per dot: what the pointer or focus is on is read out.
-  for (const on of ["pointerover", "focusin"]) root.addEventListener(on, (e) => readout.setText(texts.get(e.target as Element) ?? axes));
-  for (const off of ["pointerleave", "focusout"]) root.addEventListener(off, () => readout.setText(axes));
+  // The dots are named one by one, so the summary says only what they add up to.
+  const range = (field: string, lo: string, hi: string) => (lo === hi ? `${labelOf(p, field)} ${lo}` : `${labelOf(p, field)} from ${lo} to ${hi}`);
+  const byY = shown.map((d) => d.y);
+  const count = dots.length === 1 ? "1 point" : `${dots.length.toLocaleString()} points${dots.length > shown.length ? `, ${shown.length.toLocaleString()} drawn` : ""}`;
+  describeChart(root, `${p.title ?? p.label ?? `${labelOf(p, yName)} by ${labelOf(p, xName)}`}: ${count}, ${[
+    range(xName, fmtX(getPath(shown[0].row, xName)), fmtX(getPath(shown[shown.length - 1].row, xName))),
+    range(yName, fmtY(Math.min(...byY)), fmtY(Math.max(...byY))),
+  ].join(", ")}`);
+  // One listener each rather than a pair per dot: what the pointer or focus is on is read out. The focus
+  // is listened for around the chart: Chromium puts an SVG element that listens for it in the Tab order.
+  const show = (e: Event) => readout.setText(texts.get(e.target as Element) ?? axes);
+  const reset = () => readout.setText(axes);
+  root.addEventListener("pointerover", show);
+  root.addEventListener("pointerleave", reset);
+  wrap.addEventListener("focusin", show);
+  wrap.addEventListener("focusout", reset);
   if (dots.length > shown.length) {
     el.createDiv({ cls: "gz-label", text: `Showing ${shown.length.toLocaleString()} of ${dots.length.toLocaleString()}` });
   }
@@ -102,7 +118,7 @@ function pad([min, max]: [number, number], flat: number, by: number): [number, n
 
 export const scatter: ViewDef = {
   id: "scatter",
-  keys: [...DATA_KEYS, "x", "y", "item", "label", "unit", "decimals", "format", "labels", "values", "select", "detail"],
+  keys: [...DATA_KEYS, "x", "y", "item", "label", "unit", "decimals", "format", "labels", "values", "select", "detail", "empty"],
   span: 2,
   needsSource: true,
   validate(p: Panel) {

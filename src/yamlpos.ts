@@ -20,6 +20,8 @@ export interface Context {
   key?: string;
   /** What is typed so far of the key or value. */
   prefix: string;
+  /** The value is one item of a list typed on one line, `columns: [at, am`, and `prefix` is that item. */
+  inList?: true;
   /** The `view:` of the same list item (where is "panel"), or at the top of a single-panel note. */
   view?: string;
   /** Keys already typed in the same map, apart from the cursor's own line. */
@@ -277,17 +279,28 @@ export function contextAt(raw: string[], line: number, ch: number): Context | un
   let key: string | undefined;
   let prefix: string;
   let from = ch;
+  let inList = false;
   if (blank) {
     prefix = "";
   } else if (row.key !== undefined && ch > row.colon!) {
     // Right after the colon the space is still to come.
-    if (ch === row.colon! + 1 || text.slice(ch).trim() !== "") return other();
+    if (ch === row.colon! + 1) return other();
     const start = row.colon! + 1 + /^ */.exec(text.slice(row.colon! + 1))![0].length;
-    prefix = ch >= start ? text.slice(start, ch) : "";
-    if (/^[[{"'|>&*!#%@`]/.test(prefix) || /(^|\s)#/.test(prefix)) return other();
+    const typed = ch >= start ? text.slice(start, ch) : "";
+    // The last item of a list on one line, its closing bracket typed already (an editor pairs it) or still to come.
+    const item = /^\[(?:[^[\]{}"'#,]*,)*\s*([^[\]{}"'#,]*)$/.exec(typed);
+    if (item && /^\s*\]?\s*$/.test(text.slice(ch))) {
+      prefix = item[1];
+      inList = true;
+      from = ch - prefix.length;
+    } else {
+      if (text.slice(ch).trim() !== "") return other();
+      prefix = typed;
+      if (/^[[{"'|>&*!#%@`]/.test(prefix) || /(^|\s)#/.test(prefix)) return other();
+      from = ch >= start ? start : ch;
+    }
     position = "value";
     key = row.key;
-    from = ch >= start ? start : ch;
   } else {
     prefix = text.slice(row.col, ch);
     const tail = text.slice(ch, row.key !== undefined ? row.colon : text.length);
@@ -310,8 +323,21 @@ export function contextAt(raw: string[], line: number, ch: number): Context | un
     from: { line, ch: from },
   };
   if (key !== undefined) context.key = key;
+  if (inList) context.inList = true;
   if ((where === "panel" || where === "top") && view) context.view = view;
   return context;
+}
+
+/**
+ * The value typed for `key` in the map the cursor is in (a panel's `source:`, say), wherever in that
+ * map it is written; undefined when it isn't there.
+ */
+export function valueBeside(raw: string[], line: number, ch: number, key: string): string | undefined {
+  const fm = frontmatter(raw);
+  if (!fm || line < 1 || line >= fm.end) return undefined;
+  const blank = fm.lines[line].trim() === "";
+  const row = fm.rows[line];
+  return siblings(fm, line, blank ? ch : row.col, !blank && row.dash !== undefined).find((x) => x.key === key && x.value)?.value;
 }
 
 // ---- Errors that name a place ---------------------------------------------------------------------
@@ -389,4 +415,14 @@ export function lineOf(raw: string[], label: string): number | undefined {
   }
   const section = topKey(fm, target.kind === "data" ? "data" : "inputs");
   return section === undefined ? undefined : childKey(fm, section, target.name);
+}
+
+/**
+ * The 0-based line a panel starts on, by where it is written (`panel 2`, `tabs.Score panel 1`); a
+ * note that is one panel, written with no label, starts at its `view:`.
+ */
+export function panelLine(raw: string[], label: string): number | undefined {
+  if (label) return lineOf(raw, label);
+  const fm = frontmatter(raw);
+  return fm && topKey(fm, "view");
 }

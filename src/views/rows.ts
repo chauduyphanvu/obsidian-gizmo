@@ -4,7 +4,7 @@ import type { Panel } from "../spec.ts";
 import { DAY, periodStart, toTime, wallTime } from "../time.ts";
 import { CELL_KINDS, drawCell } from "./cells.ts";
 import {
-  busy, conflictChip, fieldControl, groupedTotals, heading, noteLink, rowActionErrors, rowKey, rowNote, selectable, shownRows,
+  ANY_ARROW, UP_DOWN, busy, conflictChip, emptyText, fieldControl, groupedTotals, heading, noteLink, roving, rowActionErrors, rowKey, rowNote, selectable, shownRows, whyEmpty,
 } from "./common.ts";
 import { ACTION_KEYS, DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
@@ -401,7 +401,10 @@ function card(grid: HTMLElement, env: RowEnv, r: Row, i: number): DrawnRow {
 
 function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: Arrivals): Drawn | undefined {
   heading(el, p, p.label);
-  if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return undefined; }
+  if (rows.length === 0) {
+    whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: emptyText(p, ctx.now, "Nothing here yet.") }));
+    return undefined;
+  }
   const all = columnsOf(p, rows);
   // Shown as it was, nothing can be written: an edited column reads as its cells do.
   const edited = new Map(ctx.readOnly ? [] : (p.edit ?? []).map((f) => [f, editType(p, f, rows)] as const));
@@ -415,12 +418,14 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: A
   let groups: Grouping | undefined;
   if (cards) {
     parent = el.createDiv({ cls: "gz-cards" });
+    roving(parent, ANY_ARROW);
   } else {
     const table = el.createDiv({ cls: "gz-table-wrap" }).createEl("table", { cls: look.ledger ? "gz-table gz-ledger" : "gz-table" });
     const head = table.createEl("thead").createEl("tr");
     for (const c of env.columns) head.createEl("th", { text: labelOf(p, c), cls: numericColumn(p, c, rows, edited) || edited.get(c) === "number" ? "gz-num" : undefined });
     if (p.action) head.createEl("th");
     parent = table.createEl("tbody");
+    roving(parent, UP_DOWN);
     if (look.ledger) {
       const span = env.columns.length + (p.action ? 1 : 0);
       const by = env.columns.find((c) => c !== look.ledger!.field && numbers(p, c, rows));
@@ -461,7 +466,7 @@ function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: A
 
 export const table: ViewDef = {
   id: "table",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "of", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "detail", "action", ...ACTION_KEYS, "edit", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "columns", "agg", "of", "max", "label", "decimals", "format", "labels", "values", "cells", "layout", "select", "detail", "action", ...ACTION_KEYS, "edit", "alert", "empty"],
   span: 4,
   needsSource: true,
   validate: (p) => [...groupedTotals(p, p.columns ?? [], "columns"), ...rowActionErrors("table", p), ...editProblems(p), ...formatErrors(p), ...cellProblems(p)],
@@ -549,7 +554,7 @@ export function listItem(p: Panel, r: Row, now: Date): string {
 
 export const list: ViewDef = {
   id: "list",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "detail", "action", ...ACTION_KEYS, "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "item", "label", "decimals", "format", "labels", "values", "select", "detail", "action", ...ACTION_KEYS, "alert", "empty"],
   span: 4,
   needsSource: true,
   validate: (p) => [...rowActionErrors("list", p), ...formatErrors(p)],
@@ -582,9 +587,13 @@ export const list: ViewDef = {
         heading(el, p, p.label);
         const rows = rowsOf(data);
         const news = memory.arrive(rows);
-        if (rows.length === 0) { el.createDiv({ cls: "gz-empty", text: "Nothing here yet." }); return; }
+        if (rows.length === 0) {
+          whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: emptyText(p, ctx.now, "Nothing here yet.") }));
+          return;
+        }
         const ledger = ledgerBy(p, rows);
         const ul = el.createEl("ul", { cls: ledger ? "gz-list gz-ledger" : "gz-list" });
+        roving(ul, UP_DOWN);
         const by = ledger && itemFields(p, rows).find((f) => f !== ledger.field && numbers(p, f, rows));
         const groups = ledger && grouping(
           ledger, ctx.now, rows, () => ul.createEl("li", { cls: "gz-ledger-group" }),

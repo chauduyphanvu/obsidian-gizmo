@@ -165,6 +165,8 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
   const source = { lines: [] as string[], shownAt: [] as number[] };
   const copied: string[] = [];
   const grants: Record<string, string[]> = {};
+  /** Renames whose rows the person chose to leave as they are, as data.json keeps them. */
+  const leftAlone: Record<string, true> = {};
   const changed = (path: string) => {
     data.fileChanged(path);
     f.flush();
@@ -235,6 +237,8 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     copy: (text) => { copied.push(text); },
     log: (entry) => void activity.add(entry),
     now: () => new Date(2026, 10, 18, 12, 0),
+    leftAlone: (key) => Object.hasOwn(leftAlone, key),
+    leaveAlone: (key) => { leftAlone[key] = true; },
   };
   // This device runs background work, so it writes each data note's snapshot, at once here.
   data.setSnapshots({ isRunner: () => true, delayMs: 0, gapMs: 0, writeNote: (path, fn) => env.writeFrontmatter(path, fn) });
@@ -265,7 +269,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
       return "trashed";
     },
   };
-  return { env, f, data, writes, notices, opened, changed, source, copied, grants, activity, undoIO };
+  return { env, f, data, writes, notices, opened, changed, source, copied, grants, leftAlone, activity, undoIO };
 }
 
 /**
@@ -281,7 +285,8 @@ function snapshotting(store: DataStore, data: DataLayer): DataStore {
   return {
     dataPath: store.dataPath,
     rows: (list) => store.rows(list),
-    add: after(store.add), set: after(store.set), tick: after(store.tick), untick: after(store.untick), clear: after(store.clear), undo: after(store.undo),
+    add: after(store.add), set: after(store.set), delete: after(store.delete), batch: after(store.batch),
+    tick: after(store.tick), untick: after(store.untick), clear: after(store.clear), undo: after(store.undo),
   };
 }
 

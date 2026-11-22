@@ -271,8 +271,9 @@ test("a grouped bar picks the group's row; marks are buttons and the picked one 
   await settle();
   const bars = [...root.querySelectorAll(".gz-bar")];
   assert.equal(bars.length, 2);
+  // Named by group and value; one Tab stop for the bars, the arrows between them.
   assert.deepEqual(bars.map((b) => [b.getAttribute("role"), b.getAttribute("tabindex"), b.getAttribute("aria-label")]),
-    [["button", "0", "good"], ["button", "0", "ok"]]);
+    [["button", "0", "good: 2"], ["button", "-1", "ok: 1"]]);
   bars[0].dispatchEvent(new window.Event("click", { bubbles: true }));
   await settle();
   assert.equal(text(root.querySelector(".gz-text")), "good: 2");
@@ -291,13 +292,16 @@ test("an ungrouped bar picks the data row behind it", async () => {
   const { root, start } = open(fm, { "Apps/W data.md": { fm: { budget } } });
   start();
   await settle();
-  // Drawn series by series: planned food, planned rent, spent food, spent rent.
+  // Drawn left to right: planned food, spent food, planned rent, spent rent.
   const bars = [...root.querySelectorAll(".gz-bar")];
   assert.equal(bars.length, 4);
+  assert.deepEqual(bars.map((b) => b.getAttribute("aria-label")), ["food, planned: 5", "food, spent: 4", "rent, planned: 9", "rent, spent: 9"]);
   bars[3].dispatchEvent(new window.Event("click", { bubbles: true }));
   await settle();
   assert.equal(text(root.querySelector(".gz-text")), "rent monthly");
-  assert.deepEqual(bars.map((b) => b.classList.contains("gz-selected")), [false, true, false, true]);
+  assert.deepEqual(bars.map((b) => b.classList.contains("gz-selected")), [false, false, true, true]);
+  // Tab lands on the first bar picked.
+  assert.deepEqual(bars.map((b) => b.getAttribute("tabindex")), ["-1", "-1", "0", "-1"]);
 });
 
 test("a pie's slices and legend rows pick the same row; Other picks nothing", () => {

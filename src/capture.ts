@@ -1,4 +1,4 @@
-import { stampParts } from "./time.ts";
+import { stampOf, stampParts, toTime } from "./time.ts";
 import type { PanelSpec } from "./spec.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */
@@ -73,9 +73,12 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
   return { names, clashes };
 }
 
-/** What a capture line would run, or why it can't, with what could come next. */
+/**
+ * What a capture line would run, or why it can't, with what could come next. `params` are what a
+ * link would carry, `at=` included for a line that ends in `@when`; `at` is that time, to show.
+ */
 export type Parsed =
-  | { ok: true; target: CaptureTarget; params?: Record<string, string>; next?: string }
+  | { ok: true; target: CaptureTarget; params?: Record<string, string>; at?: Date; next?: string }
   | { ok: false; error: string; target?: CaptureTarget; completions: string[]; next?: string };
 
 /** One word of a line, or one `"…"` value. */
@@ -164,6 +167,95 @@ export function captureTime(word: string): string | undefined {
     h = (h % 12) + (m[3] === "pm" ? 12 : 0);
   } else if (h > 23) return undefined;
   return `${String(h).padStart(2, "0")}:${String(min).padStart(2, "0")}`;
+}
+
+/** Why a form with a field of its own called at can't be told, with `how` (`@`, `at=`), when its row is logged for. */
+export const ownAt = (name: string, how: string) => `${name} has a field called at, so ${how} can't give the time it's logged for`;
+
+/** Why a row can't be logged for a time still to come: rows record what happened. */
+export const NOT_YET = "can't log for a time that hasn't come yet";
+
+/**
+ * A day a row is logged for, as `YYYY-MM-DD`: the words captureDate reads, except that a weekday
+ * or a month and day is the latest one, today included, since what is logged has happened, and
+ * `last` and a weekday is the one a week before that.
+ */
+function pastDate(word: string, following: string | undefined, now: Date): { value: string; used: number } | undefined {
+  const w = word.toLowerCase();
+  const back = (wd: number) => (now.getDay() - wd + 7) % 7;
+  const wd = weekday(w);
+  if (wd !== undefined) return { value: stampParts(shifted(now, -back(wd))).date, used: 1 };
+  const lastWd = w === "last" && following !== undefined ? weekday(following.toLowerCase()) : undefined;
+  if (lastWd !== undefined) return { value: stampParts(shifted(now, -back(lastWd) - 7)).date, used: 2 };
+  const md = w.match(/^(\d{1,2})-(\d{1,2})$/);
+  if (md) {
+    const [m, d] = [Number(md[1]), Number(md[2])];
+    const value = day(now.getFullYear(), m, d);
+    if (value === undefined) return undefined;
+    return { value: value > stampParts(now).date ? day(now.getFullYear() - 1, m, d) ?? value : value, used: 1 };
+  }
+  return captureDate(word, following, now);
+}
+
+/**
+ * The time the words after `@` give, every word used: a time (today), a day (at this time of day),
+ * or a day and a time. Undefined when they aren't one; why not, for a time still to come.
+ */
+function readWhen(words: readonly string[], now: Date): { at: Date } | { error: string } | undefined {
+  const [first, ...more] = words;
+  if (!first) return undefined;
+  let date = stampParts(now).date;
+  let time = more.length ? undefined : captureTime(first);
+  if (time === undefined) {
+    const d = pastDate(first, more[0], now);
+    const rest = d ? more.slice(d.used - 1) : [];
+    if (!d || rest.length > 1) return undefined;
+    date = d.value;
+    time = rest.length ? captureTime(rest[0]) : stampParts(now).time;
+    if (time === undefined) return undefined;
+  }
+  const [y, m, dd] = date.split("-").map(Number);
+  const [h, mi] = time.split(":").map(Number);
+  const at = new Date(y, m - 1, dd, h, mi);
+  return at.getTime() > now.getTime() ? { error: NOT_YET } : { at };
+}
+
+/**
+ * A trailing `@when` taken off a line's values: `@yday`, `@8am`, `@fri 13:00`, `@last mon 8:15`.
+ * Only when what follows the last `@` reads as a time to the line's end; anything else (an
+ * address, `lunch @ cafe`, a quoted or named value) stays a value.
+ */
+export function takeWhen(tokens: readonly Token[], now: Date): { tokens: Token[]; at?: Date; error?: string } {
+  const plain = (t: Token) => !t.quoted && t.name === undefined;
+  let i = tokens.length - 1;
+  while (i >= 0 && plain(tokens[i]) && !tokens[i].text.startsWith("@")) i--;
+  const head = tokens[i];
+  if (!head || !plain(head) || head.text.length < 2) return { tokens: [...tokens] };
+  const when = readWhen([head.text.slice(1), ...tokens.slice(i + 1).map((t) => t.text)], now);
+  if (!when) return { tokens: [...tokens] };
+  return "error" in when ? { tokens: tokens.slice(0, i), error: when.error } : { tokens: tokens.slice(0, i), at: when.at };
+}
+
+/**
+ * A time to log a row for, as a link's `at=` gives it: the words a line takes after `@` (yday,
+ * fri 13:00, 8am), or a stamp (`2026-11-19T08:14-08:00`); never one still to come.
+ */
+export function logTime(text: string, now: Date): { at: Date } | { error: string } {
+  const typed = text.trim().replace(/^@/, "");
+  const read = readWhen(typed.split(/\s+/), now);
+  if (read) return read;
+  const t = /^\d{4}-\d{2}-\d{2}T/.test(typed) ? toTime(typed) : undefined;
+  if (t === undefined) return { error: `at must be a time (yday, fri 13:00, 8am, 2026-11-19T08:14), not “${text}”` };
+  return t > now.getTime() ? { error: NOT_YET } : { at: new Date(t) };
+}
+
+const DAYS = ["Sun", "Mon", "Tue", "Wed", "Thu", "Fri", "Sat"];
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+
+/** A time a row is logged for, as a preview says it: `Thu Nov 19, 13:00`, with its year when not this one's. */
+export function whenText(at: Date, now: Date): string {
+  const year = at.getFullYear() === now.getFullYear() ? "" : ` ${at.getFullYear()}`;
+  return `${DAYS[at.getDay()]} ${MONTHS[at.getMonth()]} ${at.getDate()}${year}, ${stampParts(at).time}`;
 }
 
 /** A number as a capture line takes it: digits, a point, a sign; no thousands separators. */
@@ -258,8 +350,10 @@ export function parseLine(line: string, index: CaptureIndex, now: Date): Parsed 
   if ("error" in tokens) return { ok: false, error: tokens.error, target, completions: [] };
   const rest = tokens;
   if (target.view === "button") {
-    if (rest.length) return { ok: false, error: `${word} takes no values`, target, completions: [] };
-    return { ok: true, target };
+    const when = takeWhen(rest, now);
+    if (when.error) return { ok: false, error: when.error, target, completions: [] };
+    if (when.tokens.length) return { ok: false, error: `${word} takes no values`, target, completions: [] };
+    return when.at ? { ok: true, target, params: { at: stampOf(when.at) }, at: when.at } : { ok: true, target };
   }
   if (target.view === "checklist") {
     const named = rest.find((t) => t.name !== undefined);
@@ -282,8 +376,12 @@ function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
     const [name, type] = target.fields[0];
     return fail(`type what ${target.name} saves, starting with ${name}`, completionsFor(type, ""), describe(name, type));
   }
+  // @ is run as a link's at=, which a form with a field of its own called at refuses.
+  if (read.at && target.fields.some(([n]) => n === "at")) return fail(ownAt(target.name, "@"));
   const nextField = target.fields.find(([n]) => n === read.missing[0]);
-  return { ok: true, target, params: read.params, next: nextField ? describe(nextField[0], nextField[1]) : undefined };
+  const next = nextField ? describe(nextField[0], nextField[1]) : undefined;
+  if (!read.at) return { ok: true, target, params: read.params, next };
+  return { ok: true, target, params: { ...read.params, at: stampOf(read.at) }, at: read.at, next };
 }
 
 /** What the values on a line give a form's fields. */
@@ -301,6 +399,8 @@ export interface FieldValues {
   completions: string[];
   /** What the field the first error is about takes. */
   next?: string;
+  /** When the row is logged for, from a trailing `@when`; undefined for now. */
+  at?: Date;
 }
 
 type FieldList = readonly (readonly [string, string | string[]])[];
@@ -319,12 +419,14 @@ const isText = (type: string | string[]) => type === "text" || type === "textare
  * the line. A choice (written in full, or 3 letters or more of only one), a number, a date or a
  * time finds its field; a quoted value goes to the next text field; the words left over go to the
  * first text field, together.
+ *
+ * Either way, a trailing `@when` (see takeWhen) is the time the row is logged for, not a value.
  */
 export function parseFields(input: string | readonly Token[], fields: FieldList, now: Date, how: { name: string; loose?: boolean }): FieldValues {
   const out: FieldValues = { params: {}, missing: [], errors: [], completions: [] };
-  const tokens = typeof input === "string" ? tokenize(input) : input;
-  if ("error" in tokens) {
-    out.errors.push(tokens.error);
+  const typed = typeof input === "string" ? tokenize(input) : input;
+  if ("error" in typed) {
+    out.errors.push(typed.error);
     out.missing = fields.map(([n]) => n);
     return out;
   }
@@ -334,6 +436,13 @@ export function parseFields(input: string | readonly Token[], fields: FieldList,
     if (!out.errors.length) Object.assign(out, { completions, next });
     out.errors.push(error);
   };
+  const when = takeWhen(typed, now);
+  const tokens = when.tokens;
+  if (when.at) out.at = when.at;
+  if (when.error) {
+    fail(when.error);
+    if (!how.loose) return done(out, fields);
+  }
   for (const t of tokens) {
     if (t.name === undefined) continue;
     // Typed in any case; kept as the form spells it.

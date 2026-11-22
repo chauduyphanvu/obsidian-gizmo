@@ -122,12 +122,15 @@ test("an object of parallel arrays plots like rows", () => {
 test("with select a dot is a button that picks its data row", () => {
   const { ctx, picked } = fakeCtx();
   const { el } = mount({ select: "car", item: "{name}" }, CARS, ctx);
-  const golf = dots(el)[1];
-  assert.deepEqual([golf.getAttribute("role"), golf.getAttribute("tabindex"), golf.getAttribute("aria-label")], ["button", "0", "Golf"]);
+  const [mini, golf] = dots(el);
+  // One Tab stop for the dots: the first until one is picked.
+  assert.deepEqual([golf.getAttribute("role"), golf.getAttribute("tabindex"), golf.getAttribute("aria-label")], ["button", "-1", "Golf"]);
+  assert.equal(mini.getAttribute("tabindex"), "0");
   const click = () => golf.dispatchEvent(new window.Event("click", { bubbles: true }));
   click();
   assert.deepEqual(picked, [CARS[1]]);
   assert.ok(golf.classList.contains("gz-selected"));
+  assert.deepEqual([mini.getAttribute("tabindex"), golf.getAttribute("tabindex")], ["-1", "0"]);
   click();
   assert.equal(picked.at(-1), undefined);
 });
@@ -160,7 +163,7 @@ test("format sets the axis ticks, the default title and the readout; labels name
   assert.ok(axisLabels(el).includes("1,400 lb"));
   assert.ok(axisLabels(el).includes("30.0 mpg"));
   assert.equal(text(dots(el)[0].querySelector("title")), "1,200 lb, 38.2 mpg");
-  assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "Efficiency by Weight");
+  assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "Efficiency by Weight: 3 points, Weight from 1,200 lb to 2,100 lb, Efficiency from 24.0 mpg to 38.2 mpg");
   assert.equal(text(el.querySelector(".gz-readout")), "x: Weight · y: Efficiency");
   dots(el)[1].dispatchEvent(new window.Event("pointerover", { bubbles: true }));
   assert.equal(text(el.querySelector(".gz-readout")), "1,500 lb, 31.0 mpg");

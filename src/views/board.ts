@@ -3,7 +3,7 @@ import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
 import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { conflictChip, heading, noteLink, rowKey, rowNote, selectable } from "./common.ts";
+import { UP_DOWN, conflictChip, emptyText, heading, noteLink, roving, rowKey, rowNote, selectable, whyEmpty, type Step } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
@@ -71,6 +71,24 @@ function splitItem(text: string): [name: string, rest?: string] {
   return i > 0 ? [text.slice(0, i), text.slice(i + 3)] : [text];
 }
 
+/**
+ * The arrow keys among a board's cards: up and down in reading order, column after column (as the
+ * columns stack on a narrow screen); left and right to the card at the same place in the next column
+ * that has cards, or its last.
+ */
+const cardKeys: Step = (from, key, cards) => {
+  if (key === "ArrowUp" || key === "ArrowDown") return UP_DOWN(from, key, cards);
+  if (key !== "ArrowLeft" && key !== "ArrowRight") return undefined;
+  const columnOf = (card: Element) => card.closest(".gz-board-col");
+  const columns = [...new Set(cards.map(columnOf))];
+  const here = columnOf(from);
+  const next = columns[columns.indexOf(here) + (key === "ArrowLeft" ? -1 : 1)];
+  if (!next) return from;
+  const place = cards.filter((c) => columnOf(c) === here).indexOf(from);
+  const there = cards.filter((c) => columnOf(c) === next);
+  return there[Math.min(place, there.length - 1)];
+};
+
 /** The card whose controls hold the focus, found again after the board is drawn afresh. */
 function focusedKey(el: HTMLElement): string | undefined {
   return el.ownerDocument.activeElement?.closest?.(".gz-board-card")?.getAttribute("data-key") ?? undefined;
@@ -78,7 +96,7 @@ function focusedKey(el: HTMLElement): string | undefined {
 
 export const board: ViewDef = {
   id: "board",
-  keys: [...DATA_KEYS, "group", "item", "label", "format", "values", "select", "detail"],
+  keys: [...DATA_KEYS, "group", "item", "label", "format", "values", "select", "detail", "empty"],
   span: 4,
   needsSource: true,
   // The board groups the raw rows itself, so cards keep what a write needs to find their note.
@@ -104,10 +122,11 @@ export const board: ViewDef = {
       heading(el, p, p.label);
       const columns = columnsOf(p, rows);
       if (columns.length === 0) {
-        el.createDiv({ cls: "gz-empty", text: "Nothing here yet." });
+        whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: emptyText(p, ctx.now, "Nothing here yet.") }));
         return;
       }
       const root = el.createDiv({ cls: "gz-board" });
+      roving(root, cardKeys);
       let dragging: { row: Row; from: Column; card: HTMLElement } | undefined;
       /** The write is the panel's; the card is dimmed until it is done, and the data reload that follows redraws the board. */
       const move = async (card: HTMLElement, row: Row, to: Column) => {

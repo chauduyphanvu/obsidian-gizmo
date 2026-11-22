@@ -142,7 +142,7 @@ test("Chores: a form shaped by the block saves chores; ticking one off moves it 
   tick.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal((f.files.get("Apps/Chores data.md")!.fm!.chores as { done: boolean }[])[0].done, true);
-  assert.equal(text(todo.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(todo.querySelector(".gz-empty")), "Nothing logged yet. Why?");
   assert.equal(text(root.querySelector(".gz-view-number .gz-big")), "1");
 });
 
@@ -241,7 +241,7 @@ test("Week: the next seven days from a calendar file; log an item as done, or so
   const [form, agenda, done] = [...root.querySelectorAll(".gz-panel")];
   // Wed 18 Nov: the Thursday bins and Tuesday's swim practice (a weekly rule), not Thanksgiving on the 26th.
   assert.deepEqual([...agenda.querySelectorAll("li:not(.gz-ledger-group)")].map((li) => text(li)), ["2026-11-19 · Bins outDone", "2026-11-24T17:30 · Swim practiceDone"]);
-  assert.equal(text(done.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(done.querySelector(".gz-empty")), "Nothing logged this week yet.");
 
   (agenda.querySelectorAll("li:not(.gz-ledger-group)")[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
@@ -598,9 +598,9 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
   assert.equal(text(chart.querySelector(".gz-title")), "SPY, last 6mo");
   assert.ok(chart.querySelector(".gz-chart-svg"));
   assert.equal(text(form.querySelector(".gz-title")), "Record a buy of SPY");
-  for (const empty of [held, buys, everything]) assert.equal(text(empty.querySelector(".gz-empty")), "Nothing here yet.");
+  for (const empty of [held, buys, everything]) assert.equal(text(empty.querySelector(".gz-empty")), "Nothing logged yet.");
   assert.ok(waitsForPick(worth));
-  assert.equal(text(paid.querySelector(".gz-big")), "—");
+  assert.equal(text(paid.querySelector(".gz-big")), "$0.00");
 
   const record = async (symbol: string, date: string, shares: string, price: string) => {
     choose(root.querySelector('.gz-inputs select[aria-label="symbol"]')!, symbol);
@@ -641,7 +641,7 @@ test("Portfolio: the Ticker for the stock I pick, a buy recorded for each, what 
   shares.dispatchEvent(new window.Event("change", { bubbles: true }));
   await settle();
   assert.equal((f.files.get("Apps/Portfolio data.md")!.fm!.buys as { shares: number }[])[2].shares, 0);
-  assert.equal(text(panels()[5].querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(panels()[5].querySelector(".gz-empty")), "Nothing logged yet. Why?");
   assert.deepEqual([...panels()[7].querySelectorAll("tbody tr")].map(cells), [["SPY", "15", "$7,550.00"]]);
 });
 
@@ -705,7 +705,7 @@ test("Appointments: what's coming up, a day's appointments, book one, and tick i
   assert.deepEqual(items(coming), ["in 16 days · Dentist with Dr. Lee", "in 58 days · Eye exam with Dr. Patel"]);
   assert.equal(text(next.querySelector(".gz-big")), "16 days");
   assert.equal(text(day.querySelector(".gz-title")), "On 2026-11-18");
-  assert.equal(text(day.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(day.querySelector(".gz-empty")), "Nothing here today. Why?");
   assert.deepEqual([...all.querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => text(tr.querySelector("td"))), ["Eye exam", "Dentist", "Physical"]);
 
   // Half-way through booking, look at another day: the add line keeps what was typed.
@@ -762,8 +762,8 @@ test("Renewals: add a deadline, see the days left soonest first, get told two we
   typeLine(form, "Passport");
   assert.deepEqual([...form.querySelectorAll(".gz-pv-label")].map((s) => text(s)), ["What", "Due"]);
   assert.equal(text(next.querySelector(".gz-big")), "—");
-  assert.equal(text(coming.querySelector(".gz-empty")), "Nothing here yet.");
-  assert.equal(text(done.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(coming.querySelector(".gz-empty")), "Nothing logged yet.");
+  assert.equal(text(done.querySelector(".gz-empty")), "Nothing logged yet.");
 
   const add = async (what: string, due: string) => {
     addLine(form, `${what} ${due}`);
@@ -836,7 +836,7 @@ test("Currency: today's rate told when it reaches mine, an amount converted, a t
   assert.equal(text(converted.querySelector(".gz-waiting")), "Type in “amount”");
   assert.equal(text(chart.querySelector(".gz-title")), "USD in EUR, week by week since 2025");
   assert.equal(chart.querySelectorAll("path.gz-line").length, 1);
-  assert.equal(text(sent.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(sent.querySelector(".gz-empty")), "Nothing logged yet.");
 
   const amount = root.querySelector('.gz-inputs input[type="search"]') as HTMLInputElement;
   amount.value = "250";
@@ -908,7 +908,7 @@ test("Weather: now, the next hours and the week in words, told when rain is like
   assert.deepEqual([...week.querySelectorAll("th")].map((th) => text(th)), ["Day", "Sky", "Temperature", "Rain chance"]);
   assert.deepEqual([...week.querySelectorAll("tbody tr")].map(cells),
     [["Wednesday", "overcast", "6 to 9 °C", "85 %"], ["Thursday", "rain", "6 to 11 °C", "100 %"], ["Friday", "clear", "2 to 8 °C", "0 %"]]);
-  assert.equal(text(walks.querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(walks.querySelector(".gz-empty")), "Nothing logged yet.");
 
   (now.querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();

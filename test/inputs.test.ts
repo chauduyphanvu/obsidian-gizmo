@@ -134,14 +134,14 @@ test("the date bar steps days, jumps to today, and takes a typed date", async ()
   const button = (label: string) => [...root.querySelectorAll(".gz-inputs button")].find((b) => b.textContent === label) as HTMLButtonElement;
   const date = root.querySelector('.gz-inputs input[type="date"]') as HTMLInputElement;
   assert.equal(date.value, "2026-11-18");
-  assert.equal(list(), "Nothing here yet.");
+  assert.equal(list(), "Nothing here today. Why?");
   button("›").click();
   await settle();
   assert.equal(date.value, "2026-11-19");
   assert.equal(list(), "Dentist");
   button("Today").click();
   await settle();
-  assert.equal(list(), "Nothing here yet.");
+  assert.equal(list(), "Nothing here today. Why?");
   date.value = "2027-01-15";
   date.dispatchEvent(new window.Event("change"));
   await settle();

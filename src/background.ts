@@ -9,7 +9,7 @@ import { fileDep, nameDep } from "./deps.ts";
 import { FiredStore, pausedKey } from "./background-fired.ts";
 import { MAX_SAMPLES, Recorder, recordJobs, type RecordJob } from "./background-record.ts";
 import { RenameMatcher } from "./background-renames.ts";
-import { Shortcuts, labelOf, shortcutFields, type DryRun, type ShortcutResult } from "./background-shortcuts.ts";
+import { Shortcuts, brokenShortcuts, labelOf, shortcutFields, type DryRun, type ShortcutResult } from "./background-shortcuts.ts";
 import { Rhythms } from "./background-rhythms.ts";
 import { Pauses } from "./background-pauses.ts";
 import { Watch } from "./background-watch.ts";
@@ -155,6 +155,8 @@ export interface AppEntry {
   records: RecordJob[];
   /** Panels by their `shortcut`, the first panel winning. */
   shortcuts: Map<string, PanelSpec>;
+  /** Shortcuts whose panel has a problem that stops it, each with that problem (see brokenShortcuts). */
+  broken: Map<string, string>;
   /** Panels with `pin` or `alert`, each with a key unique across the vault. */
   watched: { key: string; ps: PanelSpec }[];
   refreshMs: number;
@@ -534,7 +536,8 @@ export class Background {
   private index(path: string): AppEntry | undefined {
     const old = this.apps.get(path);
     const fm = this.env.frontmatter(path);
-    const spec = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path })?.spec;
+    const read = readSpec(fm, { now: this.env.now(), notes: this.env.notes, path });
+    const spec = read?.spec;
     // Most notes that change aren't apps and never were.
     if (!old && !spec) return undefined;
     if (old && fm === undefined) return this.disappeared(old);
@@ -542,7 +545,7 @@ export class Background {
     if (old && spec && old.definition === definition) return old;
     old?.stop();
     this.apps.delete(path);
-    const entry = spec && this.entry(path, spec, definition, fingerprint(fm!));
+    const entry = spec && this.entry(path, spec, definition, fingerprint(fm!), brokenShortcuts(fm!, spec, read.errors));
     if (entry && !old) this.arrived(entry);
     // A panel that is still there keeps its alert's state, so editing the app doesn't tell it again.
     // A rule still there keeps where its rhythm got to, so editing the app doesn't skip a deadline.
@@ -560,7 +563,7 @@ export class Background {
    * A new entry for an app, listening for changes to what defines it (its note, the components it
    * links) and to the data its pinned and alerting panels read.
    */
-  private entry(path: string, spec: AppSpec, definition: string, print: string): AppEntry {
+  private entry(path: string, spec: AppSpec, definition: string, print: string, broken: Map<string, string>): AppEntry {
     const ids = panelIds(spec.panels.map((ps) => ps.template));
     const shortcuts = new Map<string, PanelSpec>();
     for (const ps of spec.panels) if (ps.panel.shortcut && !shortcuts.has(ps.panel.shortcut)) shortcuts.set(ps.panel.shortcut, ps);
@@ -576,6 +579,7 @@ export class Background {
       wanted: permissionsOf(spec, path),
       records: recordJobs(spec),
       shortcuts,
+      broken,
       watched: [
         ...spec.panels.flatMap((ps, i) => (ps.panel.pin || ps.panel.alert !== undefined ? [{ key: `${path}\n${ids[i]}`, ps }] : [])),
         // A state rule is watched as an alert is: told, listed in Attention and its then run when a row comes to match.

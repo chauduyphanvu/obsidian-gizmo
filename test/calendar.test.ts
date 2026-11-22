@@ -137,7 +137,9 @@ test("days are buttons that pick their row, days without data included; picking 
   const { ctx, picked } = fakeCtx();
   const { el } = mount({ select: "day" }, DAYS, ctx);
   const day = cell(el, "2026-11-04");
-  assert.deepEqual([day.getAttribute("role"), day.getAttribute("tabindex")], ["button", "0"]);
+  // One Tab stop for the month: its first day until one is picked.
+  assert.deepEqual([day.getAttribute("role"), day.getAttribute("tabindex")], ["button", "-1"]);
+  assert.equal(cell(el, "2026-11-01").getAttribute("tabindex"), "0");
   day.click();
   assert.deepEqual(picked, [{ at: "2026-11-04", count: 1 }]);
   assert.ok(day.classList.contains("gz-selected"));

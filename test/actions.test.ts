@@ -51,10 +51,23 @@ test("append, save to a list, notify: in that order, as before", async () => {
   assert.deepEqual(log, ["append Daily.md: - 2026-11-18 12:00 weight: 80", "write Apps/X data.md", "notify Logged 80 at 12:00"]);
   assert.deepEqual(data, { weights: [{ weight: 80, at: savedAt("2026-11-18T12:00") }] });
 
+  // Stopped after the line was added: that is said with what failed, and kept to undo.
   const failing = deps();
   failing.d.writeFrontmatter = async () => { throw new Error("disk full"); };
-  assert.deepEqual(await runActions(p, { weight: 80 }, failing.d), { ok: false });
-  assert.deepEqual(failing.log.at(-1), "notify Couldn't save: disk full");
+  const kept: unknown[] = [];
+  failing.d.log = async (what, changes) => { kept.push([what, changes.map((c) => c.kind)]); return "e1"; };
+  const r = await runActions(p, { weight: 80 }, failing.d);
+  assert.equal(await r.logged, "e1");
+  assert.deepEqual({ ...r, logged: undefined }, { ok: false, error: "disk full", partly: "Added the line to Daily, but couldn't save the row", logged: undefined });
+  assert.deepEqual(failing.log.at(-1), "notify Added the line to Daily, but couldn't save the row: disk full");
+  assert.deepEqual(kept, [["form", ["line-added"]]]);
+
+  // Stopped before anything was written: not saved.
+  const none = deps();
+  none.d.writeFrontmatter = async () => { throw new Error("disk full"); };
+  const bare = panel({ view: "form", fields: { weight: "number" }, save: "weights" });
+  assert.deepEqual(await runActions(bare, { weight: 80 }, none.d), { ok: false, error: "disk full" });
+  assert.deepEqual(none.log.at(-1), "notify Couldn't save: disk full");
 });
 
 test("append takes a note's path typed plain or as a [[link]], and asks to write the note it writes", async () => {
@@ -134,7 +147,7 @@ test("save to a folder creates a note named from the row, never over an existing
   });
 
   const again = await runActions(p, doc, d);
-  assert.deepEqual(again, { ok: false });
+  assert.deepEqual(again, { ok: false, error: "“Dune Messiah” already exists" });
   assert.deepEqual(log.slice(4), ["read [[Book template]]", "notify “Dune Messiah” already exists"]);
 });
 

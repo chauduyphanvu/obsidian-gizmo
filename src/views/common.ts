@@ -1,12 +1,16 @@
 import { textOf } from "../text.ts";
 import { handler } from "../handler.ts";
-import { fillWith, type Row } from "../data.ts";
+import { compareWindows, splitByWindow, type Windows } from "../compare.ts";
+import { fillWith, getPath, type Row } from "../data.ts";
 import { display } from "../format.ts";
 import { ACTION_KEYS } from "../keys.ts";
 import { ROW_INDEX } from "../sources/list.ts";
 import { conflictsOf, rowIdOf } from "../ledger-store.ts";
-import { rowsAreNotes } from "../sources/registry.ts";
+import { rowsAreNotes, sourceDef } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";
+import type { StepName, Trace, TracedStep } from "../pipeline.ts";
+import { nearMiss } from "../template.ts";
+import { periodStart, shiftPeriod } from "../time.ts";
 import type { PanelCtx, PanelHandle, SheetPick, ViewDef } from "./registry.ts";
 
 /** What a panel does when it acts: save, add a line, tell, open a note; a form or button may also run another app's shortcut (`then`), which rows don't take. Any one is enough. */
@@ -81,6 +85,234 @@ export function shownRows(el: HTMLElement, rows: Row[], draw: (r: Row) => void):
   });
 }
 
+// ---- Windows in words, and what an empty panel says -------------------------------------------------
+
+const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
+export const dayName = (d: Date) => `${MONTHS[d.getMonth()]} ${d.getDate()}`;
+
+/**
+ * A window as the dates it covers: `Oct 1`, `Oct 1–20`, `Sep 28 – Oct 4`; its last day is the one
+ * before its end. A window that ends in another year than now says which.
+ */
+export function windowName([from, to]: readonly [number, number], now: Date): string {
+  const a = new Date(from), b = new Date(Math.max(from, to - 1));
+  const year = b.getFullYear() === now.getFullYear() ? "" : `, ${b.getFullYear()}`;
+  if (a.toDateString() === b.toDateString()) return `${dayName(a)}${year}`;
+  if (a.getMonth() === b.getMonth() && a.getFullYear() === b.getFullYear()) return `${dayName(a)}–${b.getDate()}${year}`;
+  return `${dayName(a)} – ${dayName(b)}${year}`;
+}
+
+/** The window before, in a word where one fits (`last week`, `last month`, `last year`, `the day before`), else its dates. */
+export function windowWord(w: Windows, now: Date): string {
+  const { per, n } = w.step;
+  if (n === 1) return per === "day" ? "the day before" : `last ${per}`;
+  if (per === "month" && n === 12 && new Date(w.current[0]).getMonth() === 0) return "last year";
+  return windowName(w.previous, now);
+}
+
+/**
+ * The window itself, as words that follow "Nothing logged": `today`, `this week`, `this month`,
+ * `this year`, or `in the last 30 days`, for a window that ends with the period holding now; else
+ * `yesterday`, or its dates (`on Nov 18`, `for Nov 21–28`).
+ */
+function windowWords(w: Windows, now: Date): string {
+  const t = now.getTime();
+  const [from, to] = w.current;
+  const { per, n } = w.step;
+  // A window of whole years steps by months, twelve to a year.
+  const years = per === "month" && n % 12 === 0 && new Date(from).getMonth() === 0 ? n / 12 : 0;
+  const unit = years ? "year" : per;
+  const count = years || n;
+  if (to === shiftPeriod(periodStart(t, unit), unit, 1)) {
+    if (count > 1) return `in the last ${count} ${unit}s`;
+    return unit === "day" ? "today" : `this ${unit}`;
+  }
+  const day = unit === "day" && count === 1;
+  if (day && to === periodStart(t, "day")) return "yesterday";
+  return `${day ? "on" : "for"} ${windowName(w.current, now)}`;
+}
+
+/** The date window a panel's rows are kept to: in its own `where`, else the nearest block's above it. */
+function keptWindow(p: Panel, now: Date): Windows | undefined {
+  for (const where of [p.where, ...(p.upstream ?? []).map((s) => s.where).reverse()]) {
+    const w = compareWindows(where, now);
+    if (w) return w;
+  }
+  return undefined;
+}
+
+/**
+ * What a panel with no rows says: its `empty` text, else that nothing is logged (in one of the
+ * app's own lists) or here (from anywhere else), in the window its `where` keeps if it has one:
+ * `Nothing logged this month yet.`, `Nothing here this week.` From anywhere else with no window it
+ * says `fallback`, the view's own words. `caption` leaves off the full stop, for a line under a value.
+ */
+export function emptyText(p: Panel, now: Date, fallback: string, caption = false): string {
+  if (p.empty !== undefined) return p.empty;
+  const w = keptWindow(p, now);
+  const logged = p.source !== undefined && sourceDef(p.source).id === "list";
+  if (!w && !logged) return fallback;
+  const words = w ? ` ${windowWords(w, now)}` : "";
+  // A window that is over has nothing more coming, so it isn't nothing "yet".
+  const sentence = logged ? `Nothing logged${words}${!w || w.current[1] > now.getTime() ? " yet" : ""}` : `Nothing here${words}`;
+  return caption ? sentence : `${sentence}.`;
+}
+
+// ---- Why a panel shows nothing -------------------------------------------------------------------
+
+/**
+ * Beside what a panel says when it shows nothing, a "Why?" link, when its source did give something
+ * and the app can tell (`ctx.why`): a wrong pick, a where that keeps too little or a misspelled
+ * field look just like having no data. `line` holds the link, else it gets a line of its own at the
+ * end of `panel`. Selecting it shows under the panel what each step kept, down to the one that lost
+ * the rows (the steps run again only then), with ways to the panel's line in the note and to its
+ * source in Inspect data; selecting it again hides that. A source that gave nothing gets no link,
+ * since the empty sentence is then the truth.
+ */
+export function whyEmpty(panel: HTMLElement, p: Panel, ctx: PanelCtx, line?: HTMLElement): void {
+  const why = ctx.why;
+  if (!why?.hasData()) return;
+  const at = line ?? panel.createDiv({ cls: "gz-label" });
+  if (line) at.append(" ");
+  const link = at.createEl("button", { cls: "gz-error-link gz-why-link", text: "Why?", attr: { "aria-expanded": "false" } });
+  let box: HTMLElement | undefined;
+  link.addEventListener("click", () => {
+    if (box) {
+      box.remove();
+      box = undefined;
+    } else {
+      const { chain, lost } = whyWords(p, why.trace(), ctx.now);
+      box = panel.createDiv({ cls: "gz-detail gz-why", attr: { role: "status" } });
+      box.createDiv({ cls: "gz-why-chain", text: chain });
+      for (const text of lost) box.createDiv({ text });
+      const actions = box.createDiv({ cls: "gz-actions" });
+      actions.createEl("button", { cls: "gz-small", text: "Show in source" }).addEventListener("click", () => why.showInSource());
+      actions.createEl("button", { cls: "gz-small", text: "See the answer" }).addEventListener("click", () => why.seeAnswer());
+    }
+    link.setAttr("aria-expanded", String(box !== undefined));
+  });
+}
+
+const rowCount = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
+const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
+/** The first few names, in a line: `a, b, c and 4 more`. */
+const someOf = (names: string[], max = 8) => (names.length <= max ? names.join(", ") : `${names.slice(0, max).join(", ")} and ${names.length - max} more`);
+/** A where as typed, compactly: `{at: this month, kp: >= 5}`. */
+const typedWhere = (where: NonNullable<Panel["where"]>) => `{${Object.entries(where).map(([k, v]) => `${k}: ${textOf(v)}`).join(", ")}}`;
+
+/** The fields rows have, in the order first met. */
+function fieldsOf(rows: unknown[]): string[] {
+  const seen = new Set<string>();
+  for (const r of rows) if (isRecord(r)) for (const k of Object.keys(r)) seen.add(k);
+  return [...seen];
+}
+
+/**
+ * The names where a field stops being found, as paths: for `properties.mga`, the keys under
+ * `properties` (`properties.mag`, `properties.place`); for a plain name, the rows' own fields.
+ */
+function namesNear(rows: unknown[], field: string): string[] {
+  const parts = field.split(".");
+  for (let n = parts.length - 1; n > 0; n--) {
+    const prefix = parts.slice(0, n).join(".");
+    const inner = rows.map((r) => getPath(r, prefix)).filter(isRecord);
+    if (inner.length) return fieldsOf(inner).map((k) => `${prefix}.${k}`);
+  }
+  return fieldsOf(rows);
+}
+
+/** `no row has amout (rows have amount, note, at) — did you mean amount?`; undefined when a row has the field. */
+function noRowHas(field: string, rows: unknown[]): string | undefined {
+  if (rows.length === 0 || rows.some((r) => getPath(r, field) !== undefined)) return undefined;
+  const names = namesNear(rows, field);
+  const close = nearMiss(field, names);
+  return `no row has ${field}${names.length ? ` (rows have ${someOf(names)})` : ""}${close === undefined ? "" : ` — did you mean ${close}?`}`;
+}
+
+/** Where a pick stops finding anything, and what is there: `pick: chart.result.0 found nothing (the answer has: chart.error)`. */
+function pickMissed(pick: string, data: unknown): string {
+  let at = data;
+  const found: string[] = [];
+  for (const part of pick.split(".")) {
+    const next = getPath(at, part);
+    if (next === undefined) break;
+    at = next;
+    found.push(part);
+  }
+  const path = found.join(".");
+  const name = path || "the answer";
+  const keys = isRecord(at) ? Object.keys(at) : [];
+  const has = Array.isArray(at) ? `${name} has ${at.length} ${at.length === 1 ? "item" : "items"}`
+    : keys.length ? `the answer has: ${someOf(keys.map((k) => (path ? `${path}.${k}` : k)))}`
+    : isRecord(at) ? `${name} is empty`
+    : `${name} is ${textOf(at)}`;
+  return `pick: ${pick} found nothing (${has})`;
+}
+
+/** The fields a panel's view reads from its rows; a count or share a group makes is no row's own. */
+function readFields(p: Panel, grouped: boolean): string[] {
+  const fields = [p.field, p.x, ...seriesNames(p), p.group, p.start].filter((f): f is string => f !== undefined);
+  return [...new Set(fields)].filter((f) => !grouped || (f !== "count" && f !== "share"));
+}
+
+const CHAIN_WORDS: Record<StepName, string> = { pick: "pick found", compute: "compute left", where: "where kept", group: "group made", limit: "limit kept" };
+
+/** What lost every row at a step, in plain words: the step as typed, then any field it reads that no row has. */
+function lostAt(s: TracedStep): string[] {
+  const rows = Array.isArray(s.before) ? s.before : [];
+  const of = `of ${rowCount(rows.length)}`;
+  const missing = (fields: string[]) => fields.map((f) => noRowHas(f, rows)).filter((m): m is string => m !== undefined);
+  switch (s.step) {
+    case "pick":
+      if (s.keys.pick === undefined) return ["the answer has no rows"];
+      return [s.after === undefined ? pickMissed(s.keys.pick, s.before) : `pick: ${s.keys.pick} found 0 rows`];
+    case "where":
+      return [`where ${typedWhere(s.keys.where ?? {})} kept 0 ${of}`, ...missing(Object.keys(s.keys.where ?? {}))];
+    case "group":
+      return [`group by ${s.keys.group}${s.keys.per ? ` per ${s.keys.per}` : ""} made no groups from ${rowCount(rows.length)}`, ...missing([s.keys.group!])];
+    case "limit":
+      return [`limit ${s.keys.limit} kept 0 ${of}`];
+    case "compute":
+      return [`compute left 0 ${of}`];
+  }
+}
+
+/**
+ * Why a panel shows nothing though its source gave something, from the trace of its steps: the
+ * chain its rows went through, compactly (`34 rows → where kept 0`), and what lost them. A step
+ * that loses no row and narrows nothing (a compute, a source's lists made rows) stays out of the
+ * chain. When no step lost them, it is a field the view reads that no row has, else that the rows
+ * hold nothing it can show.
+ */
+export function whyWords(p: Panel, trace: Trace, now: Date): { chain: string; lost: string[] } {
+  const own = p.upstream?.length ?? 0;
+  const chain = [Array.isArray(trace.input) ? rowCount(trace.input.length) : "the answer"];
+  let out = trace.input;
+  for (const s of trace.steps) {
+    // A compare panel's own where keeps the window before too; it shows only the current one.
+    const after = s.step === "where" && s.stage === own && p.compare ? splitByWindow(p, s.after, now).current : s.after;
+    out = s.after;
+    const n = Array.isArray(after) ? after.length : undefined;
+    const lost = after === undefined || (n === 0 && (!Array.isArray(s.before) || s.before.length > 0));
+    if (!lost && (s.step === "compute" || (s.step === "pick" && s.keys.pick === undefined))) continue;
+    chain.push(s.step === "pick" && s.keys.pick === undefined ? "0 rows" : `${CHAIN_WORDS[s.step]} ${n ?? (after === undefined ? "nothing" : "one")}`);
+    if (!lost) continue;
+    const [said, ...more] = lostAt(s);
+    return { chain: chain.join(" → "), lost: [s.stage < own ? `${said}, in a data block it reads` : said, ...more] };
+  }
+  const grouped = trace.steps.find((s) => s.stage === own && s.step === "group");
+  const read = grouped ? grouped.before : out;
+  const rows = Array.isArray(read) ? read : isRecord(read) ? [read] : [];
+  const fields = readFields(p, grouped !== undefined);
+  for (const f of fields) {
+    const missing = noRowHas(f, rows);
+    if (missing) return { chain: chain.join(" → "), lost: [missing] };
+  }
+  const n = Array.isArray(out) ? out.length : undefined;
+  const reach = n === undefined ? "the answer reaches this panel, but it has" : `${rowCount(n)} ${n === 1 ? "reaches" : "reach"} this panel, but none has`;
+  return { chain: chain.join(" → "), lost: [`${reach} a value it can show${fields.length ? ` in ${listed(fields)}` : ""}`] };
+}
+
 // ---- Selection -----------------------------------------------------------------------------------
 
 /**
@@ -96,6 +328,8 @@ interface Picker {
   root?: Element;
   label?: string;
   record: boolean;
+  /** Whether the element takes the focus and is named for screen readers, or only the pointer picks with it. */
+  keyboard: boolean;
 }
 
 /** A panel that keeps the row picked in it when it has no `select` to keep that in. */
@@ -239,9 +473,9 @@ export function sameRow(p: Panel, a: Row | undefined, b: Row): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
-function mark(el: Element, on: boolean): void {
+function mark(el: Element, on: boolean, keyboard: boolean): void {
   el.classList.toggle("gz-selected", on);
-  el.setAttribute("aria-pressed", String(on));
+  if (keyboard) el.setAttribute("aria-pressed", String(on));
 }
 
 /** A click or key that lands on a link, button or field inside the element is that control's. */
@@ -250,14 +484,25 @@ function fromControl(e: Event, el: Element): boolean {
   return !!control && control !== el && el.contains(control);
 }
 
-/** Marks every selectable element in `el`'s panel against the current selections. */
+/**
+ * Marks every selectable element in `el`'s panel against the current selections. The first one
+ * picked in each roving group becomes the item Tab lands on there.
+ */
 function markAll(el: Element): void {
   // Outside an app (a view drawn on its own) the whole tree it hangs in stands in for the panel.
   let scope: Element = el.closest(".gz-panel") ?? el;
   if (scope === el) while (scope.parentElement) scope = scope.parentElement;
+  const stopped = new Set<Group>();
   for (const item of scope.querySelectorAll(".gz-selectable")) {
     const pick = PICKS.get(item);
-    if (pick) mark(item, sameRow(pick.p, pickedIn(pick.p, pick.ctx, pick.root), pick.row));
+    if (!pick) continue;
+    const on = sameRow(pick.p, pickedIn(pick.p, pick.ctx, pick.root), pick.row);
+    mark(item, on, pick.keyboard);
+    const group = MEMBERS.get(item);
+    if (on && group && !stopped.has(group)) {
+      stopped.add(group);
+      setStop(group, item);
+    }
   }
 }
 
@@ -278,20 +523,25 @@ export function picks(p: Panel, ctx?: PanelCtx, record = false): boolean {
  * again. Does nothing when the panel has neither `select` nor `detail`, unless `el` is a `record`
  * in an app with a side sheet. There, a pick opens the sheet (with `label` as the element's name)
  * instead of drawing the detail, and picking it again closes it.
+ * Inside a roving group (see `roving`) the element is one of the items its one Tab stop moves
+ * between. With `keyboard` false only the pointer picks with it, for a mark whose pick another
+ * element offers the keyboard and screen readers (a pie's slice, beside its legend entry).
  * Returns what a view that updates rows in place calls with the row's new values: the element then
  * picks those, and a selection of this row takes them too.
  */
-export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string, record = false): (row: Row) => void {
+export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label?: string, record = false, keyboard = true): (row: Row) => void {
   if (!picks(p, ctx, record)) return () => {};
   const name = p.select;
   const root = ownerOf(el);
-  const pick: Picker = { p, ctx, row, root, label, record };
+  const pick: Picker = { p, ctx, row, root, label, record, keyboard };
   PICKS.set(el, pick);
   el.classList.add("gz-selectable");
-  el.setAttribute("role", "button");
-  el.setAttribute("tabindex", "0");
-  if (label) el.setAttribute("aria-label", label);
-  mark(el, sameRow(p, pickedIn(p, ctx, root), row));
+  if (keyboard) {
+    el.setAttribute("role", "button");
+    if (label) el.setAttribute("aria-label", label);
+  }
+  mark(el, sameRow(p, pickedIn(p, ctx, root), row), keyboard);
+  if (keyboard) rove(el);
   const toggle = () => {
     const next = sameRow(p, pickedIn(p, ctx, root), pick.row) ? undefined : pick.row;
     if (name !== undefined) ctx.select(name, next);
@@ -313,6 +563,156 @@ export function selectable(el: Element, p: Panel, ctx: PanelCtx, row: Row, label
     const current = ctx.selected(name);
     if (current && current !== next && sameRow(p, current, next) && JSON.stringify(current) !== JSON.stringify(next)) ctx.select(name, next);
   };
+}
+
+// ---- One Tab stop per panel ----------------------------------------------------------------------
+
+/**
+ * Where an arrow key on `from` moves the focus among the items of its group (`from` itself at an
+ * end, so the page doesn't scroll instead); undefined leaves the key to the browser.
+ */
+export type Step = (from: Element, key: string, items: Element[]) => Element | undefined;
+
+/** Steps back and on through the items in their order, with the keys given. */
+function along(back: string[], on: string[]): Step {
+  return (from, key, items) => {
+    const i = items.indexOf(from);
+    if (back.includes(key)) return items[i - 1] ?? from;
+    if (on.includes(key)) return items[i + 1] ?? from;
+    return undefined;
+  };
+}
+
+/** Rows and list items, one under another. Left and right are left to a table that scrolls sideways. */
+export const UP_DOWN = along(["ArrowUp"], ["ArrowDown"]);
+/** Bars and dots, along the x axis. */
+export const LEFT_RIGHT = along(["ArrowLeft"], ["ArrowRight"]);
+/** Items that wrap in rows (cards, a legend): every arrow steps back or on. */
+export const ANY_ARROW = along(["ArrowUp", "ArrowLeft"], ["ArrowDown", "ArrowRight"]);
+
+interface Group {
+  root: Element;
+  step?: Step;
+  /** The item Tab lands on, the one item with tabindex 0. */
+  stop?: Element;
+}
+
+/** Roving groups by the element they were declared on, and each item's group. */
+const GROUPS = new WeakMap<Element, Group>();
+const MEMBERS = new WeakMap<Element, Group>();
+
+function itemsOf(group: Group): Element[] {
+  return [...group.root.querySelectorAll("[tabindex]")].filter((el) => MEMBERS.get(el) === group);
+}
+
+function setStop(group: Group, item: Element): void {
+  if (group.stop && group.stop !== item) group.stop.setAttribute("tabindex", "-1");
+  item.setAttribute("tabindex", "0");
+  group.stop = item;
+}
+
+/**
+ * Makes the items drawn in `root` (pickable rows, days, cards, bars, dots) one Tab stop, so the
+ * keyboard can get past a panel of many: Tab lands on the item picked, else on the first, and on
+ * the item last focused while the focus stays in the group. `step` moves the focus with the arrow
+ * keys, and Home and End go to the first and last item. Moving the focus doesn't pick; Enter and
+ * Space do, as before. Declare the group before its items are drawn; an item outside any group is
+ * a Tab stop of its own. `root` is an HTML element, around a chart rather than the chart: Chromium
+ * puts an SVG element that listens for the focus in the Tab order.
+ */
+export function roving(root: Element, step?: Step): void {
+  const group: Group = { root, step };
+  GROUPS.set(root, group);
+  const member = (target: EventTarget | null) => (MEMBERS.get(target as Element) === group ? (target as Element) : undefined);
+  root.addEventListener("focusin", (e) => {
+    const item = member(e.target);
+    if (item) setStop(group, item);
+  });
+  // Leaving the group, Tab comes back to the item picked, wherever the arrows left the focus.
+  root.addEventListener("focusout", (e) => {
+    const to = (e as FocusEvent).relatedTarget as Node | null;
+    if (to && root.contains(to)) return;
+    const picked = itemsOf(group).find((el) => el.classList.contains("gz-selected"));
+    if (picked) setStop(group, picked);
+  });
+  root.addEventListener("keydown", (e) => {
+    const k = e as KeyboardEvent;
+    const from = member(e.target);
+    if (!from || k.altKey || k.ctrlKey || k.metaKey) return;
+    const items = itemsOf(group);
+    const to = k.key === "Home" ? items[0] : k.key === "End" ? items.at(-1) : step?.(from, k.key, items);
+    if (!to) return;
+    e.preventDefault();
+    setStop(group, to);
+    (to as HTMLElement).focus();
+  });
+}
+
+/** The roving group `el` is drawn in, if any. */
+function groupAround(el: Element): Group | undefined {
+  for (let x = el.parentElement; x; x = x.parentElement) {
+    const group = GROUPS.get(x);
+    if (group) return group;
+  }
+  return undefined;
+}
+
+/**
+ * Puts `el`, an element that takes the focus, in the roving group it is drawn in: it becomes the
+ * group's Tab stop when it is the first item, or the first one picked; otherwise the arrow keys
+ * reach it. Outside a group it is a Tab stop of its own. `selectable` does this for its elements.
+ */
+export function rove(el: Element): void {
+  const group = groupAround(el);
+  if (!group) {
+    el.setAttribute("tabindex", "0");
+    return;
+  }
+  MEMBERS.set(el, group);
+  const stop = group.stop;
+  if (!stop || !group.root.contains(stop) || (el.classList.contains("gz-selected") && !stop.classList.contains("gz-selected"))) setStop(group, el);
+  else el.setAttribute("tabindex", "-1");
+}
+
+// ---- Charts for screen readers -------------------------------------------------------------------
+
+/** A chart's values as a table: what it is called, a heading for x then one for each series, and a row for each point. */
+export interface PointsTable {
+  caption: string;
+  head: string[];
+  rows: string[][];
+}
+
+/**
+ * Names a drawn chart for screen readers with `summary`, a sentence of what it shows. A chart
+ * whose marks take the focus (bars to pick, dots) is a group of those marks, the rest of its
+ * drawing hidden, since the marks and the summary say it; any other chart is one image. `points`,
+ * when given, follows the chart as a visually hidden table, to step through every value.
+ */
+export function describeChart(root: SVGElement, summary: string, points?: PointsTable): void {
+  root.setAttribute("aria-label", summary);
+  const marks = root.querySelector("[tabindex]") !== null;
+  root.setAttribute("role", marks ? "group" : "img");
+  if (marks) for (const child of root.children) if (!child.hasAttribute("tabindex")) child.setAttribute("aria-hidden", "true");
+  const parent = root.parentElement;
+  if (!points || !parent) return;
+  // A table grows to fit its cells whatever its width, so a box around it is what hides it.
+  const box = parent.createDiv({ cls: "gz-sr-only" });
+  parent.insertBefore(box, root.nextSibling);
+  const table = box.createEl("table");
+  table.createEl("caption", { text: points.caption });
+  const head = table.createEl("thead").createEl("tr");
+  for (const text of points.head) head.createEl("th", { text, attr: { scope: "col" } });
+  const body = table.createEl("tbody");
+  for (const row of points.rows) {
+    const tr = body.createEl("tr");
+    row.forEach((text, i) => (i === 0 ? tr.createEl("th", { text, attr: { scope: "row" } }) : tr.createEl("td", { text })));
+  }
+}
+
+/** Names in a sentence: "a", "a and b", "a, b and c". */
+export function listed(names: string[]): string {
+  return names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;

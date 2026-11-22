@@ -169,10 +169,14 @@ test("number compare: no previous data, and a change from nothing has no percent
   const tiny = compare({}, [{ at: "2026-11-10", amount: 1000 }, { at: "2026-11-17", amount: 1001 }]);
   assert.equal(text_(note(tiny)), "▲ 1 (<1%) vs previous");
   assert.equal(note(tiny)!.getAttribute("aria-label"), "up 1, less than 1 percent, versus previous");
-  // Nothing in this window: the value shows its dash and no comparison is made against it.
+  // Nothing in this window: a sum of nothing is 0, and compares as any other value does.
   const empty = compare({}, [{ at: "2026-11-10", amount: 100 }]);
-  assert.equal(text_(empty.querySelector(".gz-big")), "—");
-  assert.equal(note(empty), null);
+  assert.equal(text_(empty.querySelector(".gz-big")), "0");
+  assert.equal(text_(note(empty)), "▼ 100 (100%) vs previous");
+  // An average of nothing shows its dash, and no comparison is made against it.
+  const none = compare({ agg: "avg" }, [{ at: "2026-11-10", amount: 100 }]);
+  assert.equal(text_(none.querySelector(".gz-big")), "—");
+  assert.ok(!note(none));
 });
 
 test("number compare: the difference reads in the panel's format or unit; counts compare too", () => {
@@ -234,7 +238,7 @@ test("goal draws a dashed line with its label above the data, inside the plot", 
   for (const [el, label] of [[bars, "80 goal"], [lines, "Goal 80"]] as const) {
     assert.equal(el.querySelectorAll("line.gz-goal").length, 1);
     assert.equal(text_(el.querySelector("text.gz-goal-label")), label);
-    assert.equal(el.querySelector("svg")!.getAttribute("aria-label"), "goal 80");
+    assert.match(el.querySelector("svg")!.getAttribute("aria-label")!, /, goal 80$/);
     // The plot starts 14 down: a goal beyond the data still fits.
     assert.ok(goalY(el) >= 14, String(goalY(el)));
   }
@@ -243,7 +247,7 @@ test("goal draws a dashed line with its label above the data, inside the plot", 
   for (const def of [line, bar]) {
     const without = draw(def, { source: "s", x: "at", y: "w" }, weights);
     assert.equal(without.querySelector(".gz-goal"), null);
-    assert.equal(without.querySelector("svg")!.hasAttribute("aria-label"), false);
+    assert.doesNotMatch(without.querySelector("svg")!.getAttribute("aria-label")!, /goal/);
   }
 });
 

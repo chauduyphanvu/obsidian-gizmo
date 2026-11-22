@@ -1,6 +1,8 @@
 import type { Row } from "./data.ts";
 import { rowIdOf, type Ledger } from "./ledger-store.ts";
+import type { Op } from "./ledger.ts";
 import { resolveList } from "./store.ts";
+import { ROW_INDEX } from "./sources/list.ts";
 
 /** A row as shown, to find again where it is kept: by its id in the ledger, by its place in a note's list. */
 export interface RowRef {
@@ -13,9 +15,27 @@ export interface RowRef {
 export type SetResult = { row: Row; event?: string } | { refused: "changed" | "gone" };
 
 /**
- * Where an app's lists are written: rows added and edited, checklist items ticked, unticked and
- * cleared. Each write gives the event it made, when the store keeps events, so the activity log can
- * undo exactly that later, from any device.
+ * What deleting a row did: the row as it was kept, the event that took it out (or, in a note's
+ * list, the place it had there), or why nothing was written.
+ */
+export type DeleteResult = { row: Row; event?: string; index?: number } | { refused: "changed" | "gone" };
+
+/** One of the changes `batch` writes together; a `set` to undefined takes the field out. */
+export type Edit =
+  | { op: "add"; list: string; row: Row }
+  | { op: "set"; list: string; ref: RowRef; field: string; value: unknown }
+  | { op: "delete"; list: string; ref: RowRef };
+
+/**
+ * What each edit of a batch did, in order: the row as it left it (for a delete, as it was kept), the
+ * event, and for a delete from a note's list the place the row had there just before.
+ */
+export type BatchDone = { row: Row; event?: string; index?: number };
+
+/**
+ * Where an app's lists are written: rows added, edited and deleted, checklist items ticked, unticked
+ * and cleared. Each write gives the event it made, when the store keeps events, so the activity log
+ * can undo exactly that later, from any device.
  */
 export interface DataStore {
   readonly dataPath: string;
@@ -24,6 +44,13 @@ export interface DataStore {
   /** Adds a row; `id` makes two runs that add the same row (two devices sampling, a then run twice) add it once. */
   add(list: string, row: Row, opts?: { id?: string; cap?: number }): Promise<{ event?: string; already?: boolean }>;
   set(list: string, ref: RowRef, field: string, value: unknown): Promise<SetResult>;
+  /** Takes a row out; from a note's list only while its place still holds what was shown. */
+  delete(list: string, ref: RowRef): Promise<DeleteResult>;
+  /**
+   * Writes several edits at once, in order: one write to the ledger, or one rewrite of the note. When
+   * a row one of them names has changed or gone, none is written.
+   */
+  batch(edits: Edit[]): Promise<BatchDone[] | { refused: "changed" | "gone" }>;
   /** Ticks an item; undefined when it was already ticked. */
   tick(list: string, item: string): Promise<{ event?: string } | undefined>;
   /** Unticks an item; undefined when it wasn't ticked. */
@@ -34,13 +61,19 @@ export interface DataStore {
   undo(events: string[]): Promise<void>;
 }
 
-/** Whether a stored list row still holds what was shown for it, apart from the field being changed. */
-function holds(stored: unknown, shown: Row, field: string): stored is Row {
+/** Whether a stored list row still holds what was shown for it, apart from the field being changed, if one is. */
+function holds(stored: unknown, shown: Row, field?: string): stored is Row {
   if (stored === null || typeof stored !== "object" || Array.isArray(stored)) return false;
   return Object.entries(stored).every(([k, v]) => k === field || JSON.stringify(v) === JSON.stringify(shown[k]));
 }
 
 const itemsOf = (v: unknown) => (Array.isArray(v) ? v.map(String) : []);
+
+function withField(row: Row, field: string, value: unknown): Row {
+  const next = { ...row, [field]: value };
+  if (value === undefined) delete next[field];
+  return next;
+}
 
 /**
  * Lists kept in a note's properties, rewritten on each change: what a dry run or a try writes into
@@ -56,7 +89,10 @@ export function frontmatterStore(
     dataPath,
     async rows(list) {
       const rows = resolveList(list, read(dataPath), appFm());
-      return Array.isArray(rows) ? rows.filter((r): r is Row => r !== null && typeof r === "object" && !Array.isArray(r)) : [];
+      // Each row keeps its place among all the list's entries, which an edit finds it by.
+      return Array.isArray(rows)
+        ? rows.flatMap((r, i) => (r !== null && typeof r === "object" && !Array.isArray(r) ? [Object.defineProperty({ ...r }, ROW_INDEX, { value: i }) as Row] : []))
+        : [];
     },
     async add(list, row, opts) {
       await write(dataPath, (fm) => {
@@ -76,6 +112,61 @@ export function frontmatterStore(
         next[ref.index!] = { ...stored, [field]: value };
         fm[list] = next;
         result = { row: next[ref.index!] as Row };
+      });
+      return result;
+    },
+    async delete(list, ref) {
+      let result: DeleteResult = { refused: "changed" };
+      await write(dataPath, (fm) => {
+        const rows = resolveList(list, fm, appFm());
+        const stored: unknown = Array.isArray(rows) && ref.index !== undefined ? rows[ref.index] : undefined;
+        if (!Array.isArray(rows) || !holds(stored, ref.shown)) return;
+        fm[list] = (rows as unknown[]).filter((_, i) => i !== ref.index);
+        result = { row: stored, index: ref.index };
+      });
+      return result;
+    },
+    async batch(edits) {
+      let result: BatchDone[] | { refused: "changed" } = { refused: "changed" };
+      await write(dataPath, (fm) => {
+        // Each list's rows by the place they had before the batch (undefined once deleted), and the rows it adds.
+        const lists = new Map<string, { places: unknown[]; added: Row[] }>();
+        const listOf = (name: string) => {
+          let l = lists.get(name);
+          if (!l) {
+            const rows = resolveList(name, fm, appFm());
+            l = { places: Array.isArray(rows) ? [...(rows as unknown[])] : [], added: [] };
+            lists.set(name, l);
+          }
+          return l;
+        };
+        const touched = new Set<string>();
+        const done: BatchDone[] = [];
+        for (const e of edits) {
+          const l = listOf(e.list);
+          if (e.op === "add") {
+            l.added.push(e.row);
+            done.push({ row: e.row });
+            continue;
+          }
+          const at = e.ref.index;
+          const stored = at === undefined ? undefined : l.places[at];
+          // A row is checked against what was shown before the batch first changes it.
+          const key = `${e.list}\n${at}`;
+          if (!touched.has(key) && !holds(stored, e.ref.shown, e.op === "set" ? e.field : undefined)) return;
+          if (stored === undefined || stored === null || typeof stored !== "object") return;
+          touched.add(key);
+          if (e.op === "set") {
+            l.places[at!] = withField(stored as Row, e.field, e.value);
+            done.push({ row: l.places[at!] as Row });
+          } else {
+            // Its place as the list reads at this point of the batch, which putting it back needs.
+            done.push({ row: stored as Row, index: l.places.slice(0, at).filter((r) => r !== undefined).length });
+            l.places[at!] = undefined;
+          }
+        }
+        for (const [name, l] of lists) fm[name] = [...l.places.filter((r) => r !== undefined), ...l.added];
+        result = done;
       });
       return result;
     },
@@ -133,6 +224,50 @@ export function ledgerStore(ledger: Ledger, dataPath: string, appFm: () => Recor
       // Written from what was shown: when another device changed it meanwhile, both are kept as a conflict.
       const [event] = await ledger.write(dataPath, [{ op: "set", l: list, row: ref.id, f: field, v: value, from: ref.shown[field] }]);
       return { row: { ...row, [field]: value }, event };
+    },
+    async delete(list, ref) {
+      const rows = (await ledger.state(dataPath, appFm())).lists.get(list)?.rows ?? [];
+      const row = rows.find((r) => rowIdOf(r) === ref.id);
+      if (!ref.id || !row) return { refused: "gone" };
+      // Undoing this event puts the row back under its id, so edits made elsewhere still find it.
+      const [event] = await ledger.write(dataPath, [{ op: "del", l: list, row: ref.id }]);
+      return { row: { ...row }, event };
+    },
+    async batch(edits) {
+      const lists = (await ledger.state(dataPath, appFm())).lists;
+      // Each list's rows by id, as the batch leaves them so far: an edit after another of the same row starts from it.
+      const byId = new Map<string, Map<string, Row>>();
+      const rowsOf = (list: string) => {
+        let rows = byId.get(list);
+        if (!rows) byId.set(list, (rows = new Map((lists.get(list)?.rows ?? []).map((r) => [rowIdOf(r)!, r]))));
+        return rows;
+      };
+      const ops: Op[] = [];
+      const done: BatchDone[] = [];
+      for (const e of edits) {
+        if (e.op === "add") {
+          // A new id each time: an add that was undone keeps its id out of the list for good.
+          ops.push({ op: "add", l: e.list, row: ledger.newRowId(), v: e.row });
+          done.push({ row: e.row });
+          continue;
+        }
+        const rows = rowsOf(e.list);
+        const id = e.ref.id;
+        const row = id === undefined ? undefined : rows.get(id);
+        if (id === undefined || !row) return { refused: "gone" };
+        if (e.op === "set") {
+          const next = withField(row, e.field, e.value);
+          ops.push({ op: "set", l: e.list, row: id, f: e.field, v: e.value, from: row[e.field] });
+          rows.set(id, next);
+          done.push({ row: next });
+        } else {
+          ops.push({ op: "del", l: e.list, row: id });
+          rows.delete(id);
+          done.push({ row: { ...row } });
+        }
+      }
+      const events = await ledger.write(dataPath, ops);
+      return done.map((d, i) => ({ ...d, event: events[i] }));
     },
     async tick(list, item) {
       if ((await ticked(list)).includes(item)) return undefined;

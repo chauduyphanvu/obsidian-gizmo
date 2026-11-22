@@ -1,11 +1,12 @@
-import { FileView, Scope, setIcon, type Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
+import { FileView, Notice, Scope, setIcon, type Menu, type TFile, type ViewStateResult, type WorkspaceLeaf } from "obsidian";
 import { eventsOf, undoneIn } from "./activity.ts";
 import { AppController } from "./app.ts";
 import { EditSession } from "./backtest.ts";
-import { obsidianAppEnv } from "./host.ts";
+import { copyText, obsidianAppEnv } from "./host.ts";
 import { openActivity } from "./activity-view.ts";
 import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
+import { embedBlock } from "./open-app.ts";
 import { AsOfModal, BacktestModal } from "./past-views.ts";
 import { TimeRail, typing } from "./rail.ts";
 import { pastEnv } from "./replay.ts";
@@ -38,7 +39,7 @@ export class AppView extends FileView {
 
   async onOpen(): Promise<void> {
     // The one action in the header; the rest are in the tab's menu (onPaneMenu).
-    this.addAction("file-code", "Edit source", () => this.file && this.plugin.showSource(this.leaf, this.file));
+    this.addAction("file-code", "Edit source", () => this.file && this.plugin.editSource(this.leaf, this.file));
     this.registerEvent(this.app.metadataCache.on("changed", (f) => {
       if (f === this.file) this.session.seen(this.app.metadataCache.getFileCache(f)?.frontmatter, Date.now());
     }));
@@ -130,6 +131,12 @@ export class AppView extends FileView {
       menu.addItem((item) => item.setTitle(`Copy link: ${s.label}`).setIcon("link").setSection("action").onClick(() => {
         const link = bg?.shortcutLinks().find((l) => l.path === path && l.shortcut === s.id);
         if (link) copyShortcutLink(link);
+      }));
+    }
+    const file = this.file;
+    if (file && app) {
+      menu.addItem((item) => item.setTitle("Copy embed").setIcon("code").setSection("action").onClick(() => {
+        copyText(embedBlock(this.app.metadataCache.fileToLinktext(file, "")), () => new Notice(`Copied the embed of ${file.basename}; paste it into any note to show the app there`));
       }));
     }
   }

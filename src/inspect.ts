@@ -133,15 +133,15 @@ const isError = (data: unknown): data is { error: string } =>
 /**
  * Draws each source into `el`: a heading, then what the source returned as a tree to open and
  * explore. Pressing a key calls `copy` with the path to it, written as `pick` and `field` take it
- * (`features.0.properties.mag`).
+ * (`features.0.properties.mag`). `focus`, a source's place in `sources`, is scrolled into view.
  */
-export function renderInspector(el: HTMLElement, sources: InspectedSource[], copy: (text: string) => void): void {
+export function renderInspector(el: HTMLElement, sources: InspectedSource[], copy: (text: string) => void, focus?: number): void {
   el.empty();
   if (sources.length === 0) {
     el.createDiv({ cls: "gz-label", text: "No data to inspect: none of this app's panels reads a source right now." });
     return;
   }
-  for (const s of sources) {
+  for (const [i, s] of sources.entries()) {
     const box = el.createDiv({ cls: "gz-inspect-source" });
     const head = box.createDiv({ cls: "gz-inspect-head" });
     head.createSpan({ cls: "gz-inspect-title", text: s.title });
@@ -149,5 +149,6 @@ export function renderInspector(el: HTMLElement, sources: InspectedSource[], cop
     if (s.source) box.createDiv({ cls: "gz-inspect-url", text: s.source });
     if (isError(s.data)) box.createDiv({ cls: "gz-inspect-error", text: s.data.error });
     else drawNode(box.createDiv({ cls: "gz-tree" }), undefined, s.data, [], 0, copy);
+    if (i === focus) box.scrollIntoView({ block: "start" });
   }
 }

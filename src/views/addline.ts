@@ -1,6 +1,6 @@
 import { textOf } from "../text.ts";
 import { handler } from "../handler.ts";
-import { parseFields, type FieldValues } from "../capture.ts";
+import { parseFields, whenText, type FieldValues } from "../capture.ts";
 import type { Row } from "../data.ts";
 import { display, formatFor, labelOf } from "../format.ts";
 import { isPlainObject, startOf } from "../keys.ts";
@@ -64,6 +64,8 @@ function icon(parent: Element, name: keyof typeof ICONS, size: number): void {
 
 /** The latest thing said with Undo in any app: the one ⌘Z undoes. */
 const latest: { said?: Said } = {};
+/** What each app is saying, by the app's element: one notice at a time there, so one Undo and one ⌘Z. */
+const sayingIn = new WeakMap<Element, Said>();
 
 /**
  * What a panel's last run did, said under it for six seconds with Undo when the run kept an entry
@@ -92,13 +94,21 @@ export class Said {
     return this.entry !== undefined && latest.said === this && !!this.shown?.isConnected && !this.shown.closest(".gz-off");
   }
 
-  /** Says `text`; `entry`, the activity log's, gives it Undo where the app can undo. */
+  /**
+   * Says `text`; `entry`, the activity log's, gives it Undo where the app can undo. What the app was
+   * saying elsewhere goes, as when its time is up.
+   */
   say(text: string, entry: string | undefined): void {
     this.text = text;
     this.entry = this.ctx.undo ? entry : undefined;
     latest.said = this;
     this.hideIn(SAID_MS);
     this.changed();
+    const app = this.shown?.closest(".gizmo");
+    if (!app) return;
+    const before = sayingIn.get(app);
+    sayingIn.set(app, this);
+    if (before !== undefined && before !== this && before.showing) before.end();
   }
 
   async undo(): Promise<void> {
@@ -137,20 +147,59 @@ export class Said {
     if (latest.said === this) latest.said = undefined;
   }
 
+  /** Stops saying it, as when its time is up. */
+  private end(): void {
+    this.clear();
+    this.changed();
+  }
+
   private hideIn(ms: number): void {
     if (this.timer !== undefined) window.clearTimeout(this.timer);
-    this.timer = window.setTimeout(() => {
-      this.clear();
-      this.changed();
-    }, ms);
+    this.timer = window.setTimeout(() => this.end(), ms);
   }
 }
 
-/** Whether a run went through, so the line can let go of what was typed. */
-const wentThrough = (r: RunResult | void) => !r || (r.error === undefined && r.ok !== false);
+/** What says, under a panel, what was done to its rows from outside it, and where; by the panel's element. */
+const below = new WeakMap<HTMLElement, { said: Said; under: HTMLElement }>();
 
-/** What to say after a run: the panel's `notify` as filled, else what it saved and where, if it saves anything. */
+/**
+ * Says what was done to a row of a panel from outside the panel (the side sheet's Delete) just
+ * under it, as a line says what it saved: for six seconds, with Undo and ⌘Z, then gone. Under a
+ * long panel that is below the pane's edge, so the pane scrolls just enough to show it.
+ */
+export function sayBelow(panel: HTMLElement, ctx: PanelCtx, text: string, entry: string | undefined): void {
+  let shown = below.get(panel);
+  if (!shown) {
+    const under = panel.ownerDocument.createDocumentFragment().createDiv({ cls: "gz-addline-under" });
+    let unlisten: (() => void) | undefined;
+    const s: Said = new Said(ctx, () => {
+      under.empty();
+      if (!s.showing) {
+        under.remove();
+        unlisten?.();
+        unlisten = undefined;
+        return;
+      }
+      if (under.previousElementSibling !== panel) panel.after(under);
+      unlisten ??= listen(under, s);
+      s.draw(under);
+    });
+    shown = { said: s, under };
+    below.set(panel, shown);
+  }
+  shown.said.say(text, entry);
+  shown.under.scrollIntoView({ block: "nearest" });
+}
+
+/** Whether a run went through, or wrote part of what it does, so the line can let go of what was typed. */
+const wentThrough = (r: RunResult | void) => !r || r.failed !== undefined || (r.error === undefined && r.ok !== false);
+
+/**
+ * What to say after a run: what it wrote and what it then couldn't do, when it stopped part way;
+ * the panel's `notify` as filled; else what it saved and where, if it saves anything.
+ */
 function sayAfter(said: Said, p: Panel, r: RunResult | void, saved: () => string): void {
+  if (r?.failed !== undefined) return said.say(r.failed, r.entry);
   if (r?.told !== undefined) return said.say(r.told, r.entry);
   if (p.target || p.append !== undefined) said.say(saved(), r?.entry);
 }
@@ -260,12 +309,12 @@ function shown(p: Panel, [name, type]: Field, value: string, now: Date): string 
   return value;
 }
 
-/** What a form saved, as it is said: its first field's value, and where it went. */
-function addedText(p: Panel, value: unknown, now: Date): string {
+/** What a form saved, as it is said: its first field's value, where it went, and when for, if not now. */
+function addedText(p: Panel, value: unknown, now: Date, at?: Date): string {
   const field = fieldsOf(p)[0];
   const v = value === undefined || value === null ? "" : textOf(value);
   const what = !field || v === "" ? "" : isText(field[1]) ? ` “${v}”` : ` ${shown(p, field, v, now)}`;
-  return `Added${what} to ${whereOf(p) ?? verbOf(p)}`;
+  return `Added${what} to ${whereOf(p) ?? verbOf(p)}${at ? ` for ${whenText(at, now)}` : ""}`;
 }
 
 // ---- Examples -----------------------------------------------------------------------------------
@@ -365,7 +414,8 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
       if (Object.hasOwn(r.params, name)) return [name, { value: r.params[name], how: "typed" }];
       const guessed = guess(rows, fields, field, r.params);
       if (guessed) return [name, guessed];
-      const d = defaultOf(p, field, now);
+      // For a row logged for another day, a default of today means that day.
+      const d = defaultOf(p, field, r.at ?? now);
       return [name, d === undefined || d === "" ? { how: "missing" } : { value: d, how: "default" }];
     }));
     const first = fields.length ? values.get(fields[0][0])?.value : "";
@@ -402,6 +452,11 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
         pv.createSpan({ cls: "gz-pv-value", text: v.value === undefined ? "—" : shown(p, field, v.value, ctx.now) });
       }
     }
+    if (state.r.at) {
+      const pv = under.createSpan({ cls: "gz-pv" });
+      pv.createSpan({ cls: "gz-pv-label", text: "at" });
+      pv.createSpan({ cls: "gz-pv-value", text: whenText(state.r.at, ctx.now) });
+    }
     if (state.r.errors.length) under.createSpan({ cls: "gz-addline-error", text: state.r.errors[0] });
     if (refused !== undefined) under.createSpan({ cls: "gz-addline-error", text: `Not saved: ${refused}` });
   };
@@ -437,14 +492,15 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
     const state = read();
     if (!state.savable) return;
     const row: Row = Object.fromEntries(fields.map(([name, type]) => [name, typed(type, state.values.get(name)!.value)]));
+    const at = state.r.at;
     saving = true;
     render();
     try {
-      const r = await ctx.runActions(p, row, { inPlace: true });
+      const r = await ctx.runActions(p, row, { inPlace: true, ...(at && { at }) });
       if (r && r.error !== undefined) refused = r.error;
       else if (wentThrough(r)) {
         clearLine();
-        sayAfter(said, p, r, () => addedText(p, row[fields[0]?.[0]], ctx.now));
+        sayAfter(said, p, r, () => addedText(p, row[fields[0]?.[0]], ctx.now, at));
       }
     } finally {
       saving = false;

@@ -4,7 +4,7 @@ import { textHash, type Change } from "./activity.ts";
 import { fillTemplate, fillWith, formatValue, getPath, type Row } from "./data.ts";
 import { stampOf, stampParts } from "./time.ts";
 import { saveTarget, type Panel } from "./spec.ts";
-import { appendPath, withoutDefinition } from "./store.ts";
+import { appendPath, basename, withoutDefinition } from "./store.ts";
 import { frontmatterStore, type DataStore } from "./datastore.ts";
 import { startOf } from "./keys.ts";
 
@@ -23,6 +23,8 @@ export interface ActionDeps {
   store?: DataStore;
   /** The id a row this run saves gets, so the same run made twice (a then that fires on two devices) saves it once. */
   rowId?: string;
+  /** When what the run saves is logged for, when that isn't now: a line's `@yday`, a link's `at=`. */
+  at?: Date;
   /** The app's rules under `expect:`; a row that breaks a value rule isn't saved. */
   expect?: readonly Expectation[];
   /** Adds a line at the end of a note, creating it when there's none; true when it created it. */
@@ -41,6 +43,8 @@ export interface ActionDeps {
   inPlace?: boolean;
   /** The panel's `notify` isn't also sent to `notify`. */
   quiet?: boolean;
+  /** The caller says why a run failed itself, from ActionResult.error, so it isn't also sent to `notify`. */
+  tellsFailure?: boolean;
 }
 
 /** What an app gives runActions to write and tell with. */
@@ -67,7 +71,7 @@ export function actionDepsOf(io: ActionIO, appPath: string, dataPath: string): A
   };
 }
 
-/** How a run went: `ok` is false when it stopped on an error or a note that already exists. */
+/** How a run went: `ok` is false, with its `error`, when it stopped. */
 export interface ActionResult {
   ok: boolean;
   /** The note a save to a folder created. */
@@ -76,8 +80,13 @@ export interface ActionResult {
   logged?: Promise<string | undefined>;
   /** A checklist item that was already ticked, so nothing changed. */
   already?: boolean;
-  /** Why nothing was saved, when a value rule refused the row. */
+  /** Why it stopped: a value rule refused the row, the note it would make already exists, or a write failed. */
   error?: string;
+  /**
+   * When it stopped after writing part of what it does: what it wrote and what it then couldn't do
+   * ("Added the line to Daily, but couldn't save the row"). What it wrote is in `logged`, to undo.
+   */
+  partly?: string;
   /** With `inPlace`, the panel's `notify`, filled from the run, for the caller to tell. */
   told?: string;
 }
@@ -169,9 +178,9 @@ function defaultsBeyond(p: Panel, now: Date): Row {
 /**
  * Creates one note in `folder` for a saved row: named by `name:` (else the row's name, its title,
  * or the time), with the row as its frontmatter and the `template:` note's body, filled, as its
- * text. Undefined when the note already exists, which is never overwritten.
+ * text. A note that already exists is never overwritten: that is the error instead.
  */
-async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps, changes: Change[]): Promise<string | undefined> {
+async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: ActionDeps, changes: Change[]): Promise<{ path: string } | { error: string }> {
   const template = p.name ?? (filled(ctx.name) ? "{name}" : filled(ctx.title) ? "{title}" : "");
   const name = fileName(template ? fillLine(template, ctx) : "") || `${textOf(ctx.date)} ${textOf(ctx.time).replace(":", ".")}`;
   // A row's name that only names the file isn't kept as a property too; nor is anything that would make the note run.
@@ -179,12 +188,24 @@ async function saveNote(p: Panel, folder: string, saved: Row, ctx: Row, deps: Ac
   const body = p.template ? fillBody(await deps.readBody(p.template), ctx) : "";
   const path = `${folder ? `${folder}/` : ""}${name}.md`;
   const made = await deps.createNote(path, frontmatter, body);
-  if (made !== false) {
-    if (typeof made === "string") changes.push({ kind: "note-created", path, hash: textHash(made) });
-    return path;
-  }
-  deps.notify(`“${name}” already exists`);
-  return undefined;
+  if (made === false) return { error: `“${name}” already exists` };
+  if (typeof made === "string") changes.push({ kind: "note-created", path, hash: textHash(made) });
+  return { path };
+}
+
+/** A run that stopped, said in a notice unless the caller says it. */
+function stopped(deps: ActionDeps, error: string, notice = error): ActionResult {
+  if (!deps.tellsFailure) deps.notify(notice);
+  return { ok: false, error };
+}
+
+/** What a run wrote before it stopped, then what it was `doing`: "Added the line to Daily, but couldn't save the row". */
+function partlyDone(changes: readonly Change[], doing: string): string {
+  const wrote = changes.map((c) =>
+    c.kind === "line-added" ? `added the line to ${basename(c.path)}`
+    : c.kind === "row-added" ? `saved the row to ${c.list}`
+    : `created ${basename(c.path)}`).join(" and ");
+  return `${wrote.charAt(0).toUpperCase()}${wrote.slice(1)}, but couldn't ${doing}`;
 }
 
 /**
@@ -197,8 +218,8 @@ export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promis
   try {
     ticked = await storeOf(deps).tick(list, item);
   } catch (e) {
-    deps.notify(`Couldn't save: ${(e as Error).message}`);
-    return { ok: false };
+    const message = (e as Error).message;
+    return stopped(deps, message, `Couldn't save: ${message}`);
   }
   if (!ticked) return { ok: true, already: true };
   const logged = deps.log?.(p.title ?? p.label ?? list, [{ kind: "checklist", path: deps.dataPath, list, item, checked: true, ...(ticked.event && { event: ticked.event }) }]);
@@ -208,14 +229,15 @@ export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promis
 /**
  * Runs a panel's actions with one row (a form's values, a list's row, a button's empty row): append
  * a line, save the row (to a list, or as a new note), notify, then open a note. `{placeholders}` in
- * them read the row, the saved row and `date`, `time`, `at`; after a save to a folder, `{path}` is
- * the new note. Failures are notified, never thrown.
+ * them read the row, the saved row and `date`, `time`, `at` (now, or `deps.at`, which the row is
+ * stamped with too); after a save to a folder, `{path}` is the new note. A failure is given as the
+ * result's error and notified (unless `tellsFailure`), never thrown.
  */
 export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promise<ActionResult> {
-  const now = deps.now();
+  const when = deps.at ?? deps.now();
   // `date` and `time` as typed in notes; `at`, what the row is stamped with, carries its offset.
-  const stamp = { ...stampParts(now), at: stampOf(now) };
-  const unshown = p.view === "form" ? defaultsBeyond(p, now) : {};
+  const stamp = { ...stampParts(when), at: stampOf(when) };
+  const unshown = p.view === "form" ? defaultsBeyond(p, when) : {};
   const given = p.row ? fillRow(p.row, { ...stamp, ...unshown, ...input }) : input;
   // What `row` (or the form) gives wins key by key; the defaults come after it.
   const row = { ...given, ...Object.fromEntries(Object.entries(unshown).filter(([k]) => !Object.hasOwn(given, k))) };
@@ -232,14 +254,21 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     // A form's title says what it's for better than its button's label; a button has only its label.
     logged = deps.log?.(p.title ?? p.label ?? p.view, changes) ?? undefined;
   };
+  // The step under way, for saying what was left undone when a run stops after writing something.
+  let doing = "finish";
+  /** Stops the run; after a write, says what it wrote, which is logged to undo, and what it couldn't do. */
+  const stop = (error: string, notice: string): ActionResult => {
+    if (!changes.length) return stopped(deps, error, notice);
+    const partly = partlyDone(changes, doing);
+    log();
+    if (!deps.tellsFailure) deps.notify(`${partly}: ${error}`);
+    return { ok: false, error, partly, ...(logged && { logged }) };
+  };
   try {
     // A row its rules refuse is refused before anything is written, the line it appends included.
     if (target?.kind === "list") {
       const refused = refusal(deps.expect ?? [], target.name, saved, deps.now());
-      if (refused) {
-        deps.notify(`Not saved: ${refused}`);
-        return { ok: false, error: refused };
-      }
+      if (refused) return stop(refused, `Not saved: ${refused}`);
     }
     if (p.append) {
       // The row's values are added after filling, so they are never read as placeholders themselves.
@@ -250,14 +279,18 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
       changes.push({ kind: "line-added", path: into, line, created: created === true });
     }
     if (target?.kind === "list") {
+      doing = "save the row";
       const { event, already } = await storeOf(deps).add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
       // Another runner already saved this very row: nothing was written here.
       if (!already) changes.push({ kind: "row-added", path: deps.dataPath, list: target.name, row: saved, ...(event && { event }) });
     } else if (target?.kind === "folder") {
-      path = await saveNote(p, target.folder, saved, ctx, deps, changes);
-      if (!path) return { ok: false };
+      doing = "create the note";
+      const made = await saveNote(p, target.folder, saved, ctx, deps, changes);
+      if ("error" in made) return stop(made.error, made.error);
+      path = made.path;
       ctx.path = path;
     }
+    doing = "finish";
     const told = p.notify === undefined ? undefined : fillLine(p.notify, ctx);
     if (told !== undefined && !deps.quiet) deps.notify(told);
     const tell = deps.inPlace && told !== undefined ? { told } : {};
@@ -267,9 +300,8 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     if (p.then) await deps.then?.(p, ctx);
     return { ok: true, path, ...(logged && { logged }), ...tell };
   } catch (e) {
-    deps.notify(`Couldn't save: ${(e as Error).message}`);
-    log();
-    return { ok: false, ...(logged && { logged }) };
+    const message = (e as Error).message;
+    return stop(message, `Couldn't save: ${message}`);
   } finally {
     // What was written before a failure is kept too, so it can be undone.
     log();

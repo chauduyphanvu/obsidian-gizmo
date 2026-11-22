@@ -148,7 +148,7 @@ Gizmo 0.2.1 operates with Obsidian 1.11.4 or later, on desktop and on mobile.
 1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/chauduyphanvu/obsidian-gizmo/releases/latest).
 2. Put the three files in the folder `.obsidian/plugins/gizmo` of your vault.
 3. In **Settings → Community plugins**, set the **Gizmo** toggle to on.
-4. Run **Gizmo: New app from the gallery**.
+4. Run **Gizmo: New app from the gallery**, or run **Gizmo: New app** to start your own app.
 
 ## Learn more
 

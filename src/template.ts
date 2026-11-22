@@ -280,6 +280,18 @@ function oneEditApart(a: string, b: string): boolean {
   return a[i] === b[i + 1] && a[i + 1] === b[i] && a.slice(i + 2) === b.slice(i + 2);
 }
 
+/** The first of `names` one typo away from `word` (see oneEditApart), if any. */
+export function nearMiss(word: string, names: Iterable<string>): string | undefined {
+  for (const n of names) if (oneEditApart(word, n)) return n;
+  return undefined;
+}
+
+/** ` (did you mean label?)` after a word one typo away from one of `names`; nothing otherwise. */
+export function didYouMean(word: string, names: Iterable<string>): string {
+  const close = nearMiss(word, names);
+  return close === undefined ? "" : ` (did you mean ${close}?)`;
+}
+
 /** `$words` one typo away from a declared name, e.g. `$sybmol` beside `symbol`. */
 export function nearMisses(raw: unknown, names: ReadonlySet<string>, kind: "input" | "param"): string[] {
   const words = new Set<string>();
@@ -292,7 +304,7 @@ export function nearMisses(raw: unknown, names: ReadonlySet<string>, kind: "inpu
   const out: string[] = [];
   for (const w of words) {
     if (names.has(w)) continue;
-    const close = [...names].find((n) => oneEditApart(w, n));
+    const close = nearMiss(w, names);
     if (close) out.push(`"$${w}" isn't ${kind === "input" ? "an input" : "a param"} (did you mean $${close}?)`);
   }
   return out;

@@ -246,9 +246,9 @@ test("a value rule refuses a row from every way in: a form keeps what was typed,
   const t = fakeBackground({ "Apps/Weight.md": { fm: WEIGHT } });
   await t.bg.start();
   const ran = await t.bg.capture("weigh 900");
-  assert.deepEqual([ran.ok, t.notices.at(-1)], [false, "Not saved: weight 900 isn't between 30 and 250"]);
-  // The one who ran it (gizmod's caller, a capture line) hears why, not only that it didn't run.
-  assert.equal(ran.error, "“Log” didn't run: weight 900 isn't between 30 and 250");
+  // One notice, naming the shortcut, says why; the one who ran it (gizmod's caller, a capture line) hears the same.
+  assert.deepEqual(t.notices, ["“Log” didn't run: weight 900 isn't between 30 and 250"]);
+  assert.deepEqual([ran.ok, ran.error], [false, "“Log” didn't run: weight 900 isn't between 30 and 250"]);
   const preview = await t.bg.previewLine("weigh 900");
   assert.ok(preview.effects?.some((l) => l.includes("weight 900 isn't between 30 and 250")), JSON.stringify(preview.effects));
   assert.deepEqual(await t.env.store!("Apps/Weight data.md", "Apps/Weight.md").rows("weight"), []);

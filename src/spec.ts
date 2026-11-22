@@ -7,13 +7,13 @@ import { fnv1a, stableJson } from "./hash.ts";
 import { rowsAreNotes, sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, appendPath, basename, definitionReason, isApp, notePath, runsAsApp, storeTarget } from "./store.ts";
 import {
-  InputRef, InputText, NAME, THIS, firstRef, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
+  InputRef, InputText, NAME, THIS, didYouMean, firstRef, nearMiss, readInputs, readRef, refsIn, resolveInputs, resolveWith, secretIds, stringsIn,
   type InputDef, type InputValue,
 } from "./template.ts";
 import { namesIn } from "./template.ts";
 import {
   Expander, MAX_PANELS, TAKEN, checkVersion, componentParams, panelEntries, readBlocks, readFor, selectOf, typedName,
-  type NoteReader, type Produced, type Stage,
+  type Blocks, type NoteReader, type Produced, type Stage,
 } from "./expand.ts";
 import type { PipelineKeys } from "./pipeline.ts";
 import { COMMON_KEYS, KEY_TYPES, isPlainObject, readFields, readValue, type FieldInfo, type PanelKey } from "./keys.ts";
@@ -86,6 +86,8 @@ export interface Panel {
   then?: Then;
   /** A sentence about the row picked in the panel, drawn under its rows. */
   detail?: string;
+  /** What the panel says when it has no rows, in place of the words its view would use. */
+  empty?: string;
   /** With `agg: share`: the rows counted, as a `where`-style map. */
   of?: Record<string, string | number | boolean>;
   /** Internal: the pipelines of the blocks above the one the panel names, root first. */
@@ -326,14 +328,14 @@ export function isUrl(source: string | undefined): source is string {
  */
 export function checkPanel(raw: Record<string, unknown>, strict: boolean, internal: Partial<Panel> = {}): { panel?: Panel; errors: string[] } {
   const def = typeof raw.view === "string" ? viewDef(raw.view) : undefined;
-  if (!def) return { errors: [`view must be one of ${VIEW_DEFS.map((d) => d.id).join(", ")}`] };
+  if (!def) return { errors: [viewProblem(raw.view)] };
   const allowed = new Set<string>([...COMMON_KEYS, ...def.keys]);
   const errors: string[] = [];
   const panel: Record<string, unknown> = {};
   for (const [key, value] of Object.entries(raw)) {
     const type = KEY_TYPES[key as PanelKey];
     if (!type || !allowed.has(key)) {
-      if (strict) errors.push(type ? `"${key}" doesn't apply to ${def.id}` : `unknown key "${key}"`);
+      if (strict) errors.push(type ? `"${key}" doesn't apply to ${def.id}` : `unknown key "${key}"${didYouMean(key, allowed)}`);
       continue;
     }
     if (value === null || value === undefined) continue;
@@ -372,6 +374,28 @@ export function checkPanel(raw: Record<string, unknown>, strict: boolean, intern
   if (problems.length) return { errors: [...errors, ...problems] };
   showFields(p);
   return { panel: p, errors };
+}
+
+/** Why a panel's `view` isn't a view: the one a typo away from it, else every view there is. */
+function viewProblem(view: unknown): string {
+  const ids = VIEW_DEFS.map((d) => d.id);
+  const close = typeof view === "string" ? nearMiss(view, ids) : undefined;
+  return close === undefined ? `view must be one of ${ids.join(", ")}` : `"${String(view)}" isn't a view (did you mean ${close}?)`;
+}
+
+/** A key checkPanel found that the panel's view doesn't take, as it says so. */
+const NOT_THIS_VIEW = /^"([^"]+)" doesn't apply to [a-z]+$/;
+
+/**
+ * An app's problem with a key its panel's view doesn't take, told with the views that do take it
+ * (`; it works on line and bar`) when they are a few; a key most views take reads better without
+ * the list. Added here, not in checkPanel, whose messages each view's examples spell out.
+ */
+function withViews(error: string): string {
+  const key = NOT_THIS_VIEW.exec(error)?.[1];
+  const views = key === undefined ? [] : VIEW_DEFS.filter((d) => d.keys.includes(key)).map((d) => d.id);
+  if (views.length === 0 || views.length > 3) return error;
+  return `${error}; it works on ${views.length === 1 ? views[0] : `${views.slice(0, -1).join(", ")} and ${views[views.length - 1]}`}`;
 }
 
 /**
@@ -583,7 +607,7 @@ export function readSpec(
     noteSecrets(p.template);
     const checkWith = (values: Record<string, unknown>) => checkAt(p.template, uses, values, strict);
     const r = checkWith(start);
-    errors.push(...r.errors.map(at));
+    errors.push(...r.errors.map((e) => at(withViews(e))));
     // Any choice can be picked, so each must make a valid panel too.
     for (const def of inputs) {
       if (def.kind !== "choice" || !uses.includes(def.name)) continue;
@@ -656,6 +680,7 @@ export function readSpec(
   } else {
     return { errors, empty: true };
   }
+  errors.push(...fieldTypos(panels, blocks, fm.store !== undefined && fm.store !== null));
   // A recorded block's problem is told once, under the panel that already shows it if there is one.
   errors.push(...recordErrors.filter((e) => !errors.some((x) => x.endsWith(e.slice(e.indexOf(": "))))));
   for (const d of inputs) if (!used.has(d.name)) errors.push(`input "${d.name}" isn't used by any panel`);
@@ -739,6 +764,70 @@ export function readSpec(
 
 function isLayout(v: unknown): v is AppSpec["layout"] {
   return v === "composed" || v === "grid";
+}
+
+/** Keys whose values name fields of the rows a panel reads. */
+export const FIELD_KEYS = ["field", "x", "y", "group", "sort", "columns", "edit"] as const;
+
+/** The fields saving a row from a panel writes besides `at`; undefined when it saves the whole row it sits on. */
+function writtenBy(p: Panel): string[] | undefined {
+  if (p.row) return Object.keys(p.row);
+  if (p.view === "form") return Object.keys(p.fields ?? {});
+  if (p.view === "button") return [];
+  if (p.view === "timer") return ["minutes"];
+  return undefined;
+}
+
+/**
+ * The fields each saved list's rows hold, as the app's own panels write them: `at`, each writer's
+ * `row` keys or form fields, and the fields of the block it saves to, whose defaults are saved too.
+ * `whole` holds the lists whose rows no key describes: those a row action saves whole rows to, a
+ * checklist ticks or a recorded block fills. With `shared`, other apps may write the same store, so
+ * no list's fields are known from this app's panels alone.
+ */
+export function savedFields(panels: readonly PanelSpec[], blocks: Blocks, shared: boolean): { written: Map<string, Set<string>>; whole: Set<string> } {
+  const written = new Map<string, Set<string>>();
+  const whole = new Set([...blocks].flatMap(([name, b]) => (b.record === undefined ? [] : [typeof b.into === "string" ? b.into : `${name}_log`])));
+  for (const { panel: p } of panels) {
+    if (p.view === "checklist" && p.save) whole.add(p.save);
+    if (p.target?.kind !== "list") continue;
+    const fields = writtenBy(p);
+    if (!fields) whole.add(p.target.name);
+    else if (!shared) written.set(p.target.name, new Set([...(written.get(p.target.name) ?? []), "at", ...fields, ...Object.keys(p.schema ?? {})]));
+  }
+  return { written, whole };
+}
+
+/**
+ * Field names one typo away from a field the panel's rows are known to hold, as errors that still
+ * let the panel show. Only a saved list's rows are known: from its block's fields, or from what the
+ * app's panels save into it. Web, notes, tasks and file rows hold fields no key declares, so their
+ * panels are never checked.
+ */
+function fieldTypos(panels: readonly PanelSpec[], blocks: Blocks, shared: boolean): string[] {
+  const { written, whole } = savedFields(panels, blocks, shared);
+  return panels.flatMap((ps) => {
+    const p = ps.panel;
+    const stages = [...(p.upstream ?? []), p];
+    if (!isListName(p.source) || whole.has(p.source) || stages.some((s) => s.pick !== undefined)) return [];
+    if (!p.schema && !written.has(p.source)) return [];
+    const declared = new Set([
+      ...Object.keys(p.schema ?? {}), ...(written.get(p.source) ?? []), "at",
+      ...stages.flatMap((s) => Object.keys(s.compute ?? {})), ...(stages.some((s) => s.group) ? ["count", "share"] : []),
+    ]);
+    const at = (e: string) => (ps.label ? `${ps.label}: ${e}` : e);
+    return FIELD_KEYS.flatMap((key) => {
+      // A field an input names is only known once it is picked.
+      if (refsIn(ps.template[key]).length) return [];
+      const value = p[key];
+      return (Array.isArray(value) ? value : value === undefined ? [] : [value]).flatMap((typed) => {
+        const down = key === "sort" && typed.startsWith("-");
+        const name = down ? typed.slice(1) : typed;
+        const close = declared.has(name) ? undefined : nearMiss(name, declared);
+        return close === undefined ? [] : [at(`${key}: "${name}" isn't a field (did you mean ${down ? "-" : ""}${close}?)`)];
+      });
+    });
+  });
 }
 
 /** The names an app's own panel entries select (beside `use` too), checked. */

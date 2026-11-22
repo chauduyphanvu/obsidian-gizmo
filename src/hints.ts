@@ -1,10 +1,12 @@
 import { AGGS } from "./data.ts";
 import { PERIODS } from "./time.ts";
-import { BLOCK_KEYS } from "./expand.ts";
+import { BLOCK_KEYS, blockChain, componentParams, panelEntries, readBlocks, schemaOf } from "./expand.ts";
+import { FIELD_KEYS } from "./spec.ts";
+import { sourceDef } from "./sources/registry.ts";
 import { APP_KEYS, COMPONENT_KEYS } from "./store.ts";
-import { COMMON_KEYS, FIELD_TYPES } from "./keys.ts";
+import { COMMON_KEYS, FIELD_TYPES, isPlainObject, readFields } from "./keys.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import { contextAt, noteKind, type Context, type Position } from "./yamlpos.ts";
+import { contextAt, noteKind, valueBeside, type Context, type Position } from "./yamlpos.ts";
 
 /** One plain-language line for every key a note can hold: the note's own, a panel's, a data block's. */
 export const KEY_HINTS: Record<string, string> = {
@@ -65,6 +67,7 @@ export const KEY_HINTS: Record<string, string> = {
   stack: "true stacks the bars of several y fields",
   start: "The field a timeline bar starts at",
   end: "The field a timeline bar ends at",
+  empty: "What the panel says when it has no rows, e.g. \"No doses yet today. Tap the button above.\"",
   // Acting
   fields: "A form's inputs or a block's schema: name: type (or a list of choices), or name: {type, label, format, default}",
   save: "Where a click saves its row: a list name, or a folder ending in /",
@@ -207,12 +210,92 @@ function keysFor(ctx: Context, isComponent: boolean): readonly string[] {
   }
 }
 
+/** What an app's own keys name: its data blocks and the lists it saves into, each with the fields of its rows. */
+export interface AppNames {
+  /** What a `source:` can name, each with its hint. */
+  sources: Record<string, string>;
+  /** The fields of the rows each of those names gives, each with its hint. */
+  fields: Record<string, Record<string, string>>;
+}
+
+/** The app's names that matter where the cursor is: what a source can name, and the fields of the rows its own `source:` gives. */
+export interface OwnNames {
+  sources: Record<string, string>;
+  fields: Record<string, string>;
+}
+
+const AT_HINT = "When the row was saved";
+
+function typeHint(type: string | string[]): string {
+  return Array.isArray(type) ? `One of ${type.join(", ")}` : `A ${type} field`;
+}
+
+/**
+ * The names an app's (or a component's) frontmatter gives its data: its blocks, and the lists its
+ * panels save into, each with the fields its rows hold as far as the keys say (a block's fields
+ * and formulas; what the forms, buttons and row actions saving there write; `at`). Read from the
+ * keys as typed, so a note half written still gives what it can.
+ */
+export function appNames(fm: Record<string, unknown> | undefined): AppNames {
+  const sources: Record<string, string> = {};
+  const fields: Record<string, Record<string, string>> = {};
+  if (!fm) return { sources, fields };
+  const declared = new Set([...Object.keys(isPlainObject(fm.inputs) ? fm.inputs : {}), ...(componentParams(fm.params)?.keys() ?? [])]);
+  const blocks = readBlocks(fm.data, [], declared);
+  /** The list a block's chain starts from, when it starts from one. */
+  const rootList = (name: string) => {
+    const root = String(blocks.get(blockChain(name, blocks)[0])!.source);
+    return sourceDef(root).id === "list" ? root : undefined;
+  };
+  const saved: Record<string, Record<string, string>> = {};
+  const single = fm.view !== undefined && !Array.isArray(fm.panels) && fm.tabs === undefined;
+  for (const { raw } of single ? [{ raw: fm }] : panelEntries(fm, [])) {
+    // A checklist's save is the list of items it ticks, which no other key reads by field.
+    if (!isPlainObject(raw) || raw.view === "checklist" || typeof raw.save !== "string" || raw.save === "this" || raw.save.endsWith("/")) continue;
+    const list = blocks.has(raw.save) ? rootList(raw.save) : raw.save;
+    if (list === undefined) continue;
+    const own = (saved[list] ??= {});
+    const add = (f: string, hint: string) => { own[f] ??= hint; };
+    for (const [f, t] of Object.entries(isPlainObject(raw.fields) ? readFields(raw.fields).types : {})) add(f, typeHint(t));
+    for (const [f, t] of Object.entries(blocks.has(raw.save) ? schemaOf(raw.save, blocks) ?? {} : {})) add(f, typeHint(t));
+    for (const f of Object.keys(isPlainObject(raw.row) ? raw.row : {})) add(f, "Saved with each row");
+  }
+  for (const name of blocks.keys()) {
+    sources[name] = "A data block of this app";
+    const own: Record<string, string> = {};
+    for (const [f, t] of Object.entries(schemaOf(name, blocks) ?? {})) own[f] = typeHint(t);
+    for (const n of blockChain(name, blocks)) {
+      const compute = blocks.get(n)!.compute;
+      for (const c of Object.keys(isPlainObject(compute) ? compute : {})) own[c] ??= "Worked out by its formula";
+    }
+    const list = rootList(name);
+    fields[name] = list === undefined ? own : { ...saved[list], ...own, at: AT_HINT };
+  }
+  for (const [list, own] of Object.entries(saved)) {
+    sources[list] ??= "A list this app saves into";
+    fields[list] ??= { ...own, at: AT_HINT };
+  }
+  return { sources, fields };
+}
+
+/** Field keys a list may hold, so an item of one written on one line is offered a field too. */
+const LIST_FIELD_KEYS = ["y", "columns", "edit"];
+
+/** The fields to offer for a key that names one; `sort` offers them high to low once a `-` is typed. */
+function fieldValues(key: string, prefix: string, fields: Record<string, string>): Record<string, string> {
+  if (key !== "sort" || !prefix.startsWith("-")) return fields;
+  return Object.fromEntries(Object.entries(fields).map(([f, hint]) => [`-${f}`, `${hint}, high to low`]));
+}
+
 /** The values the key being typed takes where the cursor is, or none. */
-function valuesFor(ctx: Context, isComponent: boolean): Record<string, string> {
-  if (ctx.where === "fields") return VALUE_HINTS.fields;
+function valuesFor(ctx: Context, isComponent: boolean, own?: OwnNames): Record<string, string> {
+  if (ctx.where === "fields") return ctx.inList ? {} : VALUE_HINTS.fields;
   const key = ctx.key;
   if (!key || key === "fields" || !["top", "panel", "block"].includes(ctx.where)) return {};
+  if (ctx.inList && !LIST_FIELD_KEYS.includes(key)) return {};
   if (ctx.where === "block" && PANEL_VALUES.includes(key)) return {};
+  if ((FIELD_KEYS as readonly string[]).includes(key)) return fieldValues(key, ctx.prefix, own?.fields ?? {});
+  if (key === "source" && own) return { ...own.sources, ...VALUE_HINTS.source };
   if (key === "layout" && ctx.where === "top" && !isComponent) return ctx.view ? { ...APP_LAYOUTS, ...VALUE_HINTS.layout } : APP_LAYOUTS;
   return Object.hasOwn(VALUE_HINTS, key) ? VALUE_HINTS[key] : {};
 }
@@ -227,10 +310,11 @@ function ranked(words: readonly string[], prefix: string): string[] {
 /**
  * The keys or values worth offering at a cursor position, each with its hint: keys valid in the
  * map the cursor is in (minus those already typed there), or the allowed values of the key being
- * typed. Nothing when the position takes free text, or the one thing left is what is already typed.
+ * typed; with `own`, those include the app's own sources and fields. Nothing when the position
+ * takes free text, or the one thing left is what is already typed.
  */
-export function suggestionsFor(ctx: Context, isComponent: boolean): Suggestion[] {
-  const values = valuesFor(ctx, isComponent);
+export function suggestionsFor(ctx: Context, isComponent: boolean, own?: OwnNames): Suggestion[] {
+  const values = valuesFor(ctx, isComponent, own);
   const out: Suggestion[] = ctx.position === "key"
     ? ranked(keysFor(ctx, isComponent).filter((k) => !ctx.present.includes(k)), ctx.prefix)
       .map((text) => ({ kind: "key", text, hint: (ctx.where === "top" && TOP_HINTS[text]) || KEY_HINTS[text] || "" }))
@@ -246,13 +330,23 @@ export function completion(s: Suggestion, after: string): string {
 /**
  * What to pop up at a cursor in a note whose lines (up to the end of its frontmatter) are given:
  * only in an app or component, and a key only once a letter of it is typed, since a list on every
- * empty line would take Enter and the arrow keys from someone just moving about. Undefined when
- * there is nothing to offer.
+ * empty line would take Enter and the arrow keys from someone just moving about. `frontmatter`
+ * gives the note's keys, read only where a value can name the app's own sources or fields.
+ * Undefined when there is nothing to offer.
  */
-export function suggestionsAt(lines: string[], line: number, ch: number): { from: Position; prefix: string; suggestions: Suggestion[] } | undefined {
+export function suggestionsAt(
+  lines: string[], line: number, ch: number, frontmatter?: () => Record<string, unknown> | undefined,
+): { from: Position; prefix: string; suggestions: Suggestion[] } | undefined {
   const kind = noteKind(lines);
   const ctx = kind && contextAt(lines, line, ch);
   if (!ctx || (ctx.position === "key" && !ctx.prefix)) return undefined;
-  const suggestions = suggestionsFor(ctx, kind === "component");
+  const named = ctx.position === "value" && (ctx.key === "source" || (FIELD_KEYS as readonly string[]).includes(ctx.key ?? ""));
+  let own: OwnNames | undefined;
+  if (named && frontmatter) {
+    const names = appNames(frontmatter());
+    const source = valueBeside(lines, line, ch, "source");
+    own = { sources: names.sources, fields: (source !== undefined && names.fields[source]) || {} };
+  }
+  const suggestions = suggestionsFor(ctx, kind === "component", own);
   return suggestions.length ? { from: ctx.from, prefix: ctx.prefix, suggestions } : undefined;
 }

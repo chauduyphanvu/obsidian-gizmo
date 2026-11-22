@@ -177,10 +177,13 @@ test("cards pick their row with select, and two cards of one column are told apa
   const { ctx, picked } = fakeCtx();
   const { el } = mount({ select: "project" }, ROWS, ctx);
   const [garden, kitchen] = [card(el, "Garden"), card(el, "Kitchen")];
-  assert.deepEqual([garden.getAttribute("role"), garden.getAttribute("tabindex"), garden.getAttribute("aria-label")], ["button", "0", "Garden"]);
+  // One Tab stop for the board: Rust, the first card, until one is picked.
+  assert.deepEqual([garden.getAttribute("role"), garden.getAttribute("tabindex"), garden.getAttribute("aria-label")], ["button", "-1", "Garden"]);
+  assert.equal(card(el, "Rust").getAttribute("tabindex"), "0");
   garden.click();
   assert.deepEqual(picked, [ROWS[0]]);
   assert.ok(garden.classList.contains("gz-selected"));
+  assert.deepEqual([card(el, "Rust").getAttribute("tabindex"), garden.getAttribute("tabindex")], ["-1", "0"]);
   assert.ok(!kitchen.classList.contains("gz-selected"));
   // The Move to… menu is its own control: using it doesn't pick the card.
   choose(kitchen.querySelector("select")!, "done");

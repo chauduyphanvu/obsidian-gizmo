@@ -20,6 +20,10 @@ export interface FileInfo {
 
 /** What the data layer needs from Obsidian; tests pass a fake. */
 export interface Host {
+  /**
+   * Resolves with any answer, an error status included. When no answer came it rejects with a
+   * WebError of kind "network"; anything else it throws (a try refusing a host) is passed on as it is.
+   */
   fetch(url: string, headers: Record<string, string>, init?: { method?: string; body?: string }): Promise<{ status: number; text: string; contentType: string }>;
   markdownFiles(): FileInfo[];
   fileInfo(path: string): FileInfo | undefined;
@@ -75,6 +79,24 @@ const SECRET = /\{secret:([a-z0-9-]+)\}/g;
 
 /** A web response longer than this isn't read: no app's data is that big, and reading it would stall the window. */
 export const MAX_RESPONSE_CHARS = 10_000_000;
+
+/**
+ * A web request that failed where the failure is known: no answer came (the host says so, see
+ * Host.fetch), the site answered with an error status, or its answer looked like JSON and isn't.
+ * Its message is the failure's own; `kind`, `host` and `status` let a panel say it in plain words.
+ */
+export class WebError extends Error {
+  readonly kind: "network" | "status" | "not-json";
+  readonly host: string;
+  readonly status?: number;
+
+  constructor(kind: WebError["kind"], host: string, message: string, opts: { status?: number; cause?: unknown } = {}) {
+    super(message, { cause: opts.cause });
+    this.kind = kind;
+    this.host = host;
+    if (opts.status !== undefined) this.status = opts.status;
+  }
+}
 
 function hostOf(source: string): string {
   try {
@@ -246,10 +268,18 @@ export class DataLayer {
       const filled = Object.fromEntries(Object.entries(headers ?? {}).map(([k, v]) => [k, this.withSecrets(String(v))]));
       const init = body === undefined ? undefined : this.post(body, filled);
       const res = await this.host.fetch(this.withSecrets(source), filled, init);
-      if (res.status >= 400) throw new Error(`${hostOf(source)} answered ${res.status}`);
-      if (res.text.length > MAX_RESPONSE_CHARS) throw new Error(`${hostOf(source)} sent more than 10 MB`);
-      // Read at the panel's time, which a replay sets; the request itself is made now.
-      const data = parseBody(res.text, res.contentType, now ?? new Date(this.host.now()));
+      const host = hostOf(source);
+      if (res.status >= 400) throw new WebError("status", host, `${host} answered ${res.status}`, { status: res.status });
+      if (res.text.length > MAX_RESPONSE_CHARS) throw new Error(`${host} sent more than 10 MB`);
+      let data: unknown;
+      try {
+        // Read at the panel's time, which a replay sets; the request itself is made now.
+        data = parseBody(res.text, res.contentType, now ?? new Date(this.host.now()));
+      } catch (e) {
+        // JSON.parse is what throws a SyntaxError here.
+        if (e instanceof SyntaxError) throw new WebError("not-json", host, e.message, { cause: e });
+        throw e;
+      }
       if (keptOnDisk(source, headers, body)) void this.host.responses?.record(key, res.text, res.contentType);
       return data;
     })();

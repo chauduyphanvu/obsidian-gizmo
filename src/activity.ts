@@ -12,6 +12,8 @@ export type Change =
   | { kind: "row-added"; path: string; list: string; row: Row; event?: string }
   /** `row` is the row as the edit left it. */
   | { kind: "row-edited"; path: string; list: string; row: Row; field: string; from: unknown; to: unknown; event?: string }
+  /** `row` is the row as it was kept; `index`, its place in a list kept in the note's properties. */
+  | { kind: "row-deleted"; path: string; list: string; row: Row; index?: number; event?: string }
   | { kind: "checklist"; path: string; list: string; item: string; checked: boolean; event?: string }
   | { kind: "cleared"; path: string; list: string; items: string[]; event?: string }
   /** `had` says whether the property was there before; `from` is its value then. */
@@ -303,6 +305,20 @@ const CHANGES: { [K in Change["kind"]]: ChangeKind<Extract<Change, { kind: K }>>
       },
     },
   },
+  "row-deleted": {
+    done: (c, note) => `Deleted ${rowWords(c.row) ? `${rowWords(c.row)} ` : "a row "}from ${c.list} in ${note}`,
+    ahead: (c, note) => `Delete ${rowWords(c.row) ? `${rowWords(c.row)} ` : "a row "}from ${c.list} in ${note}`,
+    undo: {
+      inFrontmatter(c, fm, note) {
+        const list = listIn(fm, c.list);
+        if (!list) return `${c.list} in ${note} is gone`;
+        // Back where it was, unless the list has grown shorter than that since.
+        const at = c.index !== undefined && c.index <= list.length ? c.index : list.length;
+        fm[c.list] = [...list.slice(0, at), c.row, ...list.slice(at)];
+        return undefined;
+      },
+    },
+  },
   checklist: {
     done: (c) => `${c.checked ? "Ticked" : "Unticked"} “${c.item}”`,
     ahead: (c) => `${c.checked ? "Tick" : "Untick"} “${c.item}”`,
@@ -425,6 +441,18 @@ export async function undoEntry(entry: Entry, io: UndoIO): Promise<UndoResult> {
   let undone = entry.undone;
   while (undone < total) {
     const change = entry.changes[total - 1 - undone];
+    // Changes kept as events of one note, newest first, are taken back by one event: a batch of
+    // hundreds of rows is one write, not hundreds.
+    const events = io.undoEvents ? eventRun(entry.changes, total - undone) : [];
+    if (events.length > 1) {
+      try {
+        await io.undoEvents!(change.path, events);
+      } catch (e) {
+        return { undone, total, refusal: (e as Error).message };
+      }
+      undone += events.length;
+      continue;
+    }
     let refusal: Refusal;
     try {
       refusal = await undoOne(change, io);
@@ -435,6 +463,18 @@ export async function undoEntry(entry: Entry, io: UndoIO): Promise<UndoResult> {
     undone++;
   }
   return { undone, total };
+}
+
+/** The events of the changes before `end` that are kept as events of the same note as the last of them, newest first. */
+function eventRun(changes: readonly Change[], end: number): string[] {
+  const path = changes[end - 1].path;
+  const out: string[] = [];
+  for (let i = end - 1; i >= 0; i--) {
+    const c = changes[i];
+    if (c.path !== path || !("event" in c) || !c.event) break;
+    out.push(c.event);
+  }
+  return out;
 }
 
 /** What an undo did, as a notice says it. */

@@ -222,7 +222,7 @@ test("Decisions: the due decision is counted, scored in place from the dropdown,
   });
   assert.equal(text(app.panel("Ready to score").querySelector(".gz-big")), "0");
   assert.equal(text(app.panel("Right so far").querySelector(".gz-big")), "63%");
-  assert.equal(text(app.panel("How did these turn out?").querySelector(".gz-empty")), "Nothing here yet.");
+  assert.equal(text(app.panel("How did these turn out?").querySelector(".gz-empty")), "Nothing here yet. Why?");
 });
 
 test("Decisions: the form writes a decision note with a number, outcome open and today's date", async () => {

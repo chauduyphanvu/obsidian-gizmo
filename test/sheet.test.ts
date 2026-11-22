@@ -181,10 +181,12 @@ test("a table row with neither select nor detail opens in the sheet with its col
   assert.equal(text(aside.querySelector(".gz-sheet-kicker")), "Recent");
   assert.equal(text(aside.querySelector(".gz-sheet-title")), "Rent", "its first field of free text: not a date, nor one of a field's choices");
   assert.equal(aside.querySelector(".gz-sheet-line"), null, "nothing more to say");
-  assert.equal(aside.querySelector(".gz-sheet-actions"), null, "no actions, so none drawn");
+  assert.deepEqual([...aside.querySelectorAll(".gz-sheet-actions > *")].map(text), ["Delete"], "a row of the app's own list can be deleted; no other action");
   const fields = [...aside.querySelectorAll(".gz-sheet-field")];
   assert.deepEqual(fields.map((f) => text(f.querySelector(".gz-sheet-label"))), ["When", "amount", "category", "note"]);
-  assert.deepEqual(fields.slice(0, 2).map((f) => text(f.querySelector(".gz-sheet-value"))), ["2026-11-18", "700"]);
+  // Its own list's row moves in time: When is a date and time to change.
+  assert.equal((fields[0].querySelector("input[type=datetime-local]") as HTMLInputElement | null)?.value, "2026-11-18T00:00");
+  assert.equal(text(fields[1].querySelector(".gz-sheet-value")), "700");
   // The edited fields are the controls the table's cells are.
   const category = fields[2].querySelector("select.gz-edit") as HTMLSelectElement;
   const note = fields[3].querySelector("input.gz-edit") as HTMLInputElement;

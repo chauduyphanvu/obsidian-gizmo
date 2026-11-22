@@ -15,10 +15,12 @@ export interface StoredData {
   captureKeys?: Record<string, Record<string, string>>;
   /** The data policy as last applied: until Apply, an edited policy note changes nothing. */
   policy?: AppliedPolicy;
+  /** Renames in an app's keys whose saved rows the person chose to leave as they are, by renameKey. */
+  leftAlone?: Record<string, true>;
 }
 
 /** The settings kept as maps of entries, merged entry by entry; anything else is merged as one value. */
-const MAPS = ["grants", "folded", "linkKeys", "answerTo", "captureKeys"] as const;
+const MAPS = ["grants", "folded", "linkKeys", "answerTo", "captureKeys", "leftAlone"] as const;
 
 const same = (a: unknown, b: unknown) => JSON.stringify(a) === JSON.stringify(b);
 

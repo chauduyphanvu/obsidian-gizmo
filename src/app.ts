@@ -4,13 +4,16 @@ import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
 import type { Entry, NewEntry } from "./activity.ts";
-import { editWords, renderBlocked, renderEmpty, renderErrors, renderHandEdit, renderOpenOnce, renderPermissionPrompt, renderUsage, type CardApp } from "./app-cards.ts";
+import {
+  editWords, findRenames, renameKey, renderBlocked, renderEmpty, renderErrors, renderHandEdit, renderOpenOnce, renderPermissionPrompt, renderRename, renderUsage,
+  renderYamlError, yamlProblem, type CardApp,
+} from "./app-cards.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./responses.ts";
 import { type Row } from "./data.ts";
 import { stampParts } from "./time.ts";
-import type { AppFiles, DataLayer } from "./datalayer.ts";
+import { WebError, type AppFiles, type DataLayer } from "./datalayer.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import { typedName, type NoteReader } from "./expand.ts";
@@ -23,6 +26,8 @@ import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
 import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
+import { compilePipeline, tracePipeline } from "./pipeline.ts";
+import { panelLine } from "./yamlpos.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, composedWidth, isNarrow, rowTracks, spanOn, widthFor } from "./layout.ts";
 import { compose, type Placement, type Scope } from "./compose.ts";
 import { Sheet, type DrawIcon } from "./sheet.ts";
@@ -83,10 +88,16 @@ export interface AppEnv {
   notify(message: string): void;
   openNote(path: string, fromPath: string): void;
   showSource(): void;
-  /** Shows the note's source with the cursor at the start of this 0-based line. */
-  showSourceAt(line: number): void;
+  /** Shows the note's source with the cursor on this 0-based line, at its start or at `ch`. */
+  showSourceAt(line: number, ch?: number): void;
   /** The note's text as it is now, line by line. */
   sourceLines(): Promise<string[]>;
+  /**
+   * Adds starter panels (each its lines, see `skeleton`) to the end of the app note's `panels:`, as
+   * Insert panel adds one: where the cursor goes in the first, or why they can't be added. Only
+   * where the person edits the app note itself: not in an embed, a lens, a try or a dry run.
+   */
+  addPanels?(panels: string[][]): Promise<{ cursor: { line: number; ch: number } } | { refusal: string }>;
   /** Puts text on the clipboard. */
   copy(text: string): void;
   /** Keeps what the app changed in the activity log; may give the entry once it is kept. */
@@ -106,6 +117,9 @@ export interface AppEnv {
   preview?: boolean;
   /** Opens the app on copies of its own notes before it's allowed; absent where that can't be offered. */
   tryFirst?(): void;
+  /** Whether the person chose to leave the saved rows of a rename as they are (see renameKey); kept across restarts. */
+  leftAlone?(key: string): boolean;
+  leaveAlone?(key: string): void;
 }
 
 /** What an app keeps while it is open: input values, selections, the open tab and its timers. */
@@ -164,6 +178,19 @@ interface Mounted {
   remount: boolean;
   /** Not loaded: it waits for a value, or a value it was given can't be used. */
   idle: boolean;
+  /**
+   * What its source gave on the load it shows, before any step, and when; kept only where a panel
+   * that shows nothing can say why (see canSayWhy). None for a disk copy.
+   */
+  raw?: { data: unknown; now: Date };
+}
+
+/** Why a source failed, in plain words: what a web request met, else the failure's own message. */
+function failureText(e: unknown): string {
+  if (!(e instanceof WebError)) return (e as Error).message;
+  if (e.kind === "network") return `Couldn't reach ${e.host}. Check the connection.`;
+  if (e.kind === "not-json") return `The answer from ${e.host} isn't JSON.`;
+  return e.status === 429 ? `${e.host} answered 429: too many requests. Try again later.` : `${e.host} answered ${e.status}.`;
 }
 
 /** A panel's title as typed, when no value is filled into it. */
@@ -201,6 +228,9 @@ export class AppController {
   private hosting: Hosting | undefined;
   /** The card saying the data note was edited by hand, while it is. */
   private handEdit: HTMLElement | undefined;
+  /** The card offering to bring saved rows along with a rename in the app's keys, while one is found; and which look for one is the latest. */
+  private renameCard: HTMLElement | undefined;
+  private renameChecks = 0;
   private grantKey: string;
   private hostPath: string;
   /** What `$this` reads, and as JSON, to tell when it changed. */
@@ -233,6 +263,10 @@ export class AppController {
   /** The data inspector pane, while it is open, and which fill of it is the latest. */
   private inspector: HTMLElement | undefined;
   private inspecting = 0;
+  /** Which read of the note's text, to say why it has no keys, is the latest (see explainNoApp). */
+  private explaining = 0;
+  /** The card saying the properties don't parse, above the app as last drawn, while it shows there. */
+  private yamlCard: HTMLElement | undefined;
 
   /** Without `hosting`, the app note at `appPath` opened on its own: its own grants, data note and `$this`. */
   constructor(root: HTMLElement, appPath: string, env: AppEnv, hosting?: Hosting) {
@@ -302,6 +336,7 @@ export class AppController {
 
   dispose(): void {
     this.inspector = undefined;
+    this.explaining++;
     this.unsubscribe?.();
     this.removeBar();
     this.destroyPanels();
@@ -324,14 +359,7 @@ export class AppController {
    * cache, so nothing is requested twice. Web addresses keep their `{secret:…}` placeholders.
    */
   async inspect(): Promise<InspectedSource[]> {
-    const ids = this.spec ? panelIds(this.spec.panels.map((ps) => ps.template)) : [];
-    const first = new Map<string, Mounted>();
-    for (const m of ids.map((id) => this.mounted.get(id))) {
-      if (!m || m.idle || !m.source) continue;
-      const key = JSON.stringify([m.source, m.p.from, m.p.headers, m.p.body]);
-      if (!first.has(key)) first.set(key, m);
-    }
-    return Promise.all([...first.values()].map(async (m): Promise<InspectedSource> => {
+    return Promise.all([...this.sourceReaders().values()].map(async (m): Promise<InspectedSource> => {
       const found = { title: m.p.title ?? m.p.view, kind: sourceKind(m.source!, m.p.from), ...(isUrl(m.source) ? { source: m.source } : {}) };
       try {
         const data = await this.env.data.rawData(m.source, m.p, this.files(), { ttlMs: this.spec?.refreshMs ?? CACHE_MS, now: this.env.now() });
@@ -340,6 +368,18 @@ export class AppController {
         return { ...found, data: { error: (e as Error).message } };
       }
     }));
+  }
+
+  /** The first panel on screen that reads each distinct source, by its source (see sourceKey), in the order written. */
+  private sourceReaders(): Map<string, Mounted> {
+    const ids = this.spec ? panelIds(this.spec.panels.map((ps) => ps.template)) : [];
+    const first = new Map<string, Mounted>();
+    for (const m of ids.map((id) => this.mounted.get(id))) {
+      if (!m || m.idle || !m.source) continue;
+      const key = sourceKey(m);
+      if (!first.has(key)) first.set(key, m);
+    }
+    return first;
   }
 
   /**
@@ -376,19 +416,43 @@ export class AppController {
       this.inspector = undefined;
       return;
     }
+    this.openInspector();
+    await this.fillInspector();
+  }
+
+  private openInspector(): void {
     const pane = this.shell.createDiv({ cls: "gz-card gz-inspector" });
     this.shell.insertBefore(pane, this.bar ?? this.grid ?? null);
     this.inspector = pane;
     pane.createDiv({ cls: "gz-empty", text: "Loading…" });
-    await this.fillInspector();
   }
 
-  private async fillInspector(): Promise<void> {
+  /** Fills the open inspector; `focus`, a panel's id, scrolls it to that panel's source. */
+  private async fillInspector(focus?: string): Promise<void> {
     const pane = this.inspector;
     const run = ++this.inspecting;
+    // In the order inspect gives the sources, read before it waits for any.
+    const keys = [...this.sourceReaders().keys()];
     const sources = await this.inspect();
     if (!pane || pane !== this.inspector || run !== this.inspecting) return;
-    renderInspector(pane, sources, (text) => this.env.copy(text));
+    const m = focus === undefined ? undefined : this.mounted.get(focus);
+    const at = m?.source ? keys.indexOf(sourceKey(m)) : -1;
+    renderInspector(pane, sources, (text) => this.env.copy(text), at < 0 ? undefined : at);
+  }
+
+  /** Opens Inspect data, or keeps it open, at the source of the panel with this id. */
+  private async inspectPanel(id: string): Promise<void> {
+    if (!this.inspector) this.openInspector();
+    await this.fillInspector(id);
+  }
+
+  /** Puts the cursor on the line the panel is written on, in the note's source beside the app. */
+  private async showPanelSource(id: string): Promise<void> {
+    const m = this.mounted.get(id);
+    if (!m) return;
+    const line = panelLine(await this.env.sourceLines(), m.ps.label);
+    if (line === undefined) this.env.showSource();
+    else this.env.showSourceAt(line);
   }
 
   resize(): void {
@@ -498,20 +562,18 @@ export class AppController {
     const definition = JSON.stringify([fm, result?.spec?.read ?? null, granted, blocked ?? null, verdict?.asked ?? null, pending]);
     if (definition === this.definition) {
       if (moved) this.refillHostReaders();
+      // Properties that don't parse read as no keys at every save, so the note's text is read again.
+      if (!result && !h) void this.explainNoApp(definition);
       return;
     }
     this.definition = definition;
-    this.links = result?.spec?.links ?? [];
-    this.spec = picked?.spec ?? result?.spec;
-    this.dataPath = dataPath;
+    // Properties that don't parse leave Obsidian with no keys at all, as if there were no app line:
+    // the note's text tells which, and what is drawn stays as it is until then.
+    if (!result && !h) return void this.explainNoApp(definition);
+    this.adopt(picked?.spec ?? result?.spec, result?.spec?.links ?? [], dataPath);
     const composed = this.composed;
-    this.shell.classList.toggle("gz-composed", composed);
-    this.shell.classList.toggle("gz-narrow", composed && isNarrow(this.shell.clientWidth));
 
-    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector && el !== this.sheet?.el) el.remove();
-    this.rail?.remove();
-    const header = createDivIn(this.shell, "gz-header");
-    this.shell.prepend(header);
+    const header = this.freshHeader();
     const past = this.env.data.at;
     if (past !== undefined && this.spec) {
       const now = shownAsNow(this.spec);
@@ -526,8 +588,7 @@ export class AppController {
 
     if (!result) {
       // A lens whose note no longer fills its params shows nothing until it is taken away.
-      if (!h) header.createDiv({ cls: "gz-card", text: "This note has no app key." });
-      else if (h.kind === "app") header.createDiv({ cls: "gz-card", text: `[[${basename(this.appPath)}]] isn't an app (it has no app: line)` });
+      if (h?.kind === "app") header.createDiv({ cls: "gz-card", text: `[[${basename(this.appPath)}]] isn't an app (it has no app: line)` });
       return this.showOnly(header);
     }
     const description = this.spec?.description ?? textOf(fm.app ?? "");
@@ -627,6 +688,65 @@ export class AppController {
     // Laid out again, the panels the sheet holds are back in their slots.
     if (this.sheet?.from !== undefined && !this.mounted.has(this.sheet.from)) this.closeSheet();
     else this.seat();
+  }
+
+  /** Takes in what the keys say now: the app, the components it links to, where its data is kept, and its layout. */
+  private adopt(spec: AppSpec | undefined, links: string[], dataPath: string): void {
+    this.links = links;
+    this.spec = spec;
+    this.dataPath = dataPath;
+    const composed = this.composed;
+    this.shell.classList.toggle("gz-composed", composed);
+    this.shell.classList.toggle("gz-narrow", composed && isNarrow(this.shell.clientWidth));
+  }
+
+  /** Takes away what was drawn above the panels, brings back what was faded, and puts an empty header on top. */
+  private freshHeader(): HTMLElement {
+    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector && el !== this.sheet?.el) el.remove();
+    this.yamlCard = undefined;
+    this.fade(false);
+    this.rail?.remove();
+    const header = createDivIn(this.shell, "gz-header");
+    this.shell.prepend(header);
+    return header;
+  }
+
+  /** Fades all that is drawn and puts it out of reach, with no clicks and no focus; or brings it back. */
+  private fade(on: boolean): void {
+    for (const el of this.shell.children) {
+      el.classList.toggle("gz-faded", on);
+      if (on) el.setAttribute("inert", "");
+      else el.removeAttribute("inert");
+    }
+  }
+
+  /**
+   * Says why a note opened as an app has no keys, from its text. When its properties don't parse,
+   * a card says where; an app drawn before stays under it as it was, faded and out of reach, so
+   * nothing jumps while the person types, and it comes back with the next save that parses.
+   * Otherwise the note has no app line.
+   */
+  private async explainNoApp(definition: string): Promise<void> {
+    const run = ++this.explaining;
+    const lines = await this.env.sourceLines().catch(() => []);
+    if (run !== this.explaining || definition !== this.definition) return;
+    const problem = yamlProblem(lines, (text) => this.env.data.host.parseYaml(text));
+    if (problem && this.grid) {
+      this.unsubscribe?.();
+      // The panels wait as drawn; their data is read again once the keys parse.
+      this.unsubscribe = this.env.data.subscribe(this.definitionDeps(), () => this.reconcile());
+      this.yamlCard?.remove();
+      this.fade(true);
+      this.yamlCard = createDivIn(this.shell, "gz-header");
+      this.shell.prepend(this.yamlCard);
+      renderYamlError(this.yamlCard, problem, this.cards);
+      return;
+    }
+    this.adopt(undefined, [], this.dataPath);
+    const header = this.freshHeader();
+    if (problem) renderYamlError(header, problem, this.cards);
+    else header.createDiv({ cls: "gz-card", text: "This note has no app key." });
+    this.showOnly(header);
   }
 
   /**
@@ -844,9 +964,12 @@ export class AppController {
       for (const m of this.mounted.values()) {
         if (m.source && m.deps.some((d) => d !== self && changed.has(d))) void this.loadPanel(m);
       }
-      if (kept.some((d) => changed.has(d))) void this.checkHandEdit();
+      if (!kept.some((d) => changed.has(d))) return;
+      void this.checkHandEdit();
+      void this.checkRenames();
     });
     void this.checkHandEdit();
+    void this.checkRenames();
   }
 
   /** Says so when the data note was edited by hand since the app's log was last written into it, with Import and Discard. */
@@ -863,12 +986,42 @@ export class AppController {
     this.handEdit = undefined;
     const header = this.shell.querySelector<HTMLElement>(".gz-header");
     if (!state.handEdited || !header) return;
-    this.handEdit = renderHandEdit(header, basename(dataPath), editWords(ops).length ? editWords(ops) : ["its layout only"], {
+    const checklists = new Set(this.spec?.panels.filter((ps) => ps.panel.view === "checklist").map((ps) => ps.panel.save ?? "checked"));
+    const words = editWords(ops, checklists);
+    this.handEdit = renderHandEdit(header, basename(dataPath), words.length ? words : ["its layout only"], {
       import: async () => {
         await ledger.write(dataPath, ops);
         await this.env.data.snapshotNow(dataPath, true);
       },
       discard: () => this.env.data.snapshotNow(dataPath, true),
+    });
+  }
+
+  /**
+   * In the app's own tab, as it is now, says so when its keys renamed a field, a choice or a list
+   * that its saved rows still use, with a way to bring the rows along; unless the person chose to
+   * leave that rename as it is. Read from the ledger's lists, as the panels are.
+   */
+  private async checkRenames(): Promise<void> {
+    const ledger = this.env.data.ledger;
+    const spec = this.spec;
+    const check = ++this.renameChecks;
+    if (!ledger || !this.env.store || this.hosting || this.env.preview || this.env.data.at !== undefined || !spec) return;
+    const dataPath = this.dataPath;
+    const appFm = this.env.frontmatter(this.appPath) ?? {};
+    const state = await ledger.state(dataPath, appFm);
+    if (check !== this.renameChecks || spec !== this.spec) return;
+    this.renameCard?.remove();
+    this.renameCard = undefined;
+    const rename = findRenames(spec, state.lists, appFm).find((r) => !this.env.leftAlone?.(renameKey(this.appPath, r)));
+    const header = this.shell.querySelector<HTMLElement>(".gz-header");
+    if (!rename || !header) return;
+    this.renameCard = renderRename(header, basename(dataPath), rename, {
+      fix: () => this.writes.moveRenamed(rename),
+      leave: () => {
+        this.env.leaveAlone?.(renameKey(this.appPath, rename));
+        void this.checkRenames();
+      },
     });
   }
 
@@ -929,25 +1082,27 @@ export class AppController {
       if (!answered && current()) void fromDisk().then((copy) => { if (copy && !answered && current()) this.show(m, copy.data, copy.at); });
     }, DISK_FIRST_MS);
     try {
-      const data = await this.env.data.panelData(m.source, m.p, this.files(), {
+      const raw = await this.env.data.rawData(m.source, m.p, this.files(), {
         ttlMs: this.spec?.refreshMs ?? CACHE_MS,
         now,
       });
+      const data = compilePipeline(m.p, now)(raw);
       answered = true;
       if (!current()) return;
-      this.show(m, data);
+      this.show(m, data, undefined, this.canSayWhy ? { data: raw, now } : undefined);
     } catch (e) {
       answered = true;
       if (!current()) return;
       const copy = await fromDisk();
       if (!current()) return;
       if (copy) this.show(m, copy.data, copy.at);
-      else this.showPanelError(m, (e as Error).message);
+      else this.showFailure(m, e);
     }
   }
 
-  /** `asOf`: the data is a disk copy fetched then, and says so. */
-  private show(m: Mounted, data: unknown, asOf?: number): void {
+  /** `asOf`: the data is a disk copy fetched then, and says so. `raw`: what the source gave for it. */
+  private show(m: Mounted, data: unknown, asOf?: number, raw?: Mounted["raw"]): void {
+    m.raw = raw;
     if (m.remount) {
       m.handle.destroy?.();
       m.el.empty();
@@ -974,8 +1129,31 @@ export class AppController {
     m.el.removeClass("gz-loading", "gz-stale", "gz-collapsed");
     m.el.addClass("gz-error");
     m.el.empty();
+    // The view's own elements are gone, so what it shows next is drawn afresh.
+    m.remount = true;
     m.el.createDiv({ cls: "gz-title", text: m.p.title ?? m.p.view });
     m.el.createDiv({ text: message });
+  }
+
+  /**
+   * A panel whose source failed, with no disk copy to show: why, in plain words, then Try again,
+   * which loads the panel again, and Show in source where the note's source is at hand.
+   */
+  private showFailure(m: Mounted, e: unknown): void {
+    this.showPanelError(m, failureText(e));
+    // The past doesn't change: trying again would show the same.
+    const again = this.env.data.at === undefined;
+    if (!again && !this.canSayWhy) return;
+    const actions = m.el.createDiv({ cls: "gz-actions" });
+    if (again) {
+      const b = actions.createEl("button", { cls: "gz-small", text: "Try again" });
+      b.addEventListener("click", () => {
+        b.disabled = true;
+        m.el.addClass("gz-loading");
+        void this.loadPanel(m);
+      });
+    }
+    if (this.canSayWhy) actions.createEl("button", { cls: "gz-small", text: "Show in source" }).addEventListener("click", () => void this.showPanelSource(m.id));
   }
 
   /**
@@ -1023,12 +1201,32 @@ export class AppController {
     return m?.p.title ?? m?.p.label ?? key;
   }
 
+  /**
+   * Whether a panel that shows nothing can say why: in an app's own tab, where the note's source
+   * and Inspect data are at hand; not in an embed, a lens or a try.
+   */
+  private get canSayWhy(): boolean {
+    return !this.hosting && !this.env.preview;
+  }
+
   /** A panel's own view of the app: what every panel may ask, and edits that know whose rows they are. */
   private ctxFor(id: string): PanelCtx {
     return Object.assign(Object.create(this.ctx) as PanelCtx, {
       place: () => this.placements.get(id),
       editRow: (row: Row, field: string, value: unknown) => this.editRow(id, row, field, value),
+      deleteRow: (row: Row) => this.deleteRow(id, row),
       setProperty: (field: string, value: unknown) => this.setProperty(id, field, value),
+      ...(this.canSayWhy && {
+        why: {
+          hasData: () => holdsData(this.mounted.get(id)?.raw?.data),
+          trace: () => {
+            const m = this.mounted.get(id)!;
+            return tracePipeline(m.p, m.raw?.now ?? this.env.now(), m.raw?.data);
+          },
+          showInSource: () => void this.showPanelSource(id),
+          seeAnswer: () => void this.inspectPanel(id),
+        },
+      }),
       // A panel that waits for a pick is shown in the sheet, and keeps its own picks there.
       ...(this.sheet && this.composed && this.placements.get(id)?.slot !== "sheet" && {
         open: (pick: SheetPick | undefined, redrawn?: boolean) => this.openSheet(id, pick, redrawn),
@@ -1134,11 +1332,29 @@ export class AppController {
     return this.writes.editRow(m, row, field, value, () => void this.loadPanel(m));
   }
 
+  private deleteRow(id: string, row: Row): Promise<{ entry?: string } | undefined> {
+    const m = this.mounted.get(id);
+    if (!m || m.idle) return Promise.resolve(undefined);
+    return this.writes.deleteRow(m, row, () => void this.loadPanel(m));
+  }
+
   private setProperty(id: string, field: string, value: unknown): Promise<void> {
     const m = this.mounted.get(id);
     if (!m || m.idle) return Promise.resolve();
     return this.writes.setProperty(m, field, value);
   }
+}
+
+/** What tells a panel's source apart from another's, for Inspect data: the same address with other headers or body is another. */
+function sourceKey(m: Mounted): string {
+  return JSON.stringify([m.source, m.p.from, m.p.headers, m.p.body]);
+}
+
+/** Whether a source gave anything: a row, or an answer with something in it. */
+function holdsData(data: unknown): boolean {
+  if (Array.isArray(data)) return data.length > 0;
+  if (data !== null && typeof data === "object") return Object.keys(data).length > 0;
+  return data !== undefined && data !== null && data !== "";
 }
 
 function createDivIn(parent: HTMLElement, cls: string): HTMLElement {

@@ -1,10 +1,10 @@
 import { textOf } from "../text.ts";
 import { formatValue, getPath, rowsOf, toNumber } from "../data.ts";
-import { display, formatErrors, formatFor, labelFor, mapped } from "../format.ts";
+import { display, formatErrors, formatFor, labelFor, labelOf, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
 import { legendItem, svg } from "./chart.ts";
-import { groupedTotals, heading, redraw, selectable, seriesNames } from "./common.ts";
+import { ANY_ARROW, describeChart, emptyText, groupedTotals, heading, redraw, roving, selectable, seriesNames, whyEmpty } from "./common.ts";
 import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { ViewDef } from "./registry.ts";
 
@@ -38,7 +38,7 @@ function arc(a0: number, a1: number): string {
 
 export const pie: ViewDef = {
   id: "pie",
-  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "of", "label", "unit", "decimals", "format", "labels", "values", "select", "detail", "alert"],
+  keys: [...DATA_KEYS, ...GROUP_KEYS, "x", "y", "agg", "of", "label", "unit", "decimals", "format", "labels", "values", "select", "detail", "alert", "empty"],
   span: 2,
   needsSource: true,
   validate(p: Panel) {
@@ -68,14 +68,14 @@ export const pie: ViewDef = {
     const sized = seriesNames(p)[0] ?? "count";
     const slices = slicesOf(rows, nameField, sized);
     if (slices.length === 0) {
-      el.createDiv({ cls: "gz-empty", text: "Nothing to show yet." });
+      whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: rows.length ? "Nothing to show yet." : emptyText(p, ctx.now, "Nothing to show yet.") }));
       return;
     }
     const total = slices.reduce((sum, s) => sum + s.value, 0);
     const fmt = (v: number) => (formatFor(p, sized) !== undefined ? display(p, sized, v, ctx.now) : formatValue(v, p.decimals) + (p.unit ? ` ${p.unit}` : ""));
     const share = (v: number) => `${Math.round((v / total) * 100)}%`;
     const box = el.createDiv({ cls: "gz-pie" });
-    const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "gz-pie-svg", role: "img" }, box);
+    const root = svg("svg", { viewBox: `0 0 ${SIZE} ${SIZE}`, class: "gz-pie-svg" }, box);
     const readout = el.createDiv({ cls: "gz-readout" });
     // The sized field's label, when the panel gives one, says what the total is of.
     const showTotal = () => readout.setText(`${labelFor(p, sized) ?? "Total"} · ${fmt(total)}`);
@@ -91,9 +91,12 @@ export const pie: ViewDef = {
         });
       })();
     // Every slice's value and share is printed here too, so nothing depends on telling colours apart.
+    // Its entries are also how the keyboard and screen readers pick a slice: one Tab stop, the arrows between them.
     const legend = box.createDiv({ cls: "gz-pie-legend" });
+    roving(legend, ANY_ARROW);
+    const names = slices.map((s) => (s.colour === "gz-other" ? s.name : mapped(p, nameField, s.name) ?? s.name));
     slices.forEach((s, i) => {
-      const name = s.colour === "gz-other" ? s.name : mapped(p, nameField, s.name) ?? s.name;
+      const name = names[i];
       const item = legendItem(legend, s.colour, name);
       item.createSpan({ cls: "gz-pie-value", text: `${fmt(s.value)} · ${share(s.value)}` });
       shapes[i].addEventListener("pointerenter", () => readout.setText(`${name} · ${fmt(s.value)} · ${share(s.value)}`));
@@ -101,10 +104,12 @@ export const pie: ViewDef = {
       // "Other" folds several rows together, so there is no one row to pick.
       const row = s.colour === "gz-other" ? undefined : rows.find((r) => textOf(getPath(r, nameField) ?? NONE) === s.name);
       if (row) {
-        selectable(shapes[i], p, ctx, row, name);
-        selectable(item, p, ctx, row);
+        selectable(shapes[i], p, ctx, row, name, false, false);
+        selectable(item, p, ctx, row, `${name}: ${fmt(s.value)}, ${share(s.value)}`);
       }
     });
+    const title = p.title ?? p.label ?? `${labelOf(p, sized)} by ${labelOf(p, nameField)}`;
+    describeChart(root, `${title}: ${slices.map((s, i) => `${names[i]} ${share(s.value)}`).join(", ")}; total ${fmt(total)}`);
     showTotal();
     if (p.label && p.title) el.createDiv({ cls: "gz-label", text: p.label });
   }),

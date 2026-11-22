@@ -100,7 +100,7 @@ test("a missing file is the panel's error, and the panel loads once the file app
   document.body.appendChild(root);
   new AppController(root, "Apps/Bank.md", t.env).load();
   await settle();
-  assert.equal(text(root.querySelector(".gz-panel.gz-error")), "tableCan't find Finance/bank.csv");
+  assert.equal(text(root.querySelector(".gz-panel.gz-error")), "tableCan't find Finance/bank.csvTry againShow in source");
 
   t.f.files.set("Finance/bank.csv", { raw: CSV });
   t.changed("Finance/bank.csv");

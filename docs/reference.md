@@ -1,6 +1,6 @@
 # Gizmo reference
 
-This page gives the technical details of Gizmo. All keys are YAML in the properties of a note, and you type them by hand. Gizmo does not write into an app note. The key language is version 1.
+This page gives the technical details of Gizmo. All keys are YAML in the properties of a note, and you type them by hand. Gizmo writes into an app note only when you tell it to: with **New app**, **Insert panel** or a button of the empty app card. The key language is version 1.
 
 - [Write an app](#write-an-app)
 - [The gallery](#the-gallery)
@@ -60,11 +60,17 @@ This page gives the technical details of Gizmo. All keys are YAML in the propert
 
 The button saves a row with the time into the list `water`. The progress panel counts the rows for today. Gizmo keeps the list in the note `Water data`, beside the app.
 
-To add a panel quickly, run **Gizmo: Insert panel**. Then select a view. Gizmo also shows possible keys while you type.
+To start faster, run **Gizmo: New app**. Type a name and one sentence about the app. Gizmo makes the note in the folder for new notes and opens it as an app. On desktop, it also opens the source beside the app. An app with only its `app` line shows a button for each panel that operates alone: button, form, checklist, countdown and timer. Each button adds that panel to the note, as **Insert panel** does. **Start from the Water example** adds the two panels of this example.
+
+To add a panel quickly, run **Gizmo: Insert panel**. Then select a view. While you type, Gizmo shows possible keys and the names of the app. After `source:`, it shows the data blocks and the saved lists. After `field`, `x`, `y`, `group`, `sort`, `columns` or `edit`, it shows the fields of the source.
+
+**Edit source.** On desktop, **Edit source** opens the YAML in Source mode beside the app. The app changes each time that Obsidian saves the note. If the source is already open in a tab, Gizmo goes to that tab. On a phone, the tab of the app changes to the source. A tab with the source of an app has a **Show the app** button. It goes back to the app and closes the source, or it changes the tab to the app.
+
+**Mistakes.** Gizmo tells you each problem in clear words. If a key, a view or a field has one wrong letter, the message gives the fix, for example `unknown key "lable" (did you mean label?)`. A key that does not apply to a view names the views that it applies to, if there are three or fewer. Gizmo checks the names in `field`, `x`, `y`, `group`, `sort`, `columns` and `edit` only for a saved list, with the fields that the app saves into it. If the properties are not valid YAML, a card gives the line and the words of the YAML parser. Select **Show it** to go to that line. If the app showed before, it stays under the card, dim, until the YAML is correct again.
 
 ## The gallery
 
-Run **Gizmo: New app from the gallery** to copy an app and its components into your vault.
+Run **Gizmo: New app from the gallery** to copy an app and its components into your vault. For an app that is one kit, for example Weight or Sleep, Gizmo first asks for the values of the kit, with the values of the gallery filled in. The window also tells what the app will ask for. **Copy** writes your values into the `with` line of the new note. A field that you leave empty keeps the value of the gallery. If your vault already has a note with the name of the app, Gizmo copies nothing and offers **Open yours**.
 
 | App | What it does |
 | --- | --- |
@@ -137,6 +143,10 @@ The `view` key sets the view of a panel. Each panel also accepts `title`, `tab` 
 
 **Calendar, board and timeline.** The year heatmap is grey. Today has an outline, and a caption under it names the day that you point at, with its count and the meaning of the shades. A board has no box around a column. A card splits its text at the first ` · `: the first part is its name, and the rest is a line under it. A timeline has a Today line in the accent colour. A bar that ended before today is pencil, and an item that starts after today is an outline.
 
+**Empty panels.** With no rows, a `sum` is 0 in the format of the panel, for example `$0.00`, and a `progress` shows 0 of its `max`. A `count` is 0. A sum over rows that all have no value in the field shows `—`. Alerts, the status bar and the answer of a shortcut use the same 0, so an alert like `"< 8"` is on when its window has no rows. A `last`, `first`, `avg`, `min`, `max` or `share` with no rows shows `—`, with "Nothing logged yet" under it. A table, list, board, timeline, chart, pie or scatter with no rows gives the date window of its `where`. For a list that the app saves, it says for example "Nothing logged this month yet." For other sources, it says for example "Nothing here this week." The `empty` key (text) replaces this sentence, for example `empty: "No doses yet today. Tap the button above."`. It operates on each view that shows data, but not on `calendar`.
+
+**Why is this empty?** A panel that shows nothing, while its source gives rows, has a **Why?** link. Select it to see the steps of the rows and the step that removed them. For example, a `pick` found nothing, a `where` kept 0 of 34 rows, a `group` made no groups, or no row has the field (with the field that it is one letter from). **Show in source** goes to the line of the panel. **See the answer** opens **Inspect data** at the source of the panel. The link is in the tab of the app and in the past, but not in an embed, a lens or a try. A panel whose source has no rows has no link, because then its sentence is correct.
+
 Ledgers and colours are the same in both layouts.
 
 ## How an app is laid out
@@ -169,6 +179,10 @@ The app is at most 848 px wide. It reads from the top down:
 
 **The side sheet.** Select a row, a card, a bar or a day to open it in a sheet at the right of the app. On a narrow screen, the sheet comes up from the bottom. The sheet shows the name of what you picked and its `detail` text. For a row of a table or a list, a card of a board or an item of a timeline, it also shows the fields, and the field controls of `edit`, the row actions and **Open** for a note. The panels that read the pick show in the sheet. A table, list, board or timeline row opens the sheet even without `select` or `detail`. A day, a bar, a slice or a dot opens it only with `select` or `detail`. To close the sheet, select the same thing again, select **Close**, push Escape or go to another tab. The pick is then cleared.
 
+For a row of a list that the app saves, the sheet also has **Delete**, and its time (**When**) is a date and time field. **Delete** removes the row, closes the sheet and shows "Deleted …" under the panel for 6 seconds, with **Undo**. Undo puts back the same row, so edits from other devices still find it. A change to **When** cannot be a time that has not come yet. The activity log and the time rail show the two changes, and you can undo them later. You cannot delete or move notes, tasks, web rows or rows of a base, or any row in the past.
+
+**Keyboard and screen readers.** The items that you can pick in a panel have one Tab stop together: rows, list items, cards, days, bars, the legend of a pie and the dots of a scatter. Tab goes to the picked item, or else to the first item. The next Tab goes out of the panel. The arrow keys move between the items and do not pick: up and down in tables and lists, left and right on bars and dots, and all four in cards, a board and a calendar. Home and End go to the first and the last item. Enter or Space picks the item. A screen reader reads each chart as one sentence, for example "Weight, last 6 months: 24 entries from 82.1 kg on May 3 to 79.4 kg on Nov 20, lowest 79.1, goal 75". A hidden table after a line or bar chart gives each point. On a touch screen, checklist rows, chips, row actions, the **Move** control of a card, the buttons of the add line and the **Close** button of the sheet are at least 44 px tall.
+
 **Tabs and hosts.** Each tab keeps its own pane, laid out the same way. An app in an embed or a lens has the same layout, with no title, no time rail, no side sheet and no width limit. There, the `detail` text shows under the rows, and the panels that read a pick show at the end of the app.
 
 **`layout: grid`.** Add `layout: grid` to keep the earlier layout. Panels sit in a grid of up to 4 columns, in the order that you write them, and `span` sets the width of each. Forms, buttons and picks are as they were, with no side sheet. Only the text `composed` or `grid` sets the layout of the app. In a note that is one panel, any other `layout` value belongs to that panel, for example `cards` for a table or `year` for a calendar.
@@ -189,6 +203,8 @@ The `source` key tells a panel where its rows come from.
 | `expect` | The results of the `expect` rules of the app. |
 
 A web source can also have `headers` and a `body`. A source with a `body` sends a POST request.
+
+If a web source fails and Gizmo has no saved copy of its answer, the panel tells why in clear words: "Couldn't reach api.example.com. Check the connection.", "api.example.com answered 429: too many requests. Try again later.", "api.example.com answered 500." or "The answer from api.example.com isn't JSON." Select **Try again** to load the panel again. Select **Show in source** to go to the line of the panel. A panel with a saved copy shows that copy and its age.
 
 ## Shape the data
 
@@ -232,7 +248,9 @@ If you type no choice, Gizmo guesses it from the earlier rows of the list. It ta
 
 A form with a `textarea` or `checkbox` field, or with more than 5 fields, shows its fields and not one line. Select **Use the form** to see the fields of a form that fits one line. Select **Use one line** to go back. A form with `save: this` is not a line. It stays as fields.
 
-Push `/` to move to the first add line, when no field has focus. After a save, a notice under the line says what Gizmo added, with **Undo**. The notice stays for 6 seconds. ⌘Z on a Mac, or Ctrl Z, does the same when no field has focus. The `notify` text of the panel shows in this place, and not as a pop-up. In the composed layout, a `button` is one large button with the same notice. On the grid, forms and buttons are as they were.
+To save a row for a different time, end the line with `@` and a time: `81.2 @yday`, `meds @8am` or `14.5 lunch @fri 13:00`. A day alone means that day at the time now. A time alone means today. A weekday or a month and day means the last one, today included, and `@last fri` goes back one more week. The preview shows the time, for example "at Thu Nov 19, 13:00", before you push Enter. Gizmo refuses a time that has not come yet. Only an `@` at the end that reads as a time has this effect, so `lunch @ cafe` stays text. A row for yesterday counts for the rhythm of yesterday, and it is on time if its time is before the deadline.
+
+Push `/` to move to the first add line, when no field has focus. After a save, a notice under the line says what Gizmo added, with **Undo**. The notice stays for 6 seconds. ⌘Z on a Mac, or Ctrl Z, does the same when no field has focus. A new notice in the app, for example after **Delete**, replaces the notice before it. The `notify` text of the panel shows in this place, and not as a pop-up. In the composed layout, a `button` is one large button with the same notice. On the grid, forms and buttons are as they were.
 
 ## Actions
 
@@ -305,6 +323,8 @@ panels: [Took meds, Doses today]
 
 The block can also have its panels inside it, with the same keys as an app.
 
+To write the block for you, run **Gizmo: Embed an app's panels here** in a note. Select an app, then select the panels to show. Gizmo puts the block at the cursor. If you keep all panels, the block has no `panels` line. A panel with no title or label, or with a title that changes with an input, is grey, because an embed finds a panel only by its title or label. **Copy embed** in the tab menu of an app copies a block for the full app.
+
 ## Gizmo views in Bases
 
 Gizmo adds five views to Obsidian Bases: board, calendar (or year heatmap), timeline, chart and number. An app note is not necessary.
@@ -351,10 +371,12 @@ expect:
 Add `shortcut: <name>` to a button, a form, a number or a progress panel. Gizmo then adds:
 
 - A command, `<App>: <label>`. You can give it a hotkey.
-- A link: `obsidian://gizmo?app=<app>&do=<shortcut>&key=<key>`. Add field values at the end, for example `&task=Call%20the%20bank`.
+- A link: `obsidian://gizmo?app=<app>&do=<shortcut>&key=<key>`. Add field values at the end, for example `&task=Call%20the%20bank`. Add `&at=` to save the row for a different time, with the same words as `@` on the add line or a full date and time, for example `&at=yday%208am`.
 - A name for the capture line.
 
 Run **Gizmo: Copy link to an app shortcut** to copy a link. The app tab menu also has this item. A copied link has a key, and it runs immediately. A link without the key first shows a **Run** or **Cancel** window with its values. Each shortcut accepts 20 link runs in each hour.
+
+If a shortcut cannot run, one notice tells which shortcut and why, for example “New task” didn't run: “Renew passport” already exists. This is the same for a command, a link, the capture line and a `then`. A `then` gives the name of its app first. A link with its key sends the same text to `x-error`. If the panel of the shortcut has a problem in its keys, the notice gives that problem. In an app, a form that cannot save tells why under the form and keeps what you typed. If it did part of its work, for example it added a line but could not save the row, it tells what it did and what it could not do, with **Undo**.
 
 **Answer links.** A shortcut on a `number` or a `progress` panel sends its value to `x-success`. The destination can be `shortcuts`, `raycast`, `alfred`, `kmtrigger`, `drafts` or `https`. For each new destination, Gizmo asks you first: **Once** or **Always**. An action link sends `result=done`.
 
@@ -369,7 +391,7 @@ meds
 task call the bank
 ```
 
-Dates can be words: `today`, `yday`, `fri` or `last mon`. Before you push Enter, Gizmo shows what the line will do. A line that starts with `;;` in a note does the same, and Gizmo writes a receipt in its place. **Gizmo: Copy capture link** gives the same line to a phone shortcut or a launcher.
+Dates can be words: `today`, `yday`, `fri` or `last mon`. End a line with `@` and a time to save the row for that time, for example `weight 81.2 @yday`, as on the [add line](#the-add-line). Before you push Enter, Gizmo shows what the line will do. A line that starts with `;;` in a note does the same, and Gizmo writes a receipt in its place. **Gizmo: Copy capture link** gives the same line to a phone shortcut or a launcher.
 
 The [add line](#the-add-line) of a form reads more freely than **Do…**. **Do…** gives the words to the fields in their order, and it guesses nothing. The add line gives each value to the first field that it fits, anywhere on the line. You can type a choice as its start, if the start has 3 letters or more and only one choice has it. The words that are left go to the first text field.
 
@@ -428,6 +450,8 @@ Run **Gizmo: Open the automation map**. The map shows each app with what it read
 - do a dry run, which shows what a run will change without a change to your notes,
 - apply the data policy.
 
+An app that you revoked shows **Not allowed: you revoked it**, with no **Revoke** button. An app with no permission and no activity shows **Never opened**.
+
 **Gizmo: Which apps can change this note?** opens the map for the note that is open. **Gizmo: Save the automation map as a canvas** saves the map as an Obsidian canvas.
 
 ## Activity, history and replay
@@ -451,7 +475,8 @@ Gizmo operates with iCloud, Syncthing and other sync services:
 - Each device writes its events to a log that only it uses, in the plugin folder.
 - The data note shows the rows of all devices together.
 - If two devices edit the same row at the same time, Gizmo keeps the two values. The cell shows the other value as an option.
-- If you edit a data note by hand, the app shows a card with **Import** and **Discard**.
+- If you edit a data note by hand, the app shows a card with **Import** and **Discard**. The card tells what changed in each list. It says "ticked" only for a list of a checklist, and "added" or "removed" for other lists of text.
+- If you change the name of a field, a choice or a list in the keys, and saved rows still use the old name, the app shows a card. For example: "34 rows of spend have note, which is no longer a field. It now has memo. Move note into memo?" Gizmo shows the card only for one old name and one new name that no row has, and not for an app with `store`. **Move** (or **Change**) changes the rows as one change in the activity log, and one **Undo** puts them all back. **Leave them** hides the card for that change.
 - Each saved time has its zone offset, for example `2026-11-19T08:14-08:00`.
 - If Obsidian closes on the device that does background work, a different device starts the work immediately.
 
@@ -501,9 +526,12 @@ Obsidian keeps the value in its secret storage, not in a note. The permission ca
 
 | Command | What it does |
 | --- | --- |
-| Open this note as an app | Shows the note that is open as an app. |
+| Open this note as an app | Shows the note that is open as an app. If the app is open beside it, goes back to the app. |
+| New app | Makes a note with only its `app` line, opens it as an app and opens its source beside it. |
+| Open an app… | Lists all apps. Enter opens an app in this tab, and ⌘ Enter (Ctrl Enter) in the right sidebar. The ribbon button does the same. |
 | New app from the gallery | Copies a gallery app and its components into your vault. |
 | Insert panel | Adds a starter panel for a view to the app that is open. |
+| Embed an app's panels here | Puts a `gizmo` block at the cursor for the panels that you select. |
 | Do… | Runs a capture line. |
 | Copy capture link | Copies a link that runs a capture line. |
 | Copy link to an app shortcut | Copies the link of a shortcut, with its key. |

@@ -6,8 +6,10 @@ import { bodyOf } from "./actions.ts";
 import { undoMessage, type LogStore, type UndoIO } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import { DEVICE_FOLDERS, deviceFile, otherLogs, type PluginFiles } from "./device.ts";
+import { withPanels } from "./insert.ts";
 import { ResponseHistory } from "./responses.ts";
-import type { FileInfo, Host } from "./datalayer.ts";
+import { urlHost } from "./sources/url.ts";
+import { WebError, type FileInfo, type Host } from "./datalayer.ts";
 import type { NoteReader } from "./expand.ts";
 import type GizmoPlugin from "./main.ts";
 import { tryVaultApp } from "./try-modal.ts";
@@ -110,7 +112,13 @@ export function obsidianHost(app: App, pluginDir?: string, device?: () => string
         contentType = rest[name];
         delete rest[name];
       }
-      const res = await requestUrl({ url, headers: rest, method: init?.method, body: init?.body, contentType, throw: false });
+      let res: Awaited<ReturnType<typeof requestUrl>>;
+      try {
+        res = await requestUrl({ url, headers: rest, method: init?.method, body: init?.body, contentType, throw: false });
+      } catch (e) {
+        // With throw: false an error status is an answer, so this is no answer at all.
+        throw new WebError("network", urlHost(url), (e as Error).message, { cause: e });
+      }
       return { status: res.status, text: res.text, contentType: res.headers["content-type"] ?? "" };
     },
     markdownFiles: () => app.vault.getMarkdownFiles().map(info),
@@ -240,9 +248,25 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
       if (!target) return void new Notice(`Can't find “${path}”`);
       void app.workspace.openLinkText(path, fromPath);
     },
-    showSource: () => { if (leaf) void plugin.showSource(leaf, file); },
-    showSourceAt: (line) => { if (leaf) void plugin.showSourceAt(leaf, file, line); },
+    showSource: () => { if (leaf) void plugin.editSource(leaf, file); },
+    showSourceAt: (line, ch) => { if (leaf) void plugin.showSourceAt(leaf, file, line, ch); },
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
+    // An edit of the app note the person asks for, as Insert panel is; saving data never edits it.
+    ...(leaf && {
+      async addPanels(panels: string[][]) {
+        let out: { cursor: { line: number; ch: number } } | { refusal: string } = { refusal: "Couldn't read the note" };
+        await app.vault.process(file, (text) => {
+          const found = withPanels(text, panels);
+          if ("refusal" in found) {
+            out = found;
+            return text;
+          }
+          out = { cursor: found.cursor };
+          return found.text;
+        });
+        return out;
+      },
+    }),
     copy: (text) => copyText(text),
     log: (entry) => plugin.activity.add(entry),
     async undo(id) {
@@ -254,6 +278,11 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
     tryFirst: () => void tryVaultApp(plugin, file.path),
+    leftAlone: (key) => plugin.store.leftAlone?.[key] === true,
+    leaveAlone(key) {
+      (plugin.store.leftAlone ??= {})[key] = true;
+      void plugin.saveSettings();
+    },
   };
 }
 

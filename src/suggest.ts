@@ -1,6 +1,8 @@
 import {
-  EditorSuggest, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo, type Plugin,
+  EditorSuggest, parseYaml, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo, type Plugin,
+  type TFile,
 } from "obsidian";
+import { frontmatterOf } from "./bundle.ts";
 import { completion, suggestionsAt, type Suggestion } from "./hints.ts";
 
 /** A note's frontmatter is read at most this far, so a missing closing fence doesn't mean reading a whole book per keystroke. */
@@ -21,16 +23,24 @@ function headLines(editor: Editor): string[] {
 
 /**
  * Offers the keys and values the language allows while typing the frontmatter of an app or a
- * component. Everything comes from the plugin's own registries (see hints.ts); nothing is fetched.
+ * component, and the app's own names (its data blocks, the lists it saves, their fields) where a
+ * value names one. Everything comes from the plugin's own registries and the note (see hints.ts);
+ * nothing is fetched.
  */
 class KeySuggest extends EditorSuggest<Suggestion> {
-  onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
-    const found = suggestionsAt(headLines(editor), cursor.line, cursor.ch);
+  onTrigger(cursor: EditorPosition, editor: Editor, file: TFile | null): EditorSuggestTriggerInfo | null {
+    const found = this.at(headLines(editor), cursor, file);
     return found ? { start: found.from, end: cursor, query: found.prefix } : null;
   }
 
   getSuggestions(context: EditorSuggestContext): Suggestion[] {
-    return suggestionsAt(headLines(context.editor), context.end.line, context.end.ch)?.suggestions ?? [];
+    return this.at(headLines(context.editor), context.end, context.file)?.suggestions ?? [];
+  }
+
+  /** What to offer at the cursor; the keys as typed are read as YAML, or as Obsidian last read them while they aren't YAML yet. */
+  private at(lines: string[], cursor: EditorPosition, file: TFile | null) {
+    const keys = () => frontmatterOf(lines.join("\n"), parseYaml) ?? (file ? this.app.metadataCache.getFileCache(file)?.frontmatter : undefined);
+    return suggestionsAt(lines, cursor.line, cursor.ch, keys);
   }
 
   renderSuggestion(suggestion: Suggestion, el: HTMLElement): void {

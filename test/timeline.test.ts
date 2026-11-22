@@ -124,7 +124,8 @@ test("bars are focusable with a text label, and with select they pick their row"
   const { ctx, picked } = fakeCtx();
   const { el } = mount({ select: "project", item: "{name}" }, ROWS, ctx);
   const garden = marks(el)[1];
-  assert.deepEqual([garden.getAttribute("role"), garden.getAttribute("tabindex")], ["button", "0"]);
+  // The marks are one Tab stop, on the first; the arrow keys reach the rest.
+  assert.deepEqual([garden.getAttribute("role"), garden.getAttribute("tabindex")], ["button", "-1"]);
   assert.equal(garden.getAttribute("aria-label"), "Garden: 2026-11-01 to 2026-11-30");
   garden.click();
   assert.deepEqual(picked, [ROWS[0]]);

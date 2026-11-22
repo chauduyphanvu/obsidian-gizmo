@@ -17,6 +17,14 @@ export const NET = {
 /** What each app asked for on its first open, by name; later checks read it. */
 export const prompts = {};
 
+/**
+ * Page code for a check that opens a note's source: Edit source and an error's link open it in a split
+ * beside the app, which stays. TABS takes the main area's tabs; CLOSE_OPENED closes those opened since,
+ * so the next check starts in one pane.
+ */
+export const TABS = `const tabsBefore = []; app.workspace.iterateRootLeaves((l) => tabsBefore.push(l));`;
+export const CLOSE_OPENED = `{ const opened = []; app.workspace.iterateRootLeaves((l) => { if (!tabsBefore.includes(l)) opened.push(l); }); for (const l of opened) l.detach(); await na.sleep(300); }`;
+
 export default async function apps(t) {
   const { check, run, expect } = t;
   const appNotes = readdirSync(join(t.vault, "Apps")).filter((f) => f.endsWith(".md") && !f.endsWith(" data.md"));
@@ -32,7 +40,7 @@ export default async function apps(t) {
         if (!r.text.includes("keys have problems")) throw new Error("no problems card");
         if (!r.text.includes("[[Loop A]] → [[Loop B]] → [[Loop A]] uses itself")) throw new Error("no cycle message");
       } else if (name === "Describe only") {
-        if (!r.text.includes("No app keys yet")) throw new Error("no empty-state card");
+        if (!r.text.includes("No panels yet")) throw new Error("no empty-state card");
       } else if (r.errors) {
         throw new Error(`${r.errors} error(s): ${r.text.slice(0, 160)}`);
       }
@@ -218,7 +226,7 @@ export default async function apps(t) {
       await na.sleep(800);
       return { empty, notices, listed, next, days: [day(5), day(100)], after: rows().map((tr) => tr.querySelector("td").textContent),
         nextAfter: panel("Next deadline").querySelector(".gz-big").textContent, done: na.text(panel("Done")), errors: na.errors() };`);
-    expect(r.empty.next === "—" && r.empty.coming.includes("Nothing here yet."), r.empty);
+    expect(r.empty.next === "—" && r.empty.coming.includes("Nothing logged yet."), r.empty);
     expect(JSON.stringify(r.listed) === JSON.stringify([["Car insurance", r.days[0], "5"], ["Passport", r.days[1], "100"]]) && r.next === "5 days", r);
     expect(r.notices.includes("Renewals: Coming up (1 row)"), r.notices);
     expect(JSON.stringify(r.after) === '["Passport"]' && r.nextAfter === "100 days" && r.done.includes(`Car insurance, due ${r.days[0]}`) && r.errors === 0, r);
@@ -345,6 +353,7 @@ export default async function apps(t) {
 
   await check("navigation", async () => {
     const r = await run(`
+      ${TABS}
       const out = [];
       await na.open("Daily"); out.push(na.state());
       await na.open("Apps/Portfolio"); out.push(na.state());
@@ -353,6 +362,7 @@ export default async function apps(t) {
       [...na.view().containerEl.querySelectorAll(".view-action")].find((a) => a.getAttribute("aria-label") === "Edit source").click();
       await na.sleep(800); out.push(na.state());
       app.commands.executeCommandById("gizmo:open-as-app"); await na.sleep(800); out.push(na.state());
+      ${CLOSE_OPENED}
       return out;`);
     const want = ["markdown:Daily.md", "gizmo:Apps/Portfolio.md", "markdown:Daily.md", "markdown:Apps/Packing.md", "gizmo:Apps/Packing.md"];
     if (JSON.stringify(r) !== JSON.stringify(want)) throw new Error(JSON.stringify(r));
