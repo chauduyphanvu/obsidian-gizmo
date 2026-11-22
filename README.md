@@ -260,7 +260,7 @@ Refer to [What the relay and others can see](docs/reference.md#what-the-relay-an
 
 ## Install
 
-Gizmo 0.3.0 operates with Obsidian 1.11.4 or later, on desktop and on mobile.
+Gizmo 0.4.0 operates with Obsidian 1.11.4 or later, on desktop and on mobile.
 
 1. Download `main.js`, `manifest.json` and `styles.css` from the [latest release](https://github.com/chauduyphanvu/obsidian-gizmo/releases/latest).
 2. Put the three files in the folder `.obsidian/plugins/gizmo` of your vault.
