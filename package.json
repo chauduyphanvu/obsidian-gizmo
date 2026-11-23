@@ -1,6 +1,6 @@
 {
   "name": "gizmo",
-  "version": "0.4.0",
+  "version": "0.4.1",
   "description": "A note is an app. Build personal apps with buttons, forms, charts, boards, calendars, timelines, and Bases views — plain Markdown, no code.",
   "scripts": {
     "dev": "node esbuild.config.mjs",
