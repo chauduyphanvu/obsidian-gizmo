@@ -5,7 +5,7 @@
 // asked for, so the story reads the same from any day: a bill six days overdue is still six days
 // overdue, today's dose still due. A monthly bill keeps the day of the month of its first time.
 //
-//   node tools/samples.ts [YYYY-MM-DD | today] [gallery folder]
+//   node scripts/samples.ts [YYYY-MM-DD | today] [gallery folder]
 //
 // writes them into the folder (the repo's gallery/ by default), replacing the sample files of an
 // earlier day. The repo keeps them written for REFERENCE, the day the unit tests' clock reads; the
@@ -254,7 +254,7 @@ export function sampleFiles(day: Date): { files: Record<string, string>; departs
     [2026, 2, 3, 10, 0, "VTI", "buy", 10, 289.75], [2026, 5, 12, 9, 50, "QQQ", "buy", 6, 512.3],
     [2026, 8, 18, 15, 30, "VTI", "sell", 10, 304.2], [2026, 10, 1, 10, 30, "SPY", "buy", 4, 618.9],
     [2026, 11, 2, 10, 15, "VTI", "buy", 5, 310], [2026, 11, 9, 9, 40, "QQQ", "buy", 4, 560],
-  ] as const).map(([y, m, d, h, mi, symbol, side, shares, price]) => ({ symbol, side, shares, price, at: stampOf(at(y, m, d, h, mi)) } as Row));
+  ] as const).map(([y, m, d, h, mi, symbol, side, shares, price]): Row => ({ symbol, side, shares, price, at: stampOf(at(y, m, d, h, mi)) }));
   trades[8].note = "the plan's first tranche";
   files["Kinds/Trade data.md"] = note("trade", trades);
   const tranches = ([[2026, 11, 16], [2026, 12, 1], [2027, 1, 4], [2027, 2, 1], [2027, 3, 1]] as const).map(([y, m, d]) => {

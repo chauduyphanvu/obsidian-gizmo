@@ -13,7 +13,7 @@ import { permissionsOf } from "../src/permissions.ts";
 import { fakeBackground, fakeEnv, listsIn, raw, savedAt } from "./support/fakes.ts";
 import { addLine, said, typeLine } from "./support/addline.ts";
 import { parseYaml, vaultNote } from "./support/yaml.ts";
-import { REFERENCE, dayOf, sampleFiles } from "../tools/samples.ts";
+import { REFERENCE, dayOf, sampleFiles } from "../scripts/samples.ts";
 
 // The notes under gallery/, proved: each reads without errors and asks for exactly the permissions
 // listed here, and the main action of each is driven through an AppController on a fake vault.
@@ -227,7 +227,7 @@ const HOUR = 3_600_000;
 const BANK = "Inbox/Bank/Checking 2026-11.csv";
 
 /**
- * The gallery's sample files as tools/samples.ts writes them for the day the fake clock reads, which
+ * The gallery's sample files as scripts/samples.ts writes them for the day the fake clock reads, which
  * the gallery in the repo holds too until someone writes them for another day.
  */
 const SAMPLES = sampleFiles(dayOf(REFERENCE));
