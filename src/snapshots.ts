@@ -15,6 +15,8 @@ export interface Snapshots {
   delayMs: number;
   /** The least time between two snapshots of a note with recorded lists, so a list sampled every minute isn't rewritten every minute. */
   gapMs: number;
+  /** Runs `fn` after `ms` on this runtime's timers, and returns what cancels it. */
+  later(fn: () => void, ms: number): () => void;
   writeNote(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void>;
 }
 
@@ -26,7 +28,7 @@ export class SnapshotWriter {
   private snapshots: Snapshots | undefined;
   /** Each data note's app note, and its folder of old device notes, as the panels reading it said. */
   private appOf = new Map<string, { appPath: string; devices?: string }>();
-  private snapshotTimers = new Map<string, { timer: ReturnType<typeof setTimeout>; due: number }>();
+  private snapshotTimers = new Map<string, { cancel: () => void; due: number }>();
   /** When each data note's snapshot was last written. */
   private snapshotted = new Map<string, number>();
 
@@ -79,12 +81,12 @@ export class SnapshotWriter {
     const waiting = this.snapshotTimers.get(dataPath);
     // One waiting for the gap to end keeps its time; one waiting for changes to stop waits again.
     if (waiting && waiting.due > now + s.delayMs) return;
-    if (waiting) clearTimeout(waiting.timer);
-    const timer = setTimeout(() => {
+    waiting?.cancel();
+    const cancel = s.later(() => {
       this.snapshotTimers.delete(dataPath);
       void this.writeSnapshot(dataPath, s, ledger);
     }, due - now);
-    this.snapshotTimers.set(dataPath, { timer, due });
+    this.snapshotTimers.set(dataPath, { cancel, due });
   }
 
   /**
@@ -102,7 +104,7 @@ export class SnapshotWriter {
 
   /** Stops waiting snapshots: the plugin is going, and the runner writes them next time. */
   dispose(): void {
-    for (const t of this.snapshotTimers.values()) clearTimeout(t.timer);
+    for (const t of this.snapshotTimers.values()) t.cancel();
     this.snapshotTimers.clear();
   }
 
@@ -113,7 +115,7 @@ export class SnapshotWriter {
     if (!s || !ledger) return;
     const waiting = [...this.snapshotTimers.keys()];
     for (const dataPath of waiting) {
-      clearTimeout(this.snapshotTimers.get(dataPath)!.timer);
+      this.snapshotTimers.get(dataPath)!.cancel();
       this.snapshotTimers.delete(dataPath);
       await this.writeSnapshot(dataPath, s, ledger);
     }

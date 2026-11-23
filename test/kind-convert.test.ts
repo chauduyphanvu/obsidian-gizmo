@@ -5,7 +5,7 @@ import { carriedOps, convertible, planKind, yamlInline } from "../src/kind-conve
 import { ROW_ID } from "../src/ledger-store.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
-import gallery from "../src/gallery-notes.ts";
+import gallery from "../scripts/gallery-notes.ts";
 import { parseYaml } from "./support/yaml.ts";
 
 /** Budget as the gallery wrote it while it kept its own list, before it saved into the Spend kind. */

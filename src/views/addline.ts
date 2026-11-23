@@ -170,7 +170,9 @@ const below = new WeakMap<HTMLElement, { said: Said; under: HTMLElement }>();
 export function sayBelow(panel: HTMLElement, ctx: PanelCtx, text: string, entry: string | undefined): void {
   let shown = below.get(panel);
   if (!shown) {
-    const under = panel.ownerDocument.createDocumentFragment().createDiv({ cls: "gz-addline-under" });
+    // Made from the panel to be in its document (a pop-out has its own), and placed when there is something to say.
+    const under = panel.createDiv({ cls: "gz-addline-under" });
+    under.remove();
     let unlisten: (() => void) | undefined;
     const s: Said = new Said(ctx, () => {
       under.empty();
@@ -441,6 +443,8 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
   let saving = false;
 
   hiddenTitle(el, p);
+  el.removeClass("gz-form-fields");
+  el.addClass("gz-form-line");
   const f = el.createEl("form", { cls: "gz-addline" });
   f.createSpan({ cls: "gz-addline-verb", text: verb });
   const input = f.createEl("input", {
@@ -491,6 +495,7 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
       if (v.how === "default" || v.how === "missing") pv.addClass(`is-${v.how}`);
       pv.createSpan({ cls: "gz-pv-label", text: labelOf(p, name) });
       if (Array.isArray(type) && type.length <= MAX_CHIPS) {
+        pv.addClass("gz-pv-chips");
         const chips = pv.createSpan({ cls: "gz-chips" });
         for (const option of type.map(String)) {
           const chip = chips.createEl("button", { cls: "gz-chip", type: "button", text: option });

@@ -87,6 +87,10 @@ export default class GizmoPlugin extends Plugin {
       isRunner: () => this.beat?.isRunner() ?? false,
       delayMs: SNAPSHOT_DELAY_MS,
       gapMs: SNAPSHOT_GAP_MS,
+      later: (fn, ms) => {
+        const id = window.setTimeout(fn, ms);
+        return () => window.clearTimeout(id);
+      },
       writeNote: (path, fn) => obsidianWrites(this.app).writeFrontmatter(path, fn),
     });
     // As Obsidian quits: what's waiting is written, and this device says it's leaving, so another takes over now.

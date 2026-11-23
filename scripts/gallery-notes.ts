@@ -1,5 +1,5 @@
 import { readdirSync, readFileSync } from "node:fs";
-import type { GalleryNote } from "./gallery.ts";
+import type { GalleryNote } from "../src/gallery.ts";
 
 /**
  * The apps, components and kinds of gallery/, read from the repo. This is what the tests see;

@@ -16,6 +16,12 @@ import { defaultDataPath, isKind, storeTarget } from "../../src/store.ts";
 import { parseYaml } from "./yaml.ts";
 import { stampOf, toTime } from "../../src/time.ts";
 
+/** Snapshot timers for code under test, which runs on Node. */
+export const later = (fn: () => void, ms: number) => {
+  const timer = setTimeout(fn, ms);
+  return () => clearTimeout(timer);
+};
+
 /** A web response sent as written, with its content type. */
 class Raw {
   text: string;
@@ -245,7 +251,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     leaveAlone: (key) => { leftAlone[key] = true; },
   };
   // This device runs background work, so it writes each data note's snapshot, at once here.
-  data.setSnapshots({ isRunner: () => true, delayMs: 0, gapMs: 0, writeNote: (path, fn) => env.writeFrontmatter(path, fn) });
+  data.setSnapshots({ isRunner: () => true, delayMs: 0, gapMs: 0, later, writeNote: (path, fn) => env.writeFrontmatter(path, fn) });
   /** The activity log, kept in memory, its clock the env's. */
   const kept = { text: undefined as string | undefined };
   const activity = new ActivityLog({ read: async () => kept.text, write: async (text) => { kept.text = text; } }, () => env.now().getTime());

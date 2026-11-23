@@ -7,22 +7,22 @@ import { existsSync, promises as fs, readFileSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
-import { ActivityLog, type LogStore, type NewEntry } from "../activity.ts";
-import { actionDepsOf, bodyOf, type ActionDeps, type ActionIO } from "../actions.ts";
-import type { Actor } from "../activity.ts";
-import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../background.ts";
-import { DataLayer, type Host } from "../datalayer.ts";
-import { ledgerStore } from "../datastore.ts";
-import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherShareStates, otherTriggers, whereYouAre, type PluginFiles } from "../device.ts";
-import { localZone } from "../time.ts";
-import { grantedOf, isAllowed, isAllowedUnder } from "../grants.ts";
-import { clearance, rank, type AppliedPolicy } from "../policy.ts";
-import { ResponseHistory, type FolderAdapter } from "../responses.ts";
-import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../snapshots.ts";
-import { isApp, isKind, notePath, storeTarget } from "../store.ts";
-import { captureNamesOf, destinationsOf, linkKeyOf, writersOf, type StoredData } from "../stored.ts";
+import { ActivityLog, type LogStore, type NewEntry } from "../../src/activity.ts";
+import { actionDepsOf, bodyOf, type ActionDeps, type ActionIO } from "../../src/actions.ts";
+import type { Actor } from "../../src/activity.ts";
+import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../../src/background.ts";
+import { DataLayer, type Host } from "../../src/datalayer.ts";
+import { ledgerStore } from "../../src/datastore.ts";
+import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherShareStates, otherTriggers, whereYouAre, type PluginFiles } from "../../src/device.ts";
+import { localZone } from "../../src/time.ts";
+import { grantedOf, isAllowed, isAllowedUnder } from "../../src/grants.ts";
+import { clearance, rank, type AppliedPolicy } from "../../src/policy.ts";
+import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
+import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../../src/snapshots.ts";
+import { isApp, isKind, notePath, storeTarget } from "../../src/store.ts";
+import { captureNamesOf, destinationsOf, linkKeyOf, writersOf, type StoredData } from "../../src/stored.ts";
 import { NodeVault, yamlText } from "./vault.ts";
-import { vaultWrites } from "../vault-ops.ts";
+import { vaultWrites } from "../../src/vault-ops.ts";
 
 /** Gizmo's settings as Obsidian keeps them in data.json; gizmod only reads them. */
 export type Settings = Pick<StoredData, "grants" | "linkKeys" | "answerTo" | "captureKeys" | "policy" | "writers">;
@@ -253,7 +253,16 @@ export function gizmodEnv(opts: GizmodOptions) {
     quietAlerts: () => false,
   };
   // Only the device running background work writes data notes' snapshots: gizmod, when it's there.
-  data.setSnapshots({ isRunner: () => beat.isRunner(), delayMs: SNAPSHOT_DELAY_MS, gapMs: SNAPSHOT_GAP_MS, writeNote: (path, fn) => io.writeFrontmatter(path, fn) });
+  data.setSnapshots({
+    isRunner: () => beat.isRunner(),
+    delayMs: SNAPSHOT_DELAY_MS,
+    gapMs: SNAPSHOT_GAP_MS,
+    later: (fn, ms) => {
+      const timer = setTimeout(fn, ms);
+      return () => clearTimeout(timer);
+    },
+    writeNote: (path, fn) => io.writeFrontmatter(path, fn),
+  });
 
   return { vault, data, host, io, activity, beat, sink, notices, bgEnv, store, pluginDir, unseenMs: UNSEEN_MS };
 }

@@ -20,10 +20,10 @@ import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { Background, type AlertNotice } from "../background.ts";
-import { dryLines, type ShortcutResult } from "../background-shortcuts.ts";
-import { parseLine, swallowed } from "../capture.ts";
-import { captureCovers } from "../links.ts";
+import { Background, type AlertNotice } from "../../src/background.ts";
+import { dryLines, type ShortcutResult } from "../../src/background-shortcuts.ts";
+import { parseLine, swallowed } from "../../src/capture.ts";
+import { captureCovers } from "../../src/links.ts";
 import { gizmodEnv } from "./host.ts";
 
 const run = promisify(execFile);

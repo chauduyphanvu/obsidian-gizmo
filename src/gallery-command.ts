@@ -5,7 +5,7 @@ import {
 } from "./gallery.ts";
 import { vaultNotes } from "./host.ts";
 import { basename } from "./store.ts";
-import notes from "./gallery-notes.ts";
+import notes from "../scripts/gallery-notes.ts";
 
 /** Resolves once Obsidian has read the note's properties, which is when it can open as an app. */
 function indexed(app: App, file: TFile): Promise<void> {

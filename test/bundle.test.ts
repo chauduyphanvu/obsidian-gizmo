@@ -6,7 +6,7 @@ import {
 import type { NoteReader } from "../src/expand.ts";
 import { componentsNeeded, galleryApps } from "../src/gallery.ts";
 import { basename } from "../src/store.ts";
-import gallery from "../src/gallery-notes.ts";
+import gallery from "../scripts/gallery-notes.ts";
 import { parseYaml } from "./support/yaml.ts";
 
 const note = (name: string, text: string): BundleNote => ({ name, text });

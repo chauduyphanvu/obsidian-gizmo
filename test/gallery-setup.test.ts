@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { previewInstall } from "../src/bundle.ts";
 import { askLine, componentsNeeded, galleryApps, kitParams, planCopy, setUp, type GalleryNote } from "../src/gallery.ts";
-import gallery from "../src/gallery-notes.ts";
+import gallery from "../scripts/gallery-notes.ts";
 import { readSpec } from "../src/spec.ts";
 import { basename } from "../src/store.ts";
 import { parseYaml } from "./support/yaml.ts";

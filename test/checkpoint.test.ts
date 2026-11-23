@@ -3,7 +3,7 @@ import { test } from "node:test";
 import { logFolder } from "../src/ledger.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { IDS_KEY, Ledger, NOTE_ROWS, SETTLE_MS, isWhatIf, rowIdOf, type LedgerIO, type LedgerState } from "../src/ledger-store.ts";
-import { fakeHost } from "./support/fakes.ts";
+import { fakeHost, later } from "./support/fakes.ts";
 
 const DAY = 86_400_000;
 const T0 = Date.UTC(2026, 7, 1, 8, 0);
@@ -222,7 +222,7 @@ test("a data note with recorded lists is snapshotted a moment after a change, th
   const data = new DataLayer(f.host);
   const wrote: number[] = [];
   const start = Date.now();
-  data.setSnapshots({ isRunner: () => true, delayMs: 20, gapMs: 300, writeNote: async () => { wrote.push(Date.now() - start); } });
+  data.setSnapshots({ isRunner: () => true, delayMs: 20, gapMs: 300, later, writeNote: async () => { wrote.push(Date.now() - start); } });
   const log = "Apps/Kp data/log/d1mac000-2026-11.jsonl";
   data.ledger!.setCaps("Apps/Kp data.md", { kp: 10_080 });
   const event = (n: number) => `{"t":"2026-11-18T12:00:0${n}.000Z/0","d":"d1mac000","op":"add","l":"kp","row":"r${n}","v":{"n":${n}}}\n`;

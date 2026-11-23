@@ -473,8 +473,12 @@ export function sameRow(p: Panel, a: Row | undefined, b: Row): boolean {
   return JSON.stringify(a) === JSON.stringify(b);
 }
 
+/** A chart with a mark picked carries `gz-picked`, which dims its other marks. */
+const CHART = ".gz-chart-svg, .gz-pie";
+
 function mark(el: Element, on: boolean, keyboard: boolean): void {
   el.classList.toggle("gz-selected", on);
+  if (on) el.closest(CHART)?.classList.add("gz-picked");
   if (keyboard) el.setAttribute("aria-pressed", String(on));
 }
 
@@ -493,6 +497,7 @@ function markAll(el: Element): void {
   let scope: Element = el.closest(".gz-panel") ?? el;
   if (scope === el) while (scope.parentElement) scope = scope.parentElement;
   const stopped = new Set<Group>();
+  for (const chart of scope.querySelectorAll(CHART)) chart.classList.remove("gz-picked");
   for (const item of scope.querySelectorAll(".gz-selectable")) {
     const pick = PICKS.get(item);
     if (!pick) continue;

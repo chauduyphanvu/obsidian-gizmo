@@ -51,10 +51,11 @@ export class Sheet {
   private closeAll: () => void;
 
   /** `close` is what the close button does, and deleting the row shown. */
-  constructor(doc: Document, icon: DrawIcon, close: () => void) {
+  constructor(shell: HTMLElement, icon: DrawIcon, close: () => void) {
     this.closeAll = close;
-    // Made in the app's own document (a pop-out has its own), and mounted later.
-    this.el = doc.createDocumentFragment().createEl("aside", { cls: "gz-sheet", attr: { role: "dialog", "aria-modal": "false", tabindex: "-1" } });
+    // Made from the shell to be in the app's own document (a pop-out has its own), and mounted later.
+    this.el = shell.createEl("aside", { cls: "gz-sheet", attr: { role: "dialog", "aria-modal": "false", tabindex: "-1" } });
+    this.el.remove();
     const top = this.el.createDiv({ cls: "gz-sheet-top" });
     this.kicker = top.createSpan({ cls: "gz-sheet-kicker" });
     const button = top.createEl("button", { cls: "gz-sheet-close clickable-icon", attr: { type: "button", "aria-label": "Close", title: "Close (Esc)" } });
@@ -168,6 +169,7 @@ export class Sheet {
         // Its own list's row moves in time here, unless its panel edits that field its own way.
         const moves = own && field === "at" && type === undefined && wallTime(pick.row.at) !== undefined;
         fields.push(moves ? whenBox(value, ctx, pick.row, label) : fieldBox(value, p, ctx, pick.row, field, type));
+        line.classList.toggle("gz-sheet-edits", !!value.querySelector('.gz-edit:not([type="checkbox"])'));
       }
     }
     const note = rowNote(p, pick.row);

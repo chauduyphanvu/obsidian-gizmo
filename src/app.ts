@@ -420,7 +420,7 @@ export class AppController {
    * in its panel.
    */
   openInPlace(icon: DrawIcon): void {
-    if (!this.hosting) this.sheet ??= new Sheet(this.shell.ownerDocument, icon, () => this.closeSheet());
+    if (!this.hosting) this.sheet ??= new Sheet(this.shell, icon, () => this.closeSheet());
   }
 
   /** Closes the side sheet, taking its pick back and the focus to what was picked; false when it wasn't open. */
@@ -844,7 +844,10 @@ export class AppController {
           const s = createDivIn(parent, "gz-slot");
           s.appendChild(el(i));
           const meter = meters.get(i);
-          if (meter !== undefined) s.appendChild(el(meter));
+          if (meter !== undefined) {
+            s.addClass("gz-metered");
+            s.appendChild(el(meter));
+          }
         };
         slot(band, headline);
         if (facts.length) {
@@ -1307,7 +1310,7 @@ export class AppController {
 
   private showPanelError(m: Mounted, message: string): void {
     this.markAsOf(m);
-    m.el.removeClass("gz-loading", "gz-stale", "gz-collapsed");
+    m.el.removeClass("gz-loading", "gz-stale", "gz-collapsed", "gz-form-line", "gz-form-fields");
     m.el.addClass("gz-error");
     m.el.empty();
     // The view's own elements are gone, so what it shows next is drawn afresh.
@@ -1351,7 +1354,7 @@ export class AppController {
     if (this.sheet?.from === m.id) this.closeSheet();
     if (waiting === undefined) return this.showPanelError(m, errors.join("; "));
     this.markAsOf(m);
-    m.el.removeClass("gz-loading", "gz-error", "gz-stale");
+    m.el.removeClass("gz-loading", "gz-error", "gz-stale", "gz-form-line", "gz-form-fields");
     m.el.empty();
     // In the composed layout a panel waiting for a pick is out of sight until there is one.
     const collapse = this.placements.get(m.id)?.slot === "sheet" && !!this.spec?.selections.includes(waiting);

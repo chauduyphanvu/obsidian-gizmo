@@ -31,6 +31,7 @@ export function registerLenses(plugin: GizmoPlugin): LensIndex {
   const drop = (view: MarkdownView, stack: LensStack) => {
     stack.dispose();
     stack.el.remove();
+    view.contentEl.removeClass("gz-with-lens");
     stacks.delete(view);
   };
 
@@ -44,6 +45,7 @@ export function registerLenses(plugin: GizmoPlugin): LensIndex {
       if (!stack) {
         if (!path || index.lensesFor(path).length === 0) continue;
         stack = new LensStack(view.contentEl.createDiv({ cls: "gz-lens" }), index, envFor(view), folds);
+        view.contentEl.addClass("gz-with-lens");
         stacks.set(view, stack);
       }
       stack.show(path);

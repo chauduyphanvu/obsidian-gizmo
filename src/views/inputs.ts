@@ -61,13 +61,21 @@ export const button: ViewDef = {
   },
 };
 
+const fieldCls = (type: string | string[]) => (type === "checkbox" ? "gz-field gz-field-check" : type === "textarea" ? "gz-field gz-field-wide" : "gz-field");
+
+function asFieldsForm(el: HTMLElement): void {
+  el.removeClass("gz-form-line");
+  el.addClass("gz-form-fields");
+}
+
 /** A form with `save: this`: its fields hold the properties of the note the app sits in, saved as they change. */
 function propertyForm(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandle {
   heading(el, p);
+  asFieldsForm(el);
   const f = el.createEl("form", { cls: "gz-form" });
   f.addEventListener("submit", (e) => e.preventDefault());
   const fields = Object.entries(p.fields!).map(([name, type]) => {
-    const label = f.createEl("label", { cls: "gz-field" });
+    const label = f.createEl("label", { cls: fieldCls(type) });
     label.createSpan({ text: labelOf(p, name) });
     // Inside its label, which names it; a field typed textarea gets a text box of its own.
     const show = fieldControl(label, type, (value) => ctx.setProperty?.(name, value) ?? Promise.resolve(), { input: (t) => t });
@@ -153,10 +161,11 @@ const asFields = new Map<string, boolean>();
  */
 function fieldsForm(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: (() => void) | null): PanelHandle {
   heading(el, p);
+  asFieldsForm(el);
   const f = el.createEl("form", { cls: "gz-form" });
   const inputs: [string, string | string[], HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement][] = [];
   for (const [name, type] of Object.entries(p.fields ?? p.schema!)) {
-    const label = f.createEl("label", { cls: "gz-field" });
+    const label = f.createEl("label", { cls: fieldCls(type) });
     label.createSpan({ text: labelOf(p, name) });
     // Set as the field's default, so the form's reset after a save brings it back.
     const start = startOf(p.fieldInfo?.[name], ctx.now) ?? (type === "date" ? stampParts(ctx.now).date : undefined);

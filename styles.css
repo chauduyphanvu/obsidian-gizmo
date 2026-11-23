@@ -68,26 +68,37 @@
    it across the band; one column when narrow. A slot holds a panel and its meter. */
 .gizmo .gz-answer {
   display: grid;
-  grid-template-columns: minmax(0, 1fr) fit-content(55%);
-  gap: 18px 48px;
+  /* With no facts the second column is empty and takes no width, so its gap is the facts' own margin. */
+  grid-template-columns: minmax(0, 1fr) fit-content(calc(55% + 48px));
+  gap: 18px 0;
   align-items: end;
   margin-top: 30px;
 }
-.gizmo .gz-answer:not(:has(> .gz-facts)),
 .gizmo.gz-narrow .gz-answer { grid-template-columns: minmax(0, 1fr); }
-.gizmo .gz-answer > .gz-slot { display: contents; }
+.gizmo .gz-answer > .gz-slot {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-row: 1;
+  grid-template-columns: subgrid;
+  grid-template-rows: subgrid;
+  align-items: end;
+  min-width: 0;
+}
+.gizmo .gz-answer > .gz-slot.gz-metered { grid-row: 1 / span 2; }
 .gizmo .gz-answer > .gz-slot > .gz-headline { grid-column: 1; grid-row: 1; }
 .gizmo .gz-answer > .gz-slot > .gz-meter { grid-column: 1 / -1; grid-row: 2; }
-.gizmo .gz-facts { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; gap: var(--size-4-4) 36px; min-width: 0; }
-.gizmo.gz-narrow .gz-facts { grid-column: 1; grid-row: 3; }
+.gizmo .gz-facts { grid-column: 2; grid-row: 1; display: flex; flex-wrap: wrap; gap: var(--size-4-4) 36px; min-width: 0; margin-left: 48px; }
+.gizmo.gz-narrow .gz-facts { grid-column: 1; grid-row: 3; margin-left: 0; }
 .gizmo .gz-facts > .gz-slot { min-width: 0; }
 /* The line to add things, then the evidence and the records, each well apart. */
 .gizmo .gz-compose { margin-top: 30px; display: flex; flex-direction: column; gap: var(--size-4-4); }
 .gizmo .gz-flow { margin-top: 46px; }
-.gizmo .gz-flow, .gizmo .gz-sheet-slot { display: flex; flex-direction: column; gap: 46px; }
+.gizmo .gz-flow { display: flex; flex-direction: column; gap: 46px; }
+/* The slot takes back the flow's gap and each panel showing in it brings its own, so a slot with none showing adds no space. */
+.gizmo .gz-sheet-slot { display: flex; flex-direction: column; margin-top: -46px; }
+.gizmo .gz-sheet-slot > :not(.gz-collapsed) { margin-top: 46px; }
 /* A panel waiting for a pick is out of sight, and so is a sheet with nothing else in it. */
 .gizmo .gz-collapsed { display: none; }
-.gizmo .gz-sheet-slot:not(:has(> :not(.gz-collapsed))) { display: none; }
 .gizmo .gz-body > .gz-tabs { margin: 46px 0 0; }
 
 /* A panel sits on the page. Only what is a thing of its own gets a surface: a card (a prompt, a
@@ -222,11 +233,11 @@
 .gizmo .gz-scatter-dot { fill: var(--gz-ink); fill-opacity: 0.55; stroke: none; }
 .gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
-.gizmo .gz-chart-svg:has(.gz-scatter-dot.gz-selected) .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
+.gizmo .gz-chart-svg.gz-picked .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
 /* Read by screen readers, not shown: a chart's table of points. */
 .gizmo .gz-sr-only {
   position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; border: 0; overflow: hidden;
-  clip-path: inset(50%); white-space: nowrap;
+  clip: rect(0 0 0 0); white-space: nowrap;
 }
 /* == /charts == */
 
@@ -270,8 +281,8 @@
 .gizmo .gz-table tbody > tr.gz-ledger-group:first-child th { padding-top: 0; }
 .gizmo .gz-ledger-head { display: flex; justify-content: space-between; align-items: baseline; gap: var(--size-4-3); margin: 0 var(--size-4-2); padding-bottom: 6px; border-bottom: 1px solid var(--background-modifier-border); }
 /* A total under a column before the last: the heading ends at that column, and its line runs on unbroken under the rest. */
-.gizmo .gz-table tr.gz-ledger-group:has(> th + th) > th { vertical-align: bottom; }
-.gizmo .gz-table tr.gz-ledger-group th:has(+ th) .gz-ledger-head { margin-right: 0; padding-right: var(--size-4-2); }
+.gizmo .gz-table tr.gz-ledger-group > th:not(:only-child) { vertical-align: bottom; }
+.gizmo .gz-table tr.gz-ledger-group > th:first-child:not(:only-child) .gz-ledger-head { margin-right: 0; padding-right: var(--size-4-2); }
 .gizmo .gz-table tr.gz-ledger-group th + th .gz-ledger-head { margin-left: 0; }
 
 /* A list that is a ledger: the same headings, items as rows without bullets. */
@@ -358,19 +369,19 @@
   border: 1px solid var(--background-modifier-border);
   box-shadow: none;
 }
-.gizmo .gz-field:has(> input[type="checkbox"]) { flex: none; }
-.gizmo .gz-field:has(> textarea) { flex-basis: 100%; max-width: none; }
+.gizmo .gz-field-check { flex: none; }
+.gizmo .gz-field-wide { flex-basis: 100%; max-width: none; }
 .gizmo .gz-form > button { flex: none; }
 
 /* == composer: forms and buttons as one line to add things == */
 /* In the line to add things a form is one typed line and a button one big button, each with no
    surface of its own; a form kept as fields keeps a quiet one. Its title stays for screen readers. */
-.gizmo .gz-compose > .gz-panel.gz-view-form:has(> .gz-addline),
+.gizmo .gz-compose > .gz-panel.gz-view-form.gz-form-line,
 .gizmo .gz-compose > .gz-panel.gz-view-button { background: none; border: 0; border-radius: 0; padding: 0; }
-.gizmo .gz-compose > .gz-panel.gz-view-form:has(> .gz-form) { border-radius: 12px; padding: 12px 16px; }
+.gizmo .gz-compose > .gz-panel.gz-view-form.gz-form-fields { border-radius: 12px; padding: 12px 16px; }
 .gizmo .gz-addline-title {
   position: absolute; width: 1px; height: 1px; margin: 0; padding: 0; overflow: hidden;
-  clip-path: inset(50%); white-space: nowrap;
+  clip: rect(0 0 0 0); white-space: nowrap;
 }
 
 /* The line: the verb, what is typed, / while it's empty, and its button, in one 50 px box. */
@@ -424,7 +435,7 @@
 /* Said under a panel from outside it (the sheet's Delete): as close under it as a line's own notice. */
 .gizmo .gz-flow > .gz-addline-under { margin-top: -46px; }
 .gizmo .gz-pv { display: inline-flex; align-items: baseline; gap: 5px; min-width: 0; }
-.gizmo .gz-pv:has(> .gz-chips) { align-items: center; }
+.gizmo .gz-pv.gz-pv-chips { align-items: center; }
 .gizmo .gz-pv-label { font-size: 11.5px; color: var(--text-faint); }
 .gizmo .gz-pv-value { color: var(--text-normal); font-weight: 500; overflow-wrap: anywhere; }
 .gizmo .gz-pv:first-child .gz-pv-value { font-size: 14px; font-weight: 650; font-variant-numeric: tabular-nums; }
@@ -444,7 +455,7 @@
 .gizmo button.gz-addline-example {
   height: auto; padding: 0; border: 0; background: none; box-shadow: none; color: var(--text-muted);
   font-family: var(--font-monospace); font-size: 12px; cursor: pointer;
-  text-decoration: underline dotted var(--text-faint); text-underline-offset: 3px;
+  border-bottom: 1px dotted var(--text-faint); border-radius: 0; margin-bottom: -1px;
 }
 .gizmo button.gz-addline-example:hover { color: var(--text-normal); }
 .gizmo button.gz-addline-more {
@@ -532,7 +543,7 @@
   overflow-wrap: anywhere;
 }
 .gizmo.gz-narrow .gz-role-answer .gz-big.gz-fig { font-size: 46px; }
-.gizmo.gz-narrow .gz-answer .gz-facts { column-gap: 28px; }
+.gizmo.gz-narrow .gz-answer .gz-facts { gap: var(--size-4-4) 28px; }
 .gizmo .gz-role-answer .gz-fig .gz-unit {
   margin-left: 6px;
   font-size: 24px;
@@ -680,8 +691,8 @@
   color: var(--text-normal);
 }
 .gizmo .gz-legend-item.gz-selected { border-radius: var(--radius-s); font-weight: var(--font-semibold); }
-.gizmo .gz-chart-svg:has(.gz-selected) .gz-bar.gz-selectable:not(.gz-selected),
-.gizmo .gz-pie:has(.gz-selected) .gz-selectable:not(.gz-selected) { opacity: 0.35; }
+.gizmo .gz-chart-svg.gz-picked .gz-bar.gz-selectable:not(.gz-selected),
+.gizmo .gz-pie.gz-picked .gz-selectable:not(.gz-selected) { opacity: 0.35; }
 .gizmo .gz-bar.gz-selected, .gizmo .gz-slice.gz-selected { stroke: var(--text-normal); stroke-width: 1.5; }
 .gizmo .gz-row-action { margin-left: var(--size-4-2); }
 /* A row's action reads as a quiet word beside the row, and as a button when the row is under the pointer. */
@@ -697,7 +708,7 @@
 .gizmo .gz-scatter-dot { fill: var(--gz-c); fill-opacity: 0.7; stroke: none; }
 .gizmo .gz-scatter-dot:focus-visible { outline: 2px solid var(--interactive-accent); outline-offset: 1px; }
 .gizmo .gz-scatter-dot.gz-selected { fill-opacity: 1; stroke: var(--text-normal); stroke-width: 2; }
-.gizmo .gz-chart-svg:has(.gz-scatter-dot.gz-selected) .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
+.gizmo .gz-chart-svg.gz-picked .gz-scatter-dot:not(.gz-selected) { opacity: 0.35; }
 /* == views: calendar, board, timeline, scatter and heatmap colours == */
 /* Ink and pencil: data is grey, drawn darker the more there is; the accent marks "now" and the pick.
    An empty day is a faint tint of the text colour, which shows on the page in both themes. */
@@ -1000,9 +1011,9 @@
 /* A Gizmo view in a base fills the pane under the base's toolbar. */
 .gizmo.gz-bases { padding: var(--size-4-3) var(--size-4-4) var(--size-4-4); max-width: none; margin: 0; }
 /* The lens sits above the editor and the preview, which share what is left of the view's height. */
-.view-content:has(> .gz-lens) { display: flex; flex-direction: column; }
-.view-content:has(> .gz-lens) > .markdown-source-view,
-.view-content:has(> .gz-lens) > .markdown-reading-view { flex: 1 1 0; min-height: 0; }
+.view-content.gz-with-lens { display: flex; flex-direction: column; }
+.view-content.gz-with-lens > .markdown-source-view,
+.view-content.gz-with-lens > .markdown-reading-view { flex: 1 1 0; min-height: 0; }
 .gz-lens {
   flex: none;
   max-height: 50%;
@@ -1042,10 +1053,10 @@ button.gz-lens-toggle {
 /* Every change the app made in 30 days is a tick on a line; the handle stands at the time shown. */
 .gizmo .gz-rail { margin-top: 20px; }
 /* A card under the rail (the past's banner, rows to check, a hand edit) stands a little apart from its dates. */
-.gizmo .gz-rail-slot:has(+ .gz-card) .gz-rail { margin-bottom: 16px; }
+.gizmo .gz-rail-slot:not(:empty) + .gz-card { margin-top: 16px; }
 /* Beside the rail, which names the moment shown, the banner only says what that means. */
-.gizmo .gz-header:has(.gz-rail) .gz-past-when { display: none; }
-.gizmo .gz-header:has(.gz-rail) .gz-past-text::first-letter { text-transform: uppercase; }
+.gizmo .gz-rail-slot:not(:empty) ~ .gz-past .gz-past-when { display: none; }
+.gizmo .gz-rail-slot:not(:empty) ~ .gz-past .gz-past-text::first-letter { text-transform: uppercase; }
 .gizmo .gz-rail-top {
   display: flex;
   justify-content: space-between;
@@ -1247,7 +1258,7 @@ button.gz-lens-toggle {
 .gizmo .gz-sheet-value a.internal-link { color: inherit; text-decoration: none; }
 .gizmo .gz-sheet-value a.internal-link:hover { text-decoration: underline; }
 /* An edited field reads as its value until it is pointed at or focused, its text in line with the others. */
-.gizmo .gz-sheet-field:has(.gz-edit:not([type="checkbox"])) { padding: 4px 0; }
+.gizmo .gz-sheet-field.gz-sheet-edits { padding: 4px 0; }
 .gizmo .gz-sheet-value .gz-edit:not([type="checkbox"]) {
   width: calc(100% + 8px);
   max-width: none;
@@ -1272,10 +1283,11 @@ button.gz-lens-toggle {
 .gizmo .gz-sheet-value input.gz-edit[type="number"]::-webkit-outer-spin-button { -webkit-appearance: none; margin: 0; }
 
 /* The panels that wait for the pick, at the sheet's width; none waiting, no gap for them. */
-.gizmo .gz-sheet-panels { display: flex; flex-direction: column; gap: 26px; margin-top: 26px; }
-.gizmo .gz-sheet-panels:not(:has(> :not(.gz-collapsed))) { display: none; }
-.gizmo .gz-sheet-title + .gz-sheet-panels,
-.gizmo .gz-sheet-line + .gz-sheet-panels { margin-top: 22px; }
+.gizmo .gz-sheet-panels { display: flex; flex-direction: column; }
+.gizmo .gz-sheet-panels > :not(.gz-collapsed) { margin-top: 26px; }
+.gizmo .gz-sheet-title + .gz-sheet-panels > :not(.gz-collapsed),
+.gizmo .gz-sheet-line + .gz-sheet-panels > :not(.gz-collapsed) { margin-top: 22px; }
+.gizmo .gz-sheet-panels > :not(.gz-collapsed) ~ :not(.gz-collapsed) { margin-top: 26px; }
 
 /* Actions: quiet buttons, last. */
 .gizmo .gz-sheet-actions { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 26px; }
@@ -1429,7 +1441,7 @@ button.gz-lens-toggle {
 /* An app shown ahead (What if…): its card lists the what-if rows and what the app's rules would do. */
 .gizmo .gz-ahead { display: block; }
 /* Beside the time rail, which has its own, the card's Back to now isn't shown twice. */
-.gizmo .gz-header:has(.gz-rail) .gz-ahead .gz-past-back { display: none; }
+.gizmo .gz-rail-slot:not(:empty) ~ .gz-ahead .gz-past-back { display: none; }
 .gizmo .gz-ahead-top { display: flex; flex-wrap: wrap; align-items: center; gap: var(--size-4-2); }
 .gizmo .gz-ahead-pick { display: inline-flex; align-items: center; gap: var(--size-4-1); color: var(--text-muted); font-size: var(--font-ui-small); }
 .gizmo .gz-ahead-head { margin-top: var(--size-4-3); font-size: var(--font-ui-small); font-weight: 600; color: var(--text-muted); }

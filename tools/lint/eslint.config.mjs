@@ -18,25 +18,4 @@ export default defineConfig([
       },
     },
   },
-  {
-    // gizmod, the optional companion: a Node program that never loads in Obsidian. Node's modules,
-    // its fetch and its timers are what it runs on, and it is told the vault's config folder.
-    files: ["src/node/**"],
-    rules: {
-      "obsidianmd/no-nodejs-modules": "off",
-      "obsidianmd/prefer-window-timers": "off",
-      "obsidianmd/hardcoded-config-path": "off",
-      "no-restricted-globals": "off",
-    },
-  },
-  {
-    // Read at build time only: esbuild writes the gallery's notes into the bundle in its place.
-    files: ["src/gallery-notes.ts"],
-    rules: { "obsidianmd/no-nodejs-modules": "off" },
-  },
-  {
-    // Run by gizmod on Node as well as in the plugin, where there is no window.
-    files: ["src/snapshots.ts"],
-    rules: { "obsidianmd/prefer-window-timers": "off" },
-  },
 ]);

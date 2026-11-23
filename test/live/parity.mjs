@@ -5,7 +5,7 @@
 import { cpSync, existsSync, mkdirSync, readdirSync, writeFileSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { isDeepStrictEqual } from "node:util";
-import { NodeVault } from "../../src/node/vault.ts";
+import { NodeVault } from "../../scripts/gizmod/vault.ts";
 import { launch } from "./launch.mjs";
 import { tools } from "./tools.mjs";
 

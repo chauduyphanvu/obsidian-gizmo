@@ -7,7 +7,7 @@
 import { existsSync, promises as fs, statSync, watch, type FSWatcher } from "node:fs";
 import { dirname, join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
-import type { FileInfo } from "../datalayer.ts";
+import type { FileInfo } from "../../src/datalayer.ts";
 
 export interface VaultFile {
   info: FileInfo;

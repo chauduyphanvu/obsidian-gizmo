@@ -2,7 +2,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { componentsNeeded, galleryApps, planCopy, type GalleryNote } from "../src/gallery.ts";
 import { basename } from "../src/store.ts";
-import gallery from "../src/gallery-notes.ts";
+import gallery from "../scripts/gallery-notes.ts";
 
 const note = (path: string, text: string): GalleryNote => ({ path, text });
 const NOTES = [

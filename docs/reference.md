@@ -995,7 +995,7 @@ Gizmo has no runtime dependencies. The lint has its own folder, `tools/lint`, be
 | `src/` | The plugin. |
 | `src/views/` | One file for each view: its keys, its checks, its examples and the code that draws it. |
 | `src/sources/` | One file for each kind of source. |
-| `src/node/` | gizmod. |
+| `scripts/gizmod/` | gizmod. |
 | `gallery/` | The gallery apps and components. |
 | `test/` | Unit and DOM tests. |
 | `test/vault/` | A test vault with more example apps. |
