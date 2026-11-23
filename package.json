@@ -1,6 +1,6 @@
 {
   "name": "gizmo",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "A note is an app. Build personal apps with buttons, forms, charts, boards, calendars, timelines, and Bases views — plain Markdown, no code.",
   "scripts": {
     "dev": "node esbuild.config.mjs",
@@ -8,7 +8,7 @@
     "test": "node --test test/*.test.ts",
     "test:tz": "TZ=America/Los_Angeles node --test test/*.test.ts && TZ=Asia/Ho_Chi_Minh node --test test/*.test.ts",
     "lint": "tools/lint/node_modules/.bin/eslint --config tools/lint/eslint.config.mjs .",
-    "samples": "node tools/samples.ts"
+    "samples": "node scripts/samples.ts"
   },
   "type": "module",
   "devDependencies": {

@@ -1155,11 +1155,11 @@ uvx --from pymobiledevice3 python test/live/phone.py eval '<js>'   # run JS in O
 To release, set the new version in `manifest.json`, `package.json` and `versions.json`, commit, then push an annotated tag of that version:
 
 ```sh
-git tag -a 0.4.1 -F notes.md   # the release notes
-git push origin main 0.4.1
+git tag -a 0.4.2 -F notes.md   # the release notes
+git push origin main 0.4.2
 ```
 
-The sample rows of the gallery (in the data notes of Spend, Renewal, Dose, Measurement, Trade and Chore, the bank, health and broker exports in `Inbox` and the trip of Trip planner) are written for a day by `tools/samples.ts`. The repo keeps them for 2026-11-18, the day of the clock of the unit tests. The live checks write them for the day that they run. To write them for today in your copy of the gallery, run `npm run samples`, or `node tools/samples.ts 2027-02-03 <folder>` for a different day or folder. The story stays the same from each day: a bill that is six days overdue on the 18th is six days overdue on any day.
+The sample rows of the gallery (in the data notes of Spend, Renewal, Dose, Measurement, Trade and Chore, the bank, health and broker exports in `Inbox` and the trip of Trip planner) are written for a day by `scripts/samples.ts`. The repo keeps them for 2026-11-18, the day of the clock of the unit tests. The live checks write them for the day that they run. To write them for today in your copy of the gallery, run `npm run samples`, or `node scripts/samples.ts 2027-02-03 <folder>` for a different day or folder. The story stays the same from each day: a bill that is six days overdue on the 18th is six days overdue on any day.
 
 The Release workflow checks that the versions agree, runs the lint and the tests, builds, and publishes the release with `main.js`, `manifest.json`, `styles.css` and `gizmod.mjs`. CI runs the build, the tests in three time zones and the lint on every push to `main`. Run the live checks on a Mac before you tag.
 

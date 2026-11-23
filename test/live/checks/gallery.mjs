@@ -399,7 +399,7 @@ export default async function gallery(t) {
   });
 
   // ---- A made-up week with Budget, Bills and renewals and Medication log, on their sample rows -----
-  // The sample rows are written for today (tools/samples.ts): the same story, whatever the day.
+  // The sample rows are written for today (scripts/samples.ts): the same story, whatever the day.
 
   /** Page code: panels of the open app by title, what they show, its tabs and add lines; a kind's rows, every line. */
   const P = `

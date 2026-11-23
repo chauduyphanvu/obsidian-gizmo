@@ -2,7 +2,7 @@
 //   node test/live/smoke.mjs <empty work dir> [check file ...]
 // Two launches, each with its own user-data dir, vault copy and CDP port (CDP_PORT, default 9334,
 // and the port after it): `vault` is a copy of test/vault, `gallery` is test/vault with gallery/
-// copied over it and its sample rows written for today (see tools/samples.ts). Each runs its check
+// copied over it and its sample rows written for today (see scripts/samples.ts). Each runs its check
 // files from test/live/checks/ (all, or those named), takes screenshots into <work dir>/shots, and
 // quits only the instance it started. Prints PASS, FAIL or
 // SKIP per check (SKIP only for a check whose web API didn't answer) and exits non-zero on a FAIL.
@@ -10,7 +10,7 @@ import { cpSync, existsSync, mkdirSync, readdirSync } from "node:fs";
 import { join, resolve } from "node:path";
 import { launch } from "./launch.mjs";
 import { tools } from "./tools.mjs";
-import { dayOf, writeSamples } from "../../tools/samples.ts";
+import { dayOf, writeSamples } from "../../scripts/samples.ts";
 
 const repo = resolve(import.meta.dirname, "../..");
 const work = resolve(process.argv[2] ?? "");

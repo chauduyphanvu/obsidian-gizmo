@@ -1,7 +1,7 @@
 {
   "id": "gizmo",
   "name": "Gizmo",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "minAppVersion": "1.11.4",
   "description": "A note is an app. Build personal apps with buttons, forms, charts, boards, calendars, timelines, and Bases views — plain Markdown, no code.",
   "author": "Vu Chau",
