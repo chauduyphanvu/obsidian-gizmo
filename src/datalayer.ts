@@ -51,6 +51,8 @@ export interface Host {
   fileSize?: (path: string) => number | undefined;
   /** This device's id, which its ledger files are named for. */
   device?(): string;
+  /** Posts bytes and gives the answer's bytes: what a time-stamp authority takes and answers (see seal.ts). */
+  postBytes?(url: string, body: Uint8Array, contentType: string): Promise<{ status: number; bytes: Uint8Array }>;
 }
 
 /** The notes an app is about: its own note and its data note. */

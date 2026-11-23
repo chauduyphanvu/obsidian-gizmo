@@ -19,7 +19,7 @@ export const RESERVED = [...new Set([...APP_KEYS, ...COMPONENT_KEYS, "this"])].f
 export const DEFINITION_KEYS = [...RESERVED, "view"];
 
 /** The top-level keys of a kind note, in the order hints offer them. */
-export const KIND_KEYS: readonly string[] = ["kind", "fields", "shortcut", "import", "match", "share", "expect", "spec"];
+export const KIND_KEYS: readonly string[] = ["kind", "fields", "shortcut", "import", "match", "share", "seal", "expect", "spec"];
 
 /** Why a note's property can't be written from data: the end of a sentence, or undefined when it can. */
 export function definitionReason(key: string): string | undefined {

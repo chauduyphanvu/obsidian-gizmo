@@ -32,7 +32,8 @@ import type { AppSummary } from "./map.ts";
 import { askersOf, permissionsOf } from "./permissions.ts";
 import { checkFlows, flowContext, type Verdict } from "./flows.ts";
 import type { AppliedPolicy, Label, Policy } from "./policy.ts";
-import { appendPath, basename, dataPathOf, devicesFolder, storeTarget } from "./store.ts";
+import { appendPath, basename, dataPathOf, defaultDataPath, devicesFolder, storeTarget } from "./store.ts";
+import type { RowHome } from "./row-lines.ts";
 import { THIS } from "./template.ts";
 import type { AlertFeed } from "./views/alerts.ts";
 import { sourceOf } from "./views/registry.ts";
@@ -459,6 +460,15 @@ export class Background {
   }
 
   // ---- Shortcuts (see background-shortcuts.ts) ---------------------------------------------
+
+  /** Where the rows a form's shortcut saves are kept (a list of the app's, or a kind's rows), for a note's line to find its row. */
+  rowHome(path: string, shortcut: string): RowHome | undefined {
+    const entry = this.apps.get(path);
+    const p = entry?.shortcuts.get(shortcut)?.panel;
+    if (!entry || p?.target?.kind !== "list") return undefined;
+    const owner = p.target.at ?? path;
+    return { dataPath: p.target.at === undefined ? entry.dataPath : defaultDataPath(p.target.at), list: p.target.name, owner, ...(p.fieldInfo && { info: p.fieldInfo }) };
+  }
 
   captureIndex(): CaptureIndex {
     return this.shortcuts.captureIndex();

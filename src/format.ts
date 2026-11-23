@@ -27,9 +27,14 @@ function numberPattern(format: string): NumberPattern | undefined {
   return { prefix, suffix, group: !!m[1], decimals: m[2] ? m[2].length - 1 : 0, percent: m[0].endsWith("%") };
 }
 
+/** `unit:kg`: the format of a field with a unit that isn't money, the number as it is and then the unit. */
+function unitIn(format: string): string | undefined {
+  return format.startsWith("unit:") && format.length > 5 && !/[\n\r]/.test(format) ? format.slice(5) : undefined;
+}
+
 /** A sentence saying what is wrong with a `format` value, or undefined when it can be used. */
 export function checkFormat(format: string): string | undefined {
-  if (WORDS.includes(format) || numberPattern(format)) return undefined;
+  if (WORDS.includes(format) || unitIn(format) !== undefined || numberPattern(format)) return undefined;
   return `format "${format}" isn't a number pattern or one of date, time, datetime, relative, until, duration, bytes`;
 }
 
@@ -127,6 +132,11 @@ function apply(value: unknown, format: string, now: Date): string | undefined {
       const n = numeric(value);
       return n === undefined ? undefined : bytes(n);
     }
+  }
+  const unit = unitIn(format);
+  if (unit !== undefined) {
+    const n = numeric(value);
+    return n === undefined ? undefined : `${formatValue(n)} ${unit}`;
   }
   const pattern = numberPattern(format);
   const n = pattern && numeric(value);

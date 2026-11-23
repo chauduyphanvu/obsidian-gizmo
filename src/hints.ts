@@ -27,6 +27,7 @@ export const KEY_HINTS: Record<string, string> = {
   import: "Ways to read a file into the kind's rows, by name: field → column, at for when, folder to watch",
   match: "How a file's or planned row pairs with a logged one: field → exact, a number or 2d; default: numbers exact, at 2d",
   share: "Share the rows with other vaults through an ntfy server: share: {relay: \"https://ntfy.sh\", key: {secret: chore-key}}",
+  seal: "Seal the rows' logs so a later change shows: seal: true, or seal: {authority: https://freetsa.org/tsr}",
   params: "Names this component takes, each with an optional default",
   for: "Show this component on every note in a folder or tag, e.g. Books/ or \"#book\"",
   // Every panel

@@ -1,5 +1,6 @@
 import { stampParts } from "./time.ts";
 import { checkFormat } from "./format.ts";
+import { unitDef, unitFormat, unitOf, unitProblem } from "./units.ts";
 import type { Panel } from "./spec.ts";
 
 /**
@@ -118,7 +119,7 @@ export const FIELD_TYPES = ["text", "number", "date", "time", "checkbox", "texta
 export function checkFields(fields: Record<string, string | string[]>): string[] {
   return Object.entries(fields)
     .filter(([, type]) => typeof type === "string" && !FIELD_TYPES.includes(type))
-    .map(([name]) => `field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+    .map(([name]) => `field "${name}" type must be one of ${FIELD_TYPES.join(", ")}, a unit (kg, USD…) or a list of choices`);
 }
 
 /** What a field written as a map carries besides its type: its display name, its format, and the value it starts with. */
@@ -126,9 +127,50 @@ export interface FieldInfo {
   label?: string;
   format?: string;
   default?: unknown;
+  /** What a number field measures (see units.ts): `kg`, `USD`, or a word of the note's own. */
+  unit?: string;
+  /** For a money field: how many of each other currency one of its own is, for a value typed in that currency. */
+  rates?: Record<string, number>;
+  /** A number field whose unit each row says through another field: that field, and the unit for each of its values. */
+  unitBy?: { field: string; units: Record<string, string> };
 }
 
-const FIELD_KEYS = ["type", "label", "format", "default"];
+const FIELD_KEYS = ["type", "label", "format", "default", "unit", "rates"];
+
+/**
+ * A field's `unit` and `rates` as written, read into `one`; the problems with them. `unit` is a
+ * word, or `{<field>: {<value>: <unit>}}` when each row's unit depends on another of its fields.
+ */
+function readUnit(name: string, written: Record<string, unknown>, one: FieldInfo): string[] {
+  const { unit, rates } = written;
+  const problems: string[] = [];
+  if (isText(unit)) {
+    const problem = unitProblem(String(unit));
+    if (problem) problems.push(`field "${name}": ${problem}`);
+    else one.unit = unitOf(String(unit)).id;
+  } else if (isMap(unit)) {
+    const [by, map] = Object.entries(unit)[0] ?? [];
+    if (Object.keys(unit).length !== 1 || !isMap(map) || !Object.values(map).every(isText)) {
+      problems.push(`field "${name}" unit must be a unit, or one field with the unit for each of its values, e.g. unit: {what: {weight: kg, sleep: h}}`);
+    } else {
+      const units = Object.fromEntries(Object.entries(map).map(([value, u]) => [value, String(u)]));
+      const bad = Object.values(units).map(unitProblem).find((p) => p !== undefined);
+      if (bad) problems.push(`field "${name}": ${bad}`);
+      else one.unitBy = { field: by, units: Object.fromEntries(Object.entries(units).map(([value, u]) => [value, unitOf(u).id])) };
+    }
+  } else if (unit !== undefined && unit !== null) problems.push(`field "${name}" unit must be text`);
+  if (rates === undefined || rates === null) return problems;
+  if (one.unit === undefined || unitOf(one.unit).dim !== "money") problems.push(`field "${name}" rates needs a money unit, e.g. unit: USD`);
+  else if (!isMap(rates) || !Object.entries(rates).every(([code, r]) => unitDef(code)?.dim === "money" && typeof r === "number" && r > 0)) {
+    problems.push(`field "${name}" rates must give a number above 0 for each currency, e.g. rates: {JPY: 150.2}`);
+  } else one.rates = Object.fromEntries(Object.entries(rates).map(([code, r]) => [code.toUpperCase(), r as number]));
+  return problems;
+}
+
+/** A type word that is a unit Gizmo knows: the field is a number in that unit. */
+function unitType(type: unknown): string | undefined {
+  return typeof type === "string" && !FIELD_TYPES.includes(type) ? unitDef(type)?.id : undefined;
+}
 
 /** Why a field's `default` can't be used, or undefined; `today` and `now` are words for a date and a time. */
 function defaultProblem(name: string, type: string | string[], value: unknown): string | undefined {
@@ -153,7 +195,9 @@ export function readFields(fields: Record<string, unknown>): { types: Record<str
   const errors: string[] = [];
   for (const [name, written] of Object.entries(fields)) {
     if (!isMap(written)) {
-      types[name] = written as string | string[];
+      const unit = unitType(written);
+      types[name] = unit === undefined ? written as string | string[] : "number";
+      if (unit !== undefined) info[name] = { unit, format: unitFormat(unit) };
       continue;
     }
     const unknown = Object.keys(written).filter((k) => !FIELD_KEYS.includes(k));
@@ -161,13 +205,17 @@ export function readFields(fields: Record<string, unknown>): { types: Record<str
       errors.push(`field "${name}" has no key "${unknown[0]}" (it takes ${FIELD_KEYS.join(", ")})`);
       continue;
     }
-    const type = written.type ?? "text";
+    const typedUnit = unitType(written.type);
+    const type = typedUnit !== undefined || (written.type === undefined && written.unit !== undefined) ? "number" : written.type ?? "text";
     if (!(typeof type === "string" || (Array.isArray(type) && type.length > 0 && type.every(scalar)))) {
-      errors.push(`field "${name}" type must be one of ${FIELD_TYPES.join(", ")} or a list of choices`);
+      errors.push(`field "${name}" type must be one of ${FIELD_TYPES.join(", ")}, a unit (kg, USD…) or a list of choices`);
       continue;
     }
     const one: FieldInfo = {};
     const problems: string[] = [];
+    if (typedUnit !== undefined && written.unit !== undefined) problems.push(`field "${name}" has a unit as its type and a unit key; give one`);
+    else if (written.unit !== undefined && type !== "number") problems.push(`field "${name}" has a unit, so its type must be number`);
+    else problems.push(...readUnit(name, typedUnit === undefined ? written : { ...written, unit: typedUnit }, one));
     for (const key of ["label", "format"] as const) {
       const v = written[key];
       if (v === undefined || v === null) continue;
@@ -176,6 +224,7 @@ export function readFields(fields: Record<string, unknown>): { types: Record<str
     }
     const formatProblem = one.format === undefined ? undefined : checkFormat(one.format);
     if (formatProblem) problems.push(`field "${name}": ${formatProblem}`);
+    if (one.format === undefined && one.unit !== undefined) one.format = unitFormat(one.unit);
     if (written.default !== undefined && written.default !== null) {
       const problem = defaultProblem(name, type, written.default);
       if (problem) problems.push(problem);

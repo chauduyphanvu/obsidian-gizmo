@@ -3,6 +3,7 @@ import {
 } from "obsidian";
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
 import { registerActivity } from "./activity-view.ts";
+import { DefinitionLog } from "./definitions.ts";
 import { registerBacktest, registerWhatIf } from "./past-views.ts";
 import { registerBackground, type DeviceBeat } from "./background-glue.ts";
 import { registerBases } from "./bases.ts";
@@ -31,6 +32,10 @@ import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
 import { registerNewApp } from "./new-app-command.ts";
 import { registerKindCommand } from "./kind-command.ts";
+import { registerExamples } from "./examples-command.ts";
+import { registerSeal } from "./seal-command.ts";
+import { registerRowLines } from "./row-lines-sync.ts";
+import type { RowLines } from "./row-lines.ts";
 import { registerImportCommand } from "./import-command.ts";
 import { openAppPicker, registerOpenApp } from "./open-app-command.ts";
 import { newLinkKey, shortcutId } from "./links.ts";
@@ -59,6 +64,10 @@ export default class GizmoPlugin extends Plugin {
   device!: Device;
   deviceStore!: DeviceStore;
   beat: DeviceBeat | undefined;
+  /** The lines in notes that are rows (see row-lines.ts), kept in step with them; undefined without a ledger. */
+  rowLines: RowLines | undefined;
+  /** What each app's panels said each time it was opened here with different keys, for Explain. */
+  definitions!: DefinitionLog;
   private grantListeners = new Set<() => void>();
   /** Leaves the user switched to source view, and for which note. */
   private sourceLeaves = new WeakMap<WorkspaceLeaf, string>();
@@ -81,6 +90,7 @@ export default class GizmoPlugin extends Plugin {
     // Each device writes only its own log, which a sync never has to merge; it reads the others'.
     await adoptOldLog(this).catch(() => {});
     this.activity = new ActivityLog(pluginFile(this, deviceFile(DEVICE_FOLDERS.activity, this.device.id)), Date.now, () => obsidianOtherLogs(this));
+    this.definitions = new DefinitionLog(pluginFile(this, deviceFile(DEVICE_FOLDERS.definitions, this.device.id)), Date.now);
     // The device that runs background work keeps each data note's snapshot current, a few seconds after
     // a change and at most every five minutes; what's waiting is written before Obsidian quits.
     this.dataLayer.setSnapshots({
@@ -148,6 +158,9 @@ export default class GizmoPlugin extends Plugin {
     registerOpenApp(this);
     registerNewApp(this);
     registerKindCommand(this);
+    registerExamples(this);
+    registerSeal(this);
+    this.rowLines = registerRowLines(this);
     registerImportCommand(this);
     this.addRibbonIcon("layout-dashboard", "Open an app", () => openAppPicker(this));
     registerActivity(this);

@@ -105,7 +105,7 @@ export const form: ViewDef = {
   },
   examples: [
     { panel: { view: "form", fields: { weight: "number", note: "text", mood: ["good", "ok"] }, save: "weights" } },
-    { panel: { view: "form", fields: { weight: "kilos" }, save: "weights" }, errors: ['field "weight" type must be one of text, number, date, time, checkbox, textarea or a list of choices'] },
+    { panel: { view: "form", fields: { weight: "kilos" }, save: "weights" }, errors: ['field "weight" type must be one of text, number, date, time, checkbox, textarea, a unit (kg, USD…) or a list of choices'] },
     { panel: { view: "form", fields: { title: "text", author: "text" }, save: "Books/", name: "{title}", open: "{path}" } },
     { panel: { view: "form", save: "books" }, errors: ["form needs fields"] },
     { panel: { view: "form", fields: { page: "number", status: ["to read", "reading", "done"] }, save: "this" } },

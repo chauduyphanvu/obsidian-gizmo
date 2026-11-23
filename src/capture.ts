@@ -1,6 +1,7 @@
 import { daysInMonth, stampOf, stampParts, toTime } from "./time.ts";
 import type { PanelSpec } from "./spec.ts";
 import { nearMiss } from "./template.ts";
+import { asField, convert, quantityIn, typedAs, unitDef, unitOf, type FieldUnit, type UnitBy, type UnitDef } from "./units.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */
 export interface CaptureTarget {
@@ -16,6 +17,22 @@ export interface CaptureTarget {
   items: string[];
   /** It saves to a kind, where a time still to come plans a row (see readWhen). */
   ahead?: boolean;
+  /** The form's number fields that say their unit, each with it (see units.ts). */
+  units?: FieldUnits;
+}
+
+/** Each number field with a unit: its one unit, or the unit that another field of the row gives it. */
+export type FieldUnits = Record<string, FieldUnit | UnitBy>;
+
+/** The fields of a form that have a unit, from what its fields say besides their types; undefined when none has. */
+export function unitsOf(info: Record<string, { unit?: string; rates?: Record<string, number>; unitBy?: { field: string; units: Record<string, string> } }> | undefined, fields: readonly (readonly [string, string | string[]])[]): FieldUnits | undefined {
+  const out: FieldUnits = {};
+  for (const [name] of fields) {
+    const i = info?.[name];
+    if (i?.unit !== undefined) out[name] = { unit: i.unit, ...(i.rates && { rates: i.rates }) };
+    else if (i?.unitBy) out[name] = { by: i.unitBy.field, units: i.unitBy.units };
+  }
+  return Object.keys(out).length ? out : undefined;
 }
 
 /** Every name a capture line can start with, and the names that point at more than one shortcut. */
@@ -47,12 +64,14 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
       const p = ps.panel;
       if (!VIEWS.has(p.view)) continue;
       const fields = p.view === "form" ? Object.entries(p.fields ?? p.schema ?? {}) : [];
+      const units = unitsOf(p.fieldInfo, fields);
       const target: CaptureTarget = {
         name: (p.alias ?? shortcut).toLowerCase(), path: app.path, app: app.name, shortcut,
         // A form's title says what it's for better than its button's label, as the activity log names it.
         label: p.title ?? p.label ?? shortcut, view: p.view as CaptureTarget["view"],
         fields, items: (p.items ?? []).map(String),
         ...(p.target?.kind === "list" && p.target.at !== undefined && { ahead: true }),
+        ...(units && { units }),
       };
       all.push({ target, alias: p.alias });
       shortcutCount.set(shortcut, (shortcutCount.get(shortcut) ?? 0) + 1);
@@ -490,7 +509,7 @@ function atParam(when: { at?: Date; plan?: Date[] }, tokens: readonly Token[]): 
 }
 
 function parseForm(target: CaptureTarget, tokens: Token[], now: Date): Parsed {
-  const read = parseFields(tokens, target.fields, now, { name: target.name, ahead: target.ahead });
+  const read = parseFields(tokens, target.fields, now, { name: target.name, ahead: target.ahead, units: target.units });
   const fail = (error: string, completions: string[] = [], next?: string): Parsed => ({ ok: false, error, target, completions, next });
   if (read.errors.length) return fail(read.errors[0], read.completions, read.next);
   // A form saved with nothing typed would be an empty row made by a slip of the Enter key.
@@ -560,7 +579,7 @@ const isText = (type: string | string[]) => type === "text" || type === "textare
  *
  * Either way, a trailing `@when` (see takeWhen) is the time the row is logged for, not a value.
  */
-export function parseFields(input: string | readonly Token[], fields: FieldList, now: Date, how: { name: string; loose?: boolean; ahead?: boolean }): FieldValues {
+export function parseFields(input: string | readonly Token[], fields: FieldList, now: Date, how: { name: string; loose?: boolean; ahead?: boolean; units?: FieldUnits; picked?: ReadonlyMap<string, string> }): FieldValues {
   const out: FieldValues = { params: {}, missing: [], errors: [], completions: [] };
   const typed = typeof input === "string" ? tokenize(input) : input;
   if ("error" in typed) {
@@ -575,7 +594,9 @@ export function parseFields(input: string | readonly Token[], fields: FieldList,
     out.errors.push(error);
   };
   const when = takeWhen(typed, now, how.ahead);
-  const tokens = when.tokens;
+  const waiting: Waiting[] = [];
+  const tokens = how.units ? takeQuantities(when.tokens, how.units, params, fail, waiting) : when.tokens;
+  if (out.errors.length && !how.loose) return done(out, fields);
   if (when.at) out.at = when.at;
   if (when.plan) out.plan = when.plan;
   if (when.error) {
@@ -601,7 +622,80 @@ export function parseFields(input: string | readonly Token[], fields: FieldList,
     const rest = strictValues(words, fields, now, params, fail);
     if (rest !== undefined) out.rest = rest;
   }
+  // A unit that another field gives is known only now, with that field read.
+  for (const w of waiting) {
+    // A choice picked beside the line (an add line's chip) is what the row will hold.
+    const said = how.picked?.get(w.by.by) ?? params[w.by.by];
+    const unit = said === undefined ? undefined : w.by.units[said];
+    if (unit === undefined) {
+      fail(said === undefined ? `${w.field} is typed in ${w.unit.id}; say which ${w.by.by} it is` : `${w.field} has no unit when ${w.by.by} is ${said}; type the number alone`);
+      continue;
+    }
+    const c = convert(w.n, w.unit, { unit });
+    if ("error" in c) fail(`${w.field} ${c.error}`);
+    else {
+      params[w.field] = String(c.value);
+      if (w.unit.id !== unitOf(unit).id) params[asField(w.field)] = typedAs(w.n, w.unit, c.rate);
+    }
+  }
   return done(out, fields);
+}
+
+/** A quantity typed for a field whose unit another field gives, until that field is read. */
+interface Waiting { field: string; n: number; unit: UnitDef; by: UnitBy }
+
+/** Money codes that are everyday words, so `12 pen` may be a pen; refused all the same, as a silent 12 dollars could be wrong. */
+const CODE_WORDS = new Set(["ALL", "BAM", "BOB", "COP", "CUP", "GEL", "MAD", "MOP", "PEN", "RUB", "TOP", "TRY"]);
+
+/**
+ * Values typed with their unit, for the fields that have one: `1500 jpy` or `1500jpy` into a dollar
+ * field, `180 lb` into kilograms, by position or as `weight=180lb`. Each goes to the first open field
+ * whose unit measures the same thing, as that field's own unit holds it; what was typed is kept
+ * beside it (see asField) when it was converted. Gives the tokens left for the other fields. A
+ * number with no unit is left for the usual reading, so `81.2` still means the field's own unit.
+ * A field whose unit another field gives keeps its number as typed and goes to `waiting`.
+ */
+function takeQuantities(tokens: readonly Token[], units: FieldUnits, params: Record<string, string>, fail: Fail, waiting: Waiting[]): Token[] {
+  const left: Token[] = [];
+  const give = (field: string, n: number, unit: UnitDef, word?: string): void => {
+    const to = units[field];
+    if ("by" in to) {
+      params[field] = String(n);
+      return void waiting.push({ field, n, unit, by: to });
+    }
+    const c = convert(n, unit, to);
+    if ("error" in c) return fail(`${field} ${c.error}${word && CODE_WORDS.has(unit.id) ? `, or put the words in quotes if "${word}" isn't money` : ""}`);
+    params[field] = String(c.value);
+    if (unit.id !== unitOf(to.unit).id) params[asField(field)] = typedAs(n, unit, c.rate);
+  };
+  const measures = (f: string, unit: UnitDef) => {
+    const to = units[f];
+    return "by" in to ? Object.values(to.units).some((u) => unitOf(u).dim === unit.dim) : unitOf(to.unit).dim === unit.dim;
+  };
+  const open = (unit: UnitDef) => Object.keys(units).find((f) => !Object.hasOwn(params, f) && measures(f, unit));
+  for (let i = 0; i < tokens.length; i++) {
+    const t = tokens[i];
+    const next = tokens[i + 1];
+    const joined = t.quoted ? undefined : quantityIn(t.text);
+    // "5 in the park": a spaced `in` is inches only as the last word on the line.
+    const prose = next?.text.toLowerCase() === "in" && tokens.slice(i + 2).some((later) => later.name === undefined);
+    const apart = !t.quoted && NUMBER.test(t.text) && next && !next.quoted && next.name === undefined && !prose ? unitDef(next.text) : undefined;
+    const q = joined ?? (apart ? { n: Number(t.text), unit: apart } : undefined);
+    if (!q) {
+      left.push(t);
+      continue;
+    }
+    const named = t.name === undefined ? undefined : Object.keys(units).find((f) => f.toLowerCase() === t.name);
+    // A named value for a field with no unit, or a unit no open field measures, is read as it always was.
+    const field = t.name === undefined ? open(q.unit) : named;
+    if (field === undefined || Object.hasOwn(params, field)) {
+      left.push(t);
+      continue;
+    }
+    give(field, q.n, q.unit, joined ? undefined : next.text);
+    if (!joined) i++;
+  }
+  return left;
 }
 
 function done(out: FieldValues, fields: FieldList): FieldValues {

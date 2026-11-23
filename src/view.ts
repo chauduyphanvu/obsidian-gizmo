@@ -63,6 +63,8 @@ export class AppView extends FileView {
     this.scope = new Scope(this.app.scope);
     this.scope.register([], "[", (evt) => this.railKey(evt, -1));
     this.scope.register([], "]", (evt) => this.railKey(evt, 1));
+    // `=` asks where the first figure comes from; a figure in focus answers for itself.
+    this.scope.register([], "=", (evt) => (typing(evt) || !this.controller?.explainFirst()) ? true : false);
     // Escape closes an open side sheet first, and only then goes back to now.
     this.scope.register([], "Escape", (evt) => {
       if (typing(evt)) return true;
@@ -151,6 +153,9 @@ export class AppView extends FileView {
     menu.addItem((item) => item.setTitle("Activity").setIcon("history").setSection("view").onClick(() => path && openActivity(this.plugin, path)));
     menu.addItem((item) => item.setTitle("As of…").setIcon("clock").setSection("view").onClick(() => new AsOfModal(this.app, (at) => this.showAt(at)).open()));
     if (this.plugin.dataLayer.ledger) menu.addItem((item) => item.setTitle("What if…").setIcon("sparkles").setSection("view").onClick(() => this.showAhead()));
+    menu.addItem((item) => item.setTitle("Explain the first figure").setIcon("equal").setSection("view").onClick(() => {
+      if (!this.controller?.explainFirst()) new Notice("This app shows no figure worked out from rows");
+    }));
     menu.addItem((item) => item.setTitle("Inspect data").setIcon("search-code").setChecked(this.controller?.inspectorShown ?? false).setSection("view").onClick(() => void this.controller?.toggleInspector()));
     menu.addItem((item) => item.setTitle("Reload data").setIcon("refresh-cw").setSection("view").onClick(() => this.controller?.reload()));
     const bg = this.plugin.background;

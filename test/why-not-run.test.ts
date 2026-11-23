@@ -153,7 +153,7 @@ test("a link to a shortcut whose panel has a problem says that problem, not that
   assert.deepEqual(t.notices, [why, why]);
   // A panel in a tab, named by its alias; a note that is one panel.
   assert.equal((await t.bg.runCommand("Apps/Bills.md:pay")).error,
-    "“Bills”'s shortcut “pay” has a problem: field \"amount\" type must be one of text, number, date, time, checkbox, textarea or a list of choices");
+    "“Bills”'s shortcut “pay” has a problem: field \"amount\" type must be one of text, number, date, time, checkbox, textarea, a unit (kg, USD…) or a list of choices");
   assert.equal((await t.bg.runCommand("Apps/Water.md:glass")).error, "“Water”'s shortcut “glass” has a problem: form needs fields");
   // A name no panel gives is still no shortcut.
   assert.equal((await t.bg.runCommand("Apps/Budget.md:save")).error, "Budget has no shortcut “save”");

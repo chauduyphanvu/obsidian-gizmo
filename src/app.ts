@@ -16,11 +16,16 @@ import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./responses.ts";
 import { type Row } from "./data.ts";
 import { stampParts, toTime } from "./time.ts";
-import { WebError, type AppFiles, type DataLayer } from "./datalayer.ts";
+import { DataLayer, WebError, type AppFiles } from "./datalayer.ts";
+import { EXPLAINED, explain, waterfall, type Explanation } from "./explain.ts";
+import type { ExplainSource } from "./explain-view.ts";
+import { panelName, panelsOf, type DefinitionLog } from "./definitions.ts";
+import { editableSource } from "./edit.ts";
+import { knobsOf, solve, withProperty } from "./pull.ts";
 import { reconcileOf, ruleOf } from "./match.ts";
 import { renderReconcile } from "./reconcile-card.ts";
 import { isPlainObject } from "./keys.ts";
-import { kindFiles } from "./sources/kind.ts";
+import { kindFiles, kindOfPanel } from "./sources/kind.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import { typedName, type NoteReader } from "./expand.ts";
@@ -127,6 +132,12 @@ export interface AppEnv {
   preview?: boolean;
   /** Opens the app on copies of its own notes before it's allowed; absent where that can't be offered. */
   tryFirst?(): void;
+  /** Opens the Explain window of a figure (see explain-view.ts); absent where there is no window to open. */
+  explain?(src: ExplainSource): void;
+  /** What each app's panels said when they were opened here before (see definitions.ts). */
+  definitions?: DefinitionLog;
+  /** A device's name, by its id, for saying where a row was written. */
+  deviceName?(id: string): string | undefined;
   /** Whether the person chose to leave the saved rows of a rename as they are (see renameKey); kept across restarts. */
   leftAlone?(key: string): boolean;
   leaveAlone?(key: string): void;
@@ -763,6 +774,8 @@ export class AppController {
     this.links = links;
     this.spec = spec;
     this.dataPath = dataPath;
+    // The app's own note, as it is now: not a block or a lens of it, a try, the past or a what-if.
+    if (spec && !this.hosting && !this.env.preview && this.env.data.at === undefined && !this.env.ahead) void this.env.definitions?.seen(this.appPath, panelsOf(spec.panels));
     const composed = this.composed;
     this.shell.classList.toggle("gz-composed", composed);
     this.shell.classList.toggle("gz-narrow", composed && isNarrow(this.shell.clientWidth));
@@ -1409,6 +1422,7 @@ export class AppController {
         return !m || this.writes.mayChange(m.p);
       },
       setProperty: (field: string, value: unknown) => this.setProperty(id, field, value),
+      ...(this.env.explain && EXPLAINED.includes(this.mounted.get(id)?.p.view ?? "") && { explain: () => this.explainPanel(id) }),
       ...(this.canSayWhy && {
         why: {
           hasData: () => holdsData(this.mounted.get(id)?.raw?.data),
@@ -1423,6 +1437,100 @@ export class AppController {
       // A panel that waits for a pick is shown in the sheet, and keeps its own picks there.
       ...(this.sheet && this.composed && this.placements.get(id)?.slot !== "sheet" && {
         open: (pick: SheetPick | undefined, redrawn?: boolean) => this.openSheet(id, pick, redrawn),
+      }),
+    });
+  }
+
+  // ---- Explain ------------------------------------------------------------------------------
+
+  /** Opens the Explain window of the first figure the app shows, as `=` does; false when it shows none. */
+  explainFirst(): boolean {
+    const m = [...this.mounted.values()].find((x) => !x.idle && x.source && EXPLAINED.includes(x.p.view) && x.p.agg !== "streak");
+    if (!m || !this.env.explain) return false;
+    this.explainPanel(m.id);
+    return true;
+  }
+
+  /**
+   * Opens the Explain window of a panel's figure: its rows as shown, as they were at any past time
+   * (read as As of… reads them), where each came from and, in an app's own tab as it is now, the
+   * rows it may delete and what the figure could be pulled by.
+   */
+  private explainPanel(id: string): void {
+    const m = this.mounted.get(id);
+    if (!m || m.idle || !this.env.explain) return;
+    const env = this.env;
+    if (!env.explain) return;
+    const open = (src: ExplainSource) => env.explain!(src);
+    const opts = (now: Date) => ({ ttlMs: this.spec?.refreshMs ?? CACHE_MS, now });
+    const raw = () => env.data.rawData(m.source, m.p, this.files(), opts(env.now()));
+    // A property Pull just set reads at its new value here, before the app has drawn it again.
+    let read = m.p;
+    const shown = async () => explain(read, await raw(), env.now());
+    const at = async (t: number): Promise<Explanation | undefined> => {
+      const past = new DataLayer(env.data.host, { at: t, like: env.data });
+      try {
+        return explain(read, await past.rawData(m.source, m.p, this.files(), opts(new Date(t))), new Date(t));
+      } finally {
+        past.dispose();
+      }
+    };
+    const saved = editableSource(m.p) === "list";
+    const ref = kindOfPanel(m.p);
+    const dataPath = ref ? kindFiles(ref).dataPath : this.dataPath;
+    const sourceRow = async (rowId: string) => {
+      const data = await raw();
+      return Array.isArray(data) ? (data as Row[]).find((r) => rowIdOf(r) === rowId) : undefined;
+    };
+    // Nothing is changed from the past, a what-if, a try, or a note the app is only shown in.
+    const live = env.data.at === undefined && !env.ahead && !env.preview && !this.hosting;
+    const undoOf = (entry: string | undefined) => (entry && env.undo ? { undo: () => env.undo!(entry) } : {});
+    open({
+      panel: m.p,
+      now: env.now(),
+      past: env.data.at !== undefined,
+      shown,
+      at,
+      since: async (t) => {
+        const [before, after] = await Promise.all([at(t), shown()]);
+        return before && after ? waterfall(before, after) : undefined;
+      },
+      origins: async () => (saved && env.data.ledger ? env.data.ledger.origins(dataPath) : new Map()),
+      keysSince: async (t) => {
+        const index = this.spec?.panels.indexOf(m.ps) ?? -1;
+        return index < 0 || this.hosting || !env.definitions ? [] : env.definitions.since(this.appPath, panelName(m.ps, index), t);
+      },
+      deviceName: (device) => env.deviceName?.(device),
+      ...(live && saved && this.writes.mayChange(m.p) && {
+        remove: async (part) => {
+          const row = part.id === undefined ? undefined : await sourceRow(part.id);
+          const done = row ? await this.writes.deleteRow(m, row, () => void this.loadPanel(m)) : undefined;
+          return done ? { text: "Deleted the row.", ...undoOf(done.entry) } : { text: "The row wasn't deleted." };
+        },
+      }),
+      ...(live && {
+        pull: {
+          knobs: async () => knobsOf(read, await raw(), env.now()).filter((k) => k.kind === "property" || (saved && this.writes.mayChange(m.p))),
+          solve: async (knob, target) => solve(read, await raw(), env.now(), knob, target),
+          keep: async (knob, value) => {
+            if (knob.kind === "property") {
+              const done = await this.writes.pullProperty(m, knob.name, value);
+              if (!done.written) return { text: done.text };
+              read = withProperty(read, knob.name, value);
+              const back = undoOf(done.entry).undo;
+              return {
+                text: done.text,
+                ...(back && { undo: async () => {
+                  const said = await back();
+                  read = withProperty(read, knob.name, knob.value);
+                  return said;
+                } }),
+              };
+            }
+            const done = await this.writes.pullRow(m, knob.row, knob.field, value);
+            return { text: done.text, ...undoOf(done.entry) };
+          },
+        },
       }),
     });
   }

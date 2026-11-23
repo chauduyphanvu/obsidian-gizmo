@@ -112,7 +112,7 @@ test("blocks keep fields, record and into, checked", () => {
   assert.deepEqual(r.errors, [
     "data.a: record must look like 10m, 1h, 1d",
     'data.a: into can\'t use "panels", which names part of the app',
-    'data.a: field "w" type must be one of text, number, date, time, checkbox, textarea or a list of choices',
+    'data.a: field "w" type must be one of text, number, date, time, checkbox, textarea, a unit (kg, USD…) or a list of choices',
     'data.b: "into" needs "record"',
     "data.c: into must name a list, e.g. into: kp_log",
   ]);

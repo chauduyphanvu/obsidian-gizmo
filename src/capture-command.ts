@@ -5,6 +5,7 @@ import { handler } from "./handler.ts";
 import { undoMessage } from "./activity.ts";
 import { copyText } from "./host.ts";
 import { captureLine, completed, parseLine, plannedText, receipt, whenText, type CaptureTarget, type Parsed } from "./capture.ts";
+import { frozen, rowLineText } from "./row-lines.ts";
 import { parseWhatIf, whatIfLine } from "./ahead.ts";
 import { askLine } from "./ask.ts";
 import { AskPane, type AskShown } from "./ask-view.ts";
@@ -342,7 +343,22 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
       : [...Array(editor.lineCount()).keys()].find((i) => captureLine(editor.getLine(i))?.trim() === line);
     if (where === undefined) return;
     const text = editor.getLine(where);
-    editor.replaceRange(receipt(line, app, new Date(), result.entryId), { line: where, ch: 0 }, { line: where, ch: text.length });
+    const id = await this.rowOf(result.entryId);
+    // A line that saved one row stays as that row (see row-lines.ts); any other gets a receipt.
+    const parsed = result.parsed;
+    const written = id !== undefined && parsed.ok
+      ? rowLineText({ indent: /^\s*/.exec(text)![0], live: true, line: frozen(line, parsed.plan ? undefined : parsed.at), id })
+      : receipt(line, app, new Date(), result.entryId);
+    editor.replaceRange(written, { line: where, ch: 0 }, { line: where, ch: text.length });
+    const path = this.plugin.app.workspace.getActiveFile()?.path;
+    if (id !== undefined && path) this.plugin.rowLines?.seen(path, editor.getValue());
+  }
+
+  /** The id of the one row a run saved, from its entry in the activity log; undefined when it saved none, or several. */
+  private async rowOf(entryId: string | undefined): Promise<string | undefined> {
+    const entry = entryId === undefined ? undefined : await this.plugin.activity.get(entryId);
+    const added = entry?.changes.filter((c) => c.kind === "row-added") ?? [];
+    return added.length === 1 && added[0].kind === "row-added" ? added[0].id : undefined;
   }
 }
 

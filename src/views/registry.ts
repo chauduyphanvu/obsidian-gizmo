@@ -118,6 +118,8 @@ export interface PanelCtx {
    * where nothing may be changed: the past, a what-if, a try.
    */
   reconcile?(p: Panel): Promise<({ card?: Reconcile; fields: string[]; waiting?: string } & ReconcileActs) | undefined>;
+  /** Opens the Explain window of this panel's figure: the rows behind it and what moved it. Absent where there is no window to open, and for a view with no one figure. */
+  explain?(): void;
   /** In a try before Allow, where nothing drawn may reach out of Obsidian. */
   preview?: boolean;
   /**

@@ -2,12 +2,14 @@ import { readExpect, type Expectation, areRules } from "./expect.ts";
 import { POLICY_PATH, isPolicyPath } from "./policy.ts";
 import { namesInTemplate, parseDuration, toNumber, type Agg } from "./data.ts";
 import { PERIODS, stampParts, type Per } from "./time.ts";
-import { computeErrors, fieldPaths, formulaReads, rowFormula, rowFormulaErrors } from "./formula.ts";
+import { computeErrors, fieldPaths, formulaReads, formulaUnit, rowFormula, rowFormulaErrors } from "./formula.ts";
+import { unitFormat } from "./units.ts";
 import { fnv1a, stableJson } from "./hash.ts";
 import { rowsAreNotes, sourceDef } from "./sources/registry.ts";
 import { RESERVED, SOURCE_WORDS, appendPath, basename, definitionReason, isApp, isKind, kindName, notePath, runsAsApp, storeTarget } from "./store.ts";
 import { fieldsProblem, kindApp, kindProblem } from "./kind.ts";
 import { readShare, type ShareSpec } from "./share.ts";
+import { readSeal, type SealSpec } from "./seal.ts";
 import { readMatch, type MatchRule } from "./match.ts";
 import { readImports, type ImportMap } from "./import.ts";
 import {
@@ -211,6 +213,8 @@ export interface KindSpec extends KindRef {
   imports: ImportMap[];
   /** Shared with other vaults through a relay (see share.ts): its address and host, and the secret that holds the kind's key. */
   share?: ShareSpec;
+  /** Its event logs are sealed (see seal.ts): on this device alone, or also time-stamped by an authority. */
+  seal?: SealSpec;
 }
 
 /** Where each input starts: its first choice, or today. A search box starts with no value. */
@@ -323,7 +327,14 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   if (secrets) internal.secrets = secrets as string[];
   if (fieldInfo) internal.fieldInfo = fieldInfo as Panel["fieldInfo"];
   if (kind) internal.kind = kind as KindRef;
+  const units = computedUnits(internal.fieldInfo, [
+    ...((upstream ?? []) as Stage[]).map((s, i) => ({ at: `data.${s.block}: `, compute: stages[i].compute })),
+    { at: "", compute: isPlainObject(keys.compute) ? keys.compute as Record<string, string | number> : undefined },
+  ]);
+  if (units.info) internal.fieldInfo = units.info;
   const r = checkPanel(keys, strict, internal);
+  const mixed = r.panel ? mixedUnits(r.panel, stages) : [];
+  if (units.errors.length || mixed.length) return { errors: [...r.errors, ...stageErrors, ...units.errors, ...mixed] };
   // Checking makes `row` text; values that were one whole param keep the param's type.
   if (r.panel?.row && isPlainObject(kept)) {
     const row = r.panel.row;
@@ -332,6 +343,64 @@ function checkTemplate(t: Record<string, unknown>, strict: boolean): { panel?: P
   const settled = r.panel ? settledErrors(r.panel, [...((upstream ?? []) as Stage[]).map((s, i) => ({ at: `data.${s.block}: `, compute: stages[i].compute })), { at: "", compute: r.panel.compute }]) : [];
   const errors = [...r.errors, ...stageErrors, ...settled];
   return !r.panel || stopped ? { errors } : { panel: r.panel, errors };
+}
+
+/**
+ * Units through formulas (see units.ts): each computed column's unit, worked out from the units of
+ * the fields its formula reads, stage by stage in the order the columns are typed, and the formulas
+ * whose units don't go together. A computed column with a unit shows in it, as a field does.
+ */
+function computedUnits(info: Panel["fieldInfo"], stages: { at: string; compute?: Record<string, string | number> }[]): { errors: string[]; info?: Panel["fieldInfo"] } {
+  const units = new Map(Object.entries(info ?? {}).flatMap(([f, i]) => (i.unit === undefined ? [] : [[f, i.unit] as const])));
+  if (!units.size) return { errors: [] };
+  const errors: string[] = [];
+  const out = { ...info };
+  // `settled.amount` is the same field, of the row that settled this one.
+  const unitOf = (path: string) => units.get(path.startsWith("settled.") ? path.slice(8) : path);
+  for (const s of stages) {
+    for (const [name, text] of Object.entries(s.compute ?? {})) {
+      const r = formulaUnit(String(text), unitOf);
+      if ("error" in r) errors.push(`${s.at}compute.${name}: ${r.error}`);
+      else if (r.unit === undefined) units.delete(name);
+      else {
+        units.set(name, r.unit);
+        out[name] = { format: unitFormat(r.unit), ...out[name], unit: r.unit };
+      }
+    }
+  }
+  return { errors, info: out };
+}
+
+const TOTALS = ["sum", "avg", "min", "max"];
+
+/**
+ * A number field whose unit each row says through another field (`unit: {what: {weight: kg, …}}`)
+ * can't be added up, averaged or charted across rows in different units. A panel that does needs
+ * that other field pinned to one value in a `where`, which also gives the figure its unit, or to
+ * group by it. Says each total that would mix units; sets the format of each that is pinned.
+ */
+function mixedUnits(p: Panel, stages: readonly PipelineKeys[]): string[] {
+  const info = p.fieldInfo ?? {};
+  const figure = (p.view === "number" || p.view === "progress") && p.field !== undefined && TOTALS.includes(p.agg ?? "last");
+  const series = p.y === undefined ? [] : [p.y].flat();
+  const read = [...(figure || ((p.view === "number" || p.view === "progress") && p.field !== undefined) ? [p.field!] : []), ...series];
+  const errors: string[] = [];
+  for (const f of new Set(read)) {
+    const by = info[f]?.unitBy;
+    if (!by) continue;
+    const pinned = [...stages, p].map((s) => s.where?.[by.field]).find((v) => typeof v === "string" && Object.hasOwn(by.units, v)) as string | undefined;
+    if (pinned !== undefined) {
+      if (p.format === undefined) p.format = { [f]: unitFormat(by.units[pinned]) };
+      else if (typeof p.format !== "string" && !Object.hasOwn(p.format, f)) p.format = { ...p.format, [f]: unitFormat(by.units[pinned]) };
+      continue;
+    }
+    const mixes = new Set(Object.values(by.units)).size > 1;
+    const totals = series.includes(f) || (figure && p.field === f);
+    if (!mixes || !totals || p.group === by.field) continue;
+    const what = series.includes(f) ? "a chart of" : `the ${p.agg ?? "last"} of`;
+    errors.push(`${what} ${f} would mix ${[...new Set(Object.values(by.units))].join(", ")}: the unit of ${f} depends on ${by.field}; add where: {${by.field}: ${Object.keys(by.units)[0]}}, or group: ${by.field}`);
+  }
+  return errors;
 }
 
 /**
@@ -927,6 +996,7 @@ function readKind(fm: Record<string, unknown>, opts: Parameters<typeof readSpec>
   const match = readMatch(fm.match, fields);
   const imports = readImports(fm.import, fields);
   const share = readShare(fm.share);
+  const seal = readSeal(fm.seal);
   const path = opts?.path ?? "";
   // Its own form adds to the kind's rows as a form of any app that saves to the kind does.
   for (const ps of read.spec.panels) {
@@ -937,8 +1007,8 @@ function readKind(fm: Record<string, unknown>, opts: Parameters<typeof readSpec>
   }
   return {
     ...read,
-    spec: { ...read.spec, kind: { path, name, fields, match: match.rule, imports: imports.maps, ...(share.share && { share: share.share }) } },
-    errors: [...(word ? [word] : []), ...read.errors, ...match.errors, ...imports.errors, ...share.errors],
+    spec: { ...read.spec, kind: { path, name, fields, match: match.rule, imports: imports.maps, ...(share.share && { share: share.share }), ...(seal.seal && { seal: seal.seal }) } },
+    errors: [...(word ? [word] : []), ...read.errors, ...match.errors, ...imports.errors, ...share.errors, ...seal.errors],
   };
 }
 

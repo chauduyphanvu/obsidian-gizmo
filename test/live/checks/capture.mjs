@@ -109,7 +109,7 @@ export default async function capture(t) {
     return completed;
   });
 
-  await check("a ;; line in a note offers to run, runs on Enter, and becomes a receipt whose link opens the change", async () => {
+  await check("a ;; line in a note offers to run, runs on Enter, and stays as the row's own line; editing the line sets the row", async () => {
     await closeAll();
     await run(`
       await na.write("Capture test.md", "Shopping today\\n\\n");
@@ -127,21 +127,51 @@ export default async function capture(t) {
     const r = await run(`
       const text = await na.until(() => {
         const t = na.view().editor.getValue();
-        return t.includes("✓ spend 3 home bus · Spend") ? t : undefined;
+        return t.includes("✓ spend 3 home bus ^gz-") ? t : undefined;
       }, 4000);
-      const id = text?.match(/activity=([^)]+)\\)/)?.[1];
-      ${MODALS}
-      app.workspace.protocolHandler.dispatch({ action: "gizmo", activity: decodeURIComponent(id ?? "") });
-      const modal = await na.until(() => modals().find((m) => m.querySelector(".gz-activity-focus")), 3000);
-      const focused = modal?.querySelector(".gz-activity-focus")?.textContent;
-      modal?.querySelector(".modal-close-button")?.click();
       const saved = await na.until(() => na.fm("Apps/Spend data.md")?.spend?.some((s) => s.note === "bus") && na.fm("Apps/Spend data.md").spend, 3000);
-      return { text, focused, saved };`);
+      // The line is the row now (see row-lines.ts): a new amount typed in it reaches the row once the typing stops.
+      const editor = na.view().editor;
+      editor.replaceRange("7", { line: 2, ch: 8 }, { line: 2, ch: 9 });
+      const edited = await na.until(() => na.fm("Apps/Spend data.md")?.spend?.find((s) => s.note === "bus")?.amount === 7, 6000);
+      return { text, saved, edited, line: editor.getLine(2) };`);
     expect(offered?.includes("Run in Spend: Spent something") && offered.includes("3"), offered);
     const last = r.saved?.at(-1);
     expect(last?.amount === 3 && last.category === "home" && last.note === "bus", r);
-    expect(r.text?.split("\n")[2].startsWith("✓ spend 3 home bus · Spend · ") && r.focused?.includes("Spent something"), r);
-    return r.text.split("\n")[2];
+    expect(/^✓ spend 3 home bus \^gz-[0-9a-f]{16}$/.test(r.text?.split("\n")[2] ?? "") && r.edited && r.line.startsWith("✓ spend 7 home bus ^gz-"), r);
+    return r.line;
+  });
+
+  await check("a line edited before Obsidian has saved it stays as typed, and its row follows it once", async () => {
+    await closeAll();
+    await run(`
+      await na.write("Capture test 3.md", "Shopping\\n\\n");
+      await na.sleep(400);
+      await na.openMd("Capture test 3.md", "source");
+      const editor = na.view().editor;
+      editor.focus();
+      editor.setCursor({ line: 2, ch: 0 });`);
+    // 4.50 is not how a row writes its number, so a line written again from the row would differ from what was typed.
+    await type(";; spend 4.50 home tram stop");
+    await run(`${POP} await na.until(() => pop().find((s) => s.includes("Run in Spend")), 3000);`);
+    await press("Enter");
+    const r = await run(`
+      const editor = na.view().editor;
+      await na.until(() => editor.getLine(2).includes("^gz-"), 4000);
+      await na.sleep(2500);
+      const row = () => na.fm("Apps/Spend data.md")?.spend?.find((s) => String(s.note).includes("tram"));
+      editor.replaceRange("old ", { line: 2, ch: editor.getLine(2).indexOf("tram") });
+      await na.until(() => row()?.note === "old tram stop", 6000);
+      await na.sleep(3000);
+      const seen = { line: editor.getLine(2), note: row()?.note, amount: row()?.amount };
+      // Taken out again, so the checks after this one count the rows they expect.
+      editor.replaceRange("", { line: 2, ch: 0 }, { line: 2, ch: editor.getLine(2).length });
+      await na.until(() => !row(), 6000);
+      await na.sleep(2500);
+      await na.remove("Capture test 3.md");
+      return seen;`);
+    expect(r.line.startsWith("✓ spend 4.50 home old tram stop ^gz-") && r.note === "old tram stop" && r.amount === 4.5, r);
+    return r.line;
   });
 
   await check("a ;; line that doesn't start with a shortcut's name, or sits in a code block, offers nothing and Enter adds a line", async () => {

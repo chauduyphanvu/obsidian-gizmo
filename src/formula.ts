@@ -248,6 +248,59 @@ export function formulaReads(text: string): { fields: string[] | "*"; vars: { na
   }
 }
 
+/**
+ * The unit a formula's result is in, from the units of the fields it reads (`unitOf`), or why its
+ * units don't go together. Adding, subtracting, comparing and choosing between (`min`, `max`,
+ * `if`, `coalesce`) need the same unit on both sides; a plain number goes with any. A unit times or
+ * over a plain number keeps the unit; a unit over a unit, or times another, is a plain number, and
+ * so is a unit times or over a `$name` (a rate turns dollars into something else). Two units of one
+ * measure (kg and lb) still don't add: nothing here converts.
+ */
+export function formulaUnit(text: string, unitOf: (field: string) => string | undefined): { unit?: string } | { error: string } {
+  const WORDS: Record<string, string> = { "+": "add", "-": "subtract", "<": "compare", ">": "compare", "<=": "compare", ">=": "compare", "==": "compare", "!=": "compare" };
+  const agree = (units: (string | undefined)[], doing: string): string | undefined => {
+    const said = [...new Set(units.filter((u): u is string => u !== undefined))];
+    if (said.length > 1) throw new FormulaError(`can't ${doing} ${said[0]} and ${said[1]}`);
+    return said[0];
+  };
+  const readsVar = (n: Node): boolean => n.k === "var" || (n.k === "unary" && readsVar(n.a)) || (n.k === "binary" && (readsVar(n.a) || readsVar(n.b))) || (n.k === "call" && n.args.some(readsVar));
+  const of = (n: Node): string | undefined => {
+    switch (n.k) {
+      case "field": return unitOf(n.path);
+      case "unary": return of(n.a);
+      case "binary": {
+        const [a, b] = [of(n.a), of(n.b)];
+        if (WORDS[n.op]) {
+          const unit = agree([a, b], WORDS[n.op]);
+          return WORDS[n.op] === "compare" ? undefined : unit;
+        }
+        // A `$name` is a number of the note's own, most often a rate: what it turns a unit into, nothing here knows.
+        if ((n.op === "*" || n.op === "/") && (readsVar(n.a) || readsVar(n.b))) return undefined;
+        if (n.op === "*") return a !== undefined && b !== undefined ? undefined : a ?? b;
+        if (n.op === "/" || n.op === "%") return b === undefined ? a : undefined;
+        return undefined;
+      }
+      case "call": {
+        const args = n.args.map(of);
+        if (["round", "floor", "ceil", "abs", "number", "prev"].includes(n.fn)) return args[0];
+        if (["min", "max", "coalesce"].includes(n.fn)) return agree(args, n.fn === "coalesce" ? "choose between" : `take the ${n.fn} of`);
+        if (n.fn === "if") return agree(args.slice(1), "choose between");
+        const named = n.args[0];
+        if (n.fn === "field" && named?.k === "lit" && typeof named.v === "string") return unitOf(named.v);
+        return undefined;
+      }
+      default: return undefined;
+    }
+  };
+  try {
+    const unit = of(parse(tokenize(text)));
+    return unit === undefined ? {} : { unit };
+  } catch (e) {
+    if (e instanceof FormulaError) return { error: e.message };
+    throw e;
+  }
+}
+
 /** The field paths a formula reads as written (`settled.amount`, not `settled`); undefined when it can't be read. */
 export function fieldPaths(text: string): string[] | undefined {
   const walk = (n: Node, out: Set<string>): Set<string> => {

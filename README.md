@@ -155,6 +155,8 @@ Gizmo goes beyond passive trackers when your data connects across apps and time.
   </tr>
 </table>
 
+**Trust the numbers.** Click any figure, or press `=`, to see the exact rows behind it, where each row was written, and what moved it since last week. Type the figure you want and Gizmo solves for the planned amount that gets you there. Fields can carry units (`amount: USD`, `weight: kg`), so `1500 jpy` lands as dollars at the rate you set and a formula that adds dollars to yen is refused. A `;;` line in a daily note stays linked to its row: fix the sentence and the totals follow. **New app from lines…** turns a list you already keep into a kind and an app, and a sealed kind can export a file that proves when each row was written. Refer to [Explain a figure](docs/reference.md#explain-a-figure), [Units](docs/reference.md#units), [Lines are rows](docs/reference.md#lines-are-rows), [New app from lines](docs/reference.md#new-app-from-lines) and [Sealed records](docs/reference.md#sealed-records).
+
 ### One kind, many apps
 
 A **kind** is a note with `kind` and `fields` whose rows belong to your vault, not to a single app. This is the gallery's Spend kind (shortened):
@@ -305,6 +307,7 @@ It makes network requests only in these cases:
 - **A note names a web address**: a `source`, a feed, or a request that sends data. The app fetches only after you select **Allow**, the permission card names each host, and the automation map lists them all. For **image cells**, the URL comes from row data, so the permission card asks to load images from any `https://` site instead of naming individual hosts.
 - **Install an app from a link or text** downloads the app from the URL you provide (for example a GitHub Gist) when you select **Preview**.
 - **A shared kind** sends its rows to the ntfy server in its `share` key and reads the other members' rows from there. It does so only when the note has `share`, its secret holds the key, and you selected **Allow** on the kind note. No gallery note shares anything until you remove the `#` before its `share` line.
+- **A sealed kind with an authority** (`seal: {authority: …}`) sends the 32-byte hash of its event logs to that time-stamp authority, once a day at most and when you ask, after you select **Allow** on the kind note. The hash reveals nothing about the rows. `seal: true` sends nothing.
 
 These gallery apps use public services:
 

@@ -9,7 +9,8 @@ import { basename } from "./store.ts";
  * what it wrote, to be sure nothing has changed it since.
  */
 export type Change =
-  | { kind: "row-added"; path: string; list: string; row: Row; event?: string }
+  /** `id`: the row's id in the ledger, when the store gives one, so a note's line can be paired with it (see row-lines.ts). */
+  | { kind: "row-added"; path: string; list: string; row: Row; event?: string; id?: string }
   /** `row` is the row as the edit left it. */
   | { kind: "row-edited"; path: string; list: string; row: Row; field: string; from: unknown; to: unknown; event?: string }
   /** `row` is the row as it was kept; `index`, its place in a list kept in the note's properties. */

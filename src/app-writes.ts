@@ -9,7 +9,8 @@ import { sourceDef } from "./sources/registry.ts";
 import { kindFiles, kindOfPanel } from "./sources/kind.ts";
 import type { Panel } from "./spec.ts";
 import type { RunResult } from "./views/registry.ts";
-import { frontmatterStore, type DataStore, type Edit } from "./datastore.ts";
+import { frontmatterStore, type DataStore, type Edit, type RowRef } from "./datastore.ts";
+import { asField } from "./units.ts";
 import { leftBehind, type Rename } from "./app-cards.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { NOT_YET } from "./capture.ts";
@@ -42,6 +43,16 @@ function renameDone(r: Rename, n: number): string {
   if (r.kind === "field") return `Moved ${r.from} into ${r.to} in ${rows} of ${r.list}`;
   if (r.kind === "choice") return `Changed ${r.field} ${r.from} to ${r.to} in ${rows} of ${r.list}`;
   return `Moved ${rows} from ${r.from} to ${r.to}`;
+}
+
+/** A solved value as it is said; the note or row keeps it exactly. */
+const pulled = (value: number) => Number(value.toFixed(4));
+
+/** What a row keeps as typed that a new value of `field` makes untrue: that field's own, and that of a field whose unit it gives. */
+function typedAsOf(p: Panel, row: Row, field: string, value: unknown): string[] {
+  if (row[field] === value) return [];
+  const given = Object.entries(p.fieldInfo ?? {}).flatMap(([f, info]) => (info.unitBy?.field === field ? [f] : []));
+  return [field, ...given].map(asField).filter((f) => row[f] !== undefined);
 }
 
 /** A drawn panel, whose checked keys are read as they are when a write needs them. */
@@ -147,13 +158,34 @@ export class AppWrites {
 
   /** Sets one property of an existing note and keeps what it was; false when the note is gone. */
   private async setField(path: string, field: string, value: unknown, what: string): Promise<boolean> {
+    return (await this.writeField(path, field, value, what)).written;
+  }
+
+  /** Sets one property and keeps what it was; says whether the note was there, and the log's entry for Undo. */
+  private async writeField(path: string, field: string, value: unknown, what: string): Promise<{ written: boolean; entry?: string }> {
     let change: Change | undefined;
     const written = await this.env.updateFrontmatter(path, (fm) => {
       change = { kind: "property", path, field, from: fm[field], to: value, had: Object.hasOwn(fm, field) };
       fm[field] = value;
     });
-    if (written && change) void this.log(what, [change]);
-    return written;
+    return { written, entry: written && change ? await this.log(what, [change]) : undefined };
+  }
+
+  /**
+   * Sets a field of a saved row. What the row kept of a value as it was typed (see units.ts) goes in
+   * the same write when the new value makes it untrue. Gives the changes to log, or why it wasn't set.
+   */
+  private async setRowField(p: Panel, store: DataStore, list: string, ref: RowRef, row: Row, field: string, value: unknown): Promise<Change[] | { refused: "changed" | "gone" }> {
+    const made = (f: string, to: unknown, r: Row, event?: string): Change => ({ kind: "row-edited", path: store.dataPath, list, row: r, field: f, from: row[f], to, ...(event && { event }) });
+    const stale = typedAsOf(p, row, field, value);
+    if (!stale.length) {
+      const r = await store.set(list, ref, field, value);
+      return "row" in r ? [made(field, value, r.row, r.event)] : { refused: r.refused };
+    }
+    const edits: Edit[] = [{ op: "set", list, ref, field, value }, ...stale.map((f): Edit => ({ op: "set", list, ref, field: f, value: undefined }))];
+    const done = await store.batch(edits);
+    if ("refused" in done) return done;
+    return [field, ...stale].map((f, i) => made(f, i ? undefined : value, done[i].row, done[i].event));
   }
 
   /**
@@ -216,9 +248,9 @@ export class AppWrites {
         return;
       }
       if (plans && lineOf(row) === "logged") return await this.planRow(m, store, name, row, value, reload);
-      const r = await store.set(name, { id, index: typeof index === "number" ? index : undefined, shown: row }, field, value);
-      if ("row" in r) {
-        void this.log(m.p.title ?? field, [{ kind: "row-edited", path: store.dataPath, list: name, row: r.row, field, from: row[field], to: value, ...(r.event && { event: r.event }) }]);
+      const r = await this.setRowField(m.p, store, name, { id, index: typeof index === "number" ? index : undefined, shown: row }, row, field, value);
+      if (!("refused" in r)) {
+        void this.log(m.p.title ?? field, r);
         return;
       }
       this.env.notify(r.refused === "gone" ? "That row is gone; reload" : "That row has changed; reload");
@@ -228,6 +260,38 @@ export class AppWrites {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
       // A what-if refuses to change a real row: the input shows the row as it is again.
       if (this.env.ahead) reload();
+    }
+  }
+
+  /**
+   * Pull the answer, kept: sets a number field of a planned or what-if row a panel reads to the value
+   * solved for, as one change in the activity; gives what to say and the log's entry, for Undo. The
+   * panel needn't be one that edits its rows, but the app must be allowed to change them, as for
+   * any other write.
+   */
+  async pullRow(m: Drawn, row: Row, field: string, value: number): Promise<{ text: string; entry?: string }> {
+    const id = rowIdOf(row);
+    if (id === undefined || editableSource(m.p) !== "list") return { text: "Not kept: that row isn't a saved row" };
+    if (!this.mayChange(m.p)) return { text: `Not kept: this app reads the rows of ${basename(kindOfPanel(m.p)!.path)}, and doesn't change them` };
+    const theirs = this.theirs(m.p, row);
+    if (theirs) return { text: `Not kept: ${theirs}` };
+    try {
+      const { store, name } = this.listOf(m.p);
+      const r = await this.setRowField(m.p, store, name, { id, shown: row }, row, field, value);
+      if ("refused" in r) return { text: r.refused === "gone" ? "Not kept: that row is gone" : "Not kept: that row has changed" };
+      return { text: `Set ${field} to ${pulled(value)}`, entry: await this.log(`Pulled ${m.p.title ?? field}`, r) };
+    } catch (e) {
+      return { text: `Not kept: ${(e as Error).message}` };
+    }
+  }
+
+  /** Pull the answer, kept: sets a number property of the note the app sits in, which its formulas read as `$this.<name>`. */
+  async pullProperty(m: Drawn, name: string, value: number): Promise<{ text: string; written: boolean; entry?: string }> {
+    try {
+      const { written, entry } = await this.writeField(this.site.hostPath, name, value, `Pulled ${m.p.title ?? name}`);
+      return written ? { text: `Set ${name} to ${pulled(value)}`, written, entry } : { text: `Not kept: ${GONE}`, written };
+    } catch (e) {
+      return { text: `Not kept: ${(e as Error).message}`, written: false };
     }
   }
 

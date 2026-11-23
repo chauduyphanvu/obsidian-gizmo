@@ -91,7 +91,7 @@ export function whereYouAre(beats: readonly Beat[]): string | undefined {
  * The folders in the plugin's folder where each device keeps a file of its own, which a sync never has
  * to merge: its beat, what its alerts ran for, and its activity log. It reads the other devices' files.
  */
-export const DEVICE_FOLDERS = { beats: "devices", triggers: "triggers", activity: "activity", share: "share" } as const;
+export const DEVICE_FOLDERS = { beats: "devices", triggers: "triggers", activity: "activity", share: "share", definitions: "definitions" } as const;
 
 /** A device's own file in one of DEVICE_FOLDERS. */
 export function deviceFile(folder: string, id: string): string {

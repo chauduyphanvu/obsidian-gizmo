@@ -96,13 +96,13 @@ test("a field map's problems are named, and say what to type instead", () => {
     panels: [{ view: "table", source: "d" }],
   });
   assert.deepEqual(r.errors, [
-    'data.d: field "a" has no key "lable" (it takes type, label, format, default)',
+    'data.d: field "a" has no key "lable" (it takes type, label, format, default, unit, rates)',
     'data.d: field "b" default must be one of its choices: x, y',
     'data.d: field "c" default must be today or a date, e.g. 2026-01-31',
     'data.d: field "d": format "dollars" isn\'t a number pattern or one of date, time, datetime, relative, until, duration, bytes',
     'data.d: field "e" default must be a number',
     'data.d: field "g" label must be text',
-    'data.d: field "f" type must be one of text, number, date, time, checkbox, textarea or a list of choices',
+    'data.d: field "f" type must be one of text, number, date, time, checkbox, textarea, a unit (kg, USD…) or a list of choices',
     "data.e: fields must be a set of name: type, e.g. fields: {status: [open, done]}",
   ]);
 });

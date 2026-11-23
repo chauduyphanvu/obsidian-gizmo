@@ -150,6 +150,26 @@ function drawChangeLine(el: HTMLElement, change: Change, cls: string): void {
   line.setAttr("aria-label", change.spoken);
 }
 
+/**
+ * Makes a figure open its Explain window (the rows behind it, what moved it, what it could be pulled
+ * by): a click, or Enter, Space or `=` with the focus on it. Nothing where there is no window to open.
+ */
+function explainable(fig: HTMLElement, p: Panel, ctx: PanelCtx): void {
+  if (!ctx.explain || p.agg === "streak") return;
+  fig.addClass("gz-explainable");
+  fig.setAttr("role", "button");
+  // Not a Tab stop: an app keeps one per panel that takes input, and `=` reaches the first figure from the keyboard.
+  fig.setAttr("tabindex", "-1");
+  fig.setAttr("aria-haspopup", "dialog");
+  fig.setAttr("title", "Where this figure comes from (=)");
+  fig.addEventListener("click", () => ctx.explain!());
+  fig.addEventListener("keydown", (e) => {
+    if (e.key !== "Enter" && e.key !== " " && e.key !== "=") return;
+    e.preventDefault();
+    ctx.explain!();
+  });
+}
+
 /** The title in the answer band: a small eyebrow over the headline, or a fact's name. */
 function answerTitle(el: HTMLElement, p: Panel, slot: AnswerSlot): void {
   if (p.title) el.createDiv({ cls: `gz-title ${slot === "headline" ? "gz-eyebrow" : "gz-fact-title"}`, text: p.title });
@@ -222,6 +242,7 @@ function drawNumber(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot, 
   if (change) drawChangeLine(el, change, fact ? "gz-fact-note" : "gz-ans-sub");
   else if (note && !fact) noteLine = el.createDiv({ cls: "gz-label gz-ans-label", text: note });
   if (note || text === "—") whyEmpty(el, p, ctx, noteLine);
+  if (fig.parentElement) explainable(fig.parentElement, p, ctx);
   const alert = alertOn(p, value, current, now);
   if (alert) drawStatus(el, sentence(alert));
   count.to(el, countable(p, value), (n) => fig.setText(display(p, p.field, n, now)), wholeSteps(p));
@@ -266,6 +287,7 @@ function drawProgress(el: HTMLElement, p: Panel, ctx: PanelCtx, slot: AnswerSlot
     answerTitle(el, p, slot);
     const note = emptyNote(p, data, now);
     fig = drawFigure(el, slot, text, `/ ${of}`, slot === "fact" ? note ?? p.label : p.label);
+    if (fig.parentElement) explainable(fig.parentElement, p, ctx);
     if (note) whyEmpty(el, p, ctx, slot === "headline" ? el.createDiv({ cls: "gz-label gz-ans-label", text: note }) : el.lastElementChild as HTMLElement);
   }
   const fieldFormat = p.field === undefined ? undefined : p.fieldInfo?.[p.field]?.format;
@@ -381,6 +403,7 @@ export const number: ViewDef = {
     const row = el.createDiv({ cls: "gz-big" });
     row.createSpan({ text });
     if (unit) row.createSpan({ cls: "gz-unit", text: unit });
+    explainable(row, p, ctx);
     // The label says what the value is, so it sits under it; the change comes after, or an empty window's note instead.
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });
     const note = emptyNote(p, current, ctx.now);
@@ -441,6 +464,7 @@ export const progress: ViewDef = {
     const big = el.createDiv({ cls: "gz-big" });
     big.createSpan({ text });
     big.createSpan({ cls: "gz-unit", text: `/ ${display(p, p.field, max, ctx.now)}${unit ? ` ${unit}` : ""}` });
+    explainable(big, p, ctx);
     const bar = el.createDiv({ cls: "gz-progress" }).createDiv({ cls: "gz-progress-fill" });
     bar.style.width = `${Math.max(0, Math.min(100, ((value as number) / max) * 100))}%`;
     if (p.label) el.createDiv({ cls: "gz-label", text: p.label });

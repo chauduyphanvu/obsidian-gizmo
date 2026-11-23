@@ -1,6 +1,7 @@
 import { textOf } from "../text.ts";
 import { handler } from "../handler.ts";
-import { parseFields, whenText, type FieldValues } from "../capture.ts";
+import { parseFields, unitsOf, whenText, type FieldValues } from "../capture.ts";
+import { asField } from "../units.ts";
 import type { Row } from "../data.ts";
 import { display, formatFor, labelOf } from "../format.ts";
 import { isPlainObject, startOf } from "../keys.ts";
@@ -464,7 +465,7 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
 
   const read = () => {
     const now = clock();
-    const r: FieldValues = parseFields(input.value, fields, now, { name: verb, loose: true, ahead });
+    const r: FieldValues = parseFields(input.value, fields, now, { name: verb, loose: true, ahead, units: unitsOf(p.fieldInfo, fields), picked: picks });
     const values = new Map<string, Value>(fields.map((field) => {
       const [name] = field;
       const picked = picks.get(name);
@@ -555,6 +556,11 @@ export function addLine(el: HTMLElement, p: Panel, ctx: PanelCtx, other?: () => 
     const state = read();
     if (!state.savable) return;
     const row: Row = Object.fromEntries(fields.map(([name, type]) => [name, typed(type, state.values.get(name)!.value)]));
+    // A value typed in another unit keeps what it was typed as, unless a chip or a guess replaced it.
+    for (const [name] of fields) {
+      const as = state.r.params[asField(name)];
+      if (as !== undefined && state.values.get(name)!.how === "typed") row[asField(name)] = as;
+    }
     const { at, plan } = state.r;
     saving = true;
     render();

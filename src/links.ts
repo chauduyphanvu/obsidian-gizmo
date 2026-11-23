@@ -3,6 +3,7 @@ import { stampParts } from "./time.ts";
 import { startOf } from "./keys.ts";
 import type { Panel } from "./spec.ts";
 import { basename } from "./store.ts";
+import { asField } from "./units.ts";
 
 /** A shortcut as a link from outside Obsidian (a phone's shortcut, a tag, a bookmark) runs it. */
 export interface ShortcutLink {
@@ -162,6 +163,8 @@ export function formRow(fields: Record<string, string | string[]>, info: Panel["
     const value = typedValue(type, params[name]);
     if (value === undefined) return { error: `${name} ${expectedOf(type)}` };
     row[name] = value;
+    // What a value typed in another unit was, with the rate it was converted at (see units.ts).
+    if ((info?.[name]?.unit !== undefined || info?.[name]?.unitBy) && typeof params[asField(name)] === "string") row[asField(name)] = params[asField(name)];
   }
   return { row };
 }

@@ -83,6 +83,49 @@ test("a device opening an app cold reads only the logs with events from the last
   assert.deepEqual(seen(st), await truth(v, a.clock.now, { kp: 10_080 }));
 });
 
+/** Hours in August's log and September's, with what a row of August's says, so a checkpoint holds August. */
+async function twoMonths(v: ReturnType<typeof vault>) {
+  const a = device(v, "a");
+  await a.ledger.write(DATA, [{ op: "add", l: "hours", row: "old", v: { worked: 8 } }]);
+  a.clock.now = T0 + 40 * DAY;
+  await a.ledger.write(DATA, [{ op: "add", l: "hours", row: "new", v: { worked: 5 } }]);
+  const august = [...v.files.keys()].find((p) => p.endsWith("2026-08.jsonl"))!;
+  const say = (from: number, to: number) => v.files.set(august, v.files.get(august)!.replace(`"worked":${from}`, `"worked":${to}`));
+  return { a, august, say };
+}
+
+const workedOf = (st: LedgerState) => st.lists.get("hours")!.rows.find((r) => rowIdOf(r) === "old")?.worked;
+
+test("a sealed note shows what its logs say, not a checkpoint that read them when they said otherwise", async () => {
+  const v = vault();
+  const { a, august, say } = await twoMonths(v);
+  say(8, 9);
+  a.ledger.fileChanged(august);
+  await a.ledger.snapshot(DATA, {}, v.writeNote);
+  assert.equal(checkpoints(v).length, 1);
+  say(9, 8);
+  v.files.set(`${logFolder(DATA)}/a.seals`, "{}\n");
+  const b = device(v, "b", { now: a.clock.now });
+  assert.equal(workedOf(await b.ledger.state(DATA)), 8);
+});
+
+test("once a note is sealed, a device already running reads its settled logs again, sees a change of the same length, and writes no more checkpoints", async () => {
+  const v = vault();
+  const { a, august, say } = await twoMonths(v);
+  await a.ledger.snapshot(DATA, {}, v.writeNote);
+  const [cp] = checkpoints(v);
+  const held = v.files.get(cp);
+  v.files.set(`${logFolder(DATA)}/a.seals`, "{}\n");
+  assert.equal(workedOf(await a.ledger.state(DATA)), 8);
+  say(8, 9);
+  a.ledger.fileChanged(august);
+  assert.equal(workedOf(await a.ledger.state(DATA)), 9);
+  a.clock.now += 3 * DAY;
+  await a.ledger.write(DATA, [{ op: "add", l: "hours", row: "later", v: { worked: 2 } }]);
+  await a.ledger.snapshot(DATA, {}, v.writeNote);
+  assert.equal(v.files.get(cp), held);
+});
+
 test("the data note keeps a recorded list's newest 500 rows, with their ids; the checkpoint keeps what the note used to", async () => {
   const v = vault();
   const a = device(v, "a");

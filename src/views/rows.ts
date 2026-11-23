@@ -176,9 +176,13 @@ function whenText(start: number, per: Ledger["per"], now: Date): string {
 function totalText(p: Panel, column: string, rows: Row[], now: Date, kinds: readonly string[] = []): string {
   const nums = rows.map((r) => toNumber(getPath(r, column))).filter((n): n is number => n !== undefined);
   if (nums.length === 0) return "";
+  const differs = (k: string) => new Set(rows.map((r) => JSON.stringify(getPath(r, k) ?? null))).size > 1;
+  // Rows in different units have no total, whether or not the field that gives their unit is shown.
+  const unitBy = p.fieldInfo?.[column]?.unitBy?.field;
+  if (unitBy !== undefined && differs(unitBy)) return "";
   const sum = nums.reduce((a, b) => a + b, 0);
   if (/[$€£¥]/.test(formatFor(p, column) ?? "")) return display(p, column, sum, now);
-  if (kinds.some((k) => new Set(rows.map((r) => JSON.stringify(getPath(r, k) ?? null))).size > 1)) return "";
+  if (kinds.some(differs)) return "";
   const mean = sum / nums.length;
   const wholes = nums.every(Number.isInteger) && Number.isInteger(Math.round(mean * 10) / 10);
   return `avg ${display({ ...p, decimals: p.decimals ?? (wholes ? 0 : 1) }, column, mean, now)}`;

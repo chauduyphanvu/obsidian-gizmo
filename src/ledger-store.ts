@@ -3,6 +3,7 @@ import { DEFINITION_KEYS, KIND_KEYS, kindName } from "./store.ts";
 import { areRules } from "./expect.ts";
 import { ROW_FIELDS, lineOf } from "./kind.ts";
 import { ROW_INDEX } from "./sources/list.ts";
+import { isSealsFile } from "./seal.ts";
 import type { Row } from "./data.ts";
 import { toTime } from "./time.ts";
 import {
@@ -213,6 +214,13 @@ interface NoteLog {
   out: Map<string, Row>;
 }
 
+/** Where a saved row came from: when its add was written (ms), on which device, and how many sets of its fields followed. */
+export interface RowOrigin {
+  at: number;
+  device: string;
+  sets: number;
+}
+
 /** A data note's lists as the ledger folds them, and whether its note was edited by hand since the last snapshot. */
 export interface LedgerState {
   lists: Map<string, { rows: Row[]; conflicts: Conflict[] }>;
@@ -263,6 +271,11 @@ export class Ledger {
     this.now = now;
     this.until = until;
     this.branch = branch;
+  }
+
+  /** Seals vouch for the logs and nothing else, so a sealed note is folded from them, never from a checkpoint. */
+  private sealed(dataPath: string): boolean {
+    return this.io.filesIn(logFolder(dataPath)).some(isSealsFile);
   }
 
   /** This ledger's branch file beside a data note's logs; undefined for a ledger that has none. */
@@ -441,6 +454,24 @@ export class Ledger {
   }
 
   /**
+   * Where each row of a data note's lists came from, by row id: when the event that added it was
+   * written (ms) and by which device, and how many times a field of it was set since. A row from
+   * before the log (a note's own list) has no origin.
+   */
+  async origins(dataPath: string): Promise<Map<string, RowOrigin>> {
+    const n = await this.refresh(dataPath, true);
+    const out = new Map<string, RowOrigin>();
+    for (const e of this.events(n).sort(compareEvents)) {
+      if (e.op === "add" && !out.has(e.row)) out.set(e.row, { at: wallOf(e), device: e.d, sets: 0 });
+      else if (e.op === "set") {
+        const o = out.get(e.row);
+        if (o) o.sets++;
+      }
+    }
+    return out;
+  }
+
+  /**
    * `appFm` and `devices` are the app note and old device notes; a reader that leaves them out (the
    * activity list, a store that doesn't know the device notes) gets the last ones given, so readers
    * don't fold the note again for each other.
@@ -457,7 +488,8 @@ export class Ledger {
     const handEdited = marked && note.hash !== fm?.[HASH_KEY];
     const live = this.until === undefined;
     // Once a note has a snapshot, folds start from base.json or a checkpoint, not the note: a new snapshot needn't fold again.
-    const from = `${this.until ?? ""}\n${marked ? "marked" : `${note.id}\n${devices.map(listsHash).join(",")}`}\n${listsHash(appLists(appFm))}\n${stableJson(n.caps)}`;
+    const sealed = this.sealed(dataPath);
+    const from = `${this.until ?? ""}\n${sealed ? "sealed\n" : ""}${marked ? "marked" : `${note.id}\n${devices.map(listsHash).join(",")}`}\n${listsHash(appLists(appFm))}\n${stableJson(n.caps)}`;
     if (n.foldedFrom !== from) n.reset = true;
     if (n.noteId !== note.id) {
       n.noteId = note.id;
@@ -481,7 +513,7 @@ export class Ledger {
     }
     if (n.reset || !n.folder) {
       n.foldedFrom = from;
-      n.folder = marked && live ? await this.foldMarked(dataPath, n, appFm) : undefined;
+      n.folder = marked && live && !sealed ? await this.foldMarked(dataPath, n, appFm) : undefined;
       if (!n.folder) {
         n.checkpoint = undefined;
         await this.refresh(dataPath, true);
@@ -603,6 +635,7 @@ export class Ledger {
    * day; then the settled logs are let go of, and read again only when they change.
    */
   private async checkpoint(dataPath: string, appFm: Record<string, unknown>): Promise<void> {
+    if (this.sealed(dataPath)) return;
     const n = this.log(dataPath);
     const newest = this.events(n).reduce((m, e) => Math.max(m, wallOf(e)), 0);
     if (!newest) return;

@@ -143,7 +143,7 @@ async function saveToKind(target: { name: string; at: string }, saved: Row, deps
   const added = await store.add(target.name, row, deps.rowId ? { id: deps.rowId } : undefined);
   // Another runner already saved this very row: nothing was written here.
   if (added.already) return;
-  changes.push({ kind: "row-added", path: store.dataPath, list: target.name, row, ...(added.event && { event: added.event }) });
+  changes.push({ kind: "row-added", path: store.dataPath, list: target.name, row, ...(added.event && { event: added.event }), ...(added.id !== undefined && { id: added.id }) });
   const rule = row.line === undefined && added.id !== undefined ? ruleOf(deps.frontmatter?.(target.at)) : {};
   if (!hasRule(rule)) return;
   const plan = settledBy(row, await store.rows(target.name), rule);
@@ -391,9 +391,9 @@ export async function runActions(p: Panel, input: Row, deps: ActionDeps): Promis
     } else if (target?.kind === "list") {
       doing = "save the row";
       const store = storeFor(deps, target);
-      const { event, already } = await store.add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
+      const { event, already, id } = await store.add(target.name, saved, deps.rowId ? { id: deps.rowId } : undefined);
       // Another runner already saved this very row: nothing was written here.
-      if (!already) changes.push({ kind: "row-added", path: store.dataPath, list: target.name, row: saved, ...(event && { event }) });
+      if (!already) changes.push({ kind: "row-added", path: store.dataPath, list: target.name, row: saved, ...(event && { event }), ...(id !== undefined && { id }) });
     } else if (target?.kind === "folder") {
       doing = "create the note";
       const made = await saveNote(p, target.folder, saved, ctx, deps, changes);

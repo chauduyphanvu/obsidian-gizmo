@@ -15,6 +15,7 @@ This page gives the technical details of Gizmo. All keys are YAML in the propert
 - [Components, kits and lenses](#components-kits-and-lenses)
 - [Kinds](#kinds)
 - [Shared kinds](#shared-kinds)
+- [Sealed records](#sealed-records)
 - [Embeds](#embeds)
 - [Gizmo views in Bases](#gizmo-views-in-bases)
 - [Background work](#background-work)
@@ -22,12 +23,14 @@ This page gives the technical details of Gizmo. All keys are YAML in the propert
 - [Shortcuts and links](#shortcuts-and-links)
 - [The capture line](#the-capture-line)
 - [The ask line](#the-ask-line)
+- [New app from lines](#new-app-from-lines)
 - [Next](#next)
 - [Apps that start apps](#apps-that-start-apps)
 - [Permissions](#permissions)
 - [Data policy](#data-policy)
 - [The automation map](#the-automation-map)
 - [Activity, history and replay](#activity-history-and-replay)
+- [Explain a figure](#explain-a-figure)
 - [What if](#what-if)
 - [Share and install](#share-and-install)
 - [Devices and sync](#devices-and-sync)
@@ -244,7 +247,7 @@ Gizmo writes the time into the `at` field of each saved row. Dates in `where` ca
 
 Formulas use a fixed list of functions, for example `if`, `round` and `prev`. They have no variables and no loops.
 
-To change how Gizmo shows values, use `unit`, `decimals`, `format`, `labels` and `values`. A format can be a pattern, for example `"$0,0.00"`, or a word: `date`, `time` or `relative`. A `number` can have `compare: previous`. A chart can have `goal`, and a bar chart can have `stack: true`.
+A field with a [unit](#units) shows in that unit without more keys. To change how Gizmo shows other values, use `unit`, `decimals`, `format`, `labels` and `values`. A format can be a pattern, for example `"$0,0.00"`, or a word: `date`, `time` or `relative`. A `number` can have `compare: previous`. A chart can have `goal`, and a bar chart can have `stack: true`.
 
 `compare: previous` needs a date window in `where`, for example `{at: this month}`. Gizmo compares a window that still runs with the same part of the window before. On Nov 20, `this month` is compared with Oct 1 to 20, and not with all of October. A month steps back by calendar months. If the month before is shorter, Gizmo stops at its last day. A window that looks ahead, for example `next 7 days`, is compared whole.
 
@@ -260,7 +263,51 @@ fields:
   due: {type: date, default: today}
 ```
 
-A field type can be `text`, `number`, `date`, `checkbox` or a list of choices. A field can also have a `label`, a `format` and a `default`. A form that takes its fields from a kind can name them in its own words with `labels`, for example `labels: {amount: Amount, note: Bill}`. These names win over the labels of the kind, in the form and in the preview of its line. Put `fields` in a `data` block, and all panels that use the block use the same fields. A table with `edit: true` then lets you edit those fields in its cells.
+A field type can be `text`, `number`, `date`, `checkbox`, a [unit](#units) such as `USD` or `kg`, or a list of choices. A field can also have a `label`, a `format` and a `default`. A form that takes its fields from a kind can name them in its own words with `labels`, for example `labels: {amount: Amount, note: Bill}`. These names win over the labels of the kind, in the form and in the preview of its line. Put `fields` in a `data` block, and all panels that use the block use the same fields. A table with `edit: true` then lets you edit those fields in its cells.
+
+### Units
+
+A number field can say what it measures. Write the unit as the type of the field:
+
+```yaml
+fields:
+  amount: USD
+  weight: kg
+  steps: {type: number, unit: steps}
+```
+
+- Gizmo knows the money codes (`USD`, `EUR`, `JPY` and the others of ISO 4217) and these measures: `kg`, `g`, `mg`, `mcg`, `lb`, `oz`, `km`, `m`, `cm`, `mm`, `mi`, `ft`, `in`, `l`, `ml`, `floz`, `cup`, `h`, `min`, `s`, `mmHg`, `kPa`, `kcal`, `kJ` and `bpm`. For a different unit, write `{type: number, unit: <word>}`.
+- The field shows in its unit, in each panel, with no `format`: `$1,284.50`, `¥1,500`, `81.2 kg`. A `format` on the field or on the panel has priority.
+- You can type a value in a different unit of the same measure. `180 lb` or `180lb` in a `kg` field saves 81.647. The row also keeps what you typed, in `<field>_as`, for example `weight_as: 180 lb`. When you change the number later, in a table, in its line or with **Keep**, Gizmo takes `<field>_as` out, because it no longer says what the row holds.
+- A number without a unit is in the unit of the field, as before.
+- In a sentence, `in` is a word: `move 5 in the park` saves 5 in the unit of the field. For inches, write `5in`, or end the line with `5 in`.
+- Some money codes are also words, for example `TRY` and `PEN`. `spend 12 pen` is refused until the field has a rate for `PEN`. To keep it as a word, put the words in quotes: `spend 12 food "pen refills"`.
+
+**Money in a different currency.** Give the field the rates:
+
+```yaml
+fields:
+  amount: {type: USD, rates: {JPY: 150.2, EUR: 0.92}}
+```
+
+A rate is the quantity of that currency for one of the currency of the field. `spend 1500 jpy food ramen` then saves `amount: 9.99` and `amount_as: 1500 JPY @150.2`. The row keeps the rate that you had on that day, so the amount does not change when you change the rate later. Gizmo does not download rates. Without a rate for a currency, Gizmo does not save the row, and it tells you which rate is missing.
+
+**Formulas.** Gizmo checks the units in each `compute` formula with the app:
+
+- You can add, subtract or compare only two values with the same unit. `amount + local` with dollars and yen is an error: `compute.total: can't add USD and JPY`. The panel does not show.
+- A unit multiplied or divided by a number without a unit keeps the unit: `shares * price` is in the unit of `price`, and the column shows in that unit.
+- A unit divided by a unit is a number without a unit. A unit multiplied or divided by a `$name`, for example `amount * $this.rate`, is also a number without a unit, because a rate changes the unit. Give the column a `format` to show it.
+- `kg` and `lb` are different units for a formula. Gizmo does not convert in formulas.
+
+**A unit for each row.** Some kinds keep different measures in one field. Give the field that makes the difference, with the unit for each of its values:
+
+```yaml
+fields:
+  what: [weight, systolic, sleep]
+  value: {type: number, unit: {what: {weight: kg, systolic: mmHg, sleep: h}}}
+```
+
+A `number`, a `progress` or a chart cannot then add up or average `value` for rows with different units. Gizmo gives an error at the panel: "the avg of value would mix kg, mmHg, h". Add `where: {what: weight}`, and the figure shows in `kg`. A panel with `group: what` is permitted, and a table shows each row as it is. A value that you type with a unit is converted to the unit of its row: `measure weight 180 lb` saves 81.647. Gizmo refuses a unit that measures a different thing, for example `measure systolic 180 lb`.
 
 ### The add line
 
@@ -378,6 +425,7 @@ fields:
 | `match` | How a row from a file, or a planned row, pairs with a row that you logged. Refer to [Match and reconcile](#match-and-reconcile). |
 | `expect` | Rules for the rows. Refer to [Expectations](#expectations). |
 | `share` | Shares the rows with other vaults through an ntfy server. Refer to [Shared kinds](#shared-kinds). |
+| `seal` | Seals the event logs of the rows, so that a later change shows. Refer to [Sealed records](#sealed-records). |
 
 An app reads the rows with a link in `source`, and adds a row with a link in `save`:
 
@@ -576,6 +624,43 @@ The kind note asks for permission before anything is sent: "Share the rows of Ch
 - **Remove** is for one key, in your vault: the signing key of a person or a guest page. Nothing more under that key comes in. It does not take back what they already read. A person whom you removed still has the kind's key, so they can still read every row that the members send, and make a new signing key: rows under it come in as a new person's and wait in **Next**, in every vault, until someone accepts or refuses them. A guest's key never could read the rows. To shut a person out, start over with a new key.
 - **To start over with a new key**, for example after someone leaves, give the kind note a new secret id in `key`, run **Invite to a kind** to make a new key, and invite the people again. Rows sealed with the old key do not open with the new one. The rows already in your vault stay.
 
+## Sealed records
+
+A sealed kind can show that its rows were not written later than they say, and that they did not change afterwards. Use it for a record that a different person must trust: a medication log for a doctor, a log of repairs, a log of hours.
+
+```yaml
+kind: dose
+fields:
+  what: [morning, evening]
+seal: {authority: https://freetsa.org/tsr}
+```
+
+| Value | What it does |
+| --- | --- |
+| `seal: true` | Seals the event logs of the kind on this device. Gizmo sends nothing. The times in the seals are the times of this device. |
+| `seal: {authority: <https address>}` | Also asks a time-stamp authority (RFC 3161) to sign the hash of each seal with its time. The kind then asks for permission to send that hash. |
+
+**What a seal is.** Gizmo keeps each change to a row as one line in an event log. A seal is the SHA-256 hash of the lines that each log file has at that time, and the hash of the seal before it. If a line changes later, or goes, the hashes no longer agree. Each device keeps its seals in a file of its own, `<device>.seals`, beside the logs. A sealed kind always reads its rows from these logs and does not use a checkpoint, so what it shows is what the seals check. A very long sealed log can take longer to open.
+
+**What the authority gets.** Gizmo sends only the hash of the seal: 32 bytes. The authority cannot find the rows, the name of the kind or your name from the hash. It sends back the hash with its time and its signature, and Gizmo keeps that answer with the seal. If the authority does not answer, Gizmo keeps the seal without a time stamp and tells you. The next seal asks again.
+
+| Command | What it does |
+| --- | --- |
+| Seal this kind's rows now | Makes a seal of the lines that are not sealed yet. |
+| Check this kind's seals | Makes the hashes again and compares them with each seal. It tells you how many seals hold, or the first problem. |
+| Make a sealed extract | Seals the lines that are not sealed yet, then makes one HTML file beside the kind note. |
+
+The device that does background work also seals each sealed kind one time each day, when the kind has permission and has new lines.
+
+**The sealed extract** is one file with the logged rows, the event logs and the seals. It loads nothing and sends nothing. In a browser, it does these checks by itself:
+
+- Each log still starts with the lines that each seal hashed, and each seal follows the seal before it.
+- Each row in the table is the row that the logs give: the event that added it, and each change after that.
+- Each row shows when it was written, how many times it changed, and the time of the first seal that has all its lines. The time is that of the authority when the seal has a time stamp.
+- A row that was written more than one day after the time that it gives is marked "written later than the time it gives". You can still log a row for a past time. The extract shows the two times.
+
+**The limits.** A seal shows when a line was written and that it is the same now. It cannot show that the line is true. The extract reads the time and the hash from the answer of the authority, but it does not check the signature of the authority. The answer is in the file, and `openssl ts -verify` checks it against the certificate of the authority. With `seal: true`, a person who can change the clock of the device and write the files again can make new seals. Only the time stamp of an authority prevents that. gizmod does not make seals.
+
 ## Embeds
 
 A `gizmo` code block puts panels into the text of a note. It can show panels of an app by their titles:
@@ -661,13 +746,37 @@ meds
 task call the bank
 ```
 
-Dates can be words: `today`, `yday`, `fri` or `last mon`. End a line with `@` and a time to save the row for that time, for example `weight 81.2 @yday`, as on the [add line](#the-add-line). On a kind, a time that has not come yet plans a row. Refer to [Planned rows](#planned-rows). A line that starts with `what if` saves a what-if row. Refer to [What if](#what-if). For this reason, a shortcut or an alias cannot be `what`, and an alias cannot start with `what if`. Before you push Enter, Gizmo shows what the line will do. A line that starts with `;;` in a note does the same, and Gizmo writes a receipt in its place. **Gizmo: Copy capture link** gives the same line to a phone shortcut or a launcher.
+Dates can be words: `today`, `yday`, `fri` or `last mon`. End a line with `@` and a time to save the row for that time, for example `weight 81.2 @yday`, as on the [add line](#the-add-line). On a kind, a time that has not come yet plans a row. Refer to [Planned rows](#planned-rows). A line that starts with `what if` saves a what-if row. Refer to [What if](#what-if). For this reason, a shortcut or an alias cannot be `what`, and an alias cannot start with `what if`. Before you push Enter, Gizmo shows what the line will do. A line that starts with `;;` in a note does the same. Refer to [Lines are rows](#lines-are-rows). **Gizmo: Copy capture link** gives the same line to a phone shortcut or a launcher.
 
 A text field takes one word. It takes the rest of the line when it is the last field, or when the next word cannot be the value of the next field. For the Spend kind, `spend 14.5 food lunch with friends` saves the note `lunch with friends`, because `with` is not a number for `local`. `spend 12 travel taxi 1800` saves the note `taxi` and `local` 1800. After a note that took the rest of the line, give the other fields by name, for example `trip=Tokyo`. Quotes keep a value whole in all cases: `spend 14.5 food "lunch with friends" 12`. A text field does not take the rest of the line when a word after it looks meant for a later field: a choice, or a word one letter from a choice, or a number with a letter in it. So `chore dishes Sma kitchen` says that `who` must be Alex or Sam, and does not save the task `dishes Sma kitchen`. A capture link with its key, and `/do` of gizmod, run without a preview, so they refuse a line whose text field took the rest of it while fields after it stay empty. Put the text in quotes, or give the later fields by name.
 
 The [add line](#the-add-line) of a form reads more freely than **Do…**. **Do…** gives the words to the fields in their order, and it guesses nothing. The add line gives each value to the first field that it fits, anywhere on the line. You can type a choice as its start, if the start has 3 letters or more and only one choice has it. The words that are left go to the first text field.
 
 A line that starts with `?` asks a question. Refer to [The ask line](#the-ask-line).
+
+### Lines are rows
+
+Type `;;` and a capture line in a note, for example `;; spend 14.5 food lunch` in your daily note, and select **Run**. When the line saves one row, Gizmo writes this in its place:
+
+```text
+✓ spend 14.5 food lunch ^gz-8d6b723f059aeb15
+```
+
+The text after `^gz-` is the id of the row. From then on, the line and the row are the same thing:
+
+- **Change the line.** Type a different value, for example `41.5` in place of `14.5`. A moment after you stop, Gizmo sets the fields of the row to what the line says. Each total, alert and match that reads the row changes with it. The change is in the activity of the app or kind, as "Edited in" and the name of the note, with **Undo**.
+- **Delete the line.** Gizmo takes the row out. **Undo** in the activity puts the row back.
+- **Change the row in an app.** Gizmo writes the line again from the row, in each note that it saw with that line.
+- **Delete the row in an app.** The line stays, with `✗` in place of `✓`. If you undo the delete, the `✓` comes back.
+
+Rules:
+
+- Gizmo reads the line with the rules of the capture line. If it cannot read the line, for example `spend lots food`, the row stays as it was, and a notice tells you why.
+- A time in words, for example `@yday 13:00`, becomes the date and the time that it was when the line ran: `@2026-11-19 13:00`. Thus the line reads the same on a different day.
+- A value that the line does not give, for example a category that Gizmo guessed, stays in the row as it is.
+- Gizmo acts only on the changes that you make on this device, in a note that is open in the editor. A change that comes from a sync changes nothing. Thus two devices do not write the same change twice.
+- A line in a code block is not a row.
+- A line that saves no row, or more than one row (a button, a checklist, `@every`), gets a receipt as before: a tick, the line, the app and the time.
 
 ## The ask line
 
@@ -708,6 +817,29 @@ Enter saves nothing. To keep the answer:
 - **Copy embed** copies a `gizmo` block that shows the answer in any note. Refer to [Embeds](#embeds).
 
 A `?` alone shows these words and the kinds of the vault. If two kinds have the same name, an ask reaches neither of them. A kind keeps its shortcut on the capture line: `spend 14.5 food lunch` saves a row, and `? spend` asks.
+
+## New app from lines
+
+Run **Gizmo: New app from lines…** when you already have a list, for example in a different note or app. Paste the lines, one thing on each line, as you write them:
+
+```text
+mar 3 groceries 62.10 weekly shop
+mar 4 coffee 4.50
+mar 9 transport 31 train
+```
+
+Gizmo finds the fields from the position of the numbers and the words in the lines:
+
+- A date at the start or at the end of most lines is the time of each row. Gizmo reads `2026-03-03`, `3/14/2026`, `3/14`, `mar 3`, `3 March 2025` and the words of the capture line (`yday`, `fri`). A month and a day without a year is the last one. Without dates, each row is for now.
+- Each number is a number field. If most of the numbers have a sign or an ending, for example `$4.50` or `81.2kg`, the field has that [unit](#units). If not, and the lines write decimals, the field has a format with the same decimals, so that a total shows `310.40`.
+- Words are a choice field when the first word is one of a small number of words that come again in other lines. The words after it are a text field. Other words are a text field.
+- The fields keep the order of the lines. Thus the [capture line](#the-capture-line) reads the same lines afterwards.
+
+The window tells you what it read, for example "Read 7 lines, each with its day: category (one of groceries, coffee, transport), then amount (a number), then note (text)". A line with a different shape is left out, and the window gives its number and the reason.
+
+**One answer that you know.** Type an answer, for example `groceries = 310.40`. Gizmo tries each question that the [ask line](#the-ask-line) can ask about the rows: each of `sum`, `avg`, `count`, `min`, `max` and `last`, for each number field, for each value of a choice field, in each of these windows: `today`, `yesterday`, `this week`, `this month`, `this year`, `last 7 days`, `last 30 days`, `last 3 months`, `last 12 months`, or all rows. It shows the questions that give your number, the shortest first. If more than one gives it, each of the others shows a row that it counts and the first does not. Select one, and its panel goes into the app. This is a search through a fixed list. Gizmo uses no AI, and the same lines always give the same result.
+
+Before you select **Keep**, the window shows the text of the two notes that it will make: a [kind](#kinds) with the fields, and an app with a line to add a row, the panel and a table. **Keep** makes the notes in the folder for new notes, adds one row for each line, and opens the app. Without an answer, the panel is the total of the first number field.
 
 ## Next
 
@@ -768,6 +900,7 @@ The permission card comes from the keys. It shows each item that the app asks fo
 - the secrets that it uses,
 - the data that it sends to a site,
 - the relay through which a kind shares its rows,
+- the time-stamp authority that gets the hash of a sealed kind,
 - the other apps that it starts.
 
 You select **Allow** one time for each note. When the keys ask for more, Gizmo asks again. If an app asks for more than you permitted, Gizmo pauses the app and tells you. An app can write to its data note without permission.
@@ -819,6 +952,42 @@ An app that you revoked shows **Not allowed: you revoked it**, with no **Revoke*
 - The **time rail** is under the title of an app, in its own tab. Each change of the last 30 days is a tick. A change that you undid has no tick. Drag the handle, or push `[` and `]`, to show the app as it was at a change. With the rail in focus, the arrow keys do the same. Select **Back to now**, or push Escape, to return. The rail is only in the composed layout, and not in an embed or a lens. It uses **As of…** and the activity log, so the past is read only.
 - **As of…** in the tab menu (**⋯** in the tab header) shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels. The fields of `edit` show as text, with no row actions, and you cannot move the cards of a board. Buttons, forms and checklists are dim, and you cannot use them.
 - **Gizmo: Backtest this app** applies the alerts and `expect` rules of the app, as they are now, to its past data.
+
+## Explain a figure
+
+Each `number` and `progress` panel can tell you where its figure comes from. Select the figure, or push `=` in the app for the first figure. The tab menu has **Explain the first figure** too. A figure is not a Tab stop. The window shows:
+
+- **How Gizmo works the figure out**, for example "The sum of amount over 14 rows. 1 row with no number in amount is left out."
+- **The rows behind it**, the largest first for a sum. Each row shows its value, its time and its other fields. A saved row also shows when the device wrote it, on which device, and how many times it changed since. A row from a file or from a different person says so.
+- **Rows that are the same.** Two rows with the same day, value and words are marked, for example a charge that you imported two times.
+- **Delete** on a saved row, when the app can change the rows. The notice has **Undo**.
+
+Gizmo finds the rows with the steps of the panel itself (`where`, `compute`, `lines`, the window of `compare`). Thus the window cannot disagree with the panel. A figure from a web answer or from one note has no rows, and the window says so. A streak has no window.
+
+**What moved it since.** Select **Yesterday**, **A week ago** or **A month ago**, or give a time. Gizmo reads the figure as it was then, as **As of…** does, and shows the difference row by row:
+
+```text
+$912.00 on Fri Nov 13, 19:42 → $1,212.00 now: $300.00 more
++$280.00  Added · Nov 18, 09:10 · travel · train
++$40.00   Changed · Nov 15, 08:00 · home · STREAMFLIX · $15.49 → $55.49
+−$20.00   Gone · Nov 12, 12:30 · food · lunch
+12 rows are the same.
+```
+
+For a sum or a count, the lines add up to the difference. For other figures, the lines show the rows that came, went or changed, each with its own number. For a first or a last, they say which row is that row now and which row was. Each window is read at its own time: `this month` on last Friday is the month up to that Friday.
+
+If the keys of the panel changed since that time, the window says when, and which keys. Gizmo keeps the keys of each app each time that you open the app on this device with different keys. It works the two figures out with the keys as they are now.
+
+### Pull the answer
+
+When the figure reads something that you can still set, the window has **Pull it to**. Type the figure that you want as a plain number, for example `2500`, `$2,500.50` or `-5`, and select **Solve**. Gizmo shows, for each thing that it can set, the value that gives your figure:
+
+- a number field of a planned row or of a what-if row behind the figure, for example the amount of a dinner that you planned,
+- a number property of the note that a formula of the panel reads as `$this.<name>`, for example a rate or a limit.
+
+For example, "The month lands at" shows 2,640 and you type 2,500. The line for the planned dinner shows `$160.00 → $20.00`. **Keep** sets that value: the row or the property changes as one change in the activity, with **Undo**. Nothing changes before **Keep**.
+
+Gizmo runs the steps of the panel again with each value that it tries. A sum or an average is solved in one step. For other figures, Gizmo looks for two values with the target between them and closes in. When no value gives the figure, for example for a count, the line says so. **Pull it to** shows only in the tab of the app as it is now, not in the past, in a what-if or in an embed, and only for rows that the app can change.
 
 ## What if
 
@@ -919,6 +1088,7 @@ Obsidian keeps the value in its secret storage, not in a note. The permission ca
 | Open an app… | Lists all apps. Enter opens an app in this tab, and ⌘ Enter (Ctrl Enter) in the right sidebar. The ribbon button does the same. |
 | New app from the gallery | Copies a gallery app and its components into your vault. |
 | Insert panel | Adds a starter panel for a view to the app that is open. |
+| New app from lines… | Reads lines that you paste into the fields and rows of a new kind, and makes an app for it. Refer to [New app from lines](#new-app-from-lines). |
 | Make a list a kind | Changes a list that the open app saves into a kind that all apps can read. Refer to [Kinds](#kinds). |
 | Import rows into a kind… | Reads a `.csv`, `.json` or `.ics` file into a kind, with one of its `import` ways. Refer to [Import rows from a file](#import-rows-from-a-file). |
 | Embed an app's panels here | Puts a `gizmo` block at the cursor for the panels that you select. |
@@ -931,6 +1101,9 @@ Obsidian keeps the value in its secret storage, not in a note. The permission ca
 | Invite to a kind | In a shared kind note: makes its key the first time, then the link that invites someone. Refer to [Shared kinds](#shared-kinds). |
 | Join a shared kind from an invite | Shows what an invite that you paste will make, then makes it on **Join**. |
 | Make a guest page | In a shared kind note: makes an HTML page with its form, and a code, for a guest who adds rows without Gizmo. |
+| Seal this kind's rows now | In a sealed kind note: makes a seal of its event logs. Refer to [Sealed records](#sealed-records). |
+| Check this kind's seals | In a sealed kind note: checks each seal against the logs. |
+| Make a sealed extract | In a sealed kind note: makes one HTML file with the rows, the logs and the seals, which checks itself in a browser. |
 | Review and apply data policy | Applies the `Gizmo policy` note. |
 | Show app activity | Shows the changes of the app that is open, or of all apps. |
 | Backtest this app | Applies the rules of the app to its past data. |
@@ -953,6 +1126,8 @@ Obsidian keeps the value in its secret storage, not in a note. The permission ca
 | The key of a shared kind | Obsidian's secret storage, or `GIZMO_SECRET_<ID>` for gizmod. Never a note. |
 | The people you accepted in a shared kind | `data.json` in the plugin folder. |
 | What-if rows | A file of this device beside the event log of the rows, until **Keep** or **Discard**. Refer to [What if](#what-if). |
+| Seals of a sealed kind | `<device>.seals` beside the event logs of the kind. Each device has a separate file. |
+| The keys of each app at each time that you opened it with different keys | `definitions/<device>.json` in the plugin folder, for [Explain a figure](#explain-a-figure). |
 | Permissions, link keys and settings | `data.json` in the plugin folder. |
 
 ## What Gizmo does not do

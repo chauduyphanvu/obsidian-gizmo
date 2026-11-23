@@ -13,6 +13,7 @@ import { WebError, type FileInfo, type Host } from "./datalayer.ts";
 import type { NoteReader } from "./expand.ts";
 import type GizmoPlugin from "./main.ts";
 import { tryVaultApp } from "./try-modal.ts";
+import { ExplainModal } from "./explain-command.ts";
 import { notePath, storeTarget } from "./store.ts";
 import { vaultWrites, type VaultFiles, type VaultWrites } from "./vault-ops.ts";
 
@@ -149,6 +150,11 @@ export function obsidianHost(app: App, pluginDir?: string, device?: () => string
     append: (path, text) => obsidianWrites(app).appendFile(path, text),
     writeFile: (path, text) => obsidianWrites(app).writeFile(path, text),
     ...(device && { device }),
+    async postBytes(url, body, contentType) {
+      const sent = body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer;
+      const res = await requestUrl({ url, method: "POST", body: sent, contentType, throw: false });
+      return { status: res.status, bytes: new Uint8Array(res.arrayBuffer) };
+    },
   };
 }
 
@@ -278,6 +284,9 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
     tryFirst: () => void tryVaultApp(plugin, file.path),
+    explain: (src) => new ExplainModal(app, src).open(),
+    definitions: plugin.definitions,
+    deviceName: (id) => (id === plugin.device.id ? plugin.device.name : plugin.beat?.beats.find((b) => b.id === id)?.name),
     leftAlone: (key) => plugin.store.leftAlone?.[key] === true,
     leaveAlone(key) {
       (plugin.store.leftAlone ??= {})[key] = true;

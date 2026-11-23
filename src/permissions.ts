@@ -92,6 +92,7 @@ export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
   if (spec.store) out.add(`store:${notePath(storeTarget(spec.store))}`);
   for (const perm of importPermissions(spec)) out.add(perm);
   for (const perm of sharePermissions(spec)) out.add(perm);
+  for (const perm of sealPermissions(spec)) out.add(perm);
   return [...out].sort();
 }
 
@@ -99,6 +100,12 @@ export function permissionsOf(spec: AppSpec, selfPath: string): string[] {
 function sharePermissions(spec: AppSpec): string[] {
   const share = spec.kind?.share;
   return share ? [`share:${spec.kind!.path}|${share.host}`, `secret:${share.secret}`] : [];
+}
+
+/** A kind sealed with an authority sends it a hash of its event logs; sealing on this device alone sends nothing and asks nothing. */
+function sealPermissions(spec: AppSpec): string[] {
+  const seal = spec.kind?.seal;
+  return seal?.host ? [`seal:${spec.kind!.path}|${seal.host}`] : [];
 }
 
 /** A kind reads the new files in each folder its `import:` names. */
@@ -125,6 +132,7 @@ export function askersOf(spec: AppSpec, selfPath: string): Map<string, Set<strin
   if (spec.store) add(`store:${notePath(storeTarget(spec.store))}`, selfPath);
   for (const perm of importPermissions(spec)) add(perm, selfPath);
   for (const perm of sharePermissions(spec)) add(perm, selfPath);
+  for (const perm of sealPermissions(spec)) add(perm, selfPath);
   return out;
 }
 
@@ -226,6 +234,14 @@ const PERMISSIONS: Record<string, PermissionKind> = {
       return `Share the rows of ${basename(what.slice(0, cut))} through ${what.slice(cut + 1)}: each row you add goes there sealed, and rows from the people you share it with come in`;
     },
     target: (what) => ({ side: "out", key: `host:${what.slice(what.lastIndexOf("|") + 1)}`, label: "shares rows with", text: what.slice(what.lastIndexOf("|") + 1) }),
+  },
+  // A sealed kind with an authority: its note and the authority's host, after the last `|`.
+  seal: {
+    describe(what) {
+      const cut = what.lastIndexOf("|");
+      return `Send a hash of the event logs of ${basename(what.slice(0, cut))} to ${what.slice(cut + 1)} for a time stamp: 32 bytes that give back nothing of the rows`;
+    },
+    target: (what) => ({ side: "out", key: `host:${what.slice(what.lastIndexOf("|") + 1)}`, label: "asks a time stamp from", text: what.slice(what.lastIndexOf("|") + 1) }),
   },
   answer: { describe: (what) => `Send its “${what}” value to the app that opens its link` },
   run: {
