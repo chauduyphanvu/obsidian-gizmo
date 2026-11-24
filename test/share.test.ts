@@ -4,7 +4,7 @@ import { afterEach, test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { aggregate, valueOf } from "../src/data.ts";
 import { checkPanel, type Panel } from "../src/spec.ts";
-import { panelValue } from "../src/views/value.ts";
+import { panelValue } from "../src/panel-value.ts";
 import { fakeEnv } from "./support/fakes.ts";
 
 // `agg: share` with `of`: the fraction of the panel's rows (after where) that match `of`, or of

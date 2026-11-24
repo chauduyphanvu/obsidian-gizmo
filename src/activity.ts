@@ -1,6 +1,6 @@
 import { withLine } from "./actions.ts";
 import { formatValue, type Row } from "./data.ts";
-import { fnv1a, stableJson } from "./hash.ts";
+import { stableJson, textHash } from "./hash.ts";
 import { parseStamp } from "./ledger.ts";
 import { basename } from "./store.ts";
 
@@ -89,11 +89,6 @@ export type OtherLogs = () => Promise<{ device: string; text: string }[]>;
 function entriesIn(text: string | undefined): Entry[] {
   const parsed = text ? JSON.parse(text) as unknown : [];
   return Array.isArray(parsed) ? parsed.filter((e): e is Entry => !!e && typeof e === "object" && Array.isArray((e as Entry).changes)) : [];
-}
-
-/** A short fingerprint of a note's text, to tell whether it changed after the app wrote it. */
-export function textHash(text: string): string {
-  return `${fnv1a(text).toString(16)}:${text.length}`;
 }
 
 const same = (a: unknown, b: unknown) => stableJson(a) === stableJson(b);

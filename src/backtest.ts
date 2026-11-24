@@ -19,7 +19,7 @@ import { thisValues } from "./sources/this.ts";
 import { basename } from "./store.ts";
 import { THIS } from "./template.ts";
 import { sourceOf } from "./views/registry.ts";
-import { panelValue } from "./views/value.ts";
+import { panelValue } from "./panel-value.ts";
 
 export const MAX_STEPS = 20_000;
 /** How far back a backtest looks at most. */

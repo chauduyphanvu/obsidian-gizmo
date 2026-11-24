@@ -1,8 +1,7 @@
 import "./support/dom.ts";
 import assert from "node:assert/strict";
 import { test } from "node:test";
-import { textHash } from "../src/activity.ts";
-import { stableJson } from "../src/hash.ts";
+import { stableJson, textHash } from "../src/hash.ts";
 import { blockKey } from "../src/hosted.ts";
 import { panelIds } from "../src/spec.ts";
 

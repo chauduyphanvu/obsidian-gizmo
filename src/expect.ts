@@ -10,7 +10,7 @@
 import { textOf } from "./text.ts";
 import { compileWhere, getPath, type Row } from "./data.ts";
 import { lineOf } from "./kind.ts";
-import { isSetAsidePlan } from "./ledger-store.ts";
+import { isSetAsidePlan } from "./row-marks.ts";
 import { calendarOf, dayIn, daysInMonth, minuteIn, periodStart, shiftPeriod, toTime } from "./time.ts";
 import type { PanelSpec, Then } from "./spec.ts";
 

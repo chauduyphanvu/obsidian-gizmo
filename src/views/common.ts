@@ -4,7 +4,7 @@ import { compareWindows, splitByWindow, type Windows } from "../compare.ts";
 import { fillWith, getPath, type Row } from "../data.ts";
 import { display } from "../format.ts";
 import { ACTION_KEYS } from "../keys.ts";
-import { ROW_INDEX } from "../sources/list.ts";
+import { ROW_INDEX } from "../row-marks.ts";
 import { conflictsOf, rowIdOf } from "../ledger-store.ts";
 import { rowsAreNotes, rowsAreSaved } from "../sources/registry.ts";
 import type { Panel } from "../spec.ts";

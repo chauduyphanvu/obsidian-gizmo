@@ -1,7 +1,7 @@
 import type { Row } from "./data.ts";
 import type { Panel } from "./spec.ts";
 import type { TimerState } from "./views/registry.ts";
-import { formatClock } from "./views/timer.ts";
+import { formatClock } from "./time.ts";
 
 /** What an app's timers need of it. */
 export interface TimerSite {

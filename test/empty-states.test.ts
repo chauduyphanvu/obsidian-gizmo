@@ -8,7 +8,7 @@ import type { NoteReader } from "../src/expand.ts";
 import { checkPanel, readSpec, resolvePanel, type Panel } from "../src/spec.ts";
 import { emptyText, mountView } from "../src/views/common.ts";
 import { viewDef, type PanelCtx } from "../src/views/registry.ts";
-import { panelValue } from "../src/views/value.ts";
+import { panelValue } from "../src/panel-value.ts";
 import { fakeBackground } from "./support/fakes.ts";
 import { parseYaml } from "./support/yaml.ts";
 

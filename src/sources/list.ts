@@ -2,17 +2,12 @@ import type { Row } from "../data.ts";
 import { fileDep, folderDep } from "../deps.ts";
 import { RESERVED, kindName, resolveList } from "../store.ts";
 import { ROW_FIELDS, keptLines, lineAt, lineOf } from "../kind.ts";
-import { isWhatIf, rowIdOf } from "../ledger-store.ts";
+import { rowIdOf } from "../ledger-store.ts";
+import { ROW_INDEX, isWhatIf } from "../row-marks.ts";
 import { toTime } from "../time.ts";
 import { copyRow } from "../data.ts";
 import { logFolder } from "../ledger.ts";
 import type { SourceDef } from "./types.ts";
-
-/**
- * Each row of a saved list carries its place in the list under this key, through where, sort,
- * limit and compute (rows are copied with their symbol keys), so an edit can find it again.
- */
-export const ROW_INDEX = Symbol("row index");
 
 const isRow = (v: unknown): v is Row => v !== null && typeof v === "object" && !Array.isArray(v);
 

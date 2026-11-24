@@ -8,7 +8,8 @@ import { copyRow, getPath, toNumber, type Row } from "./data.ts";
 import { explain } from "./explain.ts";
 import { formulaReads } from "./formula.ts";
 import { lineOf } from "./kind.ts";
-import { isWhatIf, rowIdOf } from "./ledger-store.ts";
+import { rowIdOf } from "./ledger-store.ts";
+import { isWhatIf } from "./row-marks.ts";
 import type { Panel } from "./spec.ts";
 import { THIS } from "./template.ts";
 

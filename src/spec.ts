@@ -27,7 +27,7 @@ import { editErrors, editableSource } from "./edit.ts";
 import { hasControl } from "./control.ts";
 import { CONTROL_PROBLEM, controlKey } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
-import { aliasShortcut, backgroundKeyErrors, whatIfProblem } from "./views/alerts.ts";
+import { aliasShortcut, backgroundKeyErrors, whatIfProblem } from "./alert-keys.ts";
 
 export { parseDuration };
 

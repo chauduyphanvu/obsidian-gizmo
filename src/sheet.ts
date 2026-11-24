@@ -12,7 +12,7 @@ import { display, labelOf } from "./format.ts";
 import { stableJson } from "./hash.ts";
 import { SHEET_PAD, sheetWidth } from "./layout.ts";
 import { rowIdOf } from "./ledger-store.ts";
-import { ROW_INDEX } from "./sources/list.ts";
+import { ROW_INDEX } from "./row-marks.ts";
 import type { Panel } from "./spec.ts";
 import { rowsAreSaved } from "./sources/registry.ts";
 import { minuteIn, stampOf, toTime, wallTime } from "./time.ts";

@@ -2,7 +2,8 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { logFolder } from "../src/ledger.ts";
 import { DataLayer } from "../src/datalayer.ts";
-import { IDS_KEY, Ledger, NOTE_ROWS, SETTLE_MS, isWhatIf, rowIdOf, type LedgerIO, type LedgerState } from "../src/ledger-store.ts";
+import { IDS_KEY, Ledger, NOTE_ROWS, SETTLE_MS, rowIdOf, type LedgerIO, type LedgerState } from "../src/ledger-store.ts";
+import { isWhatIf } from "../src/row-marks.ts";
 import { fakeHost, later } from "./support/fakes.ts";
 
 const DAY = 86_400_000;

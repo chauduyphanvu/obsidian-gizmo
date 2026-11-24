@@ -17,3 +17,8 @@ export function stableJson(v: unknown): string {
   }
   return JSON.stringify(v) ?? "null";
 }
+
+/** A short fingerprint of a note's text, to tell whether it changed after the app wrote it. */
+export function textHash(text: string): string {
+  return `${fnv1a(text).toString(16)}:${text.length}`;
+}

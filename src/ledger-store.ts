@@ -2,7 +2,7 @@ import { fnv1a, stableJson } from "./hash.ts";
 import { DEFINITION_KEYS, KIND_KEYS, kindName } from "./store.ts";
 import { areRules } from "./expect.ts";
 import { ROW_FIELDS, lineOf } from "./kind.ts";
-import { ROW_INDEX } from "./sources/list.ts";
+import { ASIDE_PLAN, ROW_INDEX, WHAT_IF, isWhatIf } from "./row-marks.ts";
 import { isSealsFile } from "./seal.ts";
 import type { Row } from "./data.ts";
 import { toTime } from "./time.ts";
@@ -67,21 +67,6 @@ export function conflictsOf(row: unknown): { field: string; value: unknown; by: 
 export function rowIdOf(row: unknown): string | undefined {
   const id = row && typeof row === "object" ? (row as Record<symbol, unknown>)[ROW_ID] : undefined;
   return typeof id === "string" ? id : undefined;
-}
-
-/** Marks a row a what-if branch added (see Ledger's `branch`), not enumerable, as ROW_ID is. */
-const WHAT_IF = Symbol("what-if row");
-
-export function isWhatIf(row: unknown): boolean {
-  return !!row && typeof row === "object" && (row as Record<symbol, unknown>)[WHAT_IF] === true;
-}
-
-/** Marks a kind's row set aside from the planned line (its own ask dismissed), not enumerable. */
-const ASIDE_PLAN = Symbol("planned row set aside");
-
-/** Whether a kind's row is a planned row set aside through its own ask, not a row from a file or another vault set aside. */
-export function isSetAsidePlan(row: unknown): boolean {
-  return !!row && typeof row === "object" && (row as Record<symbol, unknown>)[ASIDE_PLAN] === true;
 }
 
 /** Marks a row handed out without the `matched` it holds, which names no logged row any more. */

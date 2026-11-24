@@ -47,7 +47,7 @@ import { Sheet, type DrawIcon } from "./sheet.ts";
 import { basename, dataPathOf, defaultDataPath, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
-import type { AlertFeed } from "./views/alerts.ts";
+import type { AlertFeed } from "./alert-keys.ts";
 
 const CACHE_MS = 5 * 60_000;
 /** How long a panel waits for the network before painting the disk copy. */

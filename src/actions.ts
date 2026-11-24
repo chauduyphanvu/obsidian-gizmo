@@ -1,6 +1,7 @@
 import { textOf } from "./text.ts";
 import { refusal, type Expectation } from "./expect.ts";
-import { textHash, type Change } from "./activity.ts";
+import type { Change } from "./activity.ts";
+import { textHash } from "./hash.ts";
 import { fillTemplate, fillWith, formatValue, getPath, toNumber, type Row } from "./data.ts";
 import { stampOf, stampParts } from "./time.ts";
 import { saveTarget, type Panel } from "./spec.ts";

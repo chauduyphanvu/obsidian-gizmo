@@ -6,7 +6,7 @@ import { compileWhere, matches, rowsOf, type Row } from "./data.ts";
 import { alertRowsText } from "./format.ts";
 import { stableJson } from "./hash.ts";
 import type { Then } from "./spec.ts";
-import type { AlertFeed, AlertItem } from "./views/alerts.ts";
+import type { AlertFeed, AlertItem } from "./alert-keys.ts";
 
 /** What watching apps' pinned and alerting panels needs of the Background. */
 export interface WatchHost {

@@ -3,7 +3,7 @@ import assert from "node:assert/strict";
 import { test } from "node:test";
 import { AppController } from "../src/app.ts";
 import { DataLayer } from "../src/datalayer.ts";
-import { ROW_INDEX } from "../src/sources/list.ts";
+import { ROW_INDEX } from "../src/row-marks.ts";
 import { checkPanel, readSpec, type Panel } from "../src/spec.ts";
 import { describePermission, editPermissions, permissionsOf } from "../src/permissions.ts";
 import { editErrors } from "../src/edit.ts";

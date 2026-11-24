@@ -13,7 +13,7 @@ import {
 import { panelEntries } from "./expand.ts";
 import { isPlainObject } from "./keys.ts";
 import { resolvePanel, type AppSpec, type Panel, type PanelSpec, type Then } from "./spec.ts";
-import { aliasShortcut } from "./views/alerts.ts";
+import { aliasShortcut } from "./alert-keys.ts";
 import { clearance, rank, released } from "./policy.ts";
 import { basename, storeTarget } from "./store.ts";
 import { InputRef, valueProblem } from "./template.ts";

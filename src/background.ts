@@ -35,9 +35,9 @@ import type { AppliedPolicy, Label, Policy } from "./policy.ts";
 import { appendPath, basename, dataPathOf, defaultDataPath, devicesFolder, storeTarget } from "./store.ts";
 import type { RowHome } from "./row-lines.ts";
 import { THIS } from "./template.ts";
-import type { AlertFeed } from "./views/alerts.ts";
+import type { AlertFeed } from "./alert-keys.ts";
 import { sourceOf } from "./views/registry.ts";
-import { panelValue } from "./views/value.ts";
+import { panelValue } from "./panel-value.ts";
 
 /** The plugin's one timer ticks this often; an app without `refresh` is checked this often. */
 export const TICK_MS = 60_000;

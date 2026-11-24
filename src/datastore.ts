@@ -2,7 +2,7 @@ import type { Row } from "./data.ts";
 import { IDS_KEY, rowIdOf, type Ledger } from "./ledger-store.ts";
 import { baseIds, type Op } from "./ledger.ts";
 import { resolveList } from "./store.ts";
-import { ROW_INDEX } from "./sources/list.ts";
+import { ROW_INDEX } from "./row-marks.ts";
 
 /** A row as shown, to find again where it is kept: by its id in the ledger, by its place in a note's list. */
 export interface RowRef {

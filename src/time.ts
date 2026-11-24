@@ -295,3 +295,9 @@ export function daysUntil(to: string, now: Date): number {
   const t = wallTime(to) ?? Date.parse(to);
   return Math.round((periodStart(t, "day") - periodStart(now.getTime(), "day")) / DAY);
 }
+
+/** Time left on a timer, as minutes and seconds: 4:05. */
+export function formatClock(ms: number): string {
+  const s = Math.max(0, Math.ceil(ms / 1000));
+  return `${Math.floor(s / 60)}:${String(s % 60).padStart(2, "0")}`;
+}

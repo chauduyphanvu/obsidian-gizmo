@@ -4,7 +4,7 @@ import type { Change } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import type { Row } from "./data.ts";
 import { editErrors, editableSource } from "./edit.ts";
-import { ROW_INDEX } from "./sources/list.ts";
+import { ROW_INDEX } from "./row-marks.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { kindFiles, kindOfPanel } from "./sources/kind.ts";
 import type { Panel } from "./spec.ts";
