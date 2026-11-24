@@ -81,6 +81,14 @@ test("inferRows: a sign or an ending on most numbers gives the field its unit; w
   assert.deepEqual(weights.rows.map((r) => [String(r.at).slice(0, 10), r.weight]), [["2026-11-01", 81.2], ["2026-11-08", 80.9], ["2026-11-15", 80.4]]);
 });
 
+test("inferRows: an amount after a day isn't taken for a year, and a column keeps one unit, setting aside a line in another", () => {
+  assert.deepEqual(dateAt(["mar", "3", "1500", "rent"], NOW), { date: "2026-03-03", used: 2 });
+  const r = inferRows("coffee $4\ntea ¥1500\njuice $3", NOW);
+  assert.deepEqual(r.rows.map((x) => x.amount), [4, 3]);
+  assert.deepEqual(r.skipped.map((s) => [s.line, s.why]), [[2, "it is in JPY, and the other lines are in USD"]]);
+  assert.ok(r.fields.some(([name, type]) => name === "amount" && type === "USD"));
+});
+
 test("the fields read the same lines on the capture line afterwards", () => {
   const r = inferRows(SPEND, NOW);
   const read = parseFields("9.75 food lunch with friends", r.fields, NOW, { name: "spend" });

@@ -4,6 +4,7 @@
  */
 import type { Row } from "./data.ts";
 import type { Host } from "./datalayer.ts";
+import { stableJson } from "./hash.ts";
 import { logFileParts, logFolder } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { LATE_MS, type Extract } from "./seal-extract.ts";
@@ -54,33 +55,37 @@ export interface Sealed {
 /**
  * Seals a data note's logs as they are now, going on from this device's last seal; with an
  * authority, asks it to time-stamp the seal's hash. A seal the authority couldn't stamp is kept
- * without a token, and says so: the next seal covers the same lines and asks again.
+ * without a token, and says so: the next sealing asks again, even with no new line, and adds a seal
+ * of the same lines only when the authority stamps it.
  */
 export async function sealNow(host: SealHost, dataPath: string, spec: SealSpec, device: string, now: number): Promise<Sealed> {
   if (!host.append) return { said: "This vault keeps no event logs to seal" };
   const logs = await logsOf(host, dataPath);
   const mine = (await chainsOf(host, dataPath)).find((c) => c.device === device)?.seals ?? [];
-  const seal = await makeSeal(logs, mine[mine.length - 1], now, device);
+  const last = mine[mine.length - 1];
+  const unstamped = spec.authority !== undefined && host.postBytes !== undefined && last !== undefined && last.token === undefined;
+  const seal = await makeSeal(logs, last, now, device, unstamped);
   if (!seal) return { said: Object.keys(logs).length ? "Nothing new to seal: every line is under the last seal" : "No rows are logged yet, so there is nothing to seal" };
   const lines = Object.values(seal.files).reduce((n, f) => n + f.lines, 0);
-  let said = `Sealed ${lines} ${lines === 1 ? "line" : "lines"}`;
+  let stamp = "";
   if (spec.authority && host.postBytes) {
     try {
       const answer = await host.postBytes(spec.authority, timestampQuery(seal.root), "application/timestamp-query");
       const read = answer.status === 200 ? readTimestamp(answer.bytes) : { error: `${spec.host} answered ${answer.status}` };
-      if ("error" in read) said += `, without a time stamp: ${read.error}`;
-      else if (read.imprint !== seal.root) said += ", without a time stamp: the authority answered for another hash";
+      if ("error" in read) stamp = `, without a time stamp: ${read.error}`;
+      else if (read.imprint !== seal.root) stamp = ", without a time stamp: the authority answered for another hash";
       else {
         seal.token = toBase64(answer.bytes);
         seal.authority = spec.authority;
-        said += `, time-stamped by ${spec.host} at ${new Date(read.time).toISOString().slice(0, 16).replace("T", " ")} UTC`;
+        stamp = `, time-stamped by ${spec.host} at ${new Date(read.time).toISOString().slice(0, 16).replace("T", " ")} UTC`;
       }
     } catch (e) {
-      said += `, without a time stamp: couldn't reach ${spec.host} (${(e as Error).message})`;
+      stamp = `, without a time stamp: couldn't reach ${spec.host} (${(e as Error).message})`;
     }
-  } else if (spec.authority) said += ", without a time stamp: nothing may be sent from here";
+  } else if (spec.authority) stamp = ", without a time stamp: nothing may be sent from here";
+  if (seal.token === undefined && last !== undefined && stableJson(last.files) === stableJson(seal.files)) return { said: `Nothing new to seal${stamp}` };
   await host.append(sealsFile(dataPath, device), `${JSON.stringify(seal)}\n`);
-  return { seal, said };
+  return { seal, said: `Sealed ${lines} ${lines === 1 ? "line" : "lines"}${stamp}` };
 }
 
 /** Each device's chain checked against the logs as they are now. */

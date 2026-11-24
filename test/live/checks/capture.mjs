@@ -174,6 +174,88 @@ export default async function capture(t) {
     return r.line;
   });
 
+  await check("leaving a note right after typing in it, in the same tab, keeps its rows and their edit", async () => {
+    await closeAll();
+    await run(`
+      await na.write("Switch A.md", "Shopping\\n\\n");
+      await na.write("Switch B.md", "Another note\\n");
+      await na.sleep(400);
+      await na.openMd("Switch A.md", "source");
+      const editor = na.view().editor;
+      editor.focus();
+      editor.setCursor({ line: 2, ch: 0 });`);
+    await type(";; spend 6 home switch row");
+    await run(`${POP} await na.until(() => pop().find((s) => s.includes("Run in Spend")), 3000);`);
+    await press("Enter");
+    const r = await run(`
+      const row = () => na.fm("Apps/Spend data.md")?.spend?.find((s) => String(s.note).includes("switch row"));
+      let editor = na.view().editor;
+      await na.until(() => editor.getLine(2).includes("^gz-"), 4000);
+      await na.sleep(2500);
+      const had = !!row();
+      editor.replaceRange("old ", { line: 2, ch: editor.getLine(2).indexOf("switch") });
+      const leaf = na.view().leaf;
+      await leaf.openFile(app.vault.getFileByPath("Switch B.md"), { state: { mode: "source" } });
+      await na.sleep(3000);
+      const kept = row()?.note;
+      // Taken out again, so the checks after this one count the rows they expect.
+      await leaf.openFile(app.vault.getFileByPath("Switch A.md"), { state: { mode: "source" } });
+      await na.sleep(500);
+      editor = na.view().editor;
+      if (editor.getLine(2).includes("^gz-")) editor.replaceRange("", { line: 2, ch: 0 }, { line: 2, ch: editor.getLine(2).length });
+      await na.until(() => !row(), 6000);
+      await na.sleep(2500);
+      await na.remove("Switch A.md");
+      await na.remove("Switch B.md");
+      return { had, kept, left: !!row() };`);
+    expect(r.had && r.kept === "old switch row" && !r.left, r);
+    return r.kept;
+  });
+
+  await check("a row line cut from one note and pasted into another keeps its row", async () => {
+    await closeAll();
+    await run(`
+      await na.write("Move A.md", "Shopping\\n\\n");
+      await na.write("Move B.md", "Another note\\n\\n");
+      await na.sleep(400);
+      await na.openMd("Move A.md", "source");
+      const editor = na.view().editor;
+      editor.focus();
+      editor.setCursor({ line: 2, ch: 0 });`);
+    await type(";; spend 8 home moved row");
+    await run(`${POP} await na.until(() => pop().find((s) => s.includes("Run in Spend")), 3000);`);
+    await press("Enter");
+    const r = await run(`
+      const row = () => na.fm("Apps/Spend data.md")?.spend?.find((s) => String(s.note).includes("moved row"));
+      let editor = na.view().editor;
+      await na.until(() => editor.getLine(2).includes("^gz-"), 4000);
+      await na.until(row, 7000);
+      await na.sleep(2500);
+      const line = editor.getLine(2);
+      // Cut, and long enough on the clipboard for the first note's edit to be read.
+      editor.replaceRange("", { line: 2, ch: 0 }, { line: 2, ch: line.length });
+      await na.until(() => !row(), 8000);
+      const gone = !row();
+      const leaf = na.view().leaf;
+      await leaf.openFile(app.vault.getFileByPath("Move B.md"), { state: { mode: "source" } });
+      await na.sleep(500);
+      editor = na.view().editor;
+      editor.replaceRange(line, { line: 2, ch: 0 });
+      await na.until(row, 9000);
+      const back = !!row();
+      await na.sleep(2500);
+      const after = editor.getLine(2);
+      // Taken out again, so the checks after this one count the rows they expect.
+      editor.replaceRange("", { line: 2, ch: 0 }, { line: 2, ch: after.length });
+      await na.until(() => !row(), 8000);
+      await na.sleep(2500);
+      await na.remove("Move A.md");
+      await na.remove("Move B.md");
+      return { gone, back, ticked: after.startsWith("✓ spend 8 home moved row ^gz-"), left: !!row() };`);
+    expect(r.gone && r.back && r.ticked && !r.left, r);
+    return "row kept through the move";
+  });
+
   await check("a ;; line that doesn't start with a shortcut's name, or sits in a code block, offers nothing and Enter adds a line", async () => {
     await closeAll();
     await run(`

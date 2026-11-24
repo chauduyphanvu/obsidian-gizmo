@@ -11,7 +11,7 @@ import { rowIdOf } from "./ledger-store.ts";
 import { formRow } from "./links.ts";
 import type { Panel } from "./spec.ts";
 import { textOf } from "./text.ts";
-import { stampOf, stampParts, toTime, wallTime } from "./time.ts";
+import { stampOf, stampParts, wallTime } from "./time.ts";
 import { asField } from "./units.ts";
 
 const ROW_LINE = /^(\s*)([✓✗]) (.+?)\s+\^gz-([0-9a-f]{16})\s*$/;
@@ -112,6 +112,12 @@ export function readLine(line: string, index: CaptureIndex, home: (t: CaptureTar
 /** Whether a line's value is what its row holds: nothing typed is an empty field, and a number typed is the number kept. */
 const same = (a: unknown, b: unknown) => a === b || textOf(a ?? "") === textOf(b ?? "");
 
+/** A time's minute by the clock where it was saved, which is what a line says, wherever it is read. */
+const minuteOf = (t: unknown) => {
+  const wall = wallTime(t);
+  return wall === undefined ? undefined : Math.floor(wall / 60_000);
+};
+
 /** The fields a line gives that its row holds differently: each with the value the line gives. A time counts when it names another minute. */
 export function lineChanges(read: Extract<LineRead, { ok: true }>, row: Row): Record<string, unknown> {
   const out: Record<string, unknown> = {};
@@ -126,8 +132,22 @@ export function lineChanges(read: Extract<LineRead, { ok: true }>, row: Row): Re
   }
   // A new number with no unit: what the old one was typed as no longer describes it.
   for (const f of Object.keys(out)) if (!Object.hasOwn(read.values, asField(f)) && row[asField(f)] !== undefined) out[asField(f)] = undefined;
-  if (read.at !== undefined && Math.floor((toTime(read.at) ?? 0) / 60_000) !== Math.floor((toTime(row.at) ?? -1) / 60_000)) out.at = read.at;
+  if (read.at !== undefined && minuteOf(read.at) !== minuteOf(row.at)) out.at = read.at;
   return out;
+}
+
+/**
+ * What an edit of a line sets in its row: what the line gives differently from the row and says
+ * differently from before. A line can be behind its row, which changed while the note wasn't open,
+ * and the words the edit didn't touch mustn't put the row back.
+ */
+export function lineEdits(was: LineRead, read: Extract<LineRead, { ok: true }>, row: Row): Record<string, unknown> {
+  const changes = lineChanges(read, row);
+  if (!was.ok) return changes;
+  const moved = (f: string) => !same(was.values[f], read.values[f]);
+  return Object.fromEntries(Object.entries(changes).filter(([f]) => (
+    f === "at" ? minuteOf(was.at) !== minuteOf(read.at) : moved(f) || (f.endsWith("_as") && moved(f.slice(0, -3)))
+  )));
 }
 
 /** What the sync needs of the vault and the ledger. */
@@ -140,7 +160,9 @@ export interface RowLinesDeps {
   /** Sets fields of a row, as one change in the activity, said to come from the note. */
   set(home: RowHome, row: Row, changes: Record<string, unknown>, note: string): Promise<void>;
   /** Takes a row out, as one change in the activity; gives how to put it back. */
-  remove(home: RowHome, row: Row, note: string): Promise<void>;
+  remove(home: RowHome, row: Row, note: string): Promise<(() => Promise<void>) | undefined>;
+  /** Whether a note other than this one holds this row's line. */
+  heldElsewhere(id: string, path: string): boolean;
 }
 
 /** What an edit of a note did to rows, for a notice. */
@@ -149,6 +171,8 @@ export interface Synced {
   removed: string[];
   /** Lines edited into something that can't be read: their rows are left as they are. */
   unread: { line: string; error: string }[];
+  /** Lines that came back, here or in another note, and brought back the row they took out. */
+  restored?: string[];
 }
 
 /**
@@ -160,6 +184,8 @@ export class RowLines {
   private deps: RowLinesDeps;
   /** By note: each row line as last seen, by row id. */
   private known = new Map<string, Map<string, RowLine>>();
+  /** Rows taken out with their line, and how to put each back: a line cut from one note can land in another later. */
+  private taken = new Map<string, () => Promise<void>>();
 
   constructor(deps: RowLinesDeps) {
     this.deps = deps;
@@ -194,7 +220,9 @@ export class RowLines {
     // A line that says a time keeps saying one, as the row has it now, by the clock where it was saved.
     const t = wallTime(row.at);
     const when = read.at !== undefined && t !== undefined ? `${stampParts(new Date(t)).date} ${stampParts(new Date(t)).time}` : undefined;
-    return lineOfRow(read.target, row, when);
+    const line = lineOfRow(read.target, row, when);
+    // A value with a line break can't be said on one line: written, it would split the row line in two.
+    return /[\r\n]/.test(line) ? undefined : line;
   }
 
   private async rowOf(home: RowHome, id: string): Promise<Row | undefined> {
@@ -203,14 +231,22 @@ export class RowLines {
 
   /**
    * A note was edited by the person: each row line whose text changed sets its row's fields to what
-   * it says now; each one that is gone takes its row out. A line that was never seen (pasted in, or
-   * the note wasn't open before) is only taken note of. A line that can't be read leaves its row alone.
+   * it says now; each one that is gone takes its row out, unless another note holds it. A line that
+   * was never seen (pasted in, or the note wasn't open before) is only taken note of, or puts back the
+   * row it took out when it left. A line that can't be read leaves its row alone.
    */
   async edited(path: string, text: string): Promise<Synced> {
     const out: Synced = { set: [], removed: [], unread: [] };
     const before = this.known.get(path);
     const now = rowLinesIn(text);
     this.seen(path, text);
+    for (const l of now) {
+      const back = l.live && !before?.has(l.id) ? this.taken.get(l.id) : undefined;
+      if (!back) continue;
+      this.taken.delete(l.id);
+      await back();
+      (out.restored ??= []).push(l.line);
+    }
     if (!before) return out;
     const here = new Map(now.map((l) => [l.id, l]));
     const read = (line: string) => readLine(line, this.deps.index(), (t) => this.homeOf(t), this.deps.now());
@@ -227,13 +263,14 @@ export class RowLines {
       const row = home && (await this.rowOf(home, id));
       if (!home || !row) continue;
       if (!l) {
-        if (was.live) {
-          await this.deps.remove(home, row, path);
+        if (was.live && !this.deps.heldElsewhere(id, path)) {
+          const back = await this.deps.remove(home, row, path);
+          if (back) this.taken.set(id, back);
           out.removed.push(was.line);
         }
         continue;
       }
-      const changes = lineChanges(r, row);
+      const changes = lineEdits(read(was.line), r, row);
       if (!Object.keys(changes).length) continue;
       await this.deps.set(home, row, changes, path);
       out.set.push({ line: l.line, fields: Object.keys(changes) });

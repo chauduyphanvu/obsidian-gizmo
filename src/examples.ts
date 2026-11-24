@@ -90,7 +90,8 @@ export function dateAt(words: readonly string[], now: Date): { date: string; use
     return date ? { date, used: 1 } : undefined;
   }
   const dayNumber = (w: string | undefined) => (w !== undefined && /^\d{1,2}(st|nd|rd|th)?,?$/.test(w) ? parseInt(w, 10) : undefined);
-  const year = (w: string | undefined) => (w !== undefined && /^\d{4}$/.test(w) ? Number(w) : undefined);
+  // `mar 3 1500 rent` is an amount: a year is one a list of things that happened could be in.
+  const year = (w: string | undefined) => (w !== undefined && /^\d{4}$/.test(w) && Number(w) <= now.getFullYear() && Number(w) >= now.getFullYear() - 30 ? Number(w) : undefined);
   const [m1, d1] = [monthOf(a), dayNumber(b)];
   const [d2, m2] = [dayNumber(a), b === undefined ? -1 : monthOf(b)];
   const md = m1 >= 0 && d1 !== undefined ? [m1, d1] : d2 !== undefined && m2 >= 0 ? [m2, d2] : undefined;
@@ -194,11 +195,27 @@ export function inferRows(text: string, now: Date): Inferred {
     reads.push({ line: i + 1, text: line, ...(d && { date: d.date }), cells: cellsOf(rest) });
   });
   const shape = commonShape(reads);
-  const kept = reads.flatMap((r) => {
+  const shaped = reads.flatMap((r) => {
     const cells = fitted(r.cells, shape);
     if (cells) return [{ ...r, cells }];
     skipped.push({ line: r.line, text: r.text, why: "its numbers and words aren't in the places the other lines have them" });
     return [];
+  });
+  // A column holds one unit: ¥1500 kept beside $4 would add up as 1504 of nothing.
+  const unitIn = (cell: Cell) => (cell.kind === "number" ? cell.unit?.id : undefined);
+  const usual = [...shape].map((_, c) => {
+    const counts = new Map<string, number>();
+    for (const r of shaped) {
+      const unit = unitIn(r.cells[c]);
+      if (unit !== undefined) counts.set(unit, (counts.get(unit) ?? 0) + 1);
+    }
+    return [...counts].sort((a, b) => b[1] - a[1])[0]?.[0];
+  });
+  const kept = shaped.filter((r) => {
+    const c = r.cells.findIndex((cell, i) => unitIn(cell) !== undefined && unitIn(cell) !== usual[i]);
+    if (c < 0) return true;
+    skipped.push({ line: r.line, text: r.text, why: `it is in ${unitIn(r.cells[c])}, and the other lines are in ${usual[c]}` });
+    return false;
   });
   skipped.sort((a, b) => a.line - b.line);
   const fields: [string, string | string[]][] = [];
@@ -216,7 +233,7 @@ export function inferRows(text: string, now: Date): Inferred {
     const cells = kept.map((r) => r.cells[c]);
     if (letter === "N") {
       const units = cells.flatMap((x) => (x.kind === "number" && x.unit ? [x.unit] : []));
-      const unit = units.length > 0 && units.length >= cells.length / 2 && new Set(units.map((u) => u.id)).size === 1 ? units[0] : undefined;
+      const unit = units.length > 0 && units.length >= cells.length / 2 ? units[0] : undefined;
       const field = name(unit?.dim === "money" ? "amount" : unit ? unit.dim.replace(/^mass$/, "weight") : fields.some(([, t]) => t === "number") ? "number" : "amount");
       fields.push([field, unit ? unit.id : "number"]);
       // A unit shows itself; a plain number shows the decimals its lines write, two for cents, three at most.

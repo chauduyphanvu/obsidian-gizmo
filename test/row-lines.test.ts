@@ -92,6 +92,7 @@ test("lineChanges: a line still saying what its row was typed as changes nothing
 function vault(rows: Record<string, unknown>[]) {
   const sets: [string, Record<string, unknown>, string][] = [];
   const removed: string[] = [];
+  const elsewhere = new Set<string>();
   const lines = new RowLines({
     now: () => NOW,
     index: () => index,
@@ -104,9 +105,11 @@ function vault(rows: Record<string, unknown>[]) {
     remove: async (_home, r) => {
       removed.push((r as Record<symbol, string>)[ROW_ID]);
       rows.splice(rows.indexOf(r), 1);
+      return async () => { rows.push(r); };
     },
+    heldElsewhere: (id) => elsewhere.has(id),
   });
-  return { lines, sets, removed, rows };
+  return { lines, sets, removed, rows, elsewhere };
 }
 
 const DAILY = "Daily/2026-11-19.md";
@@ -158,6 +161,74 @@ test("a row changed elsewhere writes its sentence again; one taken out is marked
   assert.deepEqual((await v.lines.edited(DAILY, note())).removed, []);
   v.rows.push(kept);
   assert.equal(await v.lines.rewritten(DAILY, gone!), note(`✓ spend 16 food lunch and coffee ^gz-${ID}`));
+});
+
+const OTHER = "Daily/2026-11-20.md";
+
+test("a line that leaves a note while another note holds it keeps its row", async () => {
+  const v = vault([row(ID, { amount: 14.5, category: "food", note: "lunch" })]);
+  v.lines.seen(DAILY, note(`✓ spend 14.5 food lunch ^gz-${ID}`));
+  v.elsewhere.add(ID);
+  const done = await v.lines.edited(DAILY, note());
+  assert.deepEqual(v.removed, []);
+  assert.deepEqual(done.removed, []);
+  assert.equal(v.rows.length, 1);
+});
+
+test("a line cut from one note and pasted into another a while later puts its row back, once", async () => {
+  const v = vault([row(ID, { amount: 14.5, category: "food", note: "lunch" })]);
+  const line = `✓ spend 14.5 food lunch ^gz-${ID}`;
+  v.lines.seen(DAILY, note(line));
+  await v.lines.edited(DAILY, note());
+  assert.deepEqual(v.removed, [ID]);
+  assert.equal(v.rows.length, 0);
+  v.lines.seen(OTHER, "Friday");
+  const done = await v.lines.edited(OTHER, `Friday\n${line}`);
+  assert.deepEqual(done.restored, ["spend 14.5 food lunch"]);
+  assert.equal(v.rows.length, 1);
+  assert.equal((await v.lines.edited(OTHER, `Friday\n${line}\nMore words.`)).restored, undefined);
+  assert.equal(v.rows.length, 1);
+});
+
+test("a deleted line brought back in the same note, as an undo of the typing does, puts its row back", async () => {
+  const v = vault([row(ID, { amount: 14.5, category: "food", note: "lunch" })]);
+  const text = note(`✓ spend 14.5 food lunch ^gz-${ID}`);
+  v.lines.seen(DAILY, text);
+  await v.lines.edited(DAILY, note());
+  assert.deepEqual((await v.lines.edited(DAILY, text)).restored, ["spend 14.5 food lunch"]);
+  assert.equal(v.rows.length, 1);
+});
+
+test("a line deleted for good takes its row with it, and a crossed-out copy brings nothing back", async () => {
+  const v = vault([row(ID, { amount: 14.5, category: "food", note: "lunch" })]);
+  v.lines.seen(DAILY, note(`✓ spend 14.5 food lunch ^gz-${ID}`));
+  await v.lines.edited(DAILY, note());
+  assert.equal(v.rows.length, 0);
+  v.lines.seen(OTHER, "Friday");
+  assert.equal((await v.lines.edited(OTHER, `Friday\n✗ spend 14.5 food lunch ^gz-${ID}`)).restored, undefined);
+  assert.equal(v.rows.length, 0);
+});
+
+test("a word fixed in a line that is behind its row sets that word, and doesn't put the row's older values back", async () => {
+  const v = vault([row(ID, { amount: 20, category: "food", note: "lunch" })]);
+  v.lines.seen(DAILY, note(`✓ spend 14.5 food lunch ^gz-${ID}`));
+  await v.lines.edited(DAILY, note(`✓ spend 14.5 food brunch ^gz-${ID}`));
+  assert.deepEqual(v.sets, [[ID, { note: "brunch" }, DAILY]]);
+  assert.equal(v.rows[0].amount, 20);
+});
+
+test("a line's time is the clock where its row was saved, so reading it in another zone changes nothing", () => {
+  const read = readLine("spend 14.5 food lunch @2026-11-19 13:00", index, home, NOW);
+  assert.ok(read.ok);
+  assert.deepEqual(lineChanges(read, { at: "2026-11-19T13:00+14:00", amount: 14.5, category: "food", note: "lunch" }), {});
+  assert.deepEqual(Object.keys(lineChanges(read, { at: "2026-11-19T14:00+14:00", amount: 14.5, category: "food", note: "lunch" })), ["at"]);
+});
+
+test("a row whose value has a line break leaves its line as it is, since one line can't say it", async () => {
+  const v = vault([row(ID, { amount: 14.5, category: "food", note: "two\nlines" })]);
+  const text = note(`✓ spend 14.5 food one line ^gz-${ID}`);
+  v.lines.seen(DAILY, text);
+  assert.equal(await v.lines.rewritten(DAILY, text), undefined);
 });
 
 test("only the lines of the rows that changed are written; a line of another data note is left", async () => {

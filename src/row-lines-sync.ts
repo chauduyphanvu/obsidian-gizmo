@@ -20,6 +20,7 @@ function tell(done: Synced, note: string): void {
   const parts: string[] = [];
   if (done.set.length) parts.push(`${plural(done.set.length, "row")} changed to match ${done.set.length === 1 ? "its line" : "their lines"} in ${note}`);
   if (done.removed.length) parts.push(`${plural(done.removed.length, "row")} taken out with ${done.removed.length === 1 ? "its line" : "their lines"} (Undo in Activity)`);
+  if (done.restored?.length) parts.push(`${plural(done.restored.length, "row")} put back with ${done.restored.length === 1 ? "its line" : "their lines"} in ${note}`);
   if (parts.length) new Notice(parts.join("; "));
   for (const u of done.unread.slice(0, 2)) new Notice(`“${u.line}” can't be read as a row any more: ${u.error}. Its row stays as it was.`, 10_000);
 }
@@ -57,7 +58,17 @@ export function registerRowLines(plugin: GizmoPlugin): RowLines | undefined {
     async remove(home, row, note) {
       const s = store(home);
       const r = await s.delete(home.list, { id: rowIdOf(row), shown: row });
-      if ("row" in r) log(home, note, [{ kind: "row-deleted", path: s.dataPath, list: home.list, row: r.row, ...(r.event && { event: r.event }) }]);
+      if (!("row" in r)) return undefined;
+      log(home, note, [{ kind: "row-deleted", path: s.dataPath, list: home.list, row: r.row, ...(r.event && { event: r.event }) }]);
+      const event = r.event;
+      return event ? () => s.undo([event]) : undefined;
+    },
+    heldElsewhere(id, path) {
+      // An open editor holds a paste before it is saved; the index knows every other note.
+      const open = app.workspace.getLeavesOfType("markdown").some((leaf) => (
+        leaf.view instanceof MarkdownView && leaf.view.file?.path !== path && leaf.view.editor.getValue().includes(`^gz-${id}`)
+      ));
+      return open || app.vault.getMarkdownFiles().some((f) => f.path !== path && app.metadataCache.getFileCache(f)?.blocks?.[`gz-${id}`] !== undefined);
     },
   });
 
@@ -75,10 +86,18 @@ export function registerRowLines(plugin: GizmoPlugin): RowLines | undefined {
   plugin.registerEvent(app.workspace.on("editor-change", (editor: Editor, info) => {
     const path = info.file?.path;
     if (!path) return;
+    // A tab that went on to another note keeps this editor: its text then would read as every line here deleted.
+    const textNow = async () => {
+      if (info.file?.path === path) return editor.getValue();
+      const file = app.vault.getFileByPath(path);
+      return file ? app.vault.read(file) : undefined;
+    };
     window.clearTimeout(waiting.get(path));
     waiting.set(path, window.setTimeout(() => {
       waiting.delete(path);
-      void sync.edited(path, editor.getValue()).then((done) => tell(done, basename(path)), () => {});
+      void textNow().then(async (text) => {
+        if (text !== undefined) tell(await sync.edited(path, text), basename(path));
+      }).catch(() => {});
     }, EDIT_WAIT_MS));
   }));
   plugin.register(() => { for (const t of waiting.values()) window.clearTimeout(t); });

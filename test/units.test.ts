@@ -115,6 +115,14 @@ test("capture: a measure converts by its size", () => {
   assert.deepEqual(r.params, { weight: "81.647", weight_as: "180 lb" });
 });
 
+test("capture: a plain number keeps its field from a quantity after it, unless another number field can take it", () => {
+  const weigh = parseFields("81.2 lifted 10kg", [["weight", "number"], ["note", "text"]], NOW, { name: "weigh", units: { weight: { unit: "kg" } } });
+  assert.deepEqual(weigh.params, { weight: "81.2", note: "lifted 10kg" });
+  const run = parseFields("2 5km", [["distance", "number"], ["laps", "number"]], NOW, { name: "run", units: { distance: { unit: "km" } } });
+  assert.deepEqual(run.errors, []);
+  assert.deepEqual(run.params, { distance: "5", laps: "2" });
+});
+
 test("a form's row keeps what a converted value was typed as, beside it", () => {
   const info = { amount: { unit: "USD", rates: { JPY: 150 } } };
   assert.deepEqual(formRow({ amount: "number", note: "text" }, info, { amount: "10", amount_as: "1500 JPY @150", note: "ramen" }, NOW), { row: { amount: 10, amount_as: "1500 JPY @150", note: "ramen" } });

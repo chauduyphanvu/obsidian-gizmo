@@ -595,7 +595,7 @@ export function parseFields(input: string | readonly Token[], fields: FieldList,
   };
   const when = takeWhen(typed, now, how.ahead);
   const waiting: Waiting[] = [];
-  const tokens = how.units ? takeQuantities(when.tokens, how.units, params, fail, waiting) : when.tokens;
+  const tokens = how.units ? takeQuantities(when.tokens, how.units, fields, params, fail, waiting) : when.tokens;
   if (out.errors.length && !how.loose) return done(out, fields);
   if (when.at) out.at = when.at;
   if (when.plan) out.plan = when.plan;
@@ -655,8 +655,19 @@ const CODE_WORDS = new Set(["ALL", "BAM", "BOB", "COP", "CUP", "GEL", "MAD", "MO
  * number with no unit is left for the usual reading, so `81.2` still means the field's own unit.
  * A field whose unit another field gives keeps its number as typed and goes to `waiting`.
  */
-function takeQuantities(tokens: readonly Token[], units: FieldUnits, params: Record<string, string>, fail: Fail, waiting: Waiting[]): Token[] {
+function takeQuantities(tokens: readonly Token[], units: FieldUnits, fields: FieldList, params: Record<string, string>, fail: Fail, waiting: Waiting[]): Token[] {
   const left: Token[] = [];
+  // A plain number in a number field's place is that field's: `weigh 81.2 lifted 10kg` weighs 81.2.
+  const spoken = new Set<string>();
+  let placed = 0;
+  const keep = (t: Token): void => {
+    left.push(t);
+    if (t.name !== undefined) return;
+    const place = fields.filter(([n]) => !Object.hasOwn(params, n))[placed++];
+    if (place?.[1] !== "number" || t.quoted || !NUMBER.test(t.text)) return;
+    // With a plain number field still open it can go there, and a quantity may take this one: `2 5km`.
+    if (!fields.some(([n, type]) => n !== place[0] && type === "number" && !units[n] && !Object.hasOwn(params, n))) spoken.add(place[0]);
+  };
   const give = (field: string, n: number, unit: UnitDef, word?: string): void => {
     const to = units[field];
     if ("by" in to) {
@@ -672,7 +683,7 @@ function takeQuantities(tokens: readonly Token[], units: FieldUnits, params: Rec
     const to = units[f];
     return "by" in to ? Object.values(to.units).some((u) => unitOf(u).dim === unit.dim) : unitOf(to.unit).dim === unit.dim;
   };
-  const open = (unit: UnitDef) => Object.keys(units).find((f) => !Object.hasOwn(params, f) && measures(f, unit));
+  const open = (unit: UnitDef) => Object.keys(units).find((f) => !Object.hasOwn(params, f) && !spoken.has(f) && measures(f, unit));
   for (let i = 0; i < tokens.length; i++) {
     const t = tokens[i];
     const next = tokens[i + 1];
@@ -682,14 +693,14 @@ function takeQuantities(tokens: readonly Token[], units: FieldUnits, params: Rec
     const apart = !t.quoted && NUMBER.test(t.text) && next && !next.quoted && next.name === undefined && !prose ? unitDef(next.text) : undefined;
     const q = joined ?? (apart ? { n: Number(t.text), unit: apart } : undefined);
     if (!q) {
-      left.push(t);
+      keep(t);
       continue;
     }
     const named = t.name === undefined ? undefined : Object.keys(units).find((f) => f.toLowerCase() === t.name);
     // A named value for a field with no unit, or a unit no open field measures, is read as it always was.
     const field = t.name === undefined ? open(q.unit) : named;
     if (field === undefined || Object.hasOwn(params, field)) {
-      left.push(t);
+      keep(t);
       continue;
     }
     give(field, q.n, q.unit, joined ? undefined : next.text);

@@ -767,7 +767,8 @@ Type `;;` and a capture line in a note, for example `;; spend 14.5 food lunch` i
 The text after `^gz-` is the id of the row. From then on, the line and the row are the same thing:
 
 - **Change the line.** Type a different value, for example `41.5` in place of `14.5`. A moment after you stop, Gizmo sets the fields of the row to what the line says. Each total, alert and match that reads the row changes with it. The change is in the activity of the app or kind, as "Edited in" and the name of the note, with **Undo**.
-- **Delete the line.** Gizmo takes the row out. **Undo** in the activity puts the row back.
+- **Delete the line.** Gizmo takes the row out. **Undo** in the activity puts the row back. The row stays if a different note also has the line.
+- **Move the line.** Cut it from one note and paste it into a different note. The row stays, or comes back when you paste the line, while Obsidian stays open. After a restart, a pasted line does not bring back a row that was taken out: use **Undo** in the activity.
 - **Change the row in an app.** Gizmo writes the line again from the row, in each note that it saw with that line.
 - **Delete the row in an app.** The line stays, with `✗` in place of `✓`. If you undo the delete, the `✓` comes back.
 

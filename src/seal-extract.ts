@@ -174,11 +174,17 @@ async function verifyExtract(x) {
     const differs = x.fields.map((f) => f.name).concat(["at"]).filter((f) => stable(now[f] === undefined ? null : now[f]) !== stable(r.row[f] === undefined ? null : r.row[f]));
     const written = Date.parse(add.e.t.split("/")[0]);
     const says = Date.parse(String(r.row.at || ""));
-    // The newest line the row depends on: a seal must cover that one for the row as shown to be sealed.
     const last = sets.length ? sets[sets.length - 1] : add;
+    // Every line the row as shown rests on, an undo or redo of any of its events too, must be under a seal. A sync's second copy of a line counts once.
+    const own = new Set(events.filter((it) => (it.e.op === "add" || it.e.op === "set") && it.e.l === x.list && it.e.row === r.id).map((it) => it.e.d + "@" + it.e.t));
+    const rests = [add].concat(sets, events.filter((it) => (it.e.op === "undo" || it.e.op === "redo") && (it.e.ev || []).some((id) => own.has(id))));
+    const under = new Map();
+    for (const it of rests) { const id = it.e.d + "@" + it.e.t; if (!under.get(id)) under.set(id, sealedBy(it.file, it.line)); }
+    const each = Array.from(under.values());
+    const sealed = each.includes(undefined) ? undefined : { time: Math.max.apply(null, each.map((s) => s.time)), stamped: each.every((s) => s.stamped) };
     return {
       id: r.id, written: written, sets: sets.length, lastSet: sets.length ? Date.parse(last.e.t.split("/")[0]) : undefined,
-      sealed: sealedBy(last.file, last.line), firstSealed: sealedBy(add.file, add.line),
+      sealed: sealed, firstSealed: sealedBy(add.file, add.line),
       late: !Number.isNaN(says) && written - says > x.lateMs,
       problem: differs.length ? "the logs give another " + differs.join(", ") + " for this row" : undefined,
     };

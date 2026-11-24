@@ -87,15 +87,15 @@ async function rootOf(prev: string, files: Seal["files"]): Promise<string> {
 
 /**
  * A seal over the logs as they are (file name → text), going on from the device's last one.
- * Undefined when they hold nothing the last seal doesn't.
+ * Undefined when they hold nothing the last seal doesn't, unless `again`: a new seal of the same lines.
  */
-export async function makeSeal(logs: Record<string, string>, prev: Seal | undefined, at: number, device: string): Promise<Seal | undefined> {
+export async function makeSeal(logs: Record<string, string>, prev: Seal | undefined, at: number, device: string, again = false): Promise<Seal | undefined> {
   const files: Seal["files"] = {};
   for (const name of Object.keys(logs).sort()) {
     const lines = wholeLines(logs[name]);
     if (lines) files[name] = { lines, hash: await sha256Hex(firstLines(logs[name], lines)!) };
   }
-  if (!Object.keys(files).length || (prev && stableJson(prev.files) === stableJson(files))) return undefined;
+  if (!Object.keys(files).length || (!again && prev && stableJson(prev.files) === stableJson(files))) return undefined;
   const before = prev?.root ?? "";
   return { v: 1, at, device, files, prev: before, root: await rootOf(before, files) };
 }

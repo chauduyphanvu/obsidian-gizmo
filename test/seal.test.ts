@@ -173,6 +173,20 @@ test("sealing through the host: an authority that fails leaves a seal without a 
   assert.equal(checkWords((await checkNow(host({}), DATA)).checks, "Dose"), "Dose has no seal yet");
 });
 
+test("sealing again asks an authority that failed, with no new line, and adds a seal only when it answers", async () => {
+  const files: Record<string, string> = { [`${LOGS}/${FILE}`]: LOG };
+  const spec = { authority: "https://tsa.test/tsr", host: "tsa.test" };
+  await sealNow(host(files, () => 503), DATA, spec, "d1", T0 + 2 * DAY);
+  const still = await sealNow(host(files, () => 503), DATA, spec, "d1", T0 + 3 * DAY);
+  assert.equal(still.said, "Nothing new to seal, without a time stamp: tsa.test answered 503");
+  assert.equal(files[`${LOGS}/d1.seals`].trim().split("\n").length, 1);
+  const h = host(files, (hash) => answer(hash, "20261123161500Z"));
+  assert.equal((await sealNow(h, DATA, spec, "d1", T0 + 4 * DAY)).said, "Sealed 2 lines, time-stamped by tsa.test at 2026-11-23 16:15 UTC");
+  const { checks } = await checkNow(h, DATA);
+  assert.deepEqual(checks.map((c) => [c.ok, c.held.map((x) => x.stamped)]), [[true, [false, true]]]);
+  assert.equal((await sealNow(h, DATA, spec, "d1", T0 + 5 * DAY)).said, "Nothing new to seal: every line is under the last seal");
+});
+
 test("a token for another hash on a kept seal is told by the check", async () => {
   const first = (await makeSeal({ [FILE]: LOG }, undefined, T0 + 2 * DAY, "d1"))!;
   const bad: Seal = { ...first, token: toBase64(answer("11".repeat(32), "20261121161500Z")) };
@@ -226,6 +240,18 @@ test("the extract's own checker: a log line changed after sealing, and a row sho
   assert.deepEqual((await verifyExtract(reworded)).problems, [`row ${R1}: the logs give another taken for this row`]);
   const invented: Extract = { ...good, rows: [...good.rows, { id: "ffffffffffffffff", row: { at: "2026-11-21T08:00-08:00", what: "morning", taken: true } }] };
   assert.deepEqual((await verifyExtract(invented)).problems, ["row ffffffffffffffff: no event in the logs adds this row"]);
+});
+
+test("the extract calls a row sealed only when every line it rests on is: an undo written since leaves it not sealed yet", async () => {
+  const at = "2026-11-19T08:14-08:00";
+  const setAt = T0 + DAY;
+  const fixed = ev(setAt, { op: "set", l: "dose", row: R1, f: "what", v: "evening", from: "morning" });
+  const x = await extractOfLogs(add(T0, R1, { at, what: "morning", taken: true }) + fixed, [row(R1, { at, what: "evening", taken: true })]);
+  assert.ok((await verifyExtract(x)).rows[0].sealed);
+  const undo = ev(T0 + 5 * DAY, { op: "undo", ev: [`d1@${new Date(setAt).toISOString()}/0`] });
+  const v = await verifyExtract({ ...x, logs: { [FILE]: x.logs[FILE] + undo }, rows: [{ id: R1, row: { ...x.rows[0].row, what: "morning" } }] });
+  assert.deepEqual(v.problems, []);
+  assert.equal(v.rows[0].sealed, undefined);
 });
 
 test("the extract says in plain words when it can't run its check, and leaves no row saying it is still checking", async () => {
