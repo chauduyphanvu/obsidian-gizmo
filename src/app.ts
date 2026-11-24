@@ -1,30 +1,27 @@
 import { textOf } from "./text.ts";
 import { pastText, shownAsNow } from "./replay.ts";
-import { aheadLines, discard, keep, lookAhead, readAsNow, whatIfNotes, whatIfRows, type Ahead } from "./ahead.ts";
-import { renderAheadCard, type AheadActions, type AheadCard } from "./ahead-card.ts";
+import { whatIfNotes, type Ahead } from "./ahead.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
 import type { Entry, NewEntry } from "./activity.ts";
 import {
-  editWords, findRenames, renameKey, renderBlocked, renderEmpty, renderErrors, renderHandEdit, renderKindToAllow, renderOpenOnce, renderPermissionPrompt, renderRename,
-  renderUsage, renderYamlError, yamlProblem, type CardApp, type KindToAllow,
+  renderBlocked, renderEmpty, renderErrors, renderKindToAllow, renderOpenOnce, renderPermissionPrompt,
+  renderUsage, renderYamlError, yamlProblem, type CardApp,
 } from "./app-cards.ts";
+import { AppChecks } from "./app-checks.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./responses.ts";
 import { type Row } from "./data.ts";
-import { stampParts, toTime } from "./time.ts";
+import { stampParts } from "./time.ts";
 import { DataLayer, WebError, type AppFiles } from "./datalayer.ts";
 import { EXPLAINED, explain, waterfall, type Explanation } from "./explain.ts";
 import type { ExplainSource } from "./explain-view.ts";
 import { panelName, panelsOf, type DefinitionLog } from "./definitions.ts";
 import { editableSource } from "./edit.ts";
 import { knobsOf, solve, withProperty } from "./pull.ts";
-import { reconcileOf, ruleOf } from "./match.ts";
-import { renderReconcile } from "./reconcile-card.ts";
-import { isPlainObject } from "./keys.ts";
 import { kindFiles, kindOfPanel } from "./sources/kind.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
@@ -33,8 +30,7 @@ import {
   isUrl, panelIds, pickPanels, readComponentPreview, readSpec, resolvePanel, startingValues, type ComponentPreview,
   type AppSpec, type Panel, type PanelSpec, type Then,
 } from "./spec.ts";
-import { askersOf, describePermission, permissionsOf } from "./permissions.ts";
-import { fileRowIds, importable } from "./import.ts";
+import { askersOf, permissionsOf } from "./permissions.ts";
 import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
@@ -44,7 +40,7 @@ import { panelLine } from "./yamlpos.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, composedWidth, isNarrow, rowTracks, spanOn, widthFor } from "./layout.ts";
 import { compose, type Placement, type Scope } from "./compose.ts";
 import { Sheet, type DrawIcon } from "./sheet.ts";
-import { basename, dataPathOf, defaultDataPath, devicesFolder, isComponent } from "./store.ts";
+import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./alert-keys.ts";
@@ -248,18 +244,6 @@ export class AppController {
   private dataPath = "";
   private unsubscribe: (() => void) | undefined;
   private hosting: Hosting | undefined;
-  /** The card saying the data note was edited by hand, while it is. */
-  private handEdit: HTMLElement | undefined;
-  /** The card offering to bring saved rows along with a rename in the app's keys, while one is found; and which look for one is the latest. */
-  private renameCard: HTMLElement | undefined;
-  private renameChecks = 0;
-  /** In a kind's own tab: the rows read from a file that wait to be accepted or set aside. */
-  private reconcileCard: HTMLElement | undefined;
-  private reconcileChecks = 0;
-  /** Shown ahead: the what-if's card, which fill of it is the latest, and the fill waiting for changes to stop. */
-  private aheadCard: AheadCard | undefined;
-  private aheadChecks = 0;
-  private aheadTimer: number | undefined;
   private grantKey: string;
   private hostPath: string;
   /** What `$this` reads, and as JSON, to tell when it changed. */
@@ -269,6 +253,7 @@ export class AppController {
   private timers: Timers;
   private writes: AppWrites;
   private cards: CardApp;
+  private checks: AppChecks;
   private refreshHandle: number | undefined;
   private resizeHandle: number | undefined;
   private width = 0;
@@ -321,6 +306,10 @@ export class AppController {
     this.cards = { env, appPath, hostPath: this.hostPath, grantKey: this.grantKey, hosted: !!hosting, scope: hosting?.kind === "lens" ? hosting.scope : undefined, load: () => this.load() };
     this.readHost();
     this.shell = root.createDiv({ cls: "gizmo" });
+    this.checks = new AppChecks({
+      env, appPath, hosting, writes: this.writes, shell: this.shell,
+      spec: () => this.spec, dataPath: () => this.dataPath, files: () => this.files(), current: () => this.current(),
+    });
     if (!hosting) this.rail = this.shell.createDiv({ cls: "gz-rail-slot" });
     const current = () => this.env;
     this.ctx = {
@@ -350,7 +339,7 @@ export class AppController {
       select: (name, row) => this.setSelection(name, row),
       selected: (name) => this.selections.get(name),
       alerts: env.alerts,
-      reconcile: (p) => this.reconcileOf(p),
+      reconcile: (p) => this.checks.reconcileOf(p),
     };
   }
 
@@ -377,8 +366,7 @@ export class AppController {
     this.timers.stop();
     if (this.refreshHandle) window.clearInterval(this.refreshHandle);
     if (this.resizeHandle) window.clearTimeout(this.resizeHandle);
-    window.clearTimeout(this.aheadTimer);
-    this.aheadChecks++;
+    this.checks.stop();
     this.shell.remove();
   }
 
@@ -594,7 +582,7 @@ export class AppController {
     const blocked = verdict?.violations.length ? verdict.violations.map(violationText) : undefined;
     const granted = !blocked && this.env.isGranted(this.grantKey, wanted, verdict?.asked);
     // The kinds it reads whose own notes aren't allowed yet, said in its own tab once it is allowed itself.
-    const toAllow = granted && !h && !component && read?.spec ? this.kindsToAllow(read.spec) : [];
+    const toAllow = granted && !h && !component && read?.spec ? this.checks.kindsToAllow(read.spec) : [];
     // The app is its own keys plus those of every component it uses, and whether it may run.
     // The blocked card says whether the policy note waits to be applied.
     const pending = blocked ? this.env.policyPending?.() ?? false : false;
@@ -624,8 +612,7 @@ export class AppController {
       const back = this.env.backToNow;
       if (back) banner.createEl("button", { cls: "gz-past-back", text: "Back to now" }).addEventListener("click", () => back());
     }
-    const ahead = this.env.ahead;
-    this.aheadCard = ahead && this.spec ? renderAheadCard(header, ahead, readAsNow(this.spec), this.aheadActions()) : undefined;
+    this.checks.drawAhead(header);
 
     if (!result) {
       // A lens whose note no longer fills its params shows nothing until it is taken away.
@@ -732,42 +719,6 @@ export class AppController {
     // Laid out again, the panels the sheet holds are back in their slots.
     if (this.sheet?.from !== undefined && !this.mounted.has(this.sheet.from)) this.closeSheet();
     else this.seat();
-  }
-
-  /**
-   * The kinds this app reads or saves to whose own notes aren't allowed yet: never opened, asking for
-   * more than was allowed, or blocked by the data policy. The app shows their rows, but each kind's
-   * own work (its import folders, its asks in Next) waits until it is, as anything unseen does.
-   */
-  private kindsToAllow(spec: AppSpec): KindToAllow[] {
-    if (this.env.data.at !== undefined || this.env.ahead || this.env.preview) return [];
-    const paths = spec.panels.flatMap(({ panel: p }) => [p.kind?.path, p.target?.kind === "list" ? p.target.at : undefined]);
-    return [...new Set(paths)].flatMap((path) => {
-      const k = path === undefined || path === this.appPath ? undefined : this.kindToAllow(path);
-      return k ? [k] : [];
-    });
-  }
-
-  /** A kind note as kindsToAllow says it; undefined when it is allowed, or isn't a kind. */
-  private kindToAllow(path: string): KindToAllow | undefined {
-    const env = this.env;
-    const fm = env.frontmatter(path);
-    const kind = fm ? readSpec(fm, { now: env.now(), notes: env.notes, path })?.spec : undefined;
-    if (!kind?.kind) return undefined;
-    const wanted = permissionsOf(kind, path);
-    const verdict = env.verdict?.(kind, wanted, { appPath: path, dataPath: defaultDataPath(path), hostPath: path });
-    const blocked = !!verdict?.violations.length;
-    // The background acts only for a note that was allowed, which an opened one is even when it asks for nothing.
-    if (!blocked && env.granted(path) !== undefined && env.isGranted(path, wanted, verdict?.asked)) return undefined;
-    const asked = verdict?.asked ?? wanted;
-    const folders = kind.kind.imports.flatMap((m) => (m.folder === undefined ? [] : [m.folder]));
-    const reads = new Set(folders.map((f) => `read:${f}`));
-    const adds = [
-      ...folders.map((f) => `Read each file in ${f} into its rows, now and as new ones come`),
-      ...asked.filter((p) => !reads.has(p)).map(describePermission),
-      `Ask in Next about a planned row whose time passed with nothing settling it${folders.length ? ", and about rows from a file to check" : ""}`,
-    ];
-    return { path, name: basename(path), adds, asked, blocked };
   }
 
   /** Takes in what the keys say now: the app, the components it links to, where its data is kept, and its layout. */
@@ -1051,176 +1002,16 @@ export class AppController {
       for (const m of this.mounted.values()) {
         if (m.source && m.deps.some((d) => d !== self && changed.has(d))) void this.loadPanel(m);
       }
-      if (this.env.ahead) this.aheadSoon();
+      if (this.env.ahead) this.checks.aheadSoon();
       if (!kept.some((d) => changed.has(d))) return;
-      void this.checkHandEdit();
-      void this.checkRenames();
-      void this.checkReconcile();
+      void this.checks.checkHandEdit();
+      void this.checks.checkRenames();
+      void this.checks.checkReconcile();
     });
-    void this.checkHandEdit();
-    void this.checkRenames();
-    void this.checkReconcile();
-    void this.checkAhead();
-  }
-
-  /** What the what-if's card does, through the app shown ahead; Keep's Undo through the app as it is now. */
-  private aheadActions(): AheadActions {
-    const env = this.env;
-    const live = env.ahead!.live;
-    return {
-      remove: async ({ note, list, row }) => {
-        const done = await env.store!(note.dataPath, note.owner).delete(list, { id: rowIdOf(row), shown: row });
-        if ("refused" in done) env.notify("That what-if row is gone");
-      },
-      keep: (rows) => keep(env, this.appPath, rows),
-      discard: () => discard(env, whatIfNotes(this.spec!, this.appPath, this.dataPath)),
-      ...(live.undo && { undo: (entry: string) => live.undo!(entry) }),
-      ...(env.backToNow && { back: env.backToNow }),
-    };
-  }
-
-  /** Fills the what-if's card again once changes stop coming. */
-  private aheadSoon(): void {
-    window.clearTimeout(this.aheadTimer);
-    this.aheadTimer = window.setTimeout(() => void this.checkAhead(), 50);
-  }
-
-  /** Shown ahead: the what-if rows there are now, and what the app's alerts and rules would do on the way to the time shown. */
-  private async checkAhead(): Promise<void> {
-    const env = this.env;
-    const ahead = env.ahead;
-    const spec = this.spec;
-    const card = this.aheadCard;
-    const ledger = env.data.ledger;
-    const check = ++this.aheadChecks;
-    if (!ahead || !spec || !card || !ledger) return;
-    const notes = whatIfNotes(spec, this.appPath, this.dataPath);
-    const rows = await whatIfRows(ledger, notes, (path) => env.frontmatter(path));
-    const watches = spec.panels.some((ps) => ps.panel.alert !== undefined) || spec.expect.some((r) => r.kind !== "value");
-    const r = watches ? await lookAhead(env, ahead.live.data, spec, this.files(), notes).catch(() => undefined) : undefined;
-    if (check !== this.aheadChecks || card !== this.aheadCard) return;
-    ahead.marked?.(rows.map((r) => toTime(r.row.at)).filter((t): t is number => t !== undefined));
-    card.fill({ rows, ...(r && { lines: aheadLines(r, spec, ahead.live.now(), this.current()), ...(r.cut && { cutAt: r.to }) }), errors: r?.errors ?? [] });
-  }
-
-  /**
-   * In a kind's own tab, as it is now: the rows read from a file that no one accepted or set aside
-   * yet, how they pair with what was logged, and a way to settle them.
-   */
-  private async checkReconcile(): Promise<void> {
-    const ledger = this.env.data.ledger;
-    const kind = this.spec?.kind;
-    const check = ++this.reconcileChecks;
-    if (!ledger || !this.env.store || this.hosting || this.env.preview || this.env.data.at !== undefined || this.env.ahead || !kind) return;
-    const state = await ledger.state(this.dataPath, this.env.frontmatter(this.appPath) ?? {});
-    if (check !== this.reconcileChecks || kind !== this.spec?.kind) return;
-    this.reconcileCard?.remove();
-    this.reconcileCard = undefined;
-    const r = reconcileOf(state.lists.get(kind.name)?.rows ?? [], kind.match);
-    const header = this.shell.querySelector<HTMLElement>(".gz-header");
-    if (!r || !header) return;
-    this.reconcileCard = renderReconcile(header, r, Object.keys(kind.fields), {
-      accept: (open) => this.writes.settleRows(kind.name, open, false, kind.match),
-      dismiss: (row) => this.writes.settleRows(kind.name, [{ row }], true),
-    });
-  }
-
-  /**
-   * What `view: reconcile` shows of the kind its panel reads, as the kind's own note does (see
-   * checkReconcile), with Accept and Not mine writing there; undefined where nothing may be changed.
-   */
-  private async reconcileOf(p: Panel): Promise<Awaited<ReturnType<NonNullable<PanelCtx["reconcile"]>>>> {
-    const env = this.env;
-    const ledger = env.data.ledger;
-    const ref = p.kind;
-    if (!ledger || !ref || env.data.at !== undefined || env.ahead || env.preview) return undefined;
-    const kindFm = env.frontmatter(ref.path);
-    const state = await ledger.state(kindFiles(ref).dataPath, kindFm ?? {});
-    const rule = ruleOf(kindFm);
-    const card = reconcileOf(state.lists.get(ref.name)?.rows ?? [], rule);
-    const waiting = card ? undefined : await this.unread(ref.path, state);
-    return {
-      card,
-      ...(waiting && { waiting }),
-      fields: Object.keys(isPlainObject(kindFm?.fields) ? kindFm.fields : {}),
-      accept: (open) => this.writes.settleRows(ref.name, open, false, rule, p),
-      dismiss: (row) => this.writes.settleRows(ref.name, [{ row }], true, {}, p),
-    };
-  }
-
-  /**
-   * Files in a kind's import folders that hold rows the kind doesn't have (nor had and lost to an
-   * undo), while the kind isn't allowed to read them: said so; undefined when none waits.
-   */
-  private async unread(kindPath: string, state: { lists: Map<string, { rows: Row[] }>; gone(list: string, id: string): boolean }): Promise<string | undefined> {
-    const k = this.kindToAllow(kindPath);
-    const fm = this.env.frontmatter(kindPath);
-    const kind = !k || k.blocked || !fm ? undefined : readSpec(fm, { now: this.env.now(), notes: this.env.notes, path: kindPath })?.spec?.kind;
-    if (!k || !kind) return undefined;
-    const has = new Set((state.lists.get(kind.name)?.rows ?? []).map(rowIdOf));
-    const files: string[] = [];
-    for (const map of kind.imports) {
-      for (const path of map.folder === undefined ? [] : (this.env.data.host.filesIn?.(map.folder) ?? []).filter(importable)) {
-        const text = await this.env.data.host.readFile(path).catch(() => "");
-        if (fileRowIds(kind, map, { path, text }, this.env.now()).some((id) => !has.has(id) && !state.gone(kind.name, id))) files.push(path);
-      }
-    }
-    if (!files.length) return undefined;
-    const where = [...new Set(files.map((f) => f.slice(0, f.lastIndexOf("/"))))].join(" and ");
-    return files.length === 1 ? `${basename(files[0])} waits in ${where}; allow ${k.name} to read it.` : `${files.length} files wait in ${where}; allow ${k.name} to read them.`;
-  }
-
-  /** Says so when the data note was edited by hand since the app's log was last written into it, with Import and Discard. */
-  private async checkHandEdit(): Promise<void> {
-    const ledger = this.env.data.ledger;
-    // Only where the app's lists are kept in the ledger; a lens keeps no data note of its own. A what-if changes no data note.
-    if (!ledger || !this.env.store || this.hosting?.kind === "lens" || this.env.ahead) return;
-    const dataPath = this.dataPath;
-    const appFm = this.env.frontmatter(this.appPath) ?? {};
-    const state = await ledger.state(dataPath, appFm);
-    const ops = state.handEdited ? await ledger.importOps(dataPath, appFm) : [];
-    if (this.dataPath !== dataPath) return;
-    this.handEdit?.remove();
-    this.handEdit = undefined;
-    const header = this.shell.querySelector<HTMLElement>(".gz-header");
-    if (!state.handEdited || !header) return;
-    const checklists = new Set(this.spec?.panels.filter((ps) => ps.panel.view === "checklist").map((ps) => checklistList(ps.panel)));
-    const words = editWords(ops, checklists);
-    this.handEdit = renderHandEdit(header, basename(dataPath), words.length ? words : ["its layout only"], {
-      import: async () => {
-        await ledger.write(dataPath, ops);
-        await this.env.data.snapshotNow(dataPath, true);
-      },
-      discard: () => this.env.data.snapshotNow(dataPath, true),
-    });
-  }
-
-  /**
-   * In the app's own tab, as it is now, says so when its keys renamed a field, a choice or a list
-   * that its saved rows still use, with a way to bring the rows along; unless the person chose to
-   * leave that rename as it is. Read from the ledger's lists, as the panels are.
-   */
-  private async checkRenames(): Promise<void> {
-    const ledger = this.env.data.ledger;
-    const spec = this.spec;
-    const check = ++this.renameChecks;
-    if (!ledger || !this.env.store || this.hosting || this.env.preview || this.env.data.at !== undefined || this.env.ahead || !spec) return;
-    const dataPath = this.dataPath;
-    const appFm = this.env.frontmatter(this.appPath) ?? {};
-    const state = await ledger.state(dataPath, appFm);
-    if (check !== this.renameChecks || spec !== this.spec) return;
-    this.renameCard?.remove();
-    this.renameCard = undefined;
-    const rename = findRenames(spec, state.lists, appFm).find((r) => !this.env.leftAlone?.(renameKey(this.appPath, r)));
-    const header = this.shell.querySelector<HTMLElement>(".gz-header");
-    if (!rename || !header) return;
-    this.renameCard = renderRename(header, basename(dataPath), rename, {
-      fix: () => this.writes.moveRenamed(rename),
-      leave: () => {
-        this.env.leaveAlone?.(renameKey(this.appPath, rename));
-        void this.checkRenames();
-      },
-    });
+    void this.checks.checkHandEdit();
+    void this.checks.checkRenames();
+    void this.checks.checkReconcile();
+    void this.checks.checkAhead();
   }
 
   private setRefresh(spec: AppSpec): void {
