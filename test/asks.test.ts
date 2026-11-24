@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { undoEntry } from "../src/activity.ts";
-import { keyAction, type Ask } from "../src/asks.ts";
+import { keyAction, waitingWriterAsks, type Ask } from "../src/asks.ts";
 import { carryOver } from "../src/background-fired.ts";
 import { EXPECT_MISSED } from "../src/background-rhythms.ts";
 import { rowsOf } from "../src/data.ts";
@@ -424,4 +424,17 @@ test("only a planned row stands in for a rhythm's window: a row set aside that w
   await settle();
   assert.deepEqual(t.notices.filter((n) => n.includes("no A")), ["Meds: no A by 10:00"]);
   assert.ok(t.bg.asks.list().some((a) => a.text === "no A by 10:00 (Thu Nov 19)"));
+});
+
+test("a waiting writer's ask always says its key, and says so when its name reads like one known here or mixes alphabets", () => {
+  const known = new Set(["Alex"]);
+  const ask = (name: string) => waitingWriterAsks({ path: "K.md", app: "Chore", rows: [{ at: "2026-11-01", by: name, writer: "b1c2".padEnd(16, "0"), line: "attested" }], decided: () => false, known })[0].text;
+  const tail = " in Chore? 1 row waits, and later ones will count as logged";
+  assert.equal(ask("Bo"), `Accept rows from Bo (key b1c2)${tail}`);
+  for (const name of ["Alex", "alex", "ALEX", "Alex.", "A l e x", "Àlex"]) {
+    assert.equal(ask(name), `Accept rows from ${name} (another key than the Alex you know, key b1c2)${tail}`, name);
+  }
+  // Cyrillic А for Latin A: no letter of the known name, so it is told by its mix of alphabets.
+  assert.equal(ask("Аlex"), `Accept rows from Аlex (key b1c2; its name mixes alphabets)${tail}`);
+  assert.equal(ask("Алекс"), `Accept rows from Алекс (key b1c2)${tail}`, "a name all in one alphabet is just a name");
 });

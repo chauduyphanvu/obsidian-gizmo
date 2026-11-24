@@ -222,7 +222,7 @@ The `source` key tells a panel where its rows come from.
 | `tasks`, with `from` | One row for each checkbox line in those notes. |
 | `this` | The properties of the note that shows the panel. |
 | A base, for example `Books.base` | The notes that the Obsidian base finds. |
-| A vault file: `.csv`, `.json` or `.ics` | The rows of that file. |
+| A vault file: `.csv`, `.json` or `.ics` | The rows of that file. Write its path from the root of the vault, for example `Finance/bank.csv`: Gizmo does not find the file by its name, so the permission and your data policy name the file that it reads. |
 | `expect` | The results of the `expect` rules of the app. |
 | `asks` | What all apps ask of you now, as **Next** shows it. Refer to [Next](#next). |
 
@@ -1065,7 +1065,7 @@ node gizmod.mjs uninstall
 | `GIZMOD_MAC_NOTICES` | Set to `0` to stop macOS notices. |
 | `GIZMO_SECRET_<ID>` | The value of `{secret:<id>}`, with dashes as underscores. For a shared kind, the key that **Copy key** in **Invite to a kind** gives. |
 
-gizmod listens on this computer and on its Tailscale address. It reads the permissions in `data.json`, but it does not write them. For a shared kind, it sends and takes in rows, and follows the people that you accepted or removed in Obsidian. A new person's rows wait for Obsidian. Because of this, an app that you move while Obsidian is closed waits for a new **Allow**.
+gizmod listens on this computer and on its Tailscale address. It answers a request only at `127.0.0.1`, at that address, or at the name of this computer on your tailnet, so a web page cannot reach it under a name of its own. A request with a key that does not run the shortcut gets the same answer whatever it asked for. It reads the permissions in `data.json`, but it does not write them. For a shared kind, it sends and takes in rows, and follows the people that you accepted or removed in Obsidian. A new person's rows wait for Obsidian. Because of this, an app that you move while Obsidian is closed waits for a new **Allow**.
 
 A push for a missed window has a **Done** button when gizmod finds its Tailscale address. The button runs the line that **Next** gives for that window, when the line needs no more values. The phone sends it to gizmod at that address, so the phone must be on your tailnet. Without Tailscale, the push has no button. The button carries a token, not a key, because the push goes through the ntfy server. The token is for the shortcut that the line reached and the values that it gave, when gizmod sent the push, and for that window. It works one time, for 24 hours, and only while that app is allowed. If a row met the window meanwhile, the button saves nothing and answers "that was done already". gizmod keeps the tokens in `GIZMOD_HOME`. If it cannot keep a token, the push goes without the button. The push says only what the data policy permits, as before.
 

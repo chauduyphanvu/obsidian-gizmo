@@ -1,5 +1,6 @@
 import { parseBody } from "../data.ts";
-import { fileDep, nameDep } from "../deps.ts";
+import { fileDep } from "../deps.ts";
+import { vaultPath } from "../store.ts";
 import type { SourceDef } from "./types.ts";
 
 const CONTENT_TYPES: Record<string, string> = { csv: "text/csv", json: "application/json", ics: "text/calendar" };
@@ -17,15 +18,16 @@ const extensionOf = (source: string) => /\.(csv|json|ics)$/i.exec(fileTarget(sou
 export const file: SourceDef = {
   id: "file",
   matches: (source) => !/^https?:\/\//i.test(source) && extensionOf(source) !== undefined,
-  permissions: (p) => [[`read:${fileTarget(p.source!)}`, "source"]],
-  // A link may name the file by its name alone, so a change under that name counts too.
-  deps(p) {
+  validate(p) {
     const target = fileTarget(p.source!);
-    return [fileDep(target), nameDep(target.split("/").pop()!)];
+    return vaultPath(target) === target ? [] : [`source must be the file's path from the vault's root, for example Finance/bank.csv, not ${target}`];
   },
+  permissions: (p) => [[`read:${fileTarget(p.source!)}`, "source"]],
+  deps: (p) => [fileDep(fileTarget(p.source!))],
+  // The path is the file's own, from the vault's root, and never found as a link is: the permission
+  // and the data policy's label name the text typed, so that must be the file that is read.
   load(p, files, layer, opts) {
-    const target = fileTarget(p.source!);
-    const path = layer.host.resolveFile(target, files.appPath) ?? target;
+    const path = fileTarget(p.source!);
     const type = CONTENT_TYPES[extensionOf(p.source!)!];
     return layer.parsedFile(path, (text) => {
       try {
@@ -34,6 +36,13 @@ export const file: SourceDef = {
       } catch (e) {
         throw new Error(`Can't read ${path}: ${(e as Error).message}`, { cause: e });
       }
+    }).catch((e: Error) => {
+      // A name alone is what a link would take: said only then, so a missing file's own error stays short.
+      if (!e.message.startsWith("Can't find ") || path.includes("/")) throw e;
+      // The file a link of that name would find is only named, never read: writing its path is the person's to do.
+      const found = layer.host.resolveFile(path, files.appPath);
+      const where = found !== undefined && found !== path ? `write ${found}` : "for example Finance/bank.csv";
+      throw new Error(`Can't find ${path}; a file source takes its path from the vault's root: ${where}`, { cause: e });
     });
   },
 };

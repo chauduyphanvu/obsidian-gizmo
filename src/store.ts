@@ -95,6 +95,17 @@ export function appendPath(append: string): string {
   return notePath(storeTarget(append));
 }
 
+/**
+ * A path from the vault's root as its parts spell it: no empty or `.` part and no slash at the end.
+ * Undefined for one that isn't a path in the vault: empty, starting at the disk's root, or with a
+ * `..` part. Two spellings of one file give one path, so a check on a path can't be passed by another.
+ */
+export function vaultPath(path: string): string | undefined {
+  if (path.startsWith("/") || path.startsWith("\\") || /^[A-Za-z]:/.test(path)) return undefined;
+  const parts = path.split(/[\\/]/).filter((part) => part !== "" && part !== ".");
+  return parts.length && !parts.includes("..") ? parts.join("/") : undefined;
+}
+
 export function defaultDataPath(appPath: string): string {
   return `${appPath.replace(/\.md$/i, "")} data.md`;
 }

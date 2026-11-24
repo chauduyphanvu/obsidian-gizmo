@@ -1,5 +1,6 @@
 import { noteText, withLine } from "./actions.ts";
 import { isPolicyPath } from "./policy.ts";
+import { vaultPath } from "./store.ts";
 import { tickLine } from "./sources/tasks.ts";
 
 /** The least a host does with files: Obsidian's vault, or gizmod's folder on disk. */
@@ -53,7 +54,9 @@ export interface VaultWrites {
 export function vaultWrites(files: VaultFiles, yaml: (fm: Record<string, unknown>) => string): VaultWrites {
   const queues = new Map<string, Promise<unknown>>();
   const queued = <T>(given: string, write: (path: string) => Promise<T>): Promise<T> => {
-    const path = files.normalize(given);
+    // Whatever the host makes of a path, it is checked and written under one spelling.
+    const path = vaultPath(files.normalize(given));
+    if (path === undefined) return Promise.reject(new Error(`${given} isn't a path in this vault`));
     // The policy says what apps may do with data, so no app may change it; a person edits it by hand.
     if (isPolicyPath(path)) return Promise.reject(new Error(`${given} is your Gizmo policy; apps can't change it`));
     const run = (queues.get(path) ?? Promise.resolve()).then(() => write(path), () => write(path));

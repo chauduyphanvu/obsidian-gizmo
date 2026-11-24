@@ -43,9 +43,14 @@ test("CSV and JSON files load through the pipeline, by path or by link", async (
   ]);
   const big = panelOf({ view: "number", source: "Finance/bank.csv", where: { Amount: "< -100" }, field: "Amount", agg: "sum" });
   assert.deepEqual(await load(dl, big), [{ Date: "2026-11-03", Description: "Landlord", Amount: -1200, Category: "Rent" }]);
-  for (const source of ["[[bank.csv]]", "[[Finance/bank.csv|My bank]]", "bank.csv"]) {
+  for (const source of ["[[Finance/bank.csv]]", "[[Finance/bank.csv|My bank]]"]) {
     assert.equal(((await load(dl, panelOf({ view: "table", source }))) as unknown[]).length, 4, source);
   }
+  // Never found by its name as a link is: the permission and the policy's label name the text typed, so that is the file read.
+  for (const source of ["[[bank.csv]]", "bank.csv"]) {
+    await assert.rejects(load(dl, panelOf({ view: "table", source })), /^Error: Can't find bank\.csv; a file source takes its path from the vault's root: write Finance\/bank\.csv$/, source);
+  }
+  await assert.rejects(load(dl, panelOf({ view: "table", source: "nowhere.csv" })), /^Error: Can't find nowhere\.csv; a file source takes its path from the vault's root: for example Finance\/bank\.csv$/);
   const rates = panelOf({ view: "table", source: "Data/rates.json", pick: "rates", where: { code: "GBP" } });
   assert.deepEqual(await load(dl, rates), [{ code: "GBP", rate: 0.8 }]);
 });
@@ -71,7 +76,7 @@ test("a file is read once until it changes, and a change reaches only the panels
   const read = f.host.readFile;
   f.host.readFile = (path) => { reads.push(path); return read(path); };
   const dl = new DataLayer(f.host);
-  const bank = panelOf({ view: "table", source: "[[bank.csv]]" });
+  const bank = panelOf({ view: "table", source: "[[Finance/bank.csv]]" });
   const cards = panelOf({ view: "table", source: "Finance/cards.csv" });
   const heard: string[][] = [];
   dl.subscribe(dl.depsOf(bank.source, bank, FILES), (c) => heard.push(["bank", ...c]));

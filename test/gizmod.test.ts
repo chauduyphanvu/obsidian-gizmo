@@ -2,10 +2,10 @@ import assert from "node:assert/strict";
 import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
-import { join, resolve } from "node:path";
+import { basename, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { stringify } from "yaml";
-import { ANSWER_MS, AnswerTokens, adminToken, plist, runScript, serve } from "../scripts/gizmod/gizmod.ts";
+import { ANSWER_MS, AnswerTokens, adminToken, ownHost, plist, runScript, serve } from "../scripts/gizmod/gizmod.ts";
 import { gizmodEnv, pushText, secretFromEnv } from "../scripts/gizmod/host.ts";
 import { Background } from "../src/background.ts";
 import { identityText, kindKeys, newIdentity } from "../src/share-crypto.ts";
@@ -201,7 +201,80 @@ test("over HTTP a shortcut runs only with its link key; a request without a key,
     assert.ok(logs.length === 1 && logs[0].startsWith("gz"), logs.join(", "));
     const answer = await t.ask("GET", "/get/Inbox/open", { auth: LINK_KEY });
     assert.deepEqual([answer.status, answer.body.value, answer.body.shown], [200, 1, "1"]);
-    assert.equal((await t.ask("GET", "/get/Nowhere/open", { auth: LINK_KEY })).status, 404);
+    assert.equal((await t.ask("GET", "/get/Nowhere/open", { auth: LINK_KEY })).status, 403);
+    assert.equal((await t.ask("GET", "/get/Nowhere/open", { auth: t.token })).status, 404, "this computer's own user hears what isn't there");
+  } finally {
+    await t.s.close();
+  }
+});
+
+test("a caller with no key that runs the shortcut hears one answer, whatever is there: no app, shortcut, field, choice or item is named", async () => {
+  const meds = { app: "Inbox", panels: [
+    { view: "checklist", title: "Today", items: ["Lisinopril 10mg", "Metformin 500mg"], shortcut: "open" },
+    { view: "form", title: "Log", fields: { dose: "number", drug: ["Lisinopril", "Metformin"] }, save: "todo", shortcut: "add" },
+  ] };
+  const t = await served({}, meds);
+  try {
+    const from = { auth: "x".repeat(32), from: "100.64.0.9" };
+    const probes = [
+      await t.ask("POST", "/run/Nope/x", from),
+      await t.ask("POST", "/run/Inbox/nope", from),
+      await t.ask("POST", "/run/Inbox/open", { ...from, body: { item: "zzz" } }),
+      await t.ask("POST", "/run/Inbox/add", { ...from, body: { drug: "zzz" } }),
+      await t.ask("POST", "/run/Inbox/add", { ...from, body: { dose: "zzz" } }),
+      await t.ask("GET", "/get/Inbox/open", from),
+      await t.ask("POST", "/dry/Inbox/add", { ...from, body: { dose: "1" } }),
+      await t.ask("POST", "/dry/Nope/add", from),
+      // The admin token from another computer is no key at all.
+      await t.ask("POST", "/run/Inbox/add", { auth: t.token, from: "100.64.0.9", body: { drug: "zzz" } }),
+    ];
+    for (const p of probes) assert.deepEqual([p.status, p.body], [403, { ok: false, error: "that key doesn't run this" }]);
+    // A key's holder still hears why a run didn't go.
+    const mine = await t.ask("POST", "/run/Inbox/add", { auth: LINK_KEY, from: "100.64.0.9", body: { drug: "zzz" } });
+    assert.deepEqual([mine.status, mine.body.error], [422, "Inbox: drug must be one of Lisinopril, Metformin"]);
+    assert.deepEqual(await t.rows(), []);
+  } finally {
+    await t.s.close();
+  }
+});
+
+test("gizmod answers only at its own address: a web page's name pointed at this computer is refused", async () => {
+  assert.deepEqual(
+    [undefined, "127.0.0.1:7468", "localhost:7468", "LOCALHOST", "100.64.0.1:7468", "mac.tail1234.ts.net:7468", "macbook:7468", "evil.example:7468", "127.0.0.1.evil.example", "100.64.0.2:7468", "ts.net.evil.example:7468", "localhost.evil.example:7468"]
+      .map((h) => ownHost(h, ["127.0.0.1", "100.64.0.1"], 7468)),
+    [true, true, true, true, true, true, true, false, false, false, false, false],
+  );
+  const t = await served();
+  try {
+    const req = { method: "GET", url: "/status", headers: { authorization: `Bearer ${t.token}`, host: "evil.example:7468" }, socket: { remoteAddress: "127.0.0.1" }, async *[Symbol.asyncIterator]() {} } as unknown as IncomingMessage;
+    let status = 0;
+    await t.s.handle(req, { writeHead: (st: number) => { status = st; }, end: () => {} } as unknown as ServerResponse);
+    assert.equal(status, 403);
+  } finally {
+    await t.s.close();
+  }
+});
+
+test("gizmod reads and writes only the vault's own files: not beside the vault, not in the config folder, and the policy note under no spelling", async () => {
+  const t = await served();
+  try {
+    writeFileSync(join(t.root, "..", `${basename(t.root)}-outside.json`), "[]");
+    made.push(join(t.root, "..", `${basename(t.root)}-outside.json`));
+    writeFileSync(join(t.root, "Gizmo policy.md"), "---\nlabels: {}\n---\n");
+    for (const path of [`../${basename(t.root)}-outside.json`, ".obsidian/plugins/gizmo/data.json", "Apps/../../x.json", "/etc/hosts"]) {
+      await assert.rejects(async () => t.s.env.host.readFile(path), /isn't a file in this vault/, path);
+      assert.equal(t.s.env.host.fileSize!(path), undefined, path);
+    }
+    for (const path of ["./Gizmo policy.md", "Apps/../Gizmo policy.md", "Gizmo policy.md/", ".//gizmo POLICY.md"]) {
+      await assert.rejects(async () => t.s.env.io.appendLine(path, "- x"), /your Gizmo policy|isn't a path in this vault/, path);
+    }
+    for (const path of ["../outside.md", ".obsidian/x.md", "/tmp/x.md"]) {
+      await assert.rejects(async () => t.s.env.io.appendLine(path, "- x"), /isn't a (path|file) in this vault/, path);
+    }
+    assert.equal(readFileSync(join(t.root, "Gizmo policy.md"), "utf8"), "---\nlabels: {}\n---\n");
+    // Another spelling of a note's own path writes that note.
+    await t.s.env.io.appendLine("./Notes//Daily.md", "- x");
+    assert.equal(readFileSync(join(t.root, "Notes/Daily.md"), "utf8"), "- x\n");
   } finally {
     await t.s.close();
   }

@@ -257,6 +257,21 @@ export function fileRowsAsks(o: { path: string; app: string; rows: readonly Row[
   return [{ id: `file\n${o.path}`, path: o.path, app: o.app, text: `${n} ${n === 1 ? "row" : "rows"} from a file to check in ${o.app}`, due: times.length ? Math.min(...times) : 0, answer: { open: true } }];
 }
 
+/** A name as it reads at a glance: case, accents, spaces and punctuation aside. */
+const glance = (name: string) => name.normalize("NFKD").replace(/\p{M}/gu, "").toLowerCase().replace(/[^\p{L}\p{N}]/gu, "");
+
+/** Letters of Latin together with Cyrillic or Greek, whose letters pass for Latin ones. */
+const mixesAlphabets = (name: string) => /\p{Script=Latin}/u.test(name) && /[\p{Script=Cyrillic}\p{Script=Greek}]/u.test(name);
+
+/**
+ * What an ask says of a waiting writer's key: its first characters, always, and when its name
+ * reads like one known here under another key, or mixes alphabets as a look-alike does, that too.
+ */
+function keyNote(name: string, writer: string, known: ReadonlySet<string> | undefined): string {
+  const like = [...(known ?? [])].find((k) => glance(k) === glance(name) && glance(name) !== "");
+  return `${like === undefined ? "" : `another key than the ${like} you know, `}key ${writer.slice(0, 4)}${mixesAlphabets(name) ? "; its name mixes alphabets" : ""}`;
+}
+
 /**
  * Rows from another vault that wait for their writer to be accepted: one ask for each writer this
  * vault hasn't decided about, which accepts it (its rows then count as logged) or refuses it.
@@ -274,8 +289,8 @@ export function waitingWriterAsks(o: { path: string; app: string; rows: readonly
   }
   return [...by].map(([writer, w]): Ask => ({
     id: `writer\n${o.path}\n${writer}`, path: o.path, app: o.app, due: w.due,
-    // A name is whatever the sender typed: one already known here, under another key, is said to be another key.
-    text: `Accept rows from ${w.name}${o.known?.has(w.name) ? ` (another key than the ${w.name} you know, ${writer.slice(0, 4)})` : ""} in ${o.app}? ${w.n} ${w.n === 1 ? "row waits" : "rows wait"}, and later ones will count as logged`,
+    // A name is whatever the sender typed, so the key is always said; a name that reads like one known here, under another key, is said to be another key.
+    text: `Accept rows from ${w.name} (${keyNote(w.name, writer, o.known)}) in ${o.app}? ${w.n} ${w.n === 1 ? "row waits" : "rows wait"}, and later ones will count as logged`,
     answer: { writer: { writer, name: w.name, accept: true } },
     refuse: { writer, name: w.name, accept: false },
   }));

@@ -13,7 +13,7 @@
  * through `op run`, never from a file.
  */
 import { execFile } from "node:child_process";
-import { createHash, randomBytes } from "node:crypto";
+import { createHash, randomBytes, timingSafeEqual } from "node:crypto";
 import { existsSync, promises as fs, readFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type Server, type ServerResponse } from "node:http";
 import { homedir, userInfo } from "node:os";
@@ -168,6 +168,23 @@ async function tailscaleIp(): Promise<string | undefined> {
   return undefined;
 }
 
+/** Whether two keys are the same, in time that doesn't tell how much of one matched. */
+function sameKey(expected: string, given: string): boolean {
+  return timingSafeEqual(createHash("sha256").update(expected).digest(), createHash("sha256").update(given).digest());
+}
+
+/**
+ * Whether a request's Host header names gizmod itself: this computer, an address it listens on, or
+ * this computer's name on the tailnet, short (`mac`) or whole (`mac.tail1234.ts.net`), at its port.
+ * A web page can point only a name with a dot in it, of a domain of its own, at this computer, and
+ * no `.ts.net` name. A request with no Host (not from a browser) is answered.
+ */
+export function ownHost(header: string | undefined, addresses: readonly string[], port: number): boolean {
+  if (header === undefined) return true;
+  const host = header.toLowerCase().replace(new RegExp(`:${port}$`), "");
+  return ["127.0.0.1", "[::1]", ...addresses].includes(host) || /^[a-z0-9-]+$/.test(host) || /^[a-z0-9-]+(\.[a-z0-9-]+)*\.ts\.net$/.test(host);
+}
+
 const isLoopback = (address: string | undefined) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1";
 
 async function readBody(req: IncomingMessage): Promise<Record<string, string>> {
@@ -272,6 +289,8 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       res.end(JSON.stringify(body));
     };
     try {
+      // A web page can point a name of its own at this computer; only gizmod's own addresses are answered.
+      if (!ownHost(req.headers.host, [...servers.keys()], port)) throw new HttpError(403, "gizmod answers only at its own address: 127.0.0.1, or this computer's Tailscale address or name");
       const url = new URL(req.url ?? "/", "http://gizmod");
       const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
       if (req.method === "POST" && parts[0] === "answer" && parts.length === 2) {
@@ -292,11 +311,18 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       }
       const auth = /^Bearer\s+(\S+)$/i.exec(req.headers.authorization ?? "")?.[1];
       // The admin token is the computer's own user: taken only from this computer.
-      const trusted = auth !== undefined && auth === token && isLoopback(req.socket.remoteAddress);
+      const trusted = auth !== undefined && sameKey(token, auth) && isLoopback(req.socket.remoteAddress);
       if (!auth) throw new HttpError(401, "a key is needed: the shortcut's link key, a capture key, or on this computer the admin token");
-      const target = (name: string) => {
+      // Whoever holds no key that runs the shortcut hears one answer, whatever is or isn't there:
+      // an app's name, its shortcuts and what a form takes are told only to a key's holder.
+      const target = (name: string, shortcut: string) => {
         const found = bg.appFor(name);
-        if ("error" in found) throw new HttpError(404, found.error);
+        if (trusted) {
+          if ("error" in found) throw new HttpError(404, found.error);
+          return found.path;
+        }
+        const expected = "error" in found ? undefined : env.bgEnv.linkKey(found.path, shortcut, false);
+        if ("error" in found || expected === undefined || !sameKey(expected, auth)) throw new HttpError(403, "that key doesn't run this");
         return found.path;
       };
       if (req.method === "GET" && parts[0] === "status" && parts.length === 1) {
@@ -309,12 +335,11 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       if ((req.method === "POST" && parts[0] === "run") || (req.method === "GET" && parts[0] === "get")) {
         if (parts.length !== 3) throw new HttpError(404, `use /${parts[0]}/<app>/<shortcut>`);
         const params = req.method === "POST" ? await readBody(req) : Object.fromEntries(url.searchParams);
-        const r = await bg.runFrom(target(parts[1]), parts[2], { params: req.method === "POST" || Object.keys(params).length ? params : undefined, key: trusted ? undefined : auth, trusted });
+        const r = await bg.runFrom(target(parts[1], parts[2]), parts[2], { params: req.method === "POST" || Object.keys(params).length ? params : undefined, key: trusted ? undefined : auth, trusted });
         return reply(statusOf(r), r);
       }
       if (req.method === "POST" && parts[0] === "dry" && parts.length === 3) {
-        const path = target(parts[1]);
-        if (!trusted && env.bgEnv.linkKey(path, parts[2], false) !== auth) throw new HttpError(403, "that key isn't this shortcut's");
+        const path = target(parts[1], parts[2]);
         return reply(200, { ok: true, lines: dryLines(await bg.dryRun(path, parts[2], await readBody(req))) });
       }
       if (req.method === "POST" && parts[0] === "do" && parts.length === 1) {

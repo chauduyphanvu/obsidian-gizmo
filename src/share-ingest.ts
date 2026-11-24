@@ -96,6 +96,8 @@ export interface Ingested {
   refusedFrom: string[];
   /** The activity log's change for each edit written, with its event. */
   done: { edit: Edit; row: Row; from?: unknown; event?: string }[];
+  /** The kind's rows changed between reading and writing them, so nothing was written: the same messages are to be taken in again. */
+  retry?: true;
 }
 
 /**
@@ -123,7 +125,10 @@ export async function ingest(
 ): Promise<Ingested> {
   const rows = await store.rows(kind.name);
   const byId = new Map(rows.map((r) => [rowIdOf(r), r]));
-  const versions = o.versions ?? {};
+  // Worked out on a copy, and kept by the caller's only once the rows are written: a write that is
+  // refused leaves no version behind that would make the same message read as an old copy next time.
+  const versions = { ...o.versions };
+  const keepVersions = () => { if (o.versions) Object.assign(o.versions, versions); };
   const edits: Edit[] = [];
   const refused: string[] = [];
   const refusedFrom: string[] = [];
@@ -237,11 +242,13 @@ export async function ingest(
   for (const { plan, id } of settlements(logged, rows, kind.match ?? {})) {
     edits.push({ op: "set", list: kind.name, ref: { id: rowIdOf(plan), shown: plan }, field: "matched", value: id });
   }
-  if (!edits.length) return { added: [], changed: [], dismissed: [], restored: [], refused, refusedFrom, done: [] };
-  const written = await store.batch(edits);
-  if ("refused" in written) {
-    return { added: [], changed: [], dismissed: [], restored: [], refused: [...refused, "its rows changed meanwhile; read again next time"], refusedFrom: [...refusedFrom, ""], done: [] };
+  if (!edits.length) {
+    keepVersions();
+    return { added: [], changed: [], dismissed: [], restored: [], refused, refusedFrom, done: [] };
   }
+  const written = await store.batch(edits);
+  if ("refused" in written) return { added: [], changed: [], dismissed: [], restored: [], refused, refusedFrom, done: [], retry: true };
+  keepVersions();
   const done = written.flatMap((d, i) => {
     if (d.already) return [];
     const edit = edits[i];

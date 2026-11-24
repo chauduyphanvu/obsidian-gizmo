@@ -310,3 +310,17 @@ test("what the apps ask is the vault's: a policy holds its rows to what the most
     "Asks: what the apps ask: text (private) → the note Daily (personal)",
   ]);
 });
+
+test("a file source carries the label of the file it names, as a link too; one that isn't the file's path from the vault's root is an error", () => {
+  const app = (source: string) => ({ app: "x", panels: [{ view: "number", title: "Total", source, field: "n", agg: "sum", shortcut: "total" }] });
+  for (const source of ["Health/export.csv", "[[Health/export.csv]]", "[[Health/export.csv|Mine]]"]) {
+    const v = flows("Apps/X.md", app(source));
+    assert.deepEqual(v.lines, ["Total: export.csv.n (private) → a link's answer (personal)"], source);
+    assert.ok(v.wanted.includes("read:Health/export.csv"), source);
+  }
+  // Another spelling of the path would be read as that file and labelled as some other.
+  for (const source of ["./Health/export.csv", "Apps/../Health/export.csv", "/Health/export.csv", "Health//export.csv"]) {
+    const errors = readSpec(app(source), { now: NOW, path: "Apps/X.md" })?.errors ?? [];
+    assert.ok(errors.some((e) => e.includes("source must be the file's path from the vault's root")), `${source}: ${errors.join("; ")}`);
+  }
+});

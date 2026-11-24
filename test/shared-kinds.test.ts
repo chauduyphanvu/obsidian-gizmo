@@ -297,7 +297,8 @@ test("a row from a writer nobody accepted waits in Next; Accept counts it and wh
   }
   assert.deepEqual((await bo.store.rows("chore")).map((r) => [r.task, r.line, r.by]), [["Bins", "attested", "Ann"]]);
   const ask = () => bo.t.bg.asks.list().find((a) => a.id.startsWith("writer\n"));
-  assert.equal(ask()?.text, "Accept rows from Ann in Chore? 1 row waits, and later ones will count as logged");
+  // The key is said with the name, known or not: a name is whatever its sender typed.
+  assert.match(ask()?.text ?? "", /^Accept rows from Ann \(key [0-9a-f]{4}\) in Chore\? 1 row waits, and later ones will count as logged$/);
   assert.ok(ask()!.refuse, "x refuses it");
   // Rows waiting on a writer aren't rows from a file.
   assert.ok(!bo.t.bg.asks.list().some((a) => a.id.startsWith("file\n")));
@@ -332,7 +333,7 @@ test("a new key under a name already accepted is asked about as another key, not
   await bo.t.bg.share(KIND);
   await settle();
   const ask = bo.t.bg.asks.list().find((a) => a.id.startsWith("writer\n"));
-  assert.equal(ask?.text, `Accept rows from Ann (another key than the Ann you know, ${eve.writer.slice(0, 4)}) in Chore? 1 row waits, and later ones will count as logged`);
+  assert.equal(ask?.text, `Accept rows from Ann (another key than the Ann you know, key ${eve.writer.slice(0, 4)}) in Chore? 1 row waits, and later ones will count as logged`);
   assert.deepEqual((await bo.store.rows("chore")).map((r) => [r.task, r.line]), [["Fake", "attested"]]);
 });
 
@@ -707,7 +708,7 @@ test("names are compared as people read them, a row's by is the name this vault 
   await post(await signerOf(ann.id.sign, "Bo"), { t: "add", id: "00000000000000a1", r: { task: "Bins", at: "2026-11-18T08:00" } });
   await bo.t.bg.share(KIND);
   await settle();
-  assert.equal(bo.t.bg.asks.list().find((a) => a.id.startsWith("writer\n"))?.text, `Accept rows from Ann (another key than the Ann you know, ${eve.writer.slice(0, 4)}) in Chore? 1 row waits, and later ones will count as logged`);
+  assert.equal(bo.t.bg.asks.list().find((a) => a.id.startsWith("writer\n"))?.text, `Accept rows from Ann (another key than the Ann you know, key ${eve.writer.slice(0, 4)}) in Chore? 1 row waits, and later ones will count as logged`);
   assert.deepEqual((await bo.store.rows("chore")).map((r) => [r.task, r.by]), [["Fake", "Ann"], ["Bins", "Ann"]]);
   // Rows that don't fit the kind: a time that isn't one, a choice it doesn't have, text for a number. Told once a session.
   const mai = await signerOf(await newSigningKey(), "Mai");
@@ -789,4 +790,24 @@ test("a kind takes the labels of the folders it imports files from: a private ba
   const app = readSpec(APP, { path: "Apps/Tell.md", notes })!.spec!;
   const ctx = flowContext(policy, { appPath: "Apps/Tell.md", dataPath: "Apps/Tell data.md", hostPath: "Apps/Tell.md" }, notes, (s) => s, () => []);
   assert.deepEqual(checkFlows(app, permissionsOf(app, "Apps/Tell.md"), ctx).violations.map(violationText), ["Spent: Chore.amount (private) → a notice (personal)"]);
+});
+
+test("a change whose write is refused keeps no version: the same message, read again, still changes the row", async () => {
+  const { t, store } = setup();
+  const versions: Record<string, number> = {};
+  const o = { self: ME, writers: () => "accepted" as const, now: t.env.now(), versions };
+  const id = remoteRowId(MAI, "00000000000000f1");
+  await ingest(store, SPEC, [msg(MAI, "Mai", { t: "add", id: "00000000000000f1", r: { task: "Bins", at: "2026-11-18T08:00" }, q: 1 })], o);
+  assert.equal(versions[id], 1);
+  const change = msg(MAI, "Mai", { t: "add", id: "00000000000000f1", r: { task: "Bags", at: "2026-11-18T08:00" }, q: 2 });
+  // The rows changed between the read and the write (one was deleted here meanwhile): nothing is written.
+  const refusing: DataStore = { ...store, batch: async () => ({ refused: "gone" }) };
+  const refused = await ingest(refusing, SPEC, [change], o);
+  assert.deepEqual([refused.retry, refused.changed.length, versions[id]], [true, 0, 1], "the version is the one the row's fields are from");
+  assert.deepEqual((await store.rows("chore")).map((r) => r.task), ["Bins"]);
+  const again = await ingest(store, SPEC, [change], o);
+  assert.deepEqual([again.retry, again.changed.map((r) => r.task), versions[id]], [undefined, ["Bags"], 2]);
+  // A version with nothing to write (the same fields, sent anew) is still kept.
+  await ingest(store, SPEC, [msg(MAI, "Mai", { t: "add", id: "00000000000000f1", r: { task: "Bags", at: "2026-11-18T08:00" }, q: 3 })], o);
+  assert.equal(versions[id], 3);
 });

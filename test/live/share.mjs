@@ -196,7 +196,7 @@ try {
       await na.plugin().background.share("Chore.md");
       await na.until(() => na.plugin().background.asks.list().some((a) => a.id.startsWith("writer\\n")), 5000);
       return { rows: await rows(), asks: na.plugin().background.asks.list().map((a) => a.text) };`);
-    ta.expect(waiting.rows.some((r) => r.task === "Dishes" && r.line === "attested" && r.by === "Bo") && waiting.asks.includes("Accept rows from Bo in Chore? 1 row waits, and later ones will count as logged"), waiting);
+    ta.expect(waiting.rows.some((r) => r.task === "Dishes" && r.line === "attested" && r.by === "Bo") && waiting.asks.some((t) => /^Accept rows from Bo \(key [0-9a-f]{4}\) in Chore\? 1 row waits, and later ones will count as logged$/.test(t)), waiting);
     const shown = await ta.run(`
       app.commands.executeCommandById("gizmo:next");
       const modal = await na.until(() => [...document.querySelectorAll(".modal")].find((m) => m.innerText.includes("Accept rows from Bo")), 4000);
@@ -373,7 +373,7 @@ try {
     ta.expect(shown.form && shown.text.includes("This page is for Sitter") && said?.cls === "ok" && posts() === before + 1 && requests.at(-1).origin === "null", { shown, said, last: requests.at(-1) });
     const inA = await ta.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
     const inB = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); await na.sleep(500); return { rows: await rows(), asks: na.plugin().background.asks.list().map((a) => a.text) };`);
-    ta.expect(inA.some((r) => r.task === "Fed the cat" && r.line === undefined && r.by === "Sitter") && inB.rows.some((r) => r.task === "Fed the cat" && r.line === "attested" && r.by === "Sitter") && inB.asks.some((t) => t.startsWith("Accept rows from Sitter in Chore?")), { inA, inB });
+    ta.expect(inA.some((r) => r.task === "Fed the cat" && r.line === undefined && r.by === "Sitter") && inB.rows.some((r) => r.task === "Fed the cat" && r.line === "attested" && r.by === "Sitter") && inB.asks.some((t) => /^Accept rows from Sitter \(key [0-9a-f]{4}\) in Chore\?/.test(t)), { inA, inB });
     return `changed code: “${refused.why.split(".")[0]}”; offline: “${offline.text}”; then ${said.text} A: logged, by Sitter; B asks “Accept rows from Sitter in Chore?”`;
   });
 

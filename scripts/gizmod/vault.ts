@@ -8,6 +8,7 @@ import { existsSync, promises as fs, statSync, watch, type FSWatcher } from "nod
 import { dirname, join, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
 import type { FileInfo } from "../../src/datalayer.ts";
+import { vaultPath } from "../../src/store.ts";
 
 export interface VaultFile {
   info: FileInfo;
@@ -85,8 +86,14 @@ export class NodeVault {
     return !!path && !path.split("/").some((part) => part.startsWith("."));
   }
 
+  /**
+   * Where a vault path is on disk. Only the vault's own files have a place: a path that leaves the
+   * folder, or goes into the config folder or a dot folder, is refused, as Obsidian's vault refuses it.
+   */
   abs(path: string): string {
-    return join(this.root, ...path.split("/"));
+    const inside = vaultPath(path);
+    if (inside === undefined || !this.ours(inside)) throw new Error(`${path} isn't a file in this vault`);
+    return join(this.root, ...inside.split("/"));
   }
 
   async scan(): Promise<void> {

@@ -65,6 +65,13 @@ test("writes to one note run one after another; the policy note is never written
   assert.deepEqual(JSON.parse(d.files.get("Apps/A data.md")!).list, [1, 2, 3]);
   await assert.rejects(w.writeFrontmatter("Gizmo POLICY.md", () => {}), /your Gizmo policy/);
   await assert.rejects(w.appendLine("gizmo policy.md", "x"), /your Gizmo policy/);
+  // Whatever the host makes of a path, another spelling of the policy note's is still the policy note's.
+  for (const path of ["./Gizmo policy.md", "Gizmo policy.md/", ".//gizmo policy.md", "Gizmo policy.md/."]) await assert.rejects(w.appendLine(path, "x"), /your Gizmo policy/, path);
+  for (const path of ["Apps/../Gizmo policy.md", "../Outside.md", "/etc/x.md", ""]) await assert.rejects(w.appendLine(path, "x"), /isn't a path in this vault/, path);
+  assert.deepEqual(d.log.filter((l) => /policy|Outside|etc/i.test(l)), []);
+  // A note's own path under another spelling is that note.
+  await w.appendLine("./Notes//Daily.md", "- x");
+  assert.equal(d.files.get("Notes/Daily.md"), "- x\n");
   assert.equal(await w.createNote("Bets/B.md", { stake: 5 }, "Body\n"), "---\n{\"stake\":5}\n---\nBody\n");
   assert.equal(await w.createNote("Bets/B.md", { stake: 9 }, ""), false);
   assert.equal(await w.updateFrontmatter("Nope.md", () => {}), false);

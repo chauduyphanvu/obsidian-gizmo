@@ -19,7 +19,7 @@ import { grantedOf, isAllowed, isAllowedUnder } from "../../src/grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../../src/policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
 import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../../src/snapshots.ts";
-import { isApp, isKind, notePath, storeTarget } from "../../src/store.ts";
+import { isApp, isKind, notePath, storeTarget, vaultPath } from "../../src/store.ts";
 import { captureNamesOf, destinationsOf, linkKeyOf, writersOf, type StoredData } from "../../src/stored.ts";
 import { NodeVault, yamlText } from "./vault.ts";
 import { vaultWrites } from "../../src/vault-ops.ts";
@@ -152,7 +152,7 @@ export function gizmodEnv(opts: GizmodOptions) {
   const frontmatter = (path: string) => vault.file(path)?.fm;
   // Written as Obsidian writes them (see vault-ops.ts), each change read again just before it's written.
   const writes = vaultWrites({
-    normalize: (path) => path,
+    normalize: (path) => vaultPath(path) ?? path,
     exists: (path) => vault.file(path) !== undefined || existsSync(vault.abs(path)),
     read: (path) => vault.read(path),
     write: (path, text) => vault.write(path, text),

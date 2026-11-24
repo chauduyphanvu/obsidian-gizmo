@@ -7,6 +7,7 @@ import {
   clearance, fieldLabel, hostLabel, join, noteLabels, rank, released, scopeLabels, topLabel, vaultLabels,
   type Label, type Labels, type Policy,
 } from "./policy.ts";
+import { fileTarget } from "./sources/file.ts";
 import { sourceDef } from "./sources/registry.ts";
 import { kindFiles, kindOfPanel } from "./sources/kind.ts";
 import { urlHost } from "./sources/url.ts";
@@ -179,7 +180,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
       case "list": case "expect": return dataLabels;
       case "notes": case "tasks": return p.from ? scopeLabels(policy, p.from) : vaultLabels(policy);
       case "base": case "asks": return vaultLabels(policy);
-      case "file": return noteLabels(policy, filePath(p.source), ctx.tags(filePath(p.source)));
+      case "file": return noteLabels(policy, fileTarget(p.source), ctx.tags(fileTarget(p.source)));
       case "this": return thisLabels;
       case "url": {
         // What a website answers to a request made with a secret or a body is about you.
@@ -407,11 +408,6 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
   return { violations, covered, asked, alertLabels, answerLabels };
 }
 
-/** The file a `file` source reads: its path, or the link as written. */
-function filePath(source: string): string {
-  return source.replace(/^\[\[|\]\]$/g, "");
-}
-
 /** Where a panel's data comes from, as a violation names it. */
 function sourceName(p: Panel, ctx: FlowContext): string {
   if (!p.source) return p.view === "form" ? "what you type" : "the panel";
@@ -421,7 +417,7 @@ function sourceName(p: Panel, ctx: FlowContext): string {
     case "notes": case "tasks": return p.from ? `notes in ${p.from}` : "notes anywhere";
     case "base": return "a base";
     case "asks": return "what the apps ask";
-    case "file": return basename(filePath(p.source));
+    case "file": return basename(fileTarget(p.source));
     case "this": return ctx.lensScope ? `notes in ${ctx.lensScope}` : basename(ctx.hostPath);
     case "url": return urlHost(p.source);
     default: return p.source;

@@ -247,16 +247,20 @@ export class Shares {
     const capped = new Set<string>();
     // Anyone with the key can make new signing keys: writers not accepted share one hour's allowance too.
     const may = (w: string) => (accepted(w) || this.mayTake(st, "*", now.getTime())) && this.mayTake(st, w, now.getTime());
-    const r = await ingest(storeOf(deps), kind, opened, {
+    const take = () => ingest(storeOf(deps), kind, opened, {
       self: signer.writer, now, writers: (w) => writers[w]?.state, name: (w) => writers[w]?.name, versions: st.seen,
       may: (w) => may(w) || void capped.add(w) || false,
     });
+    // Rows that changed under the write are read again at once; if that happens twice, the cursor
+    // stays where it was and the relay gives the same messages on the next run.
+    const first = await take();
+    const r = first.retry ? await take() : first;
     for (const w of capped) {
       const name = opened.find((o) => o.writer === w)?.name ?? "a writer";
       const who = st.hour[w]?.[1] === MAX_PER_HOUR ? name : "people you haven't accepted";
       this.tellOnce(`${entry.path}\n${who}`, `cap ${Math.floor(now.getTime() / HOUR)}`, `${entry.name}: more than ${MAX_PER_HOUR} rows from ${who} this hour; the rest come when they're sent again`);
     }
-    if (got.length) st.cursor = got[got.length - 1].id;
+    if (got.length && !r.retry) st.cursor = got[got.length - 1].id;
     if (r.done.length) {
       const names = [...new Set(r.done.filter((d) => d.edit.op === "add" || (d.edit.op === "set" && d.edit.field !== "matched")).map((d) => (typeof d.row.by === "string" ? d.row.by : "someone")))];
       const changes: Change[] = r.done.map((d) => d.edit.op === "set"
