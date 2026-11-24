@@ -210,7 +210,14 @@ verifyExtract(X).then((v) => {
     cell.textContent = parts.join(" · ");
     if (r.late) { const b = document.createElement("b"); b.textContent = " · written later than the time it gives"; cell.appendChild(b); tr.className = "late"; }
   }
-}).catch((e) => { const verdict = document.getElementById("verdict"); verdict.className = "bad"; verdict.textContent = "This file couldn't be checked here: " + e.message; });
+}).catch((e) => {
+  const verdict = document.getElementById("verdict");
+  verdict.className = "bad";
+  verdict.textContent = window.crypto && window.crypto.subtle
+    ? "This file couldn't be checked here: " + e.message
+    : "This file hasn't been verified: this browser only runs its check on a file opened directly or from an https address.";
+  for (const cell of document.querySelectorAll("tbody td:last-child")) { cell.textContent = "not checked"; cell.className = "bad"; }
+});
 `;
 
 const STYLE = `
@@ -220,6 +227,7 @@ h1 { font-size: 1.4rem; margin: 0 0 .25rem; }
 #verdict { margin: 1rem 0 .25rem; padding: .6rem .8rem; border-radius: 6px; background: #f1f3f4; font-weight: 600; }
 #verdict.ok { background: #e6f4ea; color: #0b5d2c; }
 #verdict.bad { background: #fce8e6; color: #a50e0e; }
+#unchecked { margin: 1rem 0 .25rem; padding: .6rem .8rem; border-radius: 6px; background: #fce8e6; color: #a50e0e; font-weight: 600; }
 #problems { color: #a50e0e; margin: .25rem 0 1rem; }
 table { border-collapse: collapse; width: 100%; margin-top: 1rem; }
 th, td { text-align: left; padding: .35rem .6rem .35rem 0; border-bottom: 1px solid #e0e0e0; vertical-align: top; }
@@ -250,10 +258,12 @@ export function extractPage(x: Extract): string {
 <meta http-equiv="Content-Security-Policy" content="default-src 'none'; script-src 'unsafe-inline'; style-src 'unsafe-inline'">
 <title>${esc(x.kind)}: sealed extract</title>
 <style>${STYLE}</style>
+<noscript><style>#verdict { display: none; } tbody td:last-child { font-size: 0; } tbody td:last-child::after { content: "not checked"; font-size: .85rem; }</style></noscript>
 </head>
 <body>
 <h1>${esc(x.kind)}</h1>
 <div class="meta">${x.rows.length} ${x.rows.length === 1 ? "row" : "rows"} · made ${made} UTC · this file loads nothing and sends nothing</div>
+<noscript><div id="unchecked">This viewer doesn't run this file's check, so it hasn't been verified. Open the file in a web browser.</div></noscript>
 <div id="verdict">Checking this file…</div>
 <ul id="problems"></ul>
 <table><thead><tr>${head}</tr></thead><tbody>

@@ -1509,3 +1509,6 @@ button.gz-lens-toggle {
 .gizmo.gz-examples .gz-examples-skipped, .gizmo.gz-examples .gz-examples-rows { color: var(--text-muted); font-size: var(--font-ui-small); }
 .gizmo.gz-examples .gz-examples-pick { display: block; padding: var(--size-2-2) 0; }
 .gizmo.gz-examples pre { max-height: 14em; overflow: auto; font-size: var(--font-ui-smaller); margin: var(--size-2-2) 0; }
+@media (pointer: coarse) {
+  .gizmo.gz-examples .gz-examples-pick { display: flex; align-items: center; gap: var(--size-4-2); min-height: 44px; }
+}

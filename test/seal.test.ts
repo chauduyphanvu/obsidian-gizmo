@@ -1,5 +1,6 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
+import { parseHTML } from "linkedom";
 import { describePermission, permissionsOf } from "../src/permissions.ts";
 import { VERIFY_SOURCE, extractPage, type Extract } from "../src/seal-extract.ts";
 import { checkNow, checkWords, extractOf, sealNow, type SealHost } from "../src/seal-run.ts";
@@ -225,6 +226,21 @@ test("the extract's own checker: a log line changed after sealing, and a row sho
   assert.deepEqual((await verifyExtract(reworded)).problems, [`row ${R1}: the logs give another taken for this row`]);
   const invented: Extract = { ...good, rows: [...good.rows, { id: "ffffffffffffffff", row: { at: "2026-11-21T08:00-08:00", what: "morning", taken: true } }] };
   assert.deepEqual((await verifyExtract(invented)).problems, ["row ffffffffffffffff: no event in the logs adds this row"]);
+});
+
+test("the extract says in plain words when it can't run its check, and leaves no row saying it is still checking", async () => {
+  const page = extractPage(await extractOfLogs(LOG, [row(R1, { at: "2026-11-19T08:14-08:00", what: "morning", taken: true })]));
+  assert.match(page, /<noscript>.*hasn't been verified.*<\/noscript>/s, "a viewer that runs no scripts is told so");
+  const { document } = parseHTML(page);
+  const script = String([...document.querySelectorAll("script")].at(-1)!.textContent);
+  // A page from a plain http address: the browser has no crypto.subtle.
+  new Function("document", "window", "crypto", script)(document, { crypto: {} }, {});
+  await new Promise((done) => setTimeout(done, 20));
+  const verdict = String(document.getElementById("verdict")!.textContent);
+  const proof = String(document.querySelector("tbody td:last-child")!.textContent);
+  assert.match(verdict, /https/);
+  assert.doesNotMatch(verdict, /undefined|evaluating|Cannot read/);
+  assert.equal(proof, "not checked");
 });
 
 test("the extract is one file that loads nothing: its rows, its data and its checker inline", async () => {

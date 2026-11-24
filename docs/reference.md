@@ -659,6 +659,8 @@ The device that does background work also seals each sealed kind one time each d
 - Each row shows when it was written, how many times it changed, and the time of the first seal that has all its lines. The time is that of the authority when the seal has a time stamp.
 - A row that was written more than one day after the time that it gives is marked "written later than the time it gives". You can still log a row for a past time. The extract shows the two times.
 
+If the extract cannot do these checks, it says that it has not been verified. This occurs in a viewer that runs no scripts, and in a browser that opens the file from a plain `http` address.
+
 **The limits.** A seal shows when a line was written and that it is the same now. It cannot show that the line is true. The extract reads the time and the hash from the answer of the authority, but it does not check the signature of the authority. The answer is in the file, and `openssl ts -verify` checks it against the certificate of the authority. With `seal: true`, a person who can change the clock of the device and write the files again can make new seals. Only the time stamp of an authority prevents that. gizmod does not make seals.
 
 ## Embeds
