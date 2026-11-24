@@ -1,7 +1,6 @@
 import { textOf } from "./text.ts";
 import { pastText, shownAsNow } from "./replay.ts";
 import { whatIfNotes, type Ahead } from "./ahead.ts";
-import { rowIdOf } from "./ledger-store.ts";
 import { logFolder } from "./ledger.ts";
 import type { DataStore } from "./datastore.ts";
 import { violationText, type FlowWhere, type Verdict } from "./flows.ts";
@@ -11,18 +10,17 @@ import {
   renderUsage, renderYamlError, yamlProblem, type CardApp,
 } from "./app-cards.ts";
 import { AppChecks } from "./app-checks.ts";
+import { explainSource, type ExplainApp } from "./app-explain.ts";
+import { AppInspector } from "./app-inspector.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./responses.ts";
 import { type Row } from "./data.ts";
 import { stampParts } from "./time.ts";
 import { DataLayer, WebError, type AppFiles } from "./datalayer.ts";
-import { EXPLAINED, explain, waterfall, type Explanation } from "./explain.ts";
+import { EXPLAINED } from "./explain.ts";
 import type { ExplainSource } from "./explain-view.ts";
-import { panelName, panelsOf, type DefinitionLog } from "./definitions.ts";
-import { editableSource } from "./edit.ts";
-import { knobsOf, solve, withProperty } from "./pull.ts";
-import { kindFiles, kindOfPanel } from "./sources/kind.ts";
+import { panelsOf, type DefinitionLog } from "./definitions.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
 import { typedName, type NoteReader } from "./expand.ts";
@@ -34,7 +32,7 @@ import { askersOf, permissionsOf } from "./permissions.ts";
 import { thisValues } from "./sources/this.ts";
 import { THIS, type InputValue } from "./template.ts";
 import { renderInputBar } from "./toolbar.ts";
-import { renderInspector, sourceKind, type InspectedSource } from "./inspect.ts";
+import { type InspectedSource } from "./inspect.ts";
 import { compilePipeline, tracePipeline } from "./pipeline.ts";
 import { panelLine } from "./yamlpos.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, composedWidth, isNarrow, rowTracks, spanOn, widthFor } from "./layout.ts";
@@ -175,7 +173,7 @@ export interface Hosting {
   memory?: AppMemory;
 }
 
-interface Mounted {
+export interface Mounted {
   id: string;
   ps: PanelSpec;
   /** The panel's keys with the current input values filled in. */
@@ -254,6 +252,8 @@ export class AppController {
   private writes: AppWrites;
   private cards: CardApp;
   private checks: AppChecks;
+  private explained: ExplainApp;
+  private inspector: AppInspector;
   private refreshHandle: number | undefined;
   private resizeHandle: number | undefined;
   private width = 0;
@@ -276,9 +276,6 @@ export class AppController {
   private wanted: string[] = [];
   /** What every panel may ask; each gets its own copy that knows which panel it is (see ctxFor). */
   private ctx: Omit<PanelCtx, "editRow">;
-  /** The data inspector pane, while it is open, and which fill of it is the latest. */
-  private inspector: HTMLElement | undefined;
-  private inspecting = 0;
   /** Which read of the note's text, to say why it has no keys, is the latest (see explainNoApp). */
   private explaining = 0;
   /** The card saying the properties don't parse, above the app as last drawn, while it shows there. */
@@ -306,6 +303,14 @@ export class AppController {
     this.cards = { env, appPath, hostPath: this.hostPath, grantKey: this.grantKey, hosted: !!hosting, scope: hosting?.kind === "lens" ? hosting.scope : undefined, load: () => this.load() };
     this.readHost();
     this.shell = root.createDiv({ cls: "gizmo" });
+    const ttlMs = () => this.spec?.refreshMs ?? CACHE_MS;
+    this.inspector = new AppInspector({
+      env, shell: this.shell, mounted: this.mounted, spec: () => this.spec, files: () => this.files(), ttlMs, below: () => this.bar ?? this.grid ?? null,
+    });
+    this.explained = {
+      env, appPath, hosting, writes: this.writes, spec: () => this.spec, dataPath: () => this.dataPath, files: () => this.files(), ttlMs,
+      reload: (m) => void this.loadPanel(m),
+    };
     this.checks = new AppChecks({
       env, appPath, hosting, writes: this.writes, shell: this.shell,
       spec: () => this.spec, dataPath: () => this.dataPath, files: () => this.files(), current: () => this.current(),
@@ -358,7 +363,7 @@ export class AppController {
   }
 
   dispose(): void {
-    this.inspector = undefined;
+    this.inspector.drop();
     this.explaining++;
     this.unsubscribe?.();
     this.removeBar();
@@ -377,33 +382,19 @@ export class AppController {
 
   // ---- Data inspector -----------------------------------------------------------------------
 
-  /**
-   * The distinct sources of the panels on screen, each with the title of the first panel that uses
-   * it and what it returned before any pick, where or other step. Loads through the data layer's
-   * cache, so nothing is requested twice. Web addresses keep their `{secret:…}` placeholders.
-   */
-  async inspect(): Promise<InspectedSource[]> {
-    return Promise.all([...this.sourceReaders().values()].map(async (m): Promise<InspectedSource> => {
-      const found = { title: m.p.title ?? m.p.view, kind: sourceKind(m.source!, m.p.from), ...(isUrl(m.source) ? { source: m.source } : {}) };
-      try {
-        const data = await this.env.data.rawData(m.source, m.p, this.files(), { ttlMs: this.spec?.refreshMs ?? CACHE_MS, now: this.env.now() });
-        return { ...found, data };
-      } catch (e) {
-        return { ...found, data: { error: (e as Error).message } };
-      }
-    }));
+  /** The distinct sources of the panels on screen and what each returned (see AppInspector). */
+  inspect(): Promise<InspectedSource[]> {
+    return this.inspector.inspect();
   }
 
-  /** The first panel on screen that reads each distinct source, by its source (see sourceKey), in the order written. */
-  private sourceReaders(): Map<string, Mounted> {
-    const ids = this.spec ? panelIds(this.spec.panels.map((ps) => ps.template)) : [];
-    const first = new Map<string, Mounted>();
-    for (const m of ids.map((id) => this.mounted.get(id))) {
-      if (!m || m.idle || !m.source) continue;
-      const key = sourceKey(m);
-      if (!first.has(key)) first.set(key, m);
-    }
-    return first;
+  /** Whether the inspector is showing. */
+  get inspectorShown(): boolean {
+    return this.inspector.shown;
+  }
+
+  /** Shows the inspector above the panels, or takes it away. */
+  toggleInspector(): Promise<void> {
+    return this.inspector.toggle();
   }
 
   /**
@@ -426,48 +417,6 @@ export class AppController {
   /** Closes the side sheet, taking its pick back and the focus to what was picked; false when it wasn't open. */
   closeSheet(): boolean {
     return this.shut(true);
-  }
-
-  /** Whether the inspector is showing. */
-  get inspectorShown(): boolean {
-    return this.inspector !== undefined;
-  }
-
-  /** Shows the inspector above the panels, or takes it away. */
-  async toggleInspector(): Promise<void> {
-    if (this.inspector) {
-      this.inspector.remove();
-      this.inspector = undefined;
-      return;
-    }
-    this.openInspector();
-    await this.fillInspector();
-  }
-
-  private openInspector(): void {
-    const pane = this.shell.createDiv({ cls: "gz-card gz-inspector" });
-    this.shell.insertBefore(pane, this.bar ?? this.grid ?? null);
-    this.inspector = pane;
-    pane.createDiv({ cls: "gz-empty", text: "Loading…" });
-  }
-
-  /** Fills the open inspector; `focus`, a panel's id, scrolls it to that panel's source. */
-  private async fillInspector(focus?: string): Promise<void> {
-    const pane = this.inspector;
-    const run = ++this.inspecting;
-    // In the order inspect gives the sources, read before it waits for any.
-    const keys = [...this.sourceReaders().keys()];
-    const sources = await this.inspect();
-    if (!pane || pane !== this.inspector || run !== this.inspecting) return;
-    const m = focus === undefined ? undefined : this.mounted.get(focus);
-    const at = m?.source ? keys.indexOf(sourceKey(m)) : -1;
-    renderInspector(pane, sources, (text) => this.env.copy(text), at < 0 ? undefined : at);
-  }
-
-  /** Opens Inspect data, or keeps it open, at the source of the panel with this id. */
-  private async inspectPanel(id: string): Promise<void> {
-    if (!this.inspector) this.openInspector();
-    await this.fillInspector(id);
   }
 
   /** Puts the cursor on the line the panel is written on, in the note's source beside the app. */
@@ -558,7 +507,7 @@ export class AppController {
   private reconcile(): void {
     const before = this.definition;
     this.draw();
-    if (this.inspector && this.definition !== before) void this.fillInspector();
+    if (this.inspector.shown && this.definition !== before) void this.inspector.fill();
   }
 
   /** Brings the drawn app in line with the note's keys, keeping panels whose keys didn't change. */
@@ -735,7 +684,7 @@ export class AppController {
 
   /** Takes away what was drawn above the panels, brings back what was faded, and puts an empty header on top. */
   private freshHeader(): HTMLElement {
-    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector && el !== this.sheet?.el) el.remove();
+    for (const el of [...this.shell.children]) if (el !== this.grid && el !== this.bar && el !== this.inspector.el && el !== this.sheet?.el) el.remove();
     this.yamlCard = undefined;
     this.fade(false);
     this.rail?.remove();
@@ -1223,7 +1172,7 @@ export class AppController {
             return tracePipeline(m.p, m.raw?.now ?? this.env.now(), m.raw?.data);
           },
           showInSource: () => void this.showPanelSource(id),
-          seeAnswer: () => void this.inspectPanel(id),
+          seeAnswer: () => void this.inspector.inspectPanel(id),
         },
       }),
       // A panel that waits for a pick is shown in the sheet, and keeps its own picks there.
@@ -1243,88 +1192,11 @@ export class AppController {
     return true;
   }
 
-  /**
-   * Opens the Explain window of a panel's figure: its rows as shown, as they were at any past time
-   * (read as As of… reads them), where each came from and, in an app's own tab as it is now, the
-   * rows it may delete and what the figure could be pulled by.
-   */
+  /** Opens the Explain window of a panel's figure (see explainSource). */
   private explainPanel(id: string): void {
     const m = this.mounted.get(id);
     if (!m || m.idle || !this.env.explain) return;
-    const env = this.env;
-    if (!env.explain) return;
-    const open = (src: ExplainSource) => env.explain!(src);
-    const opts = (now: Date) => ({ ttlMs: this.spec?.refreshMs ?? CACHE_MS, now });
-    const raw = () => env.data.rawData(m.source, m.p, this.files(), opts(env.now()));
-    // A property Pull just set reads at its new value here, before the app has drawn it again.
-    let read = m.p;
-    const shown = async () => explain(read, await raw(), env.now());
-    const at = async (t: number): Promise<Explanation | undefined> => {
-      const past = new DataLayer(env.data.host, { at: t, like: env.data });
-      try {
-        return explain(read, await past.rawData(m.source, m.p, this.files(), opts(new Date(t))), new Date(t));
-      } finally {
-        past.dispose();
-      }
-    };
-    const saved = editableSource(m.p) === "list";
-    const ref = kindOfPanel(m.p);
-    const dataPath = ref ? kindFiles(ref).dataPath : this.dataPath;
-    const sourceRow = async (rowId: string) => {
-      const data = await raw();
-      return Array.isArray(data) ? (data as Row[]).find((r) => rowIdOf(r) === rowId) : undefined;
-    };
-    // Nothing is changed from the past, a what-if, a try, or a note the app is only shown in.
-    const live = env.data.at === undefined && !env.ahead && !env.preview && !this.hosting;
-    const undoOf = (entry: string | undefined) => (entry && env.undo ? { undo: () => env.undo!(entry) } : {});
-    open({
-      panel: m.p,
-      now: env.now(),
-      past: env.data.at !== undefined,
-      shown,
-      at,
-      since: async (t) => {
-        const [before, after] = await Promise.all([at(t), shown()]);
-        return before && after ? waterfall(before, after) : undefined;
-      },
-      origins: async () => (saved && env.data.ledger ? env.data.ledger.origins(dataPath) : new Map()),
-      keysSince: async (t) => {
-        const index = this.spec?.panels.indexOf(m.ps) ?? -1;
-        return index < 0 || this.hosting || !env.definitions ? [] : env.definitions.since(this.appPath, panelName(m.ps, index), t);
-      },
-      deviceName: (device) => env.deviceName?.(device),
-      ...(live && saved && this.writes.mayChange(m.p) && {
-        remove: async (part) => {
-          const row = part.id === undefined ? undefined : await sourceRow(part.id);
-          const done = row ? await this.writes.deleteRow(m, row, () => void this.loadPanel(m)) : undefined;
-          return done ? { text: "Deleted the row.", ...undoOf(done.entry) } : { text: "The row wasn't deleted." };
-        },
-      }),
-      ...(live && {
-        pull: {
-          knobs: async () => knobsOf(read, await raw(), env.now()).filter((k) => k.kind === "property" || (saved && this.writes.mayChange(m.p))),
-          solve: async (knob, target) => solve(read, await raw(), env.now(), knob, target),
-          keep: async (knob, value) => {
-            if (knob.kind === "property") {
-              const done = await this.writes.pullProperty(m, knob.name, value);
-              if (!done.written) return { text: done.text };
-              read = withProperty(read, knob.name, value);
-              const back = undoOf(done.entry).undo;
-              return {
-                text: done.text,
-                ...(back && { undo: async () => {
-                  const said = await back();
-                  read = withProperty(read, knob.name, knob.value);
-                  return said;
-                } }),
-              };
-            }
-            const done = await this.writes.pullRow(m, knob.row, knob.field, value);
-            return { text: done.text, ...undoOf(done.entry) };
-          },
-        },
-      }),
-    });
+    this.env.explain(explainSource(m, this.explained));
   }
 
   // ---- The side sheet -----------------------------------------------------------------------
@@ -1442,11 +1314,6 @@ export class AppController {
     if (!m || m.idle) return Promise.resolve();
     return this.writes.setProperty(m, field, value);
   }
-}
-
-/** What tells a panel's source apart from another's, for Inspect data: the same address with other headers or body is another. */
-function sourceKey(m: Mounted): string {
-  return JSON.stringify([m.source, m.p.from, m.p.headers, m.p.body]);
 }
 
 /** Whether a source gave anything: a row, or an answer with something in it. */
