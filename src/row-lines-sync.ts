@@ -7,13 +7,13 @@ import { RowLines, type RowHome, type Synced } from "./row-lines.ts";
 import type { Row } from "./data.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { basename } from "./store.ts";
+import { plural } from "./text.ts";
 
 /** How long after the last key an edited note's row lines are read: long enough that a word half typed isn't saved. */
 const EDIT_WAIT_MS = 1500;
 /** How long after rows change the notes' lines are written again, so several writes become one. */
 const WRITE_WAIT_MS = 400;
 
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** What an edit of a note did to its rows, said once. */
 function tell(done: Synced, note: string): void {

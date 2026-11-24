@@ -28,6 +28,8 @@ import { hasControl } from "./control.ts";
 import { CONTROL_PROBLEM, controlKey } from "./permissions.ts";
 import { VIEW_DEFS, viewDef } from "./views/registry.ts";
 import { aliasShortcut, backgroundKeyErrors, whatIfProblem } from "./alert-keys.ts";
+import { formFields, isFigure, typedFields } from "./panel.ts";
+import { listed } from "./text.ts";
 
 export { parseDuration };
 
@@ -381,9 +383,9 @@ const TOTALS = ["sum", "avg", "min", "max"];
  */
 function mixedUnits(p: Panel, stages: readonly PipelineKeys[]): string[] {
   const info = p.fieldInfo ?? {};
-  const figure = (p.view === "number" || p.view === "progress") && p.field !== undefined && TOTALS.includes(p.agg ?? "last");
+  const figure = isFigure(p) && p.field !== undefined && TOTALS.includes(p.agg ?? "last");
   const series = p.y === undefined ? [] : [p.y].flat();
-  const read = [...(figure || ((p.view === "number" || p.view === "progress") && p.field !== undefined) ? [p.field!] : []), ...series];
+  const read = [...(figure || (isFigure(p) && p.field !== undefined) ? [p.field!] : []), ...series];
   const errors: string[] = [];
   for (const f of new Set(read)) {
     const by = info[f]?.unitBy;
@@ -636,7 +638,7 @@ function showFields(p: Panel): void {
 function definitionProblems(p: Panel, view: string): string[] {
   const kind = p.target?.kind;
   if (kind !== "folder" && kind !== "this") return [];
-  const keys = p.row ? Object.keys(p.row) : view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
+  const keys = p.row ? Object.keys(p.row) : view === "form" ? Object.keys(formFields(p)) : [];
   const what = p.row ? "row can't set" : kind === "this" ? "save: this can't change" : "save can't set";
   return keys.flatMap((k) => {
     const why = definitionReason(k);
@@ -647,7 +649,6 @@ function definitionProblems(p: Panel, view: string): string[] {
 /** What a `row:` value reads of the time it is saved for, besides the row's own fields. */
 const ROW_STAMPS = ["date", "time", "at"];
 
-const listed = (names: string[]) => (names.length > 1 ? `${names.slice(0, -1).join(", ")} and ${names[names.length - 1]}` : names.join(""));
 
 /**
  * What the formulas among `row`'s values can't use: bad syntax, a function or `prev`, and on a form
@@ -679,7 +680,7 @@ function rowFormulaProblems(p: Panel, view: string): string[] {
 function rowTypeErrors(p: Panel): string[] {
   const types = p.targetFields;
   if (!p.row || !types) return [];
-  const form = p.view === "form" ? p.fields ?? p.schema ?? {} : {};
+  const form = typedFields(p);
   const notNumber = (type: string | string[] | undefined) =>
     Array.isArray(type) ? !type.some((c) => toNumber(c) !== undefined) : type === "date" || type === "time" || type === "checkbox";
   return Object.entries(p.row).flatMap(([field, value]) => {

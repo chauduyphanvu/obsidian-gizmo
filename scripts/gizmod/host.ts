@@ -15,7 +15,7 @@ import { DataLayer, type Host } from "../../src/datalayer.ts";
 import { ledgerStore } from "../../src/datastore.ts";
 import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherShareStates, otherTriggers, whereYouAre, type PluginFiles } from "../../src/device.ts";
 import { localZone } from "../../src/time.ts";
-import { grantedOf, isAllowed, isAllowedUnder } from "../../src/grants.ts";
+import { grantedOf, isGranted } from "../../src/grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../../src/policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
 import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../../src/snapshots.ts";
@@ -221,7 +221,7 @@ export function gizmodEnv(opts: GizmodOptions) {
     notes: { resolve: (link, from) => vault.resolve(link, from), frontmatter },
     appPaths: () => vault.notes().filter((f) => isApp(frontmatter(f.path)) || isKind(frontmatter(f.path))).map((f) => f.path),
     // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
-    isGranted: (path, wanted, asked) => (asked ? isAllowedUnder(store().grants, path, asked, true) : isAllowed(store().grants, path, wanted, true)),
+    isGranted: (path, wanted, asked) => isGranted(store().grants, path, wanted, true, asked),
     granted: (path) => grantedOf(store().grants, path),
     policy: () => store().policy,
     storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? notePath(storeTarget(s)),

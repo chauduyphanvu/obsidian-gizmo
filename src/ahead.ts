@@ -29,6 +29,7 @@ import { resolvePanel, startingValues, type AppSpec, type Then } from "./spec.ts
 import { basename } from "./store.ts";
 import { THIS } from "./template.ts";
 import { dateWindow, periodStart, shiftPeriod, toTime } from "./time.ts";
+import { formFields } from "./panel.ts";
 
 /** How far ahead a what-if looks at most: a year, as a backtest looks back. */
 export const AHEAD_MS = 365 * 86_400_000;
@@ -317,7 +318,7 @@ export async function addWhatIf(env: AppEnv, target: { path: string; dataPath: s
   const { at: raw, ...given } = params;
   const when = raw === undefined ? { at: now } : logTime(raw, now, true);
   if ("error" in when) return { error: when.error };
-  const read = p.view === "form" ? formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, given, when.at) : { row: {} };
+  const read = p.view === "form" ? formRow(formFields(p), p.fieldInfo, given, when.at) : { row: {} };
   if ("error" in read) return { error: read.error };
   const r = await runActions(p, read.row, {
     ...actionDepsOf(env, target.path, target.dataPath),

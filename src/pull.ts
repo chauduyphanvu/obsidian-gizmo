@@ -12,6 +12,7 @@ import { rowIdOf } from "./ledger-store.ts";
 import { isWhatIf } from "./row-marks.ts";
 import type { Panel } from "./spec.ts";
 import { THIS } from "./template.ts";
+import { isPlainObject } from "./keys.ts";
 
 export type Knob =
   /** A number field of a planned or what-if row behind the figure. */
@@ -22,7 +23,6 @@ export type Knob =
 /** The most knobs offered for one figure; each is solved for when a target is typed. */
 export const MAX_KNOBS = 12;
 
-const isRow = (v: unknown): v is Row => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** The `$this` properties the formulas of a panel and of the blocks above it read. */
 function propertiesRead(p: Panel): string[] {
@@ -40,11 +40,11 @@ function turned(p: Panel, raw: unknown, knob: Knob, value: number): { p: Panel; 
   if (knob.kind === "row") {
     if (!Array.isArray(raw)) return { p, raw };
     const rows: unknown[] = raw;
-    return { p, raw: rows.map((r): unknown => (isRow(r) && rowIdOf(r) === knob.id ? Object.assign(copyRow(r), { [knob.field]: value }) : r)) };
+    return { p, raw: rows.map((r): unknown => (isPlainObject(r) && rowIdOf(r) === knob.id ? Object.assign(copyRow(r), { [knob.field]: value }) : r)) };
   }
   const set = <T extends { vars?: Record<string, unknown> }>(stage: T): T => {
     const note = stage.vars?.[THIS];
-    return isRow(note) ? { ...stage, vars: { ...stage.vars, [THIS]: { ...note, [knob.name]: value } } } : stage;
+    return isPlainObject(note) ? { ...stage, vars: { ...stage.vars, [THIS]: { ...note, [knob.name]: value } } } : stage;
   };
   return { p: { ...set(p), ...(p.upstream && { upstream: p.upstream.map(set) }) }, raw };
 }
@@ -68,7 +68,7 @@ export function knobsOf(p: Panel, raw: unknown, now: Date): Knob[] {
     return other !== undefined && other !== base;
   };
   const out: Knob[] = [];
-  const source = new Map((Array.isArray(raw) ? raw : []).filter(isRow).map((r) => [rowIdOf(r), r] as const));
+  const source = new Map((Array.isArray(raw) ? raw : []).filter(isPlainObject).map((r) => [rowIdOf(r), r] as const));
   for (const part of found.parts) {
     // The row as its source gave it: a computed column can't be set, only what it is computed from.
     const row = part.id === undefined ? undefined : source.get(part.id);
@@ -79,7 +79,7 @@ export function knobsOf(p: Panel, raw: unknown, now: Date): Knob[] {
       if (moves(knob)) out.push(knob);
     }
   }
-  const note = [p, ...(p.upstream ?? [])].map((s) => s.vars?.[THIS]).find(isRow);
+  const note = [p, ...(p.upstream ?? [])].map((s) => s.vars?.[THIS]).find(isPlainObject);
   for (const name of note ? propertiesRead(p) : []) {
     const v = toNumber(getPath(note, name));
     if (v === undefined || name.includes(".")) continue;

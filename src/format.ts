@@ -1,7 +1,8 @@
-import { textOf } from "./text.ts";
+import { plural, textOf } from "./text.ts";
 import { fillWith, formatValue, getPath, localeNumber, namesInTemplate, toNumber, type Row } from "./data.ts";
 import { periodStart, toTime, wallTime } from "./time.ts";
 import type { Panel } from "./spec.ts";
+import { isFigure } from "./panel.ts";
 
 const DAY = 86_400_000;
 const WORDS = ["date", "time", "datetime", "relative", "until", "duration", "duration:ms", "duration:min", "bytes"];
@@ -58,7 +59,6 @@ function withPattern(n: number, p: NumberPattern): string {
   return `${sign}${p.prefix}${body}${p.percent ? "%" : ""}${p.suffix}`;
 }
 
-const plural = (n: number, unit: string) => `${n} ${unit}${n === 1 ? "" : "s"}`;
 const calendarDays = (t: number, now: Date) => Math.round((periodStart(t, "day") - periodStart(now.getTime(), "day")) / DAY);
 
 /** A date, time or both in the reader's locale. */
@@ -203,7 +203,7 @@ export function display(
  * field the alert's condition reads, but a yes-or-no one, which the panel's title already says.
  */
 export function alertRowFields(p: Pick<Panel, "view" | "text" | "item" | "columns" | "alert" | "field">): string[] {
-  if ((p.view === "number" || p.view === "progress") && p.field !== undefined) return [p.field];
+  if (isFigure(p) && p.field !== undefined) return [p.field];
   const own = p.view === "text" ? p.text : p.view === "list" ? p.item : undefined;
   if (own) return namesInTemplate(own);
   const read = p.alert !== null && typeof p.alert === "object" ? Object.entries(p.alert).filter(([, c]) => typeof c !== "boolean").map(([f]) => f) : [];
@@ -220,7 +220,7 @@ export function alertRowsText(p: Panel, rows: readonly Row[], now: Date): string
   if (row && own) words = fillWith(own, row, shown).trim();
   else if (row) {
     const fields = alertRowFields(p);
-    const named = p.columns?.find((c) => c !== "at") === fields[0] || ((p.view === "number" || p.view === "progress") && p.field !== undefined);
+    const named = p.columns?.find((c) => c !== "at") === fields[0] || (isFigure(p) && p.field !== undefined);
     words = fields.flatMap((f, i) => {
       const v = getPath(row, f);
       if (v === undefined || v === null || v === "") return [];

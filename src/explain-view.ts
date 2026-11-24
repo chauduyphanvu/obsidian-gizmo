@@ -14,6 +14,7 @@ import { readTarget, type Knob, type Solved } from "./pull.ts";
 import type { Panel } from "./spec.ts";
 import { minuteIn, toTime, wallTime } from "./time.ts";
 import { dayName } from "./views/common.ts";
+import { plural } from "./text.ts";
 
 /** What the window needs of the app that shows the figure. */
 export interface ExplainSource {
@@ -56,7 +57,6 @@ export interface Done {
 const ROW_CAP = 100;
 const DAY = 86_400_000;
 
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** How the figure comes from its rows, in a sentence. */
 export function howWords(e: Explanation): string {

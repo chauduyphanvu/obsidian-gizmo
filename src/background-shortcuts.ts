@@ -17,6 +17,7 @@ import { aliasShortcut } from "./alert-keys.ts";
 import { clearance, rank, released } from "./policy.ts";
 import { basename, storeTarget } from "./store.ts";
 import { InputRef, valueProblem } from "./template.ts";
+import { formFields, isFigure, typedFields } from "./panel.ts";
 
 /** How many shortcuts one action may run through `then`, one app after another. */
 export const MAX_CHAIN = 4;
@@ -79,9 +80,7 @@ export function dryLines(steps: DryStep[]): string[] {
 }
 
 /** A shortcut on a panel that shows one value answers with it instead of acting. */
-function answers(p: Panel): boolean {
-  return p.view === "number" || p.view === "progress";
-}
+const answers = isFigure;
 
 /** What running shortcuts needs of the Background: the apps it knows, and what it works out about them. */
 export interface ShortcutsHost {
@@ -368,7 +367,7 @@ export class Shortcuts {
       return { fields: { item: items }, row: { item: items[0] ?? "" } };
     }
     if (p?.view !== "form") return undefined;
-    const fields = p.fields ?? p.schema ?? {};
+    const fields = formFields(p);
     const filled = formRow(fields, p.fieldInfo, {}, now);
     return "row" in filled ? { fields, row: filled.row } : undefined;
   }
@@ -553,7 +552,7 @@ function readParams(p: Panel, params: Record<string, string>, now: Date): { row:
   const problem = Object.entries(params).map(([k, v]) => valueProblem(new InputRef(k), v, true)).find(Boolean);
   if (problem) return { error: problem };
   if (p.view === "checklist") return pickItem((p.items ?? []).map(String), params);
-  return formRow(p.fields ?? p.schema ?? {}, p.fieldInfo, params, now);
+  return formRow(formFields(p), p.fieldInfo, params, now);
 }
 
 /**
@@ -566,7 +565,7 @@ function readParams(p: Panel, params: Record<string, string>, now: Date): { row:
 function whenOf(p: Panel, shortcut: string, params: Record<string, string> | undefined, now: Date): { at?: Date; plan?: Date[] } | { error: string } {
   const raw = params?.at;
   if (raw === undefined || p.view === "checklist") return {};
-  if (p.view === "form" && Object.hasOwn(p.fields ?? p.schema ?? {}, "at")) return { error: ownAt(shortcut, "at=") };
+  if (Object.hasOwn(typedFields(p), "at")) return { error: ownAt(shortcut, "at=") };
   const problem = valueProblem(new InputRef("at"), raw, true);
   return problem ? { error: problem } : logTime(raw, now, p.target?.kind === "list" && p.target.at !== undefined);
 }
@@ -594,7 +593,7 @@ export function brokenShortcuts(fm: Record<string, unknown>, spec: AppSpec, erro
 /** The values a shortcut takes from a link: a form's fields, a checklist's item; a button takes none. */
 export function shortcutFields(p: Panel): string[] {
   if (p.view === "checklist") return ["item"];
-  return p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
+  return Object.keys(typedFields(p));
 }
 
 /** Who ran a shortcut, as a notice names them. */

@@ -7,6 +7,7 @@ import { urlHost } from "./sources/url.ts";
 import type { AppSpec, Panel, PanelSpec } from "./spec.ts";
 import { appendPath, basename, defaultDataPath, notePath, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
+import { isFigure } from "./panel.ts";
 
 /** A panel's permissions, each with the key that asks for it. */
 function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
@@ -15,7 +16,7 @@ function panelPermissions(p: Panel, selfPath: string): [string, keyof Panel][] {
   // Named as typed, like the notes it writes: the app it names is looked up when it runs.
   if (p.then) out.push([`run:${storeTarget(p.then.app)}#${p.then.do}`, "then"]);
   // Its link sends the panel's value out of Obsidian, to whatever app opened it.
-  if (p.shortcut !== undefined && (p.view === "number" || p.view === "progress")) out.push([`answer:${p.shortcut}`, "shortcut"]);
+  if (p.shortcut !== undefined && isFigure(p)) out.push([`answer:${p.shortcut}`, "shortcut"]);
   // A lens writes the properties of whichever note in its scope it is shown on.
   if (p.target?.kind === "this" && p.target.scope) out.push([`edit:${p.target.scope}`, "save"]);
   if (p.target?.kind === "folder") {

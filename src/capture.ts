@@ -2,6 +2,7 @@ import { daysInMonth, stampOf, stampParts, toTime } from "./time.ts";
 import type { PanelSpec } from "./spec.ts";
 import { nearMiss } from "./template.ts";
 import { asField, convert, quantityIn, typedAs, unitDef, unitOf, type FieldUnit, type UnitBy, type UnitDef } from "./units.ts";
+import { typedFields } from "./panel.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */
 export interface CaptureTarget {
@@ -63,7 +64,7 @@ export function captureTargets(apps: Iterable<CaptureApp>): CaptureIndex {
     for (const [shortcut, ps] of app.shortcuts) {
       const p = ps.panel;
       if (!VIEWS.has(p.view)) continue;
-      const fields = p.view === "form" ? Object.entries(p.fields ?? p.schema ?? {}) : [];
+      const fields = Object.entries(typedFields(p));
       const units = unitsOf(p.fieldInfo, fields);
       const target: CaptureTarget = {
         name: (p.alias ?? shortcut).toLowerCase(), path: app.path, app: app.name, shortcut,

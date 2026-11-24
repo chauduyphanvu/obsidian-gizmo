@@ -12,7 +12,7 @@ import { DEVICE_FOLDERS, deviceFile, thisDevice, type Device, type DeviceStore }
 import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { checkFlows, flowContext, type FlowWhere, type Verdict } from "./flows.ts";
-import { grantedOf, isAllowed, isAllowedUnder, migrateGrants, sameGrant, setGrant } from "./grants.ts";
+import { grantedOf, isGranted, migrateGrants, sameGrant, setGrant } from "./grants.ts";
 import { moveKeys } from "./identity.ts";
 import { SettingsFile, type StoredData } from "./stored.ts";
 import {
@@ -378,7 +378,7 @@ export default class GizmoPlugin extends Plugin {
 
   /** `opened`: the app must also have been opened in its own tab (see isAllowed); `asked`: under a policy, what it doesn't cover. */
   isGranted(path: string, wanted: string[], opened = false, asked?: string[]): boolean {
-    return asked ? isAllowedUnder(this.store.grants, path, asked, opened) : isAllowed(this.store.grants, path, wanted, opened);
+    return isGranted(this.store.grants, path, wanted, opened, asked);
   }
 
   /**

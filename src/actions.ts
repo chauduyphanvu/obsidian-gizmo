@@ -13,6 +13,7 @@ import { hasRule, ruleOf, settledBy } from "./match.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { compileFormula, formulaReads, rowFormula, type FormulaEnv } from "./formula.ts";
 import { readRef } from "./template.ts";
+import { checklistList, formFields } from "./panel.ts";
 
 /**
  * What running a panel's actions needs, and nothing more: an open app passes its env; something
@@ -272,7 +273,7 @@ const filled = (v: unknown) => v !== undefined && v !== null && textOf(v).trim()
 
 /** The schema's fields with a `default` that a form doesn't show, each with its value now: saved beside the form's own. */
 function defaultsBeyond(p: Panel, now: Date): Row {
-  const shown = p.fields ?? p.schema ?? {};
+  const shown = formFields(p);
   return Object.fromEntries(Object.entries(p.fieldInfo ?? {})
     .filter(([name, info]) => info.default !== undefined && Object.hasOwn(p.schema ?? {}, name) && !Object.hasOwn(shown, name))
     .map(([name, info]) => [name, startOf(info, now)]));
@@ -316,7 +317,7 @@ function partlyDone(changes: readonly Change[], doing: string): string {
  * already ticked stays so and nothing is kept in the activity log.
  */
 export async function tickItem(p: Panel, item: string, deps: ActionDeps): Promise<ActionResult> {
-  const list = p.save ?? "checked";
+  const list = checklistList(p);
   let ticked: { event?: string } | undefined;
   try {
     ticked = await storeOf(deps).tick(list, item);

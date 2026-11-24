@@ -1,5 +1,5 @@
 import type { Row } from "../data.ts";
-import { minuteIn } from "../time.ts";
+import { minuteIn, pad } from "../time.ts";
 
 const DAY = 86_400_000;
 /** Rows one repeating event may add, and how many candidate dates are tried to find them. */
@@ -47,7 +47,6 @@ interface Ev {
   excluded: Set<string>;
 }
 
-const pad = (n: number) => String(n).padStart(2, "0");
 
 /**
  * Reads the events of an iCalendar file as rows `{summary, start, end, allday, location,

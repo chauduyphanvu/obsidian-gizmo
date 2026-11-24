@@ -9,3 +9,11 @@ export function textOf(v: unknown): string {
   if (Array.isArray(v)) return v.map((item) => (item === null || item === undefined ? "" : textOf(item))).join(",");
   return JSON.stringify(v) ?? "";
 }
+
+/** A count with its word, in the plural unless it is one: 1 row, 2 rows. */
+export const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
+
+/** Names in a sentence: "a", "a and b", "a, b and c". */
+export function listed(names: string[]): string {
+  return names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
+}

@@ -10,6 +10,7 @@ import { basename, notePath, storeTarget } from "../store.ts";
 import { stampParts } from "../time.ts";
 import { svg } from "./chart.ts";
 import type { PanelCtx, PanelHandle, RunResult } from "./registry.ts";
+import { formFields } from "../panel.ts";
 
 /**
  * The composed layout's line to add things (rules 2 and 7): a form becomes one typed line that
@@ -27,7 +28,7 @@ const MAX_CHIPS = 6;
 
 type Field = [string, string | string[]];
 
-const fieldsOf = (p: Panel): Field[] => Object.entries(p.fields ?? p.schema ?? {});
+const fieldsOf = (p: Panel): Field[] => Object.entries(formFields(p));
 const isText = (type: string | string[]) => type === "text" || type === "textarea";
 
 /** Whether a form reads as one typed line: at most five fields, none of them a text box or a tick box. */

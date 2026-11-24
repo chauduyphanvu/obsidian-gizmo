@@ -1,5 +1,6 @@
 import { isPlainObject } from "./keys.ts";
 import { sourceDef } from "./sources/registry.ts";
+import { plural } from "./text.ts";
 
 /** One source an app reads, with what it returned before any `pick`, `where` or other step. */
 export interface InspectedSource {
@@ -38,7 +39,6 @@ const COPIED_MS = 1000;
 type Container = unknown[] | Record<string, unknown>;
 
 const isContainer = (v: unknown): v is Container => Array.isArray(v) || (v !== null && typeof v === "object");
-const plural = (n: number, one: string) => `${n} ${one}${n === 1 ? "" : "s"}`;
 
 /** How a value looks in one line, and the class that colours it. */
 function preview(value: unknown): { text: string; cls: string } {

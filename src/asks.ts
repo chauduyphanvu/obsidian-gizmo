@@ -15,6 +15,7 @@ import { reconcileOf, type MatchRule } from "./match.ts";
 import type { Panel, PanelSpec } from "./spec.ts";
 import { calendarOf, stampOf, stampParts, toTime } from "./time.ts";
 import { textOf } from "./text.ts";
+import { typedFields } from "./panel.ts";
 
 /** One thing that needs the person. */
 export interface Ask {
@@ -101,7 +102,7 @@ export function rhythmLine(
       const values = valuesFor(rule.where, p, now);
       const name = values && nameOf(index, app.path, shortcut, p.alias);
       if (!values || name === undefined) continue;
-      const fields = p.view === "form" ? p.fields ?? p.schema ?? {} : {};
+      const fields = typedFields(p);
       const given = new Set(Object.keys(rule.where ?? {}));
       return {
         words: [name, ...values].join(" "),
@@ -125,7 +126,7 @@ function nameOf(index: CaptureIndex, path: string, shortcut: string, alias: stri
  * can't: a condition is met by a fixed `row` value, or by a form's choice, yes or no, or number.
  */
 function valuesFor(where: Rhythm["where"], p: Panel, now: Date): string[] | undefined {
-  const fields = p.view === "form" ? p.fields ?? p.schema ?? {} : {};
+  const fields = typedFields(p);
   const out: string[] = [];
   for (const [field, cond] of Object.entries(where ?? {})) {
     if (p.row && Object.hasOwn(p.row, field)) {

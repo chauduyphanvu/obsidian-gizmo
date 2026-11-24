@@ -13,6 +13,7 @@ import { lineOf } from "./kind.ts";
 import { isSetAsidePlan } from "./row-marks.ts";
 import { calendarOf, dayIn, daysInMonth, minuteIn, periodStart, shiftPeriod, toTime } from "./time.ts";
 import type { PanelSpec, Then } from "./spec.ts";
+import { isPlainObject } from "./keys.ts";
 
 export type Every = "day" | "week" | "month";
 
@@ -49,8 +50,7 @@ export type Expectation = Rhythm | ValueRule | StateRule;
 const WEEKDAYS = ["mon", "tue", "wed", "thu", "fri", "sat", "sun"];
 const ID = /^[a-z0-9][a-z0-9-]*$/;
 
-const isMap = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
-const conditions = (v: unknown): v is Record<string, string | number | boolean> => isMap(v) && Object.values(v).every((x) => ["string", "number", "boolean"].includes(typeof x));
+const conditions = (v: unknown): v is Record<string, string | number | boolean> => isPlainObject(v) && Object.values(v).every((x) => ["string", "number", "boolean"].includes(typeof x));
 
 /** `10:00`, `fri 18:00`, `15 09:30`: the deadline in a period, or why it can't be read for `every`. */
 export function readBy(text: string, every: Every): { day: number; minutes: number } | string {
@@ -74,7 +74,7 @@ export function readBy(text: string, every: Every): { day: number; minutes: numb
  * (an older app's list of rows called expect) stays data.
  */
 export function areRules(v: unknown): boolean {
-  return Array.isArray(v) && v.some((r) => isMap(r) && ("every" in r || "check" in r || "none" in r));
+  return Array.isArray(v) && v.some((r) => isPlainObject(r) && ("every" in r || "check" in r || "none" in r));
 }
 
 /** The rules under `expect:`, checked; each problem goes in `errors` as `expect <n>: …`. */
@@ -89,7 +89,7 @@ export function readExpect(raw: unknown, errors: string[]): Expectation[] {
   raw.forEach((r, i) => {
     const at = `expect ${i + 1}`;
     const bad = (m: string) => void errors.push(`${at}: ${m}`);
-    if (!isMap(r)) return bad("must be a map, e.g. {every: day, by: \"10:00\", source: doses}");
+    if (!isPlainObject(r)) return bad("must be a map, e.g. {every: day, by: \"10:00\", source: doses}");
     const id = r.id === undefined ? `expect-${i + 1}` : textOf(r.id);
     if (!ID.test(id)) return bad("id must be lowercase letters, digits and -");
     if (ids.has(id)) return bad(`another rule is already called ${id}`);
@@ -101,7 +101,7 @@ export function readExpect(raw: unknown, errors: string[]): Expectation[] {
     const extra = Object.keys(r).filter((k) => !known.includes(k));
     if (extra.length) return bad(`${kinds[0] === "every" ? "a rhythm" : kinds[0] === "check" ? "a value rule" : "a state rule"} doesn't take ${extra.join(", ")}`);
     if (r.say !== undefined && typeof r.say !== "string") return bad("say must be text");
-    if (r.then !== undefined && !isMap(r.then)) return bad("then must be a map, e.g. then: {app: \"[[Task inbox]]\", do: add}");
+    if (r.then !== undefined && !isPlainObject(r.then)) return bad("then must be a map, e.g. then: {app: \"[[Task inbox]]\", do: add}");
     if (kinds[0] === "every") {
       if (!["day", "week", "month"].includes(String(r.every))) return bad("every must be day, week or month");
       const every = r.every as Every;

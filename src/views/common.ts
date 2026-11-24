@@ -1,9 +1,9 @@
-import { textOf } from "../text.ts";
+import { listed, textOf } from "../text.ts";
 import { handler } from "../handler.ts";
 import { compareWindows, splitByWindow, type Windows } from "../compare.ts";
 import { fillWith, getPath, type Row } from "../data.ts";
 import { display } from "../format.ts";
-import { ACTION_KEYS } from "../keys.ts";
+import { ACTION_KEYS, isPlainObject } from "../keys.ts";
 import { ROW_INDEX } from "../row-marks.ts";
 import { conflictsOf, rowIdOf } from "../ledger-store.ts";
 import { rowsAreNotes, rowsAreSaved } from "../sources/registry.ts";
@@ -194,7 +194,6 @@ export function whyEmpty(panel: HTMLElement, p: Panel, ctx: PanelCtx, line?: HTM
 }
 
 const rowCount = (n: number) => `${n} ${n === 1 ? "row" : "rows"}`;
-const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 /** The first few names, in a line: `a, b, c and 4 more`. */
 const someOf = (names: string[], max = 8) => (names.length <= max ? names.join(", ") : `${names.slice(0, max).join(", ")} and ${names.length - max} more`);
 /** A where as typed, compactly: `{at: this month, kp: >= 5}`. */
@@ -203,7 +202,7 @@ const typedWhere = (where: NonNullable<Panel["where"]>) => `{${Object.entries(wh
 /** The fields rows have, in the order first met. */
 function fieldsOf(rows: unknown[]): string[] {
   const seen = new Set<string>();
-  for (const r of rows) if (isRecord(r)) for (const k of Object.keys(r)) seen.add(k);
+  for (const r of rows) if (isPlainObject(r)) for (const k of Object.keys(r)) seen.add(k);
   return [...seen];
 }
 
@@ -215,7 +214,7 @@ function namesNear(rows: unknown[], field: string): string[] {
   const parts = field.split(".");
   for (let n = parts.length - 1; n > 0; n--) {
     const prefix = parts.slice(0, n).join(".");
-    const inner = rows.map((r) => getPath(r, prefix)).filter(isRecord);
+    const inner = rows.map((r) => getPath(r, prefix)).filter(isPlainObject);
     if (inner.length) return fieldsOf(inner).map((k) => `${prefix}.${k}`);
   }
   return fieldsOf(rows);
@@ -241,10 +240,10 @@ function pickMissed(pick: string, data: unknown): string {
   }
   const path = found.join(".");
   const name = path || "the answer";
-  const keys = isRecord(at) ? Object.keys(at) : [];
+  const keys = isPlainObject(at) ? Object.keys(at) : [];
   const has = Array.isArray(at) ? `${name} has ${at.length} ${at.length === 1 ? "item" : "items"}`
     : keys.length ? `the answer has: ${someOf(keys.map((k) => (path ? `${path}.${k}` : k)))}`
-    : isRecord(at) ? `${name} is empty`
+    : isPlainObject(at) ? `${name} is empty`
     : `${name} is ${textOf(at)}`;
   return `pick: ${pick} found nothing (${has})`;
 }
@@ -302,7 +301,7 @@ export function whyWords(p: Panel, trace: Trace, now: Date): { chain: string; lo
   }
   const grouped = trace.steps.find((s) => s.stage === own && s.step === "group");
   const read = grouped ? grouped.before : out;
-  const rows = Array.isArray(read) ? read : isRecord(read) ? [read] : [];
+  const rows = Array.isArray(read) ? read : isPlainObject(read) ? [read] : [];
   const fields = readFields(p, grouped !== undefined);
   for (const f of fields) {
     const missing = noRowHas(f, rows);
@@ -713,11 +712,6 @@ export function describeChart(root: SVGElement, summary: string, points?: Points
     const tr = body.createEl("tr");
     row.forEach((text, i) => (i === 0 ? tr.createEl("th", { text, attr: { scope: "row" } }) : tr.createEl("td", { text })));
   }
-}
-
-/** Names in a sentence: "a", "a and b", "a, b and c". */
-export function listed(names: string[]): string {
-  return names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`;
 }
 
 type Control = HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement;

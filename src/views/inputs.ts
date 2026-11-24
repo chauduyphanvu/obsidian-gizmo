@@ -9,6 +9,7 @@ import { busy, fieldControl, heading, needsAction, redraw, stillInPast } from ".
 import { ACTION_KEYS, checkFields, isPlainObject, startOf } from "../keys.ts";
 import { addLine, fitsOneLine, underFields, verbButton } from "./addline.ts";
 import type { PanelCtx, PanelHandle, ViewDef } from "./registry.ts";
+import { checklistList } from "../panel.ts";
 
 /** Whether a panel sits in the composed layout's line to add things; asked at each draw. */
 const inLine = (ctx: PanelCtx) => ctx.place?.()?.slot === "compose";
@@ -224,7 +225,7 @@ export const checklist: ViewDef = {
   id: "checklist",
   keys: ["items", "save", "label", "shortcut", "alias"],
   span: 4,
-  implicitSource: (p) => p.save ?? "checked",
+  implicitSource: checklistList,
   validate: (p) => [
     ...(p.items?.length ? [] : ["checklist needs items"]),
     ...(p.save?.endsWith("/") ? ["checklist saves its ticks to a list, not a folder; leave out the /"] : []),
@@ -236,7 +237,7 @@ export const checklist: ViewDef = {
     { panel: { view: "checklist", items: ["Passport", "Chargers"], save: "packed", shortcut: "pack" } },
   ],
   mount: (el, p, ctx) => (stillInPast(el, ctx), redraw(el, (saved) => {
-    const key = p.save ?? "checked";
+    const key = checklistList(p);
     const checked = new Set((Array.isArray(saved) ? saved : []).map(String));
     const items = p.items!.map(String);
     const done = items.filter((i) => checked.has(i)).length;

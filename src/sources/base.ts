@@ -2,6 +2,7 @@ import { toNumber } from "../data.ts";
 import { toTime } from "../time.ts";
 import { nameDep, notesDep } from "../deps.ts";
 import type { SourceDef } from "./types.ts";
+import { isPlainObject } from "../keys.ts";
 
 /** What a base's filters read of one note: its properties, its path and its tags (`#a/b`). */
 export interface BaseNote {
@@ -198,12 +199,11 @@ function compileLeaf(leaf: string, source: string): Test {
   throw unreadable(`${left.text} ${op.text} ${right.text}`);
 }
 
-const isMap = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** A filter string, or a group holding one of `and` (all hold), `or` (any holds), `not` (none holds). */
 function compileFilter(f: unknown, source: string): Test {
   if (typeof f === "string") return compileLeaf(f, source);
-  if (isMap(f)) {
+  if (isPlainObject(f)) {
     const keys = Object.keys(f);
     const key = keys[0];
     if (keys.length !== 1 || !["and", "or", "not"].includes(key)) {
@@ -236,11 +236,11 @@ function compileFilter(f: unknown, source: string): Test {
  */
 export function compileBase(config: unknown, source: string): Test {
   if (config === null || config === undefined) return () => true;
-  if (!isMap(config)) throw new Error(`${source} isn't a base: it should hold keys such as filters and views`);
+  if (!isPlainObject(config)) throw new Error(`${source} isn't a base: it should hold keys such as filters and views`);
   const filters = config.filters;
   const test = filters === null || filters === undefined ? () => true : compileFilter(filters, source);
   (Array.isArray(config.views) ? config.views : []).forEach((view, i) => {
-    if (!isMap(view) || view.filters === undefined || view.filters === null) return;
+    if (!isPlainObject(view) || view.filters === undefined || view.filters === null) return;
     const name = typeof view.name === "string" && view.name.trim() ? view.name : `view ${i + 1}`;
     throw new Error(`${source} filters its view "${name}"; Gizmo reads only the base's own filters`);
   });

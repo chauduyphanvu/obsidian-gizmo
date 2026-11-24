@@ -10,6 +10,7 @@ import { ROW_FIELDS } from "./kind.ts";
 import type { Row } from "./data.ts";
 import { viewDef } from "./views/registry.ts";
 import { labelOf, lineOf } from "./yamlpos.ts";
+import { checklistList } from "./panel.ts";
 
 /** What the cards above an app's panels read of the app, and do when they are used. */
 export interface CardApp {
@@ -247,7 +248,7 @@ function listRename(spec: AppSpec, lists: ReadonlyMap<string, { rows: Row[] }>, 
   const saved = new Set<string>();
   for (const { panel: p } of panels) {
     if (isListName(p.source)) used.add(p.source);
-    if (p.view === "checklist") used.add(p.save ?? "checked");
+    if (p.view === "checklist") used.add(checklistList(p));
     // A kind's rows are the kind's, kept in its own data note.
     if (p.target?.kind !== "list" || (p.target.at !== undefined && p.target.at !== spec.kind?.path)) continue;
     used.add(p.target.name);

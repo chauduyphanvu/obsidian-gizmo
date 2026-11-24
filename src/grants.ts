@@ -25,6 +25,11 @@ export function isAllowedUnder(grants: Record<string, string[]>, key: string, as
   return Array.isArray(entry) && asked.every((p) => entry.includes(p));
 }
 
+/** Whether an app may run: under a data policy (`asked` given), by isAllowedUnder; else by isAllowed. */
+export function isGranted(grants: Record<string, string[]>, key: string, wanted: readonly string[], opened: boolean, asked?: readonly string[]): boolean {
+  return asked ? isAllowedUnder(grants, key, asked, opened) : isAllowed(grants, key, wanted, opened);
+}
+
 /**
  * Whether an allowed app is paused: it was allowed (an entry is kept) but asks now for something
  * that entry doesn't hold. No entry at all is never paused: the app was revoked or never allowed.

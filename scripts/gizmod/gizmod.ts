@@ -25,6 +25,7 @@ import { dryLines, type ShortcutResult } from "../../src/background-shortcuts.ts
 import { parseLine, swallowed } from "../../src/capture.ts";
 import { captureCovers } from "../../src/links.ts";
 import { gizmodEnv } from "./host.ts";
+import { isPlainObject } from "../../src/keys.ts";
 
 const run = promisify(execFile);
 export const DEFAULT_PORT = 7468;
@@ -75,13 +76,12 @@ export interface Answer {
   window?: { app: string; rule: string; start: number; deadline: number };
 }
 
-const isRecord = (v: unknown): v is Record<string, unknown> => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** A kept answer as the file holds it; undefined for anything else, such as a file from before or one cut short. */
 function answerOf(v: unknown): { answer: Answer; until: number } | undefined {
-  if (!isRecord(v) || typeof v.until !== "number" || !isRecord(v.answer)) return undefined;
+  if (!isPlainObject(v) || typeof v.until !== "number" || !isPlainObject(v.answer)) return undefined;
   const a = v.answer;
-  if (typeof a.line !== "string" || typeof a.path !== "string" || typeof a.shortcut !== "string" || !isRecord(a.params) || !Object.values(a.params).every((x) => typeof x === "string")) return undefined;
+  if (typeof a.line !== "string" || typeof a.path !== "string" || typeof a.shortcut !== "string" || !isPlainObject(a.params) || !Object.values(a.params).every((x) => typeof x === "string")) return undefined;
   return { answer: a as unknown as Answer, until: v.until };
 }
 
@@ -135,7 +135,7 @@ export class AnswerTokens {
         read = {};
       }
       const kept: Record<string, { answer: Answer; until: number }> = {};
-      for (const [k, v] of Object.entries(isRecord(read) ? read : {})) {
+      for (const [k, v] of Object.entries(isPlainObject(read) ? read : {})) {
         const a = answerOf(v);
         if (a && a.until > this.now()) kept[k] = a;
       }

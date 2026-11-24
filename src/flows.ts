@@ -15,6 +15,7 @@ import { readSpec, saveTarget, type AppSpec, type Panel } from "./spec.ts";
 import type { NoteReader } from "./expand.ts";
 import { appendPath, basename, dataPathOf, storeTarget } from "./store.ts";
 import { InputRef, InputText, THIS } from "./template.ts";
+import { isFigure, typedFields } from "./panel.ts";
 
 /** What the flow check needs to know about where an app runs. */
 export interface FlowContext {
@@ -252,7 +253,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
     const where = p.title ?? (ps.label || p.view);
     const rows = rowLabels(p);
     const from = sourceName(p, ctx);
-    const formFields = new Set(p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : []);
+    const formFields = new Set(Object.keys(typedFields(p)));
 
     /** A name a template on this panel fills, as labels: typed into its form, a stamp, or a field of its rows. */
     const nameLabel = (name: string): Label => {
@@ -309,7 +310,7 @@ export function checkFlows(spec: AppSpec, wanted: readonly string[], ctx: FlowCo
       if (!released(policy, ctx.appPath, title, "notify")) check(where, valueWhat, told, "notify", clearance(policy, "notify"));
     }
     if (p.pin && !released(policy, ctx.appPath, title, "pin")) check(where, valueWhat, value, "pin", clearance(policy, "pin"));
-    if (p.shortcut !== undefined && (p.view === "number" || p.view === "progress")) {
+    if (p.shortcut !== undefined && isFigure(p)) {
       answerLabels[panelKey(ps)] = join(answerLabels[panelKey(ps)] ?? "public", value);
       if (!released(policy, ctx.appPath, title, "answer")) check(where, valueWhat, value, "answer", clearance(policy, "answer"));
     }

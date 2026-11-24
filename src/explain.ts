@@ -10,6 +10,7 @@ import { ROW_FIELDS } from "./kind.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { compilePipeline } from "./pipeline.ts";
 import type { Panel } from "./spec.ts";
+import { isPlainObject } from "./keys.ts";
 
 /** One row behind a figure. */
 export interface Part {
@@ -42,7 +43,6 @@ export interface Explanation {
 /** The views whose one figure can be explained. */
 export const EXPLAINED = ["number", "progress"];
 
-const isRow = (v: unknown): v is Row => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** A row with no id is told from the others by what it holds; the nth copy of the same is `…#n`. */
 function keysOf(rows: readonly Row[]): string[] {
@@ -69,7 +69,7 @@ export function explain(p: Panel, raw: unknown, now: Date): Explanation | undefi
   if (!Array.isArray(data)) {
     return { value, agg, field: p.field, parts: [], left: 0, additive: false, direct: "This value is read as it is from what the source gave; no rows add up to it." };
   }
-  const rows = data.filter(isRow);
+  const rows = data.filter(isPlainObject);
   const keys = keysOf(rows);
   const all = rows.map((row, i): Part => ({ key: keys[i], id: rowIdOf(row), row, value: getPath(row, p.field) }));
   const of = p.of && compileWhere(p.of, now);

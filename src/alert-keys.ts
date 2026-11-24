@@ -1,5 +1,6 @@
 import type { Panel } from "./spec.ts";
 import { secretIds } from "./template.ts";
+import { isFigure, typedFields } from "./panel.ts";
 
 /** One alert that is true now: the app it belongs to, its panel's title, and its value. */
 export interface AlertItem {
@@ -48,7 +49,7 @@ export function backgroundKeyErrors(p: Panel): string[] {
     ...[p.shortcut === undefined ? undefined : whatIfProblem("shortcut", p.shortcut), p.alias === undefined ? undefined : whatIfProblem("alias", p.alias)]
       .filter((e): e is string => e !== undefined),
     ...(p.pin !== undefined && p.pin !== "status" ? ["pin must be status"] : []),
-    ...(typeof p.alert === "string" && p.view !== "number" && p.view !== "progress"
+    ...(typeof p.alert === "string" && !isFigure(p)
       ? [`alert on a ${p.view} needs a field, e.g. alert: {amount: "> 100"}`] : []),
     ...(p.alert !== undefined && !p.source && p.view === "text" ? ["alert needs a source"] : []),
     ...(p.then && !SHORTCUT.test(p.then.do) ? ["then: do must be the other app's shortcut: lowercase letters, digits and -"] : []),
@@ -70,7 +71,7 @@ function fillErrors(p: Panel): string[] {
   const secret = texts.flatMap(secretIds)[0];
   if (secret !== undefined) return [`then: fill can't use {secret:${secret}}; secrets only go into web requests`];
   if (p.view !== "form" && p.view !== "button") return [];
-  const fields = p.view === "form" ? Object.keys(p.fields ?? p.schema ?? {}) : [];
+  const fields = Object.keys(typedFields(p));
   const own = [...new Set([...fields, ...Object.keys(p.row ?? {}), ...(p.target?.kind === "folder" ? ["path"] : [])])];
   const known = new Set([...own, "date", "time", "at"]);
   for (const text of texts) {

@@ -10,6 +10,7 @@ import {
   Clock, Folder, baseIds, compareEvents, eventId, eventLine, eventsAt, fold, foldOnto, logFile, logFileParts, logFolder, newRowId, parseLog, parseStamp, undoneEvents,
   type Conflict, type FoldBase, type FolderState, type LedgerEvent, type Op,
 } from "./ledger.ts";
+import { isPlainObject } from "./keys.ts";
 
 /** What the ledger reads and writes through: files of any kind in the vault. */
 export interface LedgerIO {
@@ -606,7 +607,7 @@ export class Ledger {
     if (entry.parsed === undefined) {
       try {
         const cp = JSON.parse(entry.text) as Checkpoint;
-        entry.parsed = cp?.v === 1 && typeof cp.from === "string" && isRecord(cp.caps) && typeof cp.settled === "number" && isRecord(cp.files) && Array.isArray(cp.undone) && Array.isArray(cp.accounted) && isRecord(cp.folder) ? cp : null;
+        entry.parsed = cp?.v === 1 && typeof cp.from === "string" && isPlainObject(cp.caps) && typeof cp.settled === "number" && isPlainObject(cp.files) && Array.isArray(cp.undone) && Array.isArray(cp.accounted) && isPlainObject(cp.folder) ? cp : null;
       } catch {
         entry.parsed = null;
       }
@@ -653,7 +654,7 @@ export class Ledger {
     const { text } = await this.cached(`${logFolder(dataPath)}/base.json`);
     try {
       const b = JSON.parse(text) as FoldBase;
-      return isRecord(b.lists) && isRecord(b.ticked) ? b : { lists: {}, ticked: {} };
+      return isPlainObject(b.lists) && isPlainObject(b.ticked) ? b : { lists: {}, ticked: {} };
     } catch {
       return { lists: {}, ticked: {} };
     }
@@ -754,7 +755,7 @@ export class Ledger {
       if (force) {
         for (const [k, v] of Object.entries(note)) {
           // Only lists of rows: a list of text (a property like people: [[Ann]]) may be the person's own.
-          const rows = Array.isArray(v) && v.length && v.every((x) => isRecord(x));
+          const rows = Array.isArray(v) && v.length && v.every((x) => isPlainObject(x));
           if (!META_KEYS.includes(k) && rows && !state.lists.has(k) && !state.ticked.has(k)) delete note[k];
         }
       }
@@ -780,7 +781,7 @@ export class Ledger {
     const folded = fold(this.events(n), withApp(mark ? await this.base(dataPath) : { lists: {}, ticked: {} }, appFm), n.caps);
     const note = listsOf(fm);
     // The rows the note was written with, by their ids: a recorded list's older rows were never in it.
-    const written = isRecord(fm?.[IDS_KEY]) ? fm[IDS_KEY] : {};
+    const written = isPlainObject(fm?.[IDS_KEY]) ? fm[IDS_KEY] : {};
     const kind = kindName(appFm);
     const wrote = (name: string) => {
       const l = folded.lists.get(name) ?? { rows: [], ids: [] };
@@ -870,12 +871,8 @@ function keptIds(list: string, rows: Row[], had: { rows: Row[]; ids: string[] },
 
 function readMark(fm: Record<string, unknown> | undefined): SnapshotMark | undefined {
   const m = fm?.[SNAPSHOT_KEY];
-  if (!isRecord(m) || !isRecord(m.files) || typeof m.at !== "string") return undefined;
+  if (!isPlainObject(m) || !isPlainObject(m.files) || typeof m.at !== "string") return undefined;
   return { files: Object.fromEntries(Object.entries(m.files).map(([k, v]) => [k, Number(v) || 0])), at: m.at };
-}
-
-function isRecord(v: unknown): v is Record<string, unknown> {
-  return v !== null && typeof v === "object" && !Array.isArray(v);
 }
 
 function compareTimes(a: string, b: string): number {

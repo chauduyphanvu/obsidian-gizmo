@@ -1,9 +1,9 @@
-import { textOf } from "../text.ts";
+import { listed, textOf } from "../text.ts";
 import { extent, formatValue, getPath, rowsOf, seriesOf, type Point, type Row } from "../data.ts";
 import { dateWindow, periodStart, shiftPeriod, toTime, type Per } from "../time.ts";
 import { formatErrors, formatFor, formatWith, labelFor, labelOf, mapped } from "../format.ts";
 import type { Panel } from "../spec.ts";
-import { LEFT_RIGHT, describeChart, emptyText, groupedTotals, heading, listed, picks, roving, selectable, seriesNames, whyEmpty } from "./common.ts";
+import { LEFT_RIGHT, describeChart, emptyText, groupedTotals, heading, picks, roving, selectable, seriesNames, whyEmpty } from "./common.ts";
 import { DATA_KEYS, GROUP_KEYS } from "../keys.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
 

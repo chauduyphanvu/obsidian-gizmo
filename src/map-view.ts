@@ -13,6 +13,7 @@ import { writersOf as storedWriters } from "./stored.ts";
 import { describePermission } from "./permissions.ts";
 import { basename } from "./store.ts";
 import { dayIn } from "./time.ts";
+import { isFigure } from "./panel.ts";
 
 export const MAP_VIEW = "gizmo-map";
 
@@ -257,7 +258,7 @@ export class MapView extends ItemView {
     const ul = acts.createEl("ul");
     for (const s of a.shortcuts) {
       const li = ul.createEl("li", { cls: "gz-map-shortcut" });
-      const answers = s.view === "number" || s.view === "progress";
+      const answers = isFigure(s);
       li.createSpan({ text: answers ? `Answers “${s.label}” (${s.id}) to its command or link` : `Shortcut “${s.label}” (${s.id}): from its command or link` });
       const row = li.createSpan({ cls: "gz-map-actions" });
       if (!answers && a.state === "allowed") {

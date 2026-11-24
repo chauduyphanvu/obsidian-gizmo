@@ -14,13 +14,13 @@ import { createHash } from "node:crypto";
 import { mkdirSync, readFileSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 import { baseIds } from "../src/ledger.ts";
+import { pad } from "../src/time.ts";
 
 export const REFERENCE = "2026-11-18";
 
 type Row = Record<string, string | number>;
 type Logged = { row: Row; t: string; seed: string };
 
-const pad = (n: number) => String(n).padStart(2, "0");
 const id = (seed: string) => createHash("sha256").update(seed).digest("hex").slice(0, 16);
 const q = (v: string | number) => (typeof v === "number" ? String(v) : JSON.stringify(v));
 const flow = (row: Row) => `{${Object.entries(row).map(([k, v]) => `${k}: ${q(v)}`).join(", ")}}`;

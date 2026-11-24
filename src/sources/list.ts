@@ -8,12 +8,12 @@ import { toTime } from "../time.ts";
 import { copyRow } from "../data.ts";
 import { logFolder } from "../ledger.ts";
 import type { SourceDef } from "./types.ts";
+import { isPlainObject } from "../keys.ts";
 
-const isRow = (v: unknown): v is Row => v !== null && typeof v === "object" && !Array.isArray(v);
 
 /** Copies, so the rows in the metadata cache are never changed; their place kept, not enumerable, so rows still compare and serialise as typed. */
 function placed(list: unknown[]): unknown[] {
-  return list.map((r, i) => (isRow(r) ? Object.defineProperty(copyRow(r), ROW_INDEX, { value: i }) : r));
+  return list.map((r, i) => (isPlainObject(r) ? Object.defineProperty(copyRow(r), ROW_INDEX, { value: i }) : r));
 }
 
 
@@ -32,11 +32,11 @@ function onLines(rows: readonly unknown[], lines: string | string[] | undefined,
   const withLogged = kept !== undefined && [lines ?? "logged"].flat().includes("logged");
   const logged = new Map<string, Row>();
   for (const r of rows) {
-    const id = isRow(r) && lineOf(r) === "logged" ? rowIdOf(r) : undefined;
+    const id = isPlainObject(r) && lineOf(r) === "logged" ? rowIdOf(r) : undefined;
     if (id !== undefined) logged.set(id, r as Row);
   }
   return rows.flatMap((r) => {
-    if (!isRow(r)) return kept ? [] : [r];
+    if (!isPlainObject(r)) return kept ? [] : [r];
     if (kept && !kept.keeps(r, at)) return [];
     const line = lineOf(r);
     if (line === "logged" || !filled(r.matched)) return [r];
@@ -59,13 +59,13 @@ function happenedBy(value: unknown, now: number, kind: boolean, lines: string | 
     const kept = onLines(value, lines, now);
     // A copy on the logged line has no `line`, so a formula that reads it agrees with `lines`.
     return kept.map((r) => {
-      if (!isRow(r) || lineAt(r, now) === lineOf(r)) return r;
+      if (!isPlainObject(r) || lineAt(r, now) === lineOf(r)) return r;
       const logged = copyRow(r);
       delete logged.line;
       return logged;
     });
   }
-  const toCome = (r: unknown) => isRow(r) && isWhatIf(r) && (toTime(r.at) ?? -Infinity) > now;
+  const toCome = (r: unknown) => isPlainObject(r) && isWhatIf(r) && (toTime(r.at) ?? -Infinity) > now;
   return value.some(toCome) ? value.filter((r) => !toCome(r)) : value;
 }
 

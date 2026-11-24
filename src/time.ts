@@ -11,7 +11,7 @@
 
 export const DAY = 86_400_000;
 
-const pad = (n: number) => String(n).padStart(2, "0");
+export const pad = (n: number) => String(n).padStart(2, "0");
 
 /** The two digits at i as a number, or -1. */
 function twoDigits(s: string, i: number): number {

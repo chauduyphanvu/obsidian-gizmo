@@ -14,7 +14,7 @@ import { permissionsOf } from "./permissions.ts";
 import { readSpec, type AppSpec } from "./spec.ts";
 import { basename } from "./store.ts";
 import { nearMiss } from "./template.ts";
-import { textOf } from "./text.ts";
+import { listed, textOf } from "./text.ts";
 import { dateWindow, PERIODS, type Per } from "./time.ts";
 
 /** A kind as an ask reads it: its note, its name and shortcut, its fields, and the values its rows hold. */
@@ -98,7 +98,6 @@ function offered(typed: string, words: readonly string[]): string[] {
   return close === undefined ? [] : [unique.find((x) => x.toLowerCase() === close)!];
 }
 const didYouMean = (word: string, names: Iterable<string>) => nearMiss(word.toLowerCase(), names);
-const listed = (names: string[]) => (names.length < 3 ? names.join(" and ") : `${names.slice(0, -1).join(", ")} and ${names.at(-1)}`);
 
 /** A day as a title says it: `Sep 1`, with its year when not this one's. */
 function shortDay(date: string, now: Date): string {

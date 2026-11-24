@@ -48,6 +48,7 @@ import { basename, dataPathOf, defaultDataPath, devicesFolder, isComponent } fro
 import { mountView } from "./views/common.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./alert-keys.ts";
+import { checklistList } from "./panel.ts";
 
 const CACHE_MS = 5 * 60_000;
 /** How long a panel waits for the network before painting the disk copy. */
@@ -1183,7 +1184,7 @@ export class AppController {
     this.handEdit = undefined;
     const header = this.shell.querySelector<HTMLElement>(".gz-header");
     if (!state.handEdited || !header) return;
-    const checklists = new Set(this.spec?.panels.filter((ps) => ps.panel.view === "checklist").map((ps) => ps.panel.save ?? "checked"));
+    const checklists = new Set(this.spec?.panels.filter((ps) => ps.panel.view === "checklist").map((ps) => checklistList(ps.panel)));
     const words = editWords(ops, checklists);
     this.handEdit = renderHandEdit(header, basename(dataPath), words.length ? words : ["its layout only"], {
       import: async () => {
@@ -1394,7 +1395,7 @@ export class AppController {
 
   /** What the activity log calls a checklist: its panel's title, else the list it ticks into. */
   private checklistName(key: string): string {
-    const m = [...this.mounted.values()].find((x) => x.p.view === "checklist" && (x.p.save ?? "checked") === key);
+    const m = [...this.mounted.values()].find((x) => x.p.view === "checklist" && checklistList(x.p) === key);
     return m?.p.title ?? m?.p.label ?? key;
   }
 
