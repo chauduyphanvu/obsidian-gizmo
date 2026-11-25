@@ -520,8 +520,9 @@ export default class GizmoPlugin extends Plugin {
   }
 
   grantsChanged(): void {
-    // A headline seen while an app was allowed isn't shown once it may not run; its tab tells it again.
-    this.headlines.clear();
+    // A revoked app's figure goes. One paused stays, unshown (see sidebarModel), and every other
+    // app's stays: an open tab tells its figure only when it changes, so a cleared one would not return.
+    for (const path of [...this.headlines.keys()]) if (grantedOf(this.store.grants, path) === undefined) this.headlines.delete(path);
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) (leaf.view as AppView).recheck();
     for (const cb of [...this.grantListeners]) cb();
   }

@@ -191,4 +191,25 @@ export async function canvas(t) {
     expect(r.opened === "Apps/Chores.md" && r.type === "gizmo", r);
     return `${r.apps} apps, ${needs}; opened Chores`;
   });
+
+  await check("an app's figure stays in the sidebar when another app is allowed, and goes when its own grant is revoked", async () => {
+    const r = await run(`
+      const fig = (title) => "---\\napp: " + title + "\\npanels:\\n  - {view: number, title: Jobs, source: jobs, agg: count}\\n---\\n";
+      await na.write("Apps/Figure one data.md", "---\\njobs: [{a: 1}, {a: 2}]\\n---\\n");
+      await na.write("Apps/Figure one.md", fig("Figure one"));
+      await na.write("Apps/Figure two.md", fig("Figure two"));
+      await na.sleep(800);
+      await na.open("Apps/Figure one");
+      await na.until(() => na.plugin().headlines.get("Apps/Figure one.md"), 4000);
+      await na.open("Apps/Figure two");
+      await na.sleep(1500);
+      const row = () => [...document.querySelectorAll(".workspace-leaf-content[data-type='gizmo-home'] .gz-home-app")].find((li) => li.querySelector(".gz-home-name").textContent === "Figure one");
+      await na.until(() => row(), 4000);
+      const kept = row()?.querySelector(".gz-home-headline")?.textContent;
+      await na.plugin().revoke("Apps/Figure one.md");
+      await na.sleep(1000);
+      return { kept, after: row()?.querySelector(".gz-home-headline")?.textContent ?? null, map: na.plugin().headlines.has("Apps/Figure one.md") };`);
+    expect(r.kept === "Jobs: 2" && r.after === null && !r.map, r);
+    return `${r.kept} kept after another app was allowed; gone on revoke`;
+  });
 }
