@@ -1073,6 +1073,8 @@ node gizmod.mjs dry "Task inbox" add task="Call the bank"  # show what a run wil
 node gizmod.mjs status                                 # show the device and the paused apps
 node gizmod.mjs install --vault ~/Notes                # start it at each login (macOS)
 node gizmod.mjs uninstall
+node gizmod.mjs secret set example                     # keep {secret:example} in the Keychain (macOS)
+node gizmod.mjs secret delete example
 ```
 
 | Variable | What it does |
@@ -1081,13 +1083,17 @@ node gizmod.mjs uninstall
 | `GIZMOD_PORT` | The port. The default is `7468`. |
 | `GIZMOD_HOME` | The state folder. The default is `~/.config/gizmod`. |
 | `GIZMOD_MAC_NOTICES` | Set to `0` to stop macOS notices. |
-| `GIZMO_SECRET_<ID>` | The value of `{secret:<id>}`, with dashes as underscores. For a shared kind, the key that **Copy key** in **Invite to a kind** gives. |
+| `GIZMO_SECRET_<ID>` | The value of `{secret:<id>}`, with dashes as underscores. For a shared kind, the key that **Copy key** in **Invite to a kind** gives. It comes before the Keychain. |
 
-gizmod listens on this computer and on its Tailscale address. It answers a request only at `127.0.0.1`, at that address, or at the name of this computer on your tailnet, so a web page cannot reach it under a name of its own. A request with a key that does not run the shortcut gets the same answer whatever it asked for. It reads the permissions in `data.json`, but it does not write them. For a shared kind, it sends and takes in rows, and follows the people that you accepted or removed in Obsidian. A new person's rows wait for Obsidian. Because of this, an app that you move while Obsidian is closed waits for a new **Allow**.
+gizmod listens on this computer and on its Tailscale address. It answers a request only at `127.0.0.1`, at that address, or at the name of this computer on your tailnet, so a web page cannot reach it under a name of its own. A request with a key that does not run the shortcut gets the same answer whatever it asked for. It reads the permissions in `data.json`, but it does not write them. What you change there in Obsidian takes effect in gizmod within five seconds. For a shared kind, it sends and takes in rows, and follows the people that you accepted or removed in Obsidian. A new person's rows wait for Obsidian. Because of this, an app that you move while Obsidian is closed waits for a new **Allow**.
 
 A push for a missed window has a **Done** button when gizmod finds its Tailscale address. The button runs the line that **Next** gives for that window, when the line needs no more values. The phone sends it to gizmod at that address, so the phone must be on your tailnet. Without Tailscale, the push has no button. The button carries a token, not a key, because the push goes through the ntfy server. The token is for the shortcut that the line reached and the values that it gave, when gizmod sent the push, and for that window. It works one time, for 24 hours, and only while that app is allowed. If a row met the window meanwhile, the button saves nothing and answers "that was done already". gizmod keeps the tokens in `GIZMOD_HOME`. If it cannot keep a token, the push goes without the button. The push says only what the data policy permits, as before.
 
 `install` makes a launchd agent. For secrets under launchd, put the token of a 1Password service account in the Keychain, with the name `gizmod-op`. Then put a `.env` file of `op://` references in `GIZMOD_HOME`. The agent then starts gizmod through `op run`, and no secret goes to disk.
+
+**Secrets in the Keychain.** On macOS, gizmod also reads `{secret:<id>}` from the Keychain, under the service `gizmo` with the id as the account, when `GIZMO_SECRET_<ID>` is not set. `secret set <id>` keeps one there. It asks for the value and does not show it, or it reads one line that you pipe in (`op read … | node gizmod.mjs secret set <id>`). The value never goes on a command line. `secret delete <id>` takes it out. gizmod reads a value from the Keychain again after five minutes, so a new value takes effect without a restart.
+
+**Its name.** gizmod shows as `gizmod` among your devices. To give it another name, add `--name "Studio Mac"` to `serve` or `install`. gizmod keeps the name in `GIZMOD_HOME`.
 
 ## Secrets
 
@@ -1145,7 +1151,7 @@ Obsidian keeps the value in its secret storage, not in a note. The permission ca
 | Event logs and checkpoints | `<App> data/log/` beside the data note (`<Kind> data/log/` for a kind). Each device has separate log files. |
 | Activity | The plugin folder. Each device has separate files. |
 | What each device sent of a shared kind | `share/<device>.json` in the plugin folder. |
-| The key of a shared kind | Obsidian's secret storage, or `GIZMO_SECRET_<ID>` for gizmod. Never a note. |
+| The key of a shared kind | Obsidian's secret storage. For gizmod, the macOS Keychain or `GIZMO_SECRET_<ID>`. Never a note. |
 | The people you accepted in a shared kind | `data.json` in the plugin folder. |
 | What-if rows | A file of this device beside the event log of the rows, until **Keep** or **Discard**. Refer to [What if](#what-if). |
 | Seals of a sealed kind | `<device>.seals` beside the event logs of the kind. Each device has a separate file. |

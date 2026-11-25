@@ -107,6 +107,35 @@ test("an alert on rows says what matched: a text panel's text, else the row's na
   assert.deepEqual(t.notices.sort(), ["Meds: Low, one: Med A", "Meds: Lowest: Med A: 3 days", "Meds: Running low: Med A, Days left 3, and 1 more"]);
 });
 
+test("a device taking over doesn't tell again what a device heard from lately told, nor what it told itself; what a device long gone told is told again", async () => {
+  const notes = {
+    "Apps/Money.md": { fm: { app: "Money", panels: [{ view: "number", title: "Spent", source: "buys", field: "amount", agg: "sum", alert: "> 1000" }] } },
+    "Apps/Money data.md": { fm: { buys: [{ amount: 1234 }] } },
+  };
+  // Another device ran background work and told it.
+  const before = fakeBackground(notes);
+  await before.bg.start();
+  await settle();
+  assert.deepEqual(before.notices, ["Money: Spent 1,234"]);
+  const theirs = before.triggers.text!;
+
+  const take = async (lately: boolean, mine?: string) => {
+    const t = fakeBackground(notes, {}, { triggers: { text: mine } });
+    t.others.push({ text: theirs, lately });
+    t.bg.startOver();
+    await t.bg.start();
+    await settle();
+    return t;
+  };
+  const heard = await take(true);
+  assert.deepEqual([heard.notices, heard.out.pushed.length], [[], 0], "told already, and still true");
+  const gone = await take(false);
+  assert.deepEqual([gone.notices, gone.out.pushed.length], [["Money: Spent 1,234"], 1]);
+  // This device told it before, and takes over again: not told twice.
+  const again = await take(false, gone.triggers.text);
+  assert.deepEqual(again.notices, []);
+});
+
 test("an alert already true at startup is told once; editing the app doesn't tell it again", async () => {
   const fm = { app: "Kp", data: { kp: { source: KP, sort: "-time_tag", limit: 1 } }, panels: [
     { view: "number", title: "Kp now", source: "kp", field: "kp_index", alert: ">= 5" },

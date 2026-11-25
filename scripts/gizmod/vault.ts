@@ -1,13 +1,16 @@
 /**
  * A vault folder read from disk, as Obsidian's vault and metadata cache read it, for gizmod: every
  * note's frontmatter (a block YAML can't read is dropped whole, as Obsidian drops it), its tags
- * (the frontmatter's and inline #tags outside code), its times, and links resolved as Obsidian
- * resolves them. The config folder and dot folders aren't part of it. A watcher keeps it current.
+ * (the frontmatter's and inline #tags outside code and HTML comments), its times, and links resolved
+ * as Obsidian resolves them. Paths are NFC, as Obsidian gives them, whatever form a name has on disk.
+ * The config folder and dot folders aren't part of it. A watcher keeps it current.
+ * test/live/parity.mjs checks all of this against a real Obsidian.
  */
 import { existsSync, promises as fs, statSync, watch, type FSWatcher } from "node:fs";
-import { dirname, join, relative, sep } from "node:path";
+import { dirname, join, posix, relative, sep } from "node:path";
 import { parse, stringify } from "yaml";
 import type { FileInfo } from "../../src/datalayer.ts";
+import { fenceStep } from "../../src/fences.ts";
 import { vaultPath } from "../../src/store.ts";
 
 export interface VaultFile {
@@ -19,6 +22,21 @@ export interface VaultFile {
 
 const toPosix = (p: string) => p.split(sep).join("/");
 const isNote = (path: string) => path.endsWith(".md");
+
+/** A vault path as Obsidian keeps one: inside the vault, slashes tidied, NFC. */
+export function nodePath(path: string): string | undefined {
+  return vaultPath(path)?.normalize("NFC");
+}
+
+/** Where a note's frontmatter YAML sits (from after its opening line to its closing line), and where the block ends. */
+function frontmatterSpan(text: string): { from: number; to: number; end: number } | undefined {
+  const open = /^---\r?\n/.exec(text);
+  if (!open) return undefined;
+  const close = /^---[ \t]*(?:\r?\n|$)/gm;
+  close.lastIndex = open[0].length;
+  const m = close.exec(text);
+  return m ? { from: open[0].length, to: m.index, end: m.index + m[0].length } : undefined;
+}
 
 /** A note's frontmatter block and the text after it; no block when the note doesn't start with one. */
 export function splitNote(text: string): { yaml?: string; body: string } {
@@ -52,17 +70,32 @@ function frontmatterTags(fm: Record<string, unknown> | undefined): string[] {
   return list.map((t) => t.trim().replace(/^#/, "")).filter(isTag).map((t) => `#${t}`);
 }
 
-/** Inline #tags in a note's body, outside code blocks and inline code; a tag isn't all digits. */
+/**
+ * Inline #tags in a note's body, outside code blocks, inline code and HTML comments; a tag isn't all
+ * digits. Tags in `%% %%` comments count, as Obsidian counts them.
+ */
 export function inlineTags(body: string): string[] {
   const out: string[] = [];
-  let fenced = false;
-  for (const line of body.split("\n")) {
-    if (/^\s*(```|~~~)/.test(line)) {
-      fenced = !fenced;
-      continue;
+  let fence: string | undefined;
+  let comment = false;
+  for (const raw of body.split("\n")) {
+    let line = raw.replace(/\r$/, "");
+    if (comment) {
+      const end = line.indexOf("-->");
+      if (end < 0) continue;
+      comment = false;
+      line = line.slice(end + 3);
+    } else {
+      const step = fenceStep(fence, line);
+      fence = step.open;
+      if (step.code) continue;
     }
-    if (fenced) continue;
-    const plain = line.replace(/`[^`]*`/g, " ");
+    let plain = line.replace(/`[^`]*`/g, " ").replace(/<!--[\s\S]*?-->/g, " ");
+    const opened = plain.indexOf("<!--");
+    if (opened >= 0) {
+      comment = true;
+      plain = plain.slice(0, opened);
+    }
     for (const m of plain.matchAll(/(?:^|\s)#([\p{L}\p{N}_/-]+)/gu)) if (/[^\d]/.test(m[1])) out.push(`#${m[1]}`);
   }
   return out;
@@ -72,9 +105,13 @@ export class NodeVault {
   readonly root: string;
   readonly configDir: string;
   private files = new Map<string, VaultFile>();
+  /** A file's name on disk, by its NFC path, where the two differ (a name written decomposed, as macOS may). */
+  private disk = new Map<string, string>();
   private listeners: ((path: string, gone: boolean) => void)[] = [];
   private watcher: FSWatcher | undefined;
   private pending = new Map<string, ReturnType<typeof setTimeout>>();
+  private again: ReturnType<typeof setTimeout> | undefined;
+  private closed = false;
 
   constructor(root: string, configDir = ".obsidian") {
     this.root = root;
@@ -91,28 +128,68 @@ export class NodeVault {
    * folder, or goes into the config folder or a dot folder, is refused, as Obsidian's vault refuses it.
    */
   abs(path: string): string {
-    const inside = vaultPath(path);
+    const inside = nodePath(path);
     if (inside === undefined || !this.ours(inside)) throw new Error(`${path} isn't a file in this vault`);
-    return join(this.root, ...inside.split("/"));
+    return join(this.root, ...(this.disk.get(inside) ?? inside).split("/"));
   }
 
+  /** The vault path of a name as it is on disk, kept so the file can be found again by it. */
+  private pathOf(onDisk: string): string {
+    const path = onDisk.normalize("NFC");
+    if (path !== onDisk) this.disk.set(path, onDisk);
+    return path;
+  }
+
+  /**
+   * Reads every file again. A folder reached through a symlink is read as Obsidian reads it (each
+   * real folder once); a symlinked file isn't, as Obsidian leaves it out. The watcher doesn't see
+   * inside a symlinked folder, nor does Obsidian's.
+   */
   async scan(): Promise<void> {
     this.files.clear();
-    const walk = async (dir: string): Promise<void> => {
+    this.disk.clear();
+    for (const path of await this.walk()) await this.load(path);
+  }
+
+  /**
+   * Reads again what changed while nobody was watching (macOS's watcher starts a moment after it is
+   * asked to): each file that came, went or has another time than the one kept is told as changed.
+   */
+  async rescan(): Promise<void> {
+    const now = new Set(await this.walk());
+    for (const path of now) {
+      const mtime = (await fs.stat(this.abs(path)).catch(() => undefined))?.mtimeMs;
+      if (mtime !== this.files.get(path)?.info.mtime) await this.changed(path);
+    }
+    for (const path of [...this.files.keys()]) if (!now.has(path)) await this.changed(path);
+  }
+
+  /** Every file's vault path, through symlinked folders, each real folder once. */
+  private async walk(): Promise<string[]> {
+    const out: string[] = [];
+    const seen = new Set<string>();
+    const visit = async (dir: string): Promise<void> => {
+      const real = await fs.realpath(dir).catch(() => dir);
+      if (seen.has(real)) return;
+      seen.add(real);
       for (const e of await fs.readdir(dir, { withFileTypes: true })) {
         if (e.name.startsWith(".")) continue;
         const full = join(dir, e.name);
-        if (e.isDirectory()) await walk(full);
-        else if (e.isFile()) await this.load(toPosix(relative(this.root, full)));
+        const folder = e.isDirectory() || (e.isSymbolicLink() && (await fs.stat(full).catch(() => undefined))?.isDirectory());
+        if (folder) await visit(full);
+        else if (e.isFile()) out.push(this.pathOf(toPosix(relative(this.root, full))));
       }
     };
-    await walk(this.root);
+    await visit(this.root);
+    return out;
   }
 
   /** Reads one file into the index again; false when it's gone. */
   private async load(path: string): Promise<boolean> {
     let stat;
     try {
+      // A symlinked file isn't one of the vault's, as Obsidian leaves it out.
+      if ((await fs.lstat(this.abs(path))).isSymbolicLink() && (await fs.stat(this.abs(path))).isFile()) throw new Error("a symlinked file");
       stat = await fs.stat(this.abs(path));
     } catch {
       this.files.delete(path);
@@ -125,7 +202,8 @@ export class NodeVault {
       this.files.set(path, { info, tags: [] });
       return true;
     }
-    const text = await fs.readFile(this.abs(path), "utf8").catch(() => "");
+    // Obsidian reads the frontmatter of a note that starts with a byte order mark (though its own edits don't see it).
+    const text = (await fs.readFile(this.abs(path), "utf8").catch(() => "")).replace(/^\uFEFF/, "");
     const { yaml, body } = splitNote(text);
     const fm = readFrontmatter(yaml);
     this.files.set(path, { info, fm, tags: [...new Set([...frontmatterTags(fm), ...inlineTags(body)])] });
@@ -151,7 +229,7 @@ export class NodeVault {
    * link, case aside; of several, the one in `from`'s folder, else the shortest path.
    */
   resolve(link: string, from: string): string | undefined {
-    const target = link.split("#")[0].split("|")[0].trim();
+    const target = link.split("#")[0].split("|")[0].trim().normalize("NFC");
     if (!target) return undefined;
     // A path is a path whatever its case, and wins over a note of that name nearer the link.
     const lower = target.toLowerCase();
@@ -159,8 +237,10 @@ export class NodeVault {
     if (exact) return exact;
     const fromDir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : "";
     if (target.startsWith("./") || target.startsWith("../")) {
-      const joined = toPosix(relative(this.root, join(this.root, fromDir, target)));
-      for (const p of [joined, `${joined}.md`]) if (this.files.has(p)) return p;
+      // Case aside, as for any other path; one that leaves the vault finds nothing.
+      const joined = posix.normalize(posix.join(fromDir || ".", target)).toLowerCase();
+      const found = [...this.files.keys()].find((p) => p.toLowerCase() === joined || p.toLowerCase() === `${joined}.md`);
+      if (found) return found;
     }
     const want = target.toLowerCase();
     const candidates = [...this.files.keys()].filter((p) => {
@@ -230,11 +310,16 @@ export class NodeVault {
   async process(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void> {
     for (let attempt = 0; ; attempt++) {
       const before = existsSync(this.abs(path)) ? await fs.readFile(this.abs(path), "utf8") : "";
-      const { yaml, body } = splitNote(before);
+      const span = frontmatterSpan(before);
+      const yaml = span && before.slice(span.from, span.to);
       const fm = yaml === undefined ? {} : readFrontmatter(yaml) ?? (yaml.trim() ? undefined : {});
       if (!fm) throw new Error(`${path} has frontmatter that isn't YAML`);
       fn(fm);
-      const text = `---\n${yamlText(fm)}---\n${body}`;
+      // Only the YAML is replaced, the block's own lines kept as they were; a block left empty goes.
+      const empty = Object.keys(fm).length === 0;
+      const text = !span ? (empty ? before : `---\n${yamlText(fm)}---\n${before}`)
+        : empty ? before.slice(span.end)
+        : before.slice(0, span.from) + yamlText(fm) + before.slice(span.to);
       const now = existsSync(this.abs(path)) ? await fs.readFile(this.abs(path), "utf8") : "";
       if (now !== before && attempt < 3) continue;
       await this.write(path, text);
@@ -257,7 +342,7 @@ export class NodeVault {
       // What was there and still is changes on its own events; only what came or went is read here.
       for (const p of [...this.files.keys()]) if (p.startsWith(`${path}/`) && !existsSync(this.abs(p))) await this.changed(p);
       for (const e of await fs.readdir(this.abs(path), { withFileTypes: true }).catch(() => [])) {
-        const child = `${path}/${e.name}`;
+        const child = this.pathOf(`${this.disk.get(path) ?? path}/${e.name}`);
         if (e.name.startsWith(".") || !this.ours(child)) continue;
         if (e.isDirectory() || !this.files.has(child)) await this.changed(child);
       }
@@ -270,11 +355,14 @@ export class NodeVault {
     for (const l of this.listeners) l(path, !there);
   }
 
-  /** Follows the folder: each file written, made or removed by anyone is read again a moment later. */
-  watch(): void {
+  /**
+   * Follows the folder: each file written, made or removed by anyone is read again a moment later.
+   * A watcher that fails is told to `trouble`, and the folder is read again and followed anew.
+   */
+  watch(trouble?: (e: Error) => void): void {
     this.watcher = watch(this.root, { recursive: true }, (_event, name) => {
       if (!name) return;
-      const path = toPosix(String(name));
+      const path = this.pathOf(toPosix(String(name)));
       if (!this.ours(path)) return;
       clearTimeout(this.pending.get(path));
       this.pending.set(path, setTimeout(() => {
@@ -282,9 +370,21 @@ export class NodeVault {
         void this.changed(path);
       }, 100));
     });
+    this.watcher.on("error", (e) => {
+      this.watcher?.close();
+      this.watcher = undefined;
+      trouble?.(e);
+      this.again = setTimeout(() => {
+        if (this.closed) return;
+        this.watch(trouble);
+        void this.rescan();
+      }, 5000);
+    });
   }
 
   close(): void {
+    this.closed = true;
+    clearTimeout(this.again);
     this.watcher?.close();
     for (const t of this.pending.values()) clearTimeout(t);
     this.pending.clear();

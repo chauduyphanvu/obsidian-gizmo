@@ -398,7 +398,7 @@ export class DataLayer {
     const cached = this.queries.get(key);
     if (cached) return cached;
     const scopes = splitScopes(key);
-    const rows = [...this.rows().values()].filter((r) => inScopes(r, scopes));
+    const rows = [...this.rows().values()].filter((r) => inScopes(r, scopes)).sort(byPath);
     this.queries.set(key, rows);
     return rows;
   }
@@ -409,9 +409,9 @@ export class DataLayer {
     return !!row && inScopes(row, splitScopes(from));
   }
 
-  /** Every markdown note in the vault. */
+  /** Every markdown note in the vault, by path. */
   allNotes(): Row[] {
-    return [...this.rows().values()];
+    return [...this.rows().values()].sort(byPath);
   }
 
   /** The paths of the notes directly in a folder, by path alone. */
@@ -558,6 +558,17 @@ export function cacheKey(source: string, headers: Record<string, string> | undef
 
 function withSource(p: Panel, source: string): Panel {
   return p.source === source ? p : { ...p, source };
+}
+
+/**
+ * Notes listed by path, so rows that sort alike keep one order on every device: the order a host
+ * lists its files in is its own, and changes as notes come and go.
+ */
+function byPath(a: Row, b: Row): number {
+  const [x, y] = [String(a.path), String(b.path)];
+  // Case aside first, as people read a list; then as written, so two paths never tie. No locale: every device agrees.
+  const [lx, ly] = [x.toLowerCase(), y.toLowerCase()];
+  return lx < ly ? -1 : lx > ly ? 1 : x < y ? -1 : x > y ? 1 : 0;
 }
 
 function splitScopes(from: string): string[] {

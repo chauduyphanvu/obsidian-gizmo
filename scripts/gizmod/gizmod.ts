@@ -26,12 +26,15 @@ import { parseLine, swallowed } from "../../src/capture.ts";
 import { captureCovers } from "../../src/links.ts";
 import { captureNamesOf } from "../../src/stored.ts";
 import { gizmodEnv } from "./host.ts";
+import { KeychainSecrets } from "./secrets.ts";
 import { isPlainObject } from "../../src/keys.ts";
 
 const run = promisify(execFile);
 export const DEFAULT_PORT = 7468;
 export const DEFAULT_LABEL = "com.gizmo.gizmod";
 const ADDRESS_EVERY_MS = 5 * 60_000;
+const RESCAN_MS = 3_000;
+const SETTINGS_EVERY_MS = 5_000;
 const MAX_BODY = 64 * 1024;
 
 const homeDir = () => process.env.GIZMOD_HOME ?? join(homedir(), ".config", "gizmod");
@@ -40,15 +43,23 @@ const stamp = () => new Date().toISOString().slice(0, 19).replace("T", " ");
 const print = (line: string) => void process.stdout.write(`${line}\n`);
 const say = (line: string) => print(`${stamp()} ${line}`);
 
-/** This vault's gizmod id, made once and kept, so its ledger files and beat stay its own. */
-async function deviceId(home: string, vault: string): Promise<string> {
+/**
+ * This vault's gizmod: its id, made once and kept, so its ledger files and beat stay its own, and
+ * what it's called among the devices ("gizmod" until named; a name given is kept for next time).
+ * An id kept alone (as before gizmod had a name) still reads.
+ */
+export async function deviceOf(home: string, vault: string, name?: string): Promise<{ id: string; name: string }> {
   const path = join(home, "devices.json");
-  const kept = existsSync(path) ? (JSON.parse(await fs.readFile(path, "utf8")) as Record<string, string>) : {};
-  if (kept[vault]) return kept[vault];
-  kept[vault] = `gz${randomBytes(4).toString("hex").slice(0, 6)}`;
-  await fs.mkdir(home, { recursive: true });
-  await fs.writeFile(path, JSON.stringify(kept, null, 2));
-  return kept[vault];
+  const kept = existsSync(path) ? (JSON.parse(await fs.readFile(path, "utf8")) as Record<string, string | { id: string; name?: string }>) : {};
+  const had = kept[vault];
+  const was = typeof had === "string" ? { id: had } : had;
+  const device = { id: was?.id ?? `gz${randomBytes(4).toString("hex").slice(0, 6)}`, name: name?.trim() || was?.name || "gizmod" };
+  if (!was || (name?.trim() && name.trim() !== was.name)) {
+    kept[vault] = device;
+    await fs.mkdir(home, { recursive: true });
+    await fs.writeFile(path, JSON.stringify(kept, null, 2));
+  }
+  return device;
 }
 
 /** The command line's token: made once, readable only by this user. */
@@ -237,6 +248,10 @@ export interface ServeOptions {
   home?: string;
   ntfyUrl?: string;
   macNotices?: boolean;
+  /** What this gizmod is called among the devices, kept for next time. */
+  name?: string;
+  /** Where secrets are kept besides the environment. */
+  keychain?: KeychainSecrets;
   /** Listen on the Tailscale address too (checked again every five minutes). */
   tailscale?: boolean;
   /** Finds this computer's Tailscale address, where a phone reaches gizmod; tests give their own. */
@@ -250,7 +265,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
   const log = opts.log ?? say;
   const home = opts.home ?? homeDir();
   const vaultPath = resolve(opts.vault);
-  const id = await deviceId(home, vaultPath);
+  const { id, name } = await deviceOf(home, vaultPath, opts.name);
   const token = await adminToken(home);
   const port = opts.port ?? DEFAULT_PORT;
   const answers = new AnswerTokens(home);
@@ -266,7 +281,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     const token = await answers.mint({ line: notice.answer!, path: parsed.target.path, shortcut: parsed.target.shortcut, params: parsed.params ?? {}, ...(notice.window && { window: notice.window }) });
     return `http, Done, http://${ip}:${port}/answer/${token}, method=POST, clear=true`;
   };
-  const env = gizmodEnv({ vault: vaultPath, device: id, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, log, answerButton });
+  const env = gizmodEnv({ vault: vaultPath, device: id, name, keychain: opts.keychain, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, log, answerButton });
   const { runtime } = env;
   const bg = runtime.background;
   await env.vault.scan();
@@ -274,9 +289,15 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     if (gone) runtime.fileDeleted(path);
     else runtime.fileChanged(path);
   });
-  env.vault.watch();
+  env.vault.watch((e) => log(`the vault's watcher stopped (${e.message}); it is read again and watched anew`));
   await runtime.open();
   await runtime.start();
+  // macOS starts watching a moment after it's asked to: what changed meanwhile is read again.
+  const rescan = setTimeout(() => void env.vault.rescan().catch((e: Error) => log(`couldn't read the vault again: ${e.message}`)), RESCAN_MS);
+  // What Obsidian allows, keys and the policy take effect as soon as it saves them.
+  const settingsCheck = setInterval(() => {
+    if (env.settings.changed()) void runtime.settingsChanged().catch((e: Error) => log(`couldn't take in Gizmo's settings: ${e.message}`));
+  }, SETTINGS_EVERY_MS);
   log(`gizmod ${id} reads ${vaultPath}; ${runtime.beat.isRunner() ? "it runs background work" : `${runtime.beat.runner?.name ?? "another device"} runs background work`}`);
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
@@ -324,7 +345,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       if (req.method === "GET" && parts[0] === "status" && parts.length === 1) {
         if (!trusted) throw new HttpError(403, "status is for this computer's own user");
         return reply(200, {
-          device: id, vault: vaultPath, runsBackground: runtime.beat.isRunner(), runner: runtime.beat.runner?.name, apps: bg.list().length,
+          device: id, name, vault: vaultPath, runsBackground: runtime.beat.isRunner(), runner: runtime.beat.runner?.name, apps: bg.list().length,
           paused: bg.paused().map((p) => ({ app: p.name, path: p.path, reason: p.reason, since: new Date(p.since).toISOString() })),
         });
       }
@@ -400,6 +421,8 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     addresses: () => [...servers.keys()],
     async close() {
       if (addressTimer) clearInterval(addressTimer);
+      clearTimeout(rescan);
+      clearInterval(settingsCheck);
       // What's waiting is written before the vault is let go of, and gizmod says it's leaving.
       await runtime.quit().catch(() => {});
       runtime.stop();
@@ -449,8 +472,10 @@ export function plist(o: { label: string; script: string; log: string }): string
 const agentPath = (label: string) => join(homedir(), "Library", "LaunchAgents", `${label}.plist`);
 const domain = () => `gui/${userInfo().uid}`;
 
-async function install(vault: string, label: string): Promise<void> {
+async function install(vault: string, label: string, name?: string): Promise<void> {
   const home = homeDir();
+  // Named now, it's kept for the agent's serve.
+  if (name) await deviceOf(home, resolve(vault), name);
   const script = join(home, `${label}.sh`);
   await fs.mkdir(home, { recursive: true, mode: 0o700 });
   await fs.writeFile(script, runScript({ node: process.execPath, script: fileURLToPath(import.meta.url), vault: resolve(vault), home }), { mode: 0o700 });
@@ -473,6 +498,42 @@ async function uninstall(label: string): Promise<void> {
 }
 
 // ---- The command line ---------------------------------------------------------------------------
+
+/**
+ * A secret's value, from whoever runs `secret set`: typed at the terminal without being shown, or
+ * piped in (as `op read … | gizmod secret set <id>`), one line either way.
+ */
+async function secretValue(id: string): Promise<string> {
+  const stdin = process.stdin;
+  if (!stdin.isTTY) {
+    let text = "";
+    for await (const chunk of stdin) text += String(chunk);
+    return text.replace(/\r?\n$/, "");
+  }
+  process.stdout.write(`The value of ${id} (not shown): `);
+  stdin.setRawMode(true);
+  stdin.setEncoding("utf8");
+  stdin.resume();
+  return new Promise((resolveValue, reject) => {
+    let value = "";
+    const done = (e?: Error) => {
+      stdin.off("data", typed);
+      stdin.setRawMode(false);
+      stdin.pause();
+      process.stdout.write("\n");
+      if (e) reject(e);
+      else resolveValue(value);
+    };
+    const typed = (chunk: string) => {
+      for (const ch of chunk) {
+        if (ch === "\r" || ch === "\n") return done();
+        if (ch === "\u0003") return done(new Error("nothing kept"));
+        value = ch === "\u007f" || ch === "\b" ? [...value].slice(0, -1).join("") : value + ch;
+      }
+    };
+    stdin.on("data", typed);
+  });
+}
 
 function flag(args: string[], name: string): string | undefined {
   const i = args.indexOf(`--${name}`);
@@ -506,6 +567,7 @@ export async function main(args: string[]): Promise<number> {
       const served = await serve({
         vault, port: Number(flag(rest, "port") ?? process.env.GIZMOD_PORT ?? DEFAULT_PORT),
         ntfyUrl: process.env.GIZMOD_NTFY_URL, macNotices: process.env.GIZMOD_MAC_NOTICES !== "0",
+        name: flag(rest, "name"), keychain: new KeychainSecrets({ keychain: flag(rest, "keychain") }),
       });
       const stop = () => void served.close().then(() => process.exit(0));
       process.on("SIGTERM", stop);
@@ -520,14 +582,28 @@ export async function main(args: string[]): Promise<number> {
     case "install": {
       const vault = flag(rest, "vault");
       if (!vault) throw new Error("install needs --vault <path>");
-      await install(vault, flag(rest, "label") ?? DEFAULT_LABEL);
+      await install(vault, flag(rest, "label") ?? DEFAULT_LABEL, flag(rest, "name"));
       return 0;
+    }
+    case "secret": {
+      const [what, id] = rest;
+      const keychain = new KeychainSecrets({ keychain: flag(rest, "keychain") });
+      if (what === "set" && id) {
+        keychain.set(id, await secretValue(id));
+        print(`Kept ${id} in the Keychain. gizmod reads it as {secret:${id}}.`);
+        return 0;
+      }
+      if (what === "delete" && id) {
+        print(keychain.delete(id) ? `Took ${id} out of the Keychain.` : `The Keychain has no ${id}.`);
+        return 0;
+      }
+      throw new Error("use: secret set <id> | secret delete <id>");
     }
     case "uninstall":
       await uninstall(flag(rest, "label") ?? DEFAULT_LABEL);
       return 0;
     default:
-      print("gizmod serve --vault <path> | run <app> <shortcut> [field=value…] | get <app> <shortcut> | do <line> | dry <app> <shortcut> | status | install --vault <path> [--label L] | uninstall [--label L]");
+      print("gizmod serve --vault <path> [--name N] | run <app> <shortcut> [field=value…] | get <app> <shortcut> | do <line> | dry <app> <shortcut> | status | install --vault <path> [--label L] [--name N] | uninstall [--label L] | secret set <id> | secret delete <id>");
       return cmd ? 1 : 0;
   }
 }

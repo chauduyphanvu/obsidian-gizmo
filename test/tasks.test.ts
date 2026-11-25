@@ -137,6 +137,17 @@ test("rows carry the note and line; a row is told apart by both", async () => {
   assert.deepEqual((await new DataLayer(f.host).panelData(byTag.source, byTag, FILES, { ttlMs: 0, now: NOW }) as { text: string }[]).map((r) => r.text), ["File the return"]);
 });
 
+test("tasks come in the order of their notes' paths, whatever order the vault lists notes in", async () => {
+  const f = fakeHost({
+    "Projects/Website.md": { body: "- [ ] Write the about page" },
+    "Projects/Garden shed.md": { body: "- [ ] Pour the base" },
+    "Projects/Tax return.md": { body: "- [ ] File the return" },
+  });
+  const p = checkPanel({ view: "table", source: "tasks", from: "Projects" }, true).panel as Panel;
+  const rows = await new DataLayer(f.host).panelData(p.source, p, FILES, { ttlMs: 0, now: NOW }) as { path: string }[];
+  assert.deepEqual(rows.map((r) => r.path), ["Projects/Garden shed.md", "Projects/Tax return.md", "Projects/Website.md"]);
+});
+
 test("each note is read once; a change re-reads only that note", async () => {
   const notes = Object.fromEntries(Array.from({ length: 2000 }, (_, i) => [`Projects/p${i}.md`, { body: `- [ ] task ${i}` }]));
   const f = fakeHost(notes);

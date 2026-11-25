@@ -115,18 +115,21 @@ test("a revoked app isn't paused: nothing is told, and allowed again its rhythm 
   assert.deepEqual(await t.env.store!("Apps/Meds data.md", "Apps/Meds.md").rows(EXPECT_MISSED), []);
 });
 
-test("a device taking over carries each rhythm on from the latest point any device decided it to; alerts start over", () => {
+test("a device taking over carries each rhythm on from the latest point any device decided it to; alerts start over, but what was told stays told", () => {
   const mine = {
     "A.md\nexpect:r": { decided: 100 },
     "A.md\npaused:": { paused: 5, reason: "now asks to …" },
     "A.md\nrain": { on: true },
-    "A.md\nrain\ntold": { rows: ["x"] },
+    "A.md\nrain\ntold": { on: true },
   };
-  const theirs = { "A.md\nexpect:r": { decided: 200 }, "B.md\nexpect:s": { decided: 50 }, "B.md\nwind": { on: true } };
-  assert.deepEqual(carryOver(mine, [theirs]), {
+  const theirs = { "A.md\nexpect:r": { decided: 200 }, "B.md\nexpect:s": { decided: 50 }, "B.md\nwind": { on: true }, "B.md\nwind\ntold": { on: true } };
+  const gone = { "C.md\nfrost\ntold": { on: true } };
+  assert.deepEqual(carryOver(mine, [theirs, gone], [theirs]), {
     "A.md\nexpect:r": { decided: 200 },
     "A.md\npaused:": { paused: 5, reason: "now asks to …" },
+    "A.md\nrain\ntold": { on: true },
     "B.md\nexpect:s": { decided: 50 },
+    "B.md\nwind\ntold": { on: true },
   });
 });
 

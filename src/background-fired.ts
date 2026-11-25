@@ -63,17 +63,20 @@ export class FiredStore {
    */
   startOver(): void {
     const before = this.state();
-    this.fired = (async () => carryOver(await before, await this.otherFired()))();
+    this.fired = (async () => {
+      const others = await this.otherFired();
+      return carryOver(await before, others.map((o) => o.fired), others.filter((o) => o.lately).map((o) => o.fired));
+    })();
     this.save();
   }
 
   /** What the other devices kept of their alerts and rhythms, in a version this one knows. */
-  private async otherFired(): Promise<Record<string, Fired>[]> {
-    const texts = await this.env.otherTriggers?.().catch(() => []) ?? [];
-    return texts.flatMap((text) => {
+  private async otherFired(): Promise<{ fired: Record<string, Fired>; lately: boolean }[]> {
+    const files = await this.env.otherTriggers?.().catch(() => []) ?? [];
+    return files.flatMap(({ text, lately }) => {
       try {
         const parsed = JSON.parse(text) as { v?: unknown; fired?: unknown };
-        return parsed.v === FIRED_VERSION && parsed.fired && typeof parsed.fired === "object" && !Array.isArray(parsed.fired) ? [parsed.fired as Record<string, Fired>] : [];
+        return parsed.v === FIRED_VERSION && parsed.fired && typeof parsed.fired === "object" && !Array.isArray(parsed.fired) ? [{ fired: parsed.fired as Record<string, Fired>, lately }] : [];
       } catch {
         return [];
       }
@@ -114,10 +117,13 @@ export class FiredStore {
  * run their `then` only for what turns true after), while rhythms, pauses and its own skips carry on.
  * Each rhythm goes on from the latest point any device decided it to, so a window nobody decided
  * while devices changed over is still decided, and one already decided elsewhere isn't decided again.
+ * An alert told here, or by a device heard from lately (`told`), isn't told again while it stays true;
+ * what a device long gone told is old news, and doesn't keep one quiet.
  */
-export function carryOver(mine: Record<string, Fired>, others: readonly Record<string, Fired>[]): Record<string, Fired> {
+export function carryOver(mine: Record<string, Fired>, others: readonly Record<string, Fired>[], told: readonly Record<string, Fired>[] = []): Record<string, Fired> {
   const out: Record<string, Fired> = {};
-  for (const [key, value] of Object.entries(mine)) if ("paused" in value || "decided" in value || "skipped" in value) out[key] = value;
+  for (const [key, value] of Object.entries(mine)) if ("paused" in value || "decided" in value || "skipped" in value || key.endsWith("\ntold")) out[key] = value;
+  for (const fired of told) for (const [key, value] of Object.entries(fired)) if (key.endsWith("\ntold") && !(key in out)) out[key] = value;
   for (const fired of others) {
     for (const [key, value] of Object.entries(fired)) {
       if (!("decided" in value) || typeof value.decided !== "number") continue;

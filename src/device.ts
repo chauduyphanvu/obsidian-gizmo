@@ -128,9 +128,9 @@ export async function beatsIn(files: PluginFiles): Promise<Beat[]> {
   });
 }
 
-/** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
-export async function otherTriggers(files: PluginFiles, id: string): Promise<string[]> {
-  return (await files.folder(DEVICE_FOLDERS.triggers)).filter((f) => f.name !== id).map((f) => f.text);
+/** The other devices' `triggers` files, as text, by device: where their rhythms got to, for a device taking over. */
+export async function otherTriggers(files: PluginFiles, id: string): Promise<{ device: string; text: string }[]> {
+  return (await files.folder(DEVICE_FOLDERS.triggers)).filter((f) => f.name !== id).map((f) => ({ device: f.name, text: f.text }));
 }
 
 /** The other devices' `share` files, as text: what they sent of shared kinds, for a device taking over. */
@@ -218,6 +218,12 @@ export class Heartbeat {
   /** Whether this device runs background work; not until it has read every device's beat. */
   isRunner(): boolean {
     return this.heard && this.runner?.id === this.io.id;
+  }
+
+  /** The devices heard from lately (within UNSEEN_MS), gone since or not: what they last kept is still news. */
+  heardLately(): Set<string> {
+    const now = this.io.now();
+    return new Set(this.beats.filter((b) => now - b.seen < UNSEEN_MS).map((b) => b.id));
   }
 
   /** The zone a rhythm's deadline means: that of the device the person used last. */

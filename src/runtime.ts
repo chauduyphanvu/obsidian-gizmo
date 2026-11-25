@@ -86,6 +86,8 @@ export class GizmoRuntime {
   private headlineListeners = new Set<() => void>();
   private timers: (() => void)[] = [];
   private stopped = false;
+  /** The policy the background last acted on, by hash. */
+  private policyHash: string | undefined;
 
   constructor(host: RuntimeHost) {
     this.host = host;
@@ -122,6 +124,7 @@ export class GizmoRuntime {
 
   /** Readies the settings: a permission a later Gizmo words differently is kept in both wordings, so nothing allowed asks again. */
   async open(): Promise<void> {
+    this.policyHash = this.store.policy?.hash;
     if (migrateGrants(this.store.grants) && this.writesSettings) await this.saveSettings();
   }
 
@@ -143,6 +146,8 @@ export class GizmoRuntime {
   /** One beat, then whatever background work is due. */
   async tick(): Promise<void> {
     await this.beat.beat().catch(() => {});
+    // Other devices keep web answers too, and no host hears when they do: read again when next asked.
+    this.dataLayer.host.responses?.changed();
     await this.background.tick();
   }
 
@@ -173,9 +178,13 @@ export class GizmoRuntime {
 
   /** data.json changed on disk (a sync from another device): what was allowed there holds here too, and what changed here and isn't saved yet stays. */
   async settingsChanged(): Promise<void> {
-    const before = this.store.policy?.hash;
     await this.host.settings.reload();
-    if (this.store.policy?.hash !== before) this.background.policyChanged();
+    // Against the policy last acted on, not the one held a moment ago: a host may read data.json again whenever it's asked.
+    const hash = this.store.policy?.hash;
+    if (hash !== this.policyHash) {
+      this.policyHash = hash;
+      this.background.policyChanged();
+    }
     this.grantsChanged();
   }
 
@@ -262,6 +271,7 @@ export class GizmoRuntime {
   async applyPolicy(applied: AppliedPolicy | undefined): Promise<void> {
     if (applied) this.store.policy = applied;
     else delete this.store.policy;
+    this.policyHash = applied?.hash;
     await this.saveSettings();
     this.background.policyChanged();
     this.grantsChanged();
@@ -506,7 +516,10 @@ export class GizmoRuntime {
         void this.definitions.renamed(from, to);
       },
       ...(writes && { dropped: (path: string) => { if (dropKeys(this.store, path)) void this.saveSettings(); } }),
-      otherTriggers: () => otherTriggers(h.files, id),
+      otherTriggers: async () => {
+        const lately = this.beat.heardLately();
+        return (await otherTriggers(h.files, id)).map(({ device, text }) => ({ text, lately: lately.has(device) }));
+      },
       shareState: h.files.file(deviceFile(DEVICE_FOLDERS.share, id)),
       otherShareStates: () => otherShareStates(h.files, id),
       writers: (kindPath) => writersOf(this.store, kindPath),

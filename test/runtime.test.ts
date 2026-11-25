@@ -178,6 +178,29 @@ test("data.json changed by a sync: what another device allowed comes in, what th
   assert.equal(checked, 1, "the same policy isn't checked again");
 });
 
+test("a new policy is acted on though the host read data.json again before it was told (gizmod reads it whenever asked)", async () => {
+  const t = await runtimeOn({}, { writes: false });
+  let checked = 0;
+  t.runtime.background.policyChanged = () => { checked++; };
+  t.disk.json = JSON.stringify({ grants: {}, policy: { hash: "p1", rules: { labels: { "Health/**": "private" } } } });
+  // Read already, as gizmod's settings are on any request, before the change is told.
+  await t.runtime.host.settings.reload();
+  await t.runtime.settingsChanged();
+  assert.equal(checked, 1);
+  await t.runtime.settingsChanged();
+  assert.equal(checked, 1, "the same policy isn't checked again");
+});
+
+test("another device's kept web answers are read again on the next tick, not only once this device keeps one", async () => {
+  const t = await runtimeOn({});
+  const responses = t.runtime.dataLayer.host.responses!;
+  let changed = 0;
+  const was = responses.changed.bind(responses);
+  responses.changed = () => { changed++; was(); };
+  await t.runtime.tick();
+  assert.equal(changed, 1);
+});
+
 test("a rename here: data.json's keys, the activity, Explain's definitions, the data note and its logs all follow", async () => {
   const t = await runtimeOn({
     "Apps/Pills.md": { fm: { app: "Pills", panels: [{ view: "button", label: "Took", save: "doses" }] } },

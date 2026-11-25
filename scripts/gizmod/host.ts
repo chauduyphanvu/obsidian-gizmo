@@ -18,9 +18,10 @@ import { clearance, rank, type AppliedPolicy } from "../../src/policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
 import { GizmoRuntime } from "../../src/runtime.ts";
 import { urlHost } from "../../src/sources/url.ts";
-import { notePath, storeTarget, vaultPath } from "../../src/store.ts";
+import { notePath, storeTarget } from "../../src/store.ts";
 import type { SettingsSource, StoredData } from "../../src/stored.ts";
-import { NodeVault, yamlText } from "./vault.ts";
+import { nodePath, NodeVault, yamlText } from "./vault.ts";
+import { gizmodSecrets, KeychainSecrets } from "./secrets.ts";
 import { vaultWrites } from "../../src/vault-ops.ts";
 
 /**
@@ -31,9 +32,27 @@ export class DiskSettings implements SettingsSource {
   private path: string;
   private kept: StoredData = { grants: {} };
   private mtime = -1;
+  private told: number | undefined;
 
   constructor(pluginDir: string) {
     this.path = join(pluginDir, "data.json");
+    this.told = this.stamp();
+  }
+
+  private stamp(): number | undefined {
+    try {
+      return statSync(this.path).mtimeMs;
+    } catch {
+      return undefined;
+    }
+  }
+
+  /** Whether data.json changed on disk since this was last asked (or since it was made). */
+  changed(): boolean {
+    const m = this.stamp();
+    if (m === this.told) return false;
+    this.told = m;
+    return true;
   }
 
   get data(): StoredData {
@@ -97,14 +116,6 @@ export function pluginFiles(pluginDir: string): PluginFiles {
   };
 }
 
-/** The environment variable a secret comes from: GIZMO_SECRET_<ID>, dashes as underscores. */
-export const secretVar = (id: string) => `GIZMO_SECRET_${id.toUpperCase().replace(/-/g, "_")}`;
-
-/** `{secret:id}` filled from the environment, as `op run` gives it. */
-export function secretFromEnv(id: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  return env[secretVar(id)] ?? null;
-}
-
 /** What gizmod pushes for an alert: its whole text when the policy clears it for that host, else only where it's from. */
 export function pushText(notice: AlertNotice, policy: AppliedPolicy | undefined, host: string): string {
   const where = `${notice.app}: ${notice.panel}`;
@@ -118,6 +129,10 @@ export interface GizmodOptions {
   configDir?: string;
   /** This gizmod's device id, named in its ledger files and beat. */
   device: string;
+  /** What this gizmod is called among the devices; "gizmod" unless named. */
+  name?: string;
+  /** Where secrets are kept besides the environment; without one, only the environment is read. */
+  keychain?: KeychainSecrets;
   /** Where alerts are pushed: a ntfy topic's URL. */
   ntfyUrl?: string;
   /** Shows alerts as macOS notices too. */
@@ -139,6 +154,8 @@ export function gizmodEnv(opts: GizmodOptions) {
   const files = pluginFiles(pluginDir);
   const id = opts.device;
   const settings = new DiskSettings(pluginDir);
+  const name = opts.name ?? "gizmod";
+  const secrets = gizmodSecrets(opts.keychain ?? new KeychainSecrets({ available: false }));
 
   const host: Host = {
     async fetch(url, headers, init) {
@@ -154,8 +171,8 @@ export function gizmodEnv(opts: GizmodOptions) {
     fileInfo: (path) => (path.endsWith(".md") ? vault.file(path)?.info : undefined),
     frontmatter: (path) => vault.file(path)?.fm,
     tags: (path) => vault.file(path)?.tags ?? [],
-    secret: (sid) => secretFromEnv(sid),
-    whereSecrets: (sid) => `Set ${secretVar(sid)} in gizmod's environment (its run script fills it through op run).`,
+    secret: (sid) => secrets.secret(sid),
+    whereSecrets: (sid) => secrets.where(sid),
     now,
     schedule: (cb) => { setTimeout(cb, 30); },
     readFile: (path) => vault.read(path),
@@ -176,7 +193,7 @@ export function gizmodEnv(opts: GizmodOptions) {
   const frontmatter = (path: string) => vault.file(path)?.fm;
   // Written as Obsidian writes them (see vault-ops.ts), each change read again just before it's written.
   const writes = vaultWrites({
-    normalize: (path) => vaultPath(path) ?? path,
+    normalize: (path) => nodePath(path) ?? path,
     exists: (path) => vault.file(path) !== undefined || existsSync(vault.abs(path)),
     read: (path) => vault.read(path),
     write: (path, text) => vault.write(path, text),
@@ -189,7 +206,8 @@ export function gizmodEnv(opts: GizmodOptions) {
 
   // Made below; a store is only asked for once the runtime runs.
   let runtime: GizmoRuntime | undefined;
-  const io: ActionIO = {
+  // A template's name is found from the app that uses it, as Obsidian finds it.
+  const ioFor = (appPath: string): ActionIO => ({
     now: () => new Date(now()),
     frontmatter,
     writeFrontmatter: (path, fn) => writes.writeFrontmatter(path, fn),
@@ -199,14 +217,16 @@ export function gizmodEnv(opts: GizmodOptions) {
     createNote: (path, fm, body) => writes.createNote(path, fm, body),
     readBody: async (path) => {
       const target = storeTarget(path);
-      const found = vault.resolve(target, "") ?? (vault.file(notePath(target)) ? notePath(target) : undefined);
+      const named = nodePath(notePath(target)) ?? notePath(target);
+      const found = vault.resolve(target, appPath) ?? (vault.file(named) ? named : undefined);
       if (!found) throw new Error(`can't find [[${target}]]`);
       return bodyOf(await vault.read(found));
     },
     notify: (message) => log(message),
     openNote: () => {},
     setTaskDone: (path, line, text, done) => writes.setTaskDone(path, line, text, done),
-  };
+  });
+  const io = ioFor("");
 
   const notices: string[] = [];
   const sink: BackgroundSink = {
@@ -236,17 +256,17 @@ export function gizmodEnv(opts: GizmodOptions) {
     host,
     settings,
     files,
-    device: { id, name: "gizmod" },
+    device: { id, name },
     // gizmod says only on its interval; a beat it couldn't write is logged and written on the next one.
     beat: {
-      mine: (t) => ({ id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() }),
+      mine: (t) => ({ id, name, host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() }),
       writeFailed: (e) => log(`couldn't write gizmod's beat: ${e.message}`),
     },
     writes,
     notes: { resolve: (link, from) => vault.resolve(link, from), frontmatter },
-    storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? notePath(storeTarget(s)),
+    storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? nodePath(notePath(storeTarget(s))) ?? notePath(storeTarget(s)),
     // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
-    actionIO: () => io,
+    actionIO: (appPath) => ioFor(appPath),
     sink,
     every: (fn, ms) => {
       const timer = setInterval(fn, ms);

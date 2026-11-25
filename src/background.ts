@@ -116,8 +116,11 @@ export interface BackgroundEnv {
   sink: BackgroundSink;
   /** Where the alerts that run a `then` keep what they already ran for, across restarts. */
   triggers?: LogStore;
-  /** The other devices' `triggers` files, as text: where their rhythms got to, for a device taking over. */
-  otherTriggers?(): Promise<string[]>;
+  /**
+   * The other devices' `triggers` files, as text: where their rhythms got to, for a device taking
+   * over, and whether each device was heard from lately, so the alerts it told are still news.
+   */
+  otherTriggers?(): Promise<{ text: string; lately: boolean }[]>;
   /** Where this device keeps what it read from and sent to the relays of shared kinds; and the other devices' files, for one taking over. */
   shareState?: LogStore;
   otherShareStates?(): Promise<string[]>;

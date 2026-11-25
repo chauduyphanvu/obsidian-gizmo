@@ -1,14 +1,15 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, symlinkSync, unlinkSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { stringify } from "yaml";
-import { ANSWER_MS, AnswerTokens, adminToken, ownHost, plist, runScript, serve } from "../scripts/gizmod/gizmod.ts";
-import { gizmodEnv, pushText, secretFromEnv } from "../scripts/gizmod/host.ts";
+import { ANSWER_MS, AnswerTokens, adminToken, deviceOf, ownHost, plist, runScript, serve } from "../scripts/gizmod/gizmod.ts";
+import { gizmodEnv, pushText } from "../scripts/gizmod/host.ts";
+import { KeychainSecrets, gizmodSecrets, passwordOf, secretFromEnv, type Security } from "../scripts/gizmod/secrets.ts";
 import { identityText, kindKeys, newIdentity } from "../src/share-crypto.ts";
-import { NodeVault, inlineTags, splitNote } from "../scripts/gizmod/vault.ts";
+import { NodeVault, inlineTags, nodePath, splitNote } from "../scripts/gizmod/vault.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
 import { PRIORITY, readBeat, runnerOf } from "../src/device.ts";
@@ -105,6 +106,111 @@ test("a frontmatter write keeps the body and is read back at once", async () => 
   await v.process("Apps/X data.md", (fm) => { fm.n = 2; fm.list = [{ a: "b" }]; });
   assert.equal(readFileSync(join(root, "Apps/X data.md"), "utf8"), "---\nn: 2\nlist:\n  - a: b\n---\nKeep me\n");
   assert.deepEqual(v.file("Apps/X data.md")?.fm, { n: 2, list: [{ a: "b" }] });
+});
+
+// What follows pins what a real Obsidian answered in test/live/parity.mjs (Obsidian 1.15).
+
+test("tags as Obsidian reads them: a code block ends only on its own fence, HTML comments hide tags, %% comments don't", () => {
+  assert.deepEqual(inlineTags("````\n```\n#inner\n```\n````\n#after4\n~~~\n#tilde\n~~~\n#aftertilde\n```js\n#lang\n```\n#afterlang"), ["#after4", "#aftertilde", "#afterlang"]);
+  assert.deepEqual(inlineTags("%% #pct %%\n<!-- #html -->\n%%\n#pctblock\n%%\n<!--\n#htmlblock\n-->\ntext #after\nkept #a <!-- #b --> #c <!-- #d\n#e --> #f"), ["#pct", "#pctblock", "#after", "#a", "#c", "#f"]);
+});
+
+test("a note that starts with a byte order mark has its frontmatter read", async () => {
+  const root = vaultDir({ "Bom.md": "﻿---\nbom: 1\ntags: [bomtag]\n---\nbody #bominline" });
+  const v = new NodeVault(root);
+  await v.scan();
+  assert.deepEqual(v.file("Bom.md")?.fm, { bom: 1, tags: ["bomtag"] });
+  assert.deepEqual(v.file("Bom.md")?.tags, ["#bomtag", "#bominline"]);
+});
+
+test("a name written decomposed on disk is the vault's under its NFC path: listed, linked, read and written", async () => {
+  const nfd = "Café";
+  const nfc = "Café";
+  const root = vaultDir({ [`${nfd}.md`]: "---\nn: 1\n---\nbody" });
+  const v = new NodeVault(root);
+  await v.scan();
+  assert.deepEqual(v.notes().map((n) => n.path), [`${nfc}.md`]);
+  assert.equal(v.resolve(nfc, ""), `${nfc}.md`);
+  assert.equal(v.resolve(nfd, ""), `${nfc}.md`);
+  assert.equal(nodePath(`./Notes//${nfd}.md`), `Notes/${nfc}.md`);
+  assert.match(await v.read(`${nfd}.md`), /body/);
+  await v.process(`${nfc}.md`, (fm) => { fm.n = 2; });
+  assert.deepEqual(readdirSync(root).filter((f) => f.endsWith(".md")), [`${nfd}.md`], "written in place, under the name it has");
+  assert.deepEqual(v.file(`${nfc}.md`)?.fm, { n: 2 });
+});
+
+test("a relative link resolves case aside, and never outside the vault", async () => {
+  const root = vaultDir({ "Inbox.md": "", "Notes/Near.md": "", "Notes/Linker.md": "" });
+  const v = new NodeVault(root);
+  await v.scan();
+  assert.equal(v.resolve("./near", "Notes/Linker.md"), "Notes/Near.md");
+  assert.equal(v.resolve("./NEAR", "Notes/Linker.md"), "Notes/Near.md");
+  assert.equal(v.resolve("../inbox", "Notes/Linker.md"), "Inbox.md");
+  assert.equal(v.resolve("../../elsewhere", "Notes/Linker.md"), undefined);
+});
+
+test("a folder reached through a symlink is read; a symlinked note isn't", async () => {
+  const root = vaultDir({ "Inbox.md": "inbox" });
+  const outside = mkdtempSync(join(tmpdir(), "gizmod-outside-"));
+  made.push(outside);
+  mkdirSync(join(outside, "Shared"));
+  writeFileSync(join(outside, "Shared", "Far.md"), "---\nfar: 1\n---\n#far");
+  symlinkSync(join(outside, "Shared"), join(root, "Shared"));
+  symlinkSync(join(root, "Inbox.md"), join(root, "Alias.md"));
+  // A folder linked into itself is read once.
+  symlinkSync(join(outside, "Shared"), join(outside, "Shared", "Loop"));
+  const v = new NodeVault(root);
+  await v.scan();
+  assert.deepEqual(v.notes().map((n) => n.path).sort(), ["Inbox.md", "Shared/Far.md"]);
+  assert.deepEqual(v.file("Shared/Far.md")?.tags, ["#far"]);
+});
+
+test("a frontmatter edit replaces only the YAML: the block's own lines are kept, a block left empty goes, a BOM note gets a block of its own", async () => {
+  const root = vaultDir({
+    "Crlf.md": "---\r\nx: 1\r\n---\r\nbody\r\n",
+    "Drop.md": "---\na: 1\n---\nbody\n",
+    "Empty.md": "---\n---\nbody\n",
+    "None.md": "body\n",
+    "Bom.md": "﻿---\nx: 1\n---\nbody\n",
+  });
+  const v = new NodeVault(root);
+  await v.scan();
+  const text = (p: string) => readFileSync(join(root, p), "utf8");
+  await v.process("Crlf.md", (fm) => { fm.a = 1; });
+  assert.equal(text("Crlf.md"), "---\r\nx: 1\na: 1\n---\r\nbody\r\n");
+  await v.process("Drop.md", (fm) => { delete fm.a; });
+  assert.equal(text("Drop.md"), "body\n");
+  await v.process("Empty.md", (fm) => { fm.a = 1; });
+  assert.equal(text("Empty.md"), "---\na: 1\n---\nbody\n");
+  await v.process("None.md", () => {});
+  assert.equal(text("None.md"), "body\n");
+  // Obsidian's own edits don't see a block behind a byte order mark (its reading does).
+  await v.process("Bom.md", (fm) => { fm.a = 1; });
+  assert.equal(text("Bom.md"), "---\na: 1\n---\n﻿---\nx: 1\n---\nbody\n");
+});
+
+test("a rescan reads what changed while nobody watched: a new note, an edited one, one removed", async () => {
+  const root = vaultDir({ "Kept.md": "kept", "Edited.md": "---\nn: 1\n---\n", "Gone.md": "gone" });
+  const v = new NodeVault(root);
+  await v.scan();
+  const told: string[] = [];
+  v.onChange((path, gone) => told.push(`${gone ? "-" : "+"}${path}`));
+  writeFileSync(join(root, "New.md"), "new");
+  writeFileSync(join(root, "Edited.md"), "---\nn: 2\n---\n");
+  utimesSync(join(root, "Edited.md"), new Date(), new Date(Date.now() + 5000));
+  unlinkSync(join(root, "Gone.md"));
+  await v.rescan();
+  assert.deepEqual(told.sort(), ["+Edited.md", "+New.md", "-Gone.md"]);
+  assert.deepEqual(v.file("Edited.md")?.fm, { n: 2 });
+  assert.equal(v.file("Gone.md"), undefined);
+});
+
+test("a template note is found from the app that uses it, as Obsidian finds it", async () => {
+  const root = vaultDir({ "Projects/Deep/Visit.md": "---\napp: Visit\n---\n", "Projects/Deep/Tpl.md": "beside the app", "Old/Tpl.md": "old one" });
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {} });
+  await env.vault.scan();
+  assert.equal((await env.runtime.host.actionIO("Projects/Deep/Visit.md")!.readBody("Tpl")).trim(), "beside the app");
+  assert.equal((await env.runtime.host.actionIO("Notes/Other.md")!.readBody("Tpl")).trim(), "old one", "from elsewhere, the shortest path");
 });
 
 const INBOX = { app: "Inbox", panels: [{ view: "form", title: "Add", fields: { task: "text" }, save: "todo", shortcut: "add", alias: "task" }, { view: "number", title: "Open", source: "todo", agg: "count", shortcut: "open" }] };
@@ -367,6 +473,86 @@ test("gizmod reads data.json again when Obsidian changes it", async () => {
   } finally {
     await t.s.close();
   }
+});
+
+test("gizmod's settings say when data.json changed since last asked, so the runtime is told of it", async () => {
+  const root = vaultDir({ ".obsidian/plugins/gizmo/data.json": JSON.stringify({ grants: {} }) });
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {} });
+  assert.equal(env.settings.changed(), false, "as it was when gizmod started");
+  const path = join(root, ".obsidian/plugins/gizmo/data.json");
+  writeFileSync(path, JSON.stringify({ grants: { "Apps/A.md": [] } }));
+  const later = new Date(Date.now() + 5000);
+  utimesSync(path, later, later);
+  assert.equal(env.settings.changed(), true);
+  assert.equal(env.settings.changed(), false, "told once");
+  assert.deepEqual(Object.keys(env.settings.data.grants), ["Apps/A.md"]);
+});
+
+test("a Keychain secret: read with -g (plain or hex), kept five minutes, a miss looked for again; a value goes to security on its input, never its arguments", () => {
+  assert.equal(passwordOf('keychain: "x"\npassword: "va l"ue x"\n'), 'va l"ue x');
+  assert.equal(passwordOf('password: 0x636166C3A9  "caf\\303\\251"'), "café");
+  assert.equal(passwordOf("nothing"), undefined);
+  const calls: { args: string[]; input?: string }[] = [];
+  const store = new Map<string, string>();
+  const security: Security = (args, input) => {
+    calls.push({ args, input });
+    if (args[0] === "find-generic-password") {
+      const v = store.get(args[args.indexOf("-a") + 1]);
+      return v === undefined ? { status: 44, stdout: "", stderr: "not found" } : { status: 0, stdout: "", stderr: `password: "${v}"\n` };
+    }
+    if (args[0] === "-i") {
+      const m = /-a (\S+) .* -w "((?:[^"\\]|\\.)*)"/.exec(input!)!;
+      store.set(m[1], m[2].replace(/\\(.)/g, "$1"));
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    if (args[0] === "delete-generic-password") return { status: store.delete(args[args.indexOf("-a") + 1]) ? 0 : 44, stdout: "", stderr: "" };
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  let clock = 0;
+  const k = new KeychainSecrets({ security, available: true, now: () => clock, keychain: "/tmp/test.keychain-db" });
+  assert.equal(k.get("api-key"), null);
+  k.set("api-key", 'sk "1" \\ 2');
+  assert.ok(calls.every((c) => !c.args.join(" ").includes("sk ")), "the value is never an argument");
+  assert.match(calls.find((c) => c.args[0] === "-i")!.input!, / "\/tmp\/test.keychain-db"\n$/);
+  const asked = calls.length;
+  assert.equal(k.get("api-key"), 'sk "1" \\ 2');
+  assert.equal(calls.length, asked, "read back when kept, then from what's kept");
+  clock += 5 * 60_000;
+  assert.equal(k.get("api-key"), 'sk "1" \\ 2');
+  assert.equal(calls.length, asked + 1, "read again after five minutes");
+  assert.throws(() => k.set("Bad_Id", "x"), /lowercase letters, digits and dashes/);
+  assert.throws(() => k.set("ok", "two\nlines"), /one line/);
+  assert.equal(k.delete("api-key"), true);
+  assert.equal(k.get("api-key"), null);
+
+  // The environment first, as op run gives it; then the Keychain; and what to say of one found in neither.
+  store.set("both", "from keychain");
+  const s = gizmodSecrets(k, { GIZMO_SECRET_BOTH: "from env" });
+  assert.equal(s.secret("both"), "from env");
+  assert.equal(gizmodSecrets(k, {}).secret("both"), "from keychain");
+  assert.match(s.where("gone"), /secret set gone.*GIZMO_SECRET_GONE/);
+  const none = gizmodSecrets(new KeychainSecrets({ available: false, security }), {});
+  assert.equal(none.secret("both"), null, "no Keychain off macOS");
+  assert.doesNotMatch(none.where("gone"), /secret set/);
+  assert.throws(() => new KeychainSecrets({ available: false }).set("x", "y"), /no Keychain here/);
+});
+
+test("gizmod's name: kept per vault with its id, \"gizmod\" until named; an id kept alone from before still reads", async () => {
+  const home = mkdtempSync(join(tmpdir(), "gizmod-home-"));
+  made.push(home);
+  writeFileSync(join(home, "devices.json"), JSON.stringify({ "/vaults/old": "gzold01" }));
+  assert.deepEqual(await deviceOf(home, "/vaults/old"), { id: "gzold01", name: "gizmod" });
+  assert.deepEqual(await deviceOf(home, "/vaults/old", "Studio Mac"), { id: "gzold01", name: "Studio Mac" });
+  assert.deepEqual(await deviceOf(home, "/vaults/old"), { id: "gzold01", name: "Studio Mac" }, "kept for next time");
+  const fresh = await deviceOf(home, "/vaults/new");
+  assert.match(fresh.id, /^gz[0-9a-f]{6}$/);
+  assert.equal(fresh.name, "gizmod");
+  assert.deepEqual(await deviceOf(home, "/vaults/new"), fresh);
+
+  const root = vaultDir({});
+  const env = gizmodEnv({ vault: root, device: "gzname01", name: "Studio Mac", log: () => {} });
+  await env.runtime.beat.beat(true);
+  assert.equal(readBeat(readFileSync(join(root, ".obsidian/plugins/gizmo/devices/gzname01.json"), "utf8"))!.name, "Studio Mac");
 });
 
 test("gizmod stopping writes what's waiting and says it's leaving, so Obsidian takes over at once", async () => {

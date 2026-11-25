@@ -338,7 +338,7 @@ Refer to [What the relay and others can see](docs/reference.md#what-the-relay-an
 | Rows that an app saves | `<App> data.md` beside the app (or the note named in `store`), and a per-device log in `<App> data/log/`. |
 | Rows of a kind | `<Kind> data.md` beside the kind note holds logged rows. `<Kind> data/log/` holds all logged, planned, imported, and dismissed rows, in per-device files. |
 | What-if rows | A `.branch` file for this device in that log folder, until **Keep as planned** or **Discard**. |
-| The key of a shared kind | Obsidian's secret storage, never a note. |
+| The key of a shared kind | Obsidian's secret storage (for gizmod, the macOS Keychain or `GIZMO_SECRET_<ID>`), never a note. |
 | A guest page | `<Kind> guest page (<name>).html` beside the kind note. Its code stays in the browser that uses it. |
 | Shared-kind sync state, accepted writers, permissions, activity, and settings | The plugin folder (`.obsidian/plugins/gizmo/`). |
 
@@ -351,7 +351,7 @@ Refer to [What the relay and others can see](docs/reference.md#what-the-relay-an
 - `node gizmod.mjs install --vault <path>` adds a macOS launchd agent that starts at login and writes logs to `~/Library/Logs`. `node gizmod.mjs uninstall` removes it.
 - It answers HTTP on port 7468 (localhost and Tailscale) so a phone shortcut can run an app. Remote requests require a shortcut key, capture key, or one-time push token; unauthenticated requests are rejected.
 - It sends alerts to your phone through [ntfy](https://ntfy.sh) only if you set `GIZMOD_NTFY_URL`.
-- It syncs a shared kind through its relay only if you allowed that kind in Obsidian and pass its key in `GIZMO_SECRET_<ID>`.
+- It syncs a shared kind through its relay only if you allowed that kind in Obsidian and give it the kind's key: in the macOS Keychain with `node gizmod.mjs secret set <id>`, or in `GIZMO_SECRET_<ID>`.
 
 ## Learn more
 

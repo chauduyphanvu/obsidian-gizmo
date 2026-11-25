@@ -99,7 +99,7 @@ class InviteModal extends Modal {
     box.createEl("p", { cls: "gz-warning-text", text: `The key is in the link: whoever has it can read and add rows of ${this.file.basename}. Send it in a private message, not where others can see it. Gizmo never sends the key to ${kind.share!.host} or anywhere else.` });
     const area = box.createEl("textarea", { cls: "gz-share-text", attr: { readonly: "", rows: "4", spellcheck: "false" } });
     area.value = link;
-    box.createEl("p", { cls: "gz-muted", text: `You're ${id.name} to them. Their rows wait in Next until you accept them. Copy key copies your key for another of your devices (paste it in Invite to a kind there) or for gizmod (set GIZMO_SECRET_${kind.share!.secret.toUpperCase().replace(/-/g, "_")} to it).` });
+    box.createEl("p", { cls: "gz-muted", text: `You're ${id.name} to them. Their rows wait in Next until you accept them. Copy key copies your key for another of your devices (paste it in Invite to a kind there) or for gizmod (node gizmod.mjs secret set ${kind.share!.secret}, or set GIZMO_SECRET_${kind.share!.secret.toUpperCase().replace(/-/g, "_")} to it).` });
     const row = box.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { text: "Copy key" }).addEventListener("click", () => copyText(identityText(id), () => { new Notice("Copied your key; keep it as a secret, in 1Password or your .env of op:// references"); }));
     row.createEl("button", { cls: "mod-cta", text: "Copy link" }).addEventListener("click", () => copyText(link, () => { new Notice(`Copied the invite to ${this.file.basename}; send it privately`); this.close(); }));

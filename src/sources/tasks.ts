@@ -1,5 +1,6 @@
 import type { Row } from "../data.ts";
 import { notesDep } from "../deps.ts";
+import { fenceStep } from "../fences.ts";
 import type { SourceDef } from "./types.ts";
 
 /** One checkbox line of a note. `line` counts from 0 at the top of the file. */
@@ -17,8 +18,6 @@ export interface Task {
  * `[c]`, a space, the text. Groups: everything before the status character, the status, the text.
  */
 const TASK = /^([ \t]*(?:[-*+]|\d+[.)])[ \t]+\[)(.)\][ \t](.*)$/u;
-/** A code fence; a run of backticks followed by another backtick on its line is inline code instead. */
-const FENCE = /^[ \t]*(`{3,}(?!.*`)|~{3,})/;
 const DUE = /📅\s*(\d{4}-\d{2}-\d{2})|due::\s*(\d{4}-\d{2}-\d{2})/u;
 const TAG = /(?:^|\s)#([\p{L}\p{N}_/-]+)/gu;
 
@@ -41,15 +40,9 @@ function scan(lines: string[]): Found[] {
   let fence: string | undefined;
   for (; i < lines.length; i++) {
     const l = lines[i].replace(/\r$/, "");
-    const f = l.match(FENCE);
-    if (fence) {
-      if (f && f[1][0] === fence[0] && f[1].length >= fence.length && l.trim() === f[1]) fence = undefined;
-      continue;
-    }
-    if (f) {
-      fence = f[1];
-      continue;
-    }
+    const step = fenceStep(fence, l);
+    fence = step.open;
+    if (step.code) continue;
     const m = l.match(TASK);
     if (m) out.push({ line: i, at: m[1].length, status: m[2], text: m[3].trimEnd() });
   }

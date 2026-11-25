@@ -352,8 +352,8 @@ export function fakeBackground(
     renamed: [] as [string, string][],
     dropped: [] as string[],
   };
-  /** The other devices' `triggers` files, as text, for a device taking over. */
-  const others: string[] = [];
+  /** The other devices' `triggers` files, as text, for a device taking over; a device heard from lately unless said otherwise. */
+  const others: (string | { text: string; lately: boolean })[] = [];
   /** How the person answers a link that asks: Run unless `answer` is false, or whatever `wait` resolves to; `choice` for where word goes back. */
   const ask = { answer: true, wait: undefined as undefined | (() => Promise<boolean>), choice: 1 as number | undefined };
   /** Each shortcut's link key, made in order: k1, k2, … */
@@ -398,7 +398,7 @@ export function fakeBackground(
     }),
     now,
     triggers: { read: async () => triggers.text, write: async (text) => { triggers.text = text; } },
-    otherTriggers: async () => [...others],
+    otherTriggers: async () => others.map((o) => (typeof o === "string" ? { text: o, lately: true } : o)),
     shareState: { read: async () => shareState.text, write: async (text) => { shareState.text = text; } },
     otherShareStates: async () => [...otherShareStates],
     writers: (kindPath) => writersOf({ writers }, kindPath),

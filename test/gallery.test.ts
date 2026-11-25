@@ -1154,7 +1154,7 @@ test("Project board: add a project, drag it along, pick it for its dates, and op
   addLine(form, '"Learn piano" learning 2026-12-01 2027-06-30');
   await settle();
   assert.deepEqual(f.files.get("Projects/Learn piano.md")!.fm, { status: "idea", area: "learning", start: "2026-12-01", due: "2027-06-30", at: savedAt("2026-11-18T12:00") });
-  assert.deepEqual(cards("idea"), ["Learn Rust · learning", "Tax return · money", "Learn piano · learning"]);
+  assert.deepEqual(cards("idea"), ["Learn piano · learning", "Learn Rust · learning", "Tax return · money"]);
 
   // Move it along: its note's status is what changes.
   const card = (title: string) => [...board.querySelectorAll(".gz-board-card")].find((c) => text(c.querySelector(".gz-board-text")).startsWith(title))!;
