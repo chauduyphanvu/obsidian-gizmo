@@ -1216,7 +1216,12 @@ export class AppController {
   }
 
   /** The app's one figure, as its headline shows it now, for the Gizmo sidebar; told only when it changes. */
-  private reportHeadline(m: Mounted): void {
+  private reportHeadline(m: Mounted, tries = 0): void {
+    // Counting up, the figure shows the old value first: read once it has come to the new one.
+    if (m.el.classList.contains("gz-counting") && tries < 10) {
+      window.setTimeout(() => { if (this.mounted.get(m.id) === m) this.reportHeadline(m, tries + 1); }, 200);
+      return;
+    }
     const figure = m.el.querySelector(".gz-big, .gz-ans-text")?.textContent?.trim();
     const text = figure ? (m.p.title ? `${m.p.title}: ${figure}` : figure) : undefined;
     if (text === this.headline) return;

@@ -68,10 +68,10 @@ export class AsksCard {
     const json = JSON.stringify(asks);
     if (json === this.shown && (this.card?.isConnected || !asks.length)) return;
     this.shown = json;
-    const host = this.site.host();
     const old = this.card;
     this.card = undefined;
-    if (!asks.length || !host) return void old?.remove();
+    const host = asks.length ? this.site.host() : undefined;
+    if (!host) return void old?.remove();
     const card = host.ownerDocument.createElement("div");
     card.className = "gz-card gz-asks";
     // In the page before it is filled, so the focus can come back to a row of it.
