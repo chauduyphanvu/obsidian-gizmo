@@ -73,6 +73,27 @@ function savedTo(p: Panel, appPath: string): Kept | undefined {
   return p.target?.kind === "list" ? { owner: p.target.at ?? appPath, list: p.target.name } : undefined;
 }
 
+/** Whether a form or button saves rows a rhythm counts (read as `counted`), able to meet the rule's `where`. */
+export function coveredBy(rule: Rhythm, counted: Panel, p: Panel, appPath: string, now: Date): boolean {
+  const kept = countedIn(counted, appPath);
+  const to = savedTo(p, appPath);
+  return !!kept && !!to && to.owner === kept.owner && to.list === kept.list && valuesFor(rule.where, p, now) !== undefined;
+}
+
+/** Where a rhythm stands in the window open now: met, still due by its deadline, or past it and not met. */
+export interface RhythmState {
+  state: "done" | "due" | "late";
+  every: Rhythm["every"];
+  byText: string;
+}
+
+/** The rhythm's open window, read from the rows it counts: a row logged late in the window still makes it done. */
+export function rhythmState(rule: Rhythm, rows: readonly unknown[], now: Date, zone?: string): RhythmState {
+  const w = windowAt(now.getTime(), rule, zone);
+  const met = metIn(rows, rule, { ...w, deadline: w.end - 1 }, now);
+  return { state: met ? "done" : now.getTime() < w.deadline ? "due" : "late", every: rule.every, byText: rule.byText };
+}
+
 /** The start of a capture line that answers a rhythm, with how the panel that saves is called. */
 export interface RhythmLine {
   /** The name to type, and the values the rule's `where` gives. */

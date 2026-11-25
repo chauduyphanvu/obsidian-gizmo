@@ -507,6 +507,12 @@
 }
 .gizmo button.gz-verb:active { transform: scale(0.985); }
 .gizmo.gz-narrow button.gz-verb { width: 100%; min-width: 0; }
+/* Where the rhythm a verb logs stands, after its label: done reads quiet, late warns. */
+.gizmo .gz-verb-state { font-size: var(--font-ui-small); color: var(--text-muted); font-variant-numeric: tabular-nums; }
+.gizmo .gz-verb-state[hidden] { display: none; }
+.gizmo button.gz-verb.is-done:not(.mod-cta) { color: var(--text-muted); }
+.gizmo button.gz-verb.is-done:not(.mod-cta) .svg-icon { color: var(--color-green); }
+.gizmo button.gz-verb.is-late + .gz-verb-state { color: var(--text-warning); }
 /* == /composer == */
 
 /* Progress and timer */

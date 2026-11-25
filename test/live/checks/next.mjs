@@ -223,9 +223,10 @@ export default async function next(t) {
       return {
         title: el.querySelector(".gz-asks .gz-title")?.textContent, text: row?.querySelector(".gz-asks-text")?.textContent,
         line: row?.querySelector(".gz-asks-line")?.textContent, buttons: [...(row?.querySelectorAll("button") ?? [])].map((b) => b.textContent),
+        verb: el.querySelector(".gz-verb-state")?.textContent,
       };`);
     await shot("asks-in-tab.png");
-    expect(before.title === "Needs you · 1" && before.text === `Flossed? by ${by}` && before.line === "flossed" && JSON.stringify(before.buttons) === '["Skip","Run"]', before);
+    expect(before.title === "Needs you · 1" && before.text === `Flossed? by ${by}` && before.line === "flossed" && JSON.stringify(before.buttons) === '["Skip","Run"]' && before.verb === `Due by ${by}`, before);
     await press("Enter");
     const after = await run(`
       ${NEXT}
@@ -236,8 +237,9 @@ export default async function next(t) {
       return {
         queue: asks().map((a) => a.app), card: !!el.querySelector(".gz-asks"), done: (na.fm("Apps/Floss data.md")?.done ?? []).length,
         said: el.querySelector(".gz-notice-text")?.textContent, undo: !!el.querySelector(".gz-addline-under button.gz-undo"), errors: na.errors(),
+        verb: await na.until(() => el.querySelector(".gz-verb-state")?.textContent === "Done today" && "Done today", 3000) || el.querySelector(".gz-verb-state")?.textContent,
       };`);
-    expect(!after.queue.includes("Floss") && !after.card && after.done === 1 && after.said && after.undo && after.errors === 0, after);
+    expect(!after.queue.includes("Floss") && !after.card && after.done === 1 && after.said && after.undo && after.errors === 0 && after.verb === "Done today", after);
     return `asked “${before.text}” in the tab; Enter ran it: ${after.said}`;
   });
 }

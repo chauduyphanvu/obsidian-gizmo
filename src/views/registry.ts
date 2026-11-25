@@ -36,6 +36,14 @@ export interface SheetPick {
   clear(): void;
 }
 
+/** A verb button, in an app that keeps rhythms: whether what it logs is done, due or late now, and whether it is the one to press next. */
+export interface VerbState {
+  state?: "done" | "due" | "late";
+  /** What it says of that: "Done today", "Due by 9:00 AM". */
+  text?: string;
+  primary: boolean;
+}
+
 /** What a mounted panel may ask of the app around it. */
 export interface PanelCtx {
   now: Date;
@@ -119,6 +127,11 @@ export interface PanelCtx {
    * where nothing may be changed: the past, a what-if, a try.
    */
   reconcile?(p: Panel): Promise<({ card?: Reconcile; fields: string[]; waiting?: string } & ReconcileActs) | undefined>;
+  /**
+   * In the app's own tab, where the rhythm a verb button answers stands, given now and again as its
+   * rows change (undefined when the app keeps none); returns what stops it.
+   */
+  verbState?(cb: (s: VerbState | undefined) => void): () => void;
   /** Opens the Explain window of this panel's figure: the rows behind it and what moved it. Absent where there is no window to open, and for a view with no one figure. */
   explain?(): void;
   /** In a try before Allow, where nothing drawn may reach out of Obsidian. */

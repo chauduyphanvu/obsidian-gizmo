@@ -630,6 +630,15 @@ export function verbButton(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandl
   const b = row.createEl("button", { cls: "gz-verb gz-button mod-cta", type: "button" });
   icon(b, "check", 18);
   b.createSpan({ text: p.label ?? "Log" });
+  // Where the rhythm it answers stands, beside it so its name stays its label: only the next one due stays the one to press.
+  const state = row.createSpan({ cls: "gz-verb-state", attr: { id: `gz-verb-${Math.random().toString(36).slice(2)}` } });
+  b.setAttribute("aria-describedby", state.id);
+  const stop = ctx.verbState?.((s) => {
+    b.classList.toggle("mod-cta", !s || s.primary);
+    for (const k of ["done", "due", "late"]) b.classList.toggle(`is-${k}`, s?.state === k);
+    state.setText(s?.text ?? "");
+    state.toggleAttribute("hidden", !s?.text);
+  });
   const under = row.createDiv({ cls: "gz-addline-under" });
   const said = new Said(ctx, () => {
     under.empty();
@@ -650,6 +659,7 @@ export function verbButton(el: HTMLElement, p: Panel, ctx: PanelCtx): PanelHandl
     destroy() {
       unlisten();
       said.clear();
+      stop?.();
     },
   };
 }

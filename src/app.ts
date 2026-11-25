@@ -16,7 +16,9 @@ import { AppInspector } from "./app-inspector.ts";
 import { Timers } from "./app-timers.ts";
 import { AppWrites } from "./app-writes.ts";
 import { asOfText } from "./responses.ts";
-import { type Row } from "./data.ts";
+import { rowsOf, type Row } from "./data.ts";
+import { coveredBy, rhythmState, type RhythmState } from "./asks.ts";
+import { windowAt, type Rhythm } from "./expect.ts";
 import { stampParts } from "./time.ts";
 import { DataLayer, WebError, type AppFiles } from "./datalayer.ts";
 import { EXPLAINED } from "./explain.ts";
@@ -43,7 +45,7 @@ import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sayBelow } from "./views/addline.ts";
 import { segmented, type Segmented } from "./views/segmented.ts";
-import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
+import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type VerbState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./alert-keys.ts";
 import { checklistList } from "./panel.ts";
 
@@ -267,6 +269,11 @@ export class AppController {
   private columns = MAX_COLUMNS;
   private tabs: HTMLElement | undefined;
   private tabBar: Segmented | undefined;
+  /** In the app's own tab: where each verb button's rhythm stands, by its panel's id, who draws it, and the read of them that is the latest. */
+  private verbStates = new Map<string, VerbState>();
+  private verbWatchers = new Map<string, (s: VerbState | undefined) => void>();
+  private rhythmRun = 0;
+  private rhythmTimer: number | undefined;
   /** Of each set of records drawn as one (see mergeRecords), by its first panel's id, the panel shown. */
   private mergedShown = new Map<string, string>();
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
@@ -392,6 +399,8 @@ export class AppController {
     if (this.resizeHandle) window.clearTimeout(this.resizeHandle);
     this.checks.stop();
     this.asksCard?.stop();
+    this.rhythmRun++;
+    window.clearTimeout(this.rhythmTimer);
     this.shell.remove();
   }
 
@@ -719,6 +728,7 @@ export class AppController {
     this.layout();
     this.subscribe();
     this.asksCard?.draw();
+    void this.refreshRhythms();
     if (moved) this.refillHostReaders();
     // Laid out again, the panels the sheet holds are back in their slots.
     if (this.sheet?.from !== undefined && !this.mounted.has(this.sheet.from)) this.closeSheet();
@@ -879,6 +889,61 @@ export class AppController {
     show();
   }
 
+  /** The app's rhythms, those it can read (see spec.expected), in its own tab as it is now. */
+  private rhythms(): Rhythm[] {
+    const spec = this.spec;
+    if (!spec || !this.ownTab) return [];
+    return spec.expect.filter((r): r is Rhythm => r.kind === "rhythm" && spec.expected[r.id] !== undefined);
+  }
+
+  /** What the rows each rhythm counts are read from, to read them again as they change. */
+  private rhythmDeps(): string[] {
+    return this.rhythms().flatMap((rule) => {
+      const p = this.spec!.expected[rule.id].panel;
+      return p.source ? this.env.data.depsOf(p.source, p, this.files()) : [];
+    });
+  }
+
+  /**
+   * Reads where each rhythm stands and draws it on the verb buttons that log what it counts: done,
+   * due or late in the window open now. The first one due or late, in the order written, is the one
+   * to press; in an app whose buttons answer rhythms, no other button is. Read again as its rows
+   * change, and at the next deadline or end of a window.
+   */
+  private async refreshRhythms(): Promise<void> {
+    const run = ++this.rhythmRun;
+    window.clearTimeout(this.rhythmTimer);
+    const now = this.env.now();
+    const verbs = [...this.mounted.values()].filter((m) => m.p.view === "button");
+    const states = new Map<string, VerbState>();
+    let next = Infinity;
+    for (const rule of this.rhythms()) {
+      const counted = this.spec!.expected[rule.id].panel;
+      const covering = verbs.filter((m) => !states.has(m.id) && coveredBy(rule, counted, m.p, this.appPath, now));
+      if (!covering.length || !counted.source) continue;
+      let rows: unknown[];
+      try {
+        rows = rowsOf(await this.env.data.rawData(counted.source, counted, this.files(), { ttlMs: 0, now }));
+      } catch {
+        continue;
+      }
+      if (run !== this.rhythmRun) return;
+      const st = rhythmState(rule, rows, now);
+      for (const m of covering) states.set(m.id, { state: st.state, text: verbText(st), primary: false });
+      const w = windowAt(now.getTime(), rule);
+      next = Math.min(next, w.deadline > now.getTime() ? w.deadline : w.end);
+    }
+    if (run !== this.rhythmRun) return;
+    if (states.size) {
+      const first = verbs.find((m) => states.get(m.id)?.state === "due" || states.get(m.id)?.state === "late");
+      if (first) states.get(first.id)!.primary = true;
+      for (const m of verbs) if (!states.has(m.id)) states.set(m.id, { primary: false });
+    }
+    this.verbStates = states;
+    for (const [id, cb] of this.verbWatchers) cb(states.get(id));
+    if (next < Infinity) this.rhythmTimer = window.setTimeout(() => void this.refreshRhythms(), Math.min(next - now.getTime() + 1000, 86_400_000));
+  }
+
   /** Keeps each input's value while it's still allowed, starts new ones, and draws the bar. */
   private syncInputs(spec: AppSpec): void {
     const start = startingValues(spec.inputs, this.env.now());
@@ -1028,6 +1093,8 @@ export class AppController {
     const definition = this.definitionDeps();
     const deps = new Set(definition);
     for (const m of this.mounted.values()) for (const d of m.deps) deps.add(d);
+    const rhythms = this.rhythmDeps();
+    for (const d of rhythms) deps.add(d);
     const kept = [fileDep(this.dataPath), folderDep(logFolder(this.dataPath))];
     for (const d of kept) deps.add(d);
     // Shown ahead, a what-if row may go to a kind no panel reads.
@@ -1042,6 +1109,7 @@ export class AppController {
         if (m.source && m.deps.some((d) => d !== self && changed.has(d))) void this.loadPanel(m);
       }
       if (this.env.ahead) this.checks.aheadSoon();
+      if (rhythms.some((d) => changed.has(d))) void this.refreshRhythms();
       if (!kept.some((d) => changed.has(d))) return;
       void this.checks.checkHandEdit();
       void this.checks.checkRenames();
@@ -1241,6 +1309,13 @@ export class AppController {
   private ctxFor(id: string): PanelCtx {
     return Object.assign(Object.create(this.ctx) as PanelCtx, {
       place: () => this.placements.get(id),
+      ...(this.ownTab && {
+        verbState: (cb: (s: VerbState | undefined) => void) => {
+          this.verbWatchers.set(id, cb);
+          cb(this.verbStates.get(id));
+          return () => { if (this.verbWatchers.get(id) === cb) this.verbWatchers.delete(id); };
+        },
+      }),
       editRow: (row: Row, field: string, value: unknown) => this.editRow(id, row, field, value),
       deleteRow: (row: Row) => this.deleteRow(id, row),
       theirs: (row: Row) => {
@@ -1451,4 +1526,10 @@ function placeClasses(el: HTMLElement, place: Placement): void {
   for (const c of [...el.classList]) if (PLACE_CLASS.test(c)) el.classList.remove(c);
   el.classList.add(`gz-role-${place.role}`);
   if (place.role === "answer") el.classList.add(`gz-${place.slot}`);
+}
+
+/** What a verb button says of its rhythm: "Done today", "Due by 9:00", "Late: due by 9:00". */
+function verbText(s: RhythmState): string {
+  if (s.state === "done") return `Done ${s.every === "day" ? "today" : `this ${s.every}`}`;
+  return s.state === "due" ? `Due by ${s.byText}` : `Late: due by ${s.byText}`;
 }
