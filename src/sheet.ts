@@ -18,7 +18,7 @@ import { rowsAreSaved } from "./sources/registry.ts";
 import { minuteIn, stampOf, toTime, wallTime } from "./time.ts";
 import { sayBelow } from "./views/addline.ts";
 import { itemText } from "./views/board.ts";
-import { busy, detailText, noteLink, rowNote, seriesNames } from "./views/common.ts";
+import { busy, detailText, noteLink, rovingItems, rowNote, seriesNames } from "./views/common.ts";
 import type { PanelCtx, SheetPick } from "./views/registry.ts";
 import { fieldBox, listItem, rowAction, rowFields } from "./views/rows.ts";
 
@@ -48,6 +48,8 @@ export class Sheet {
   private kicker: HTMLElement;
   private body: HTMLElement;
   private shown: Shown | undefined;
+  /** In place of a pick, a page of the app's own (Explain, History), by its name, and what had the focus before it. */
+  private paged: { name: string; back: Element | null } | undefined;
   private closeAll: () => void;
 
   /** `close` is what the close button does, and deleting the row shown. */
@@ -63,7 +65,24 @@ export class Sheet {
     button.addEventListener("click", close);
     this.body = this.el.createDiv({ cls: "gz-sheet-body" });
     this.panels = this.body.createDiv({ cls: "gz-sheet-panels" });
+    this.el.addEventListener("keydown", (e) => this.walk(e));
     this.hide();
+  }
+
+  /**
+   * ↑ and ↓ on the sheet itself pick the item before or after the one it shows, in the panel it was
+   * picked in, as picking that item would; the sheet follows. Keys in a field of it are the field's.
+   */
+  private walk(e: KeyboardEvent): void {
+    const s = this.shown;
+    if (!s || e.target !== this.el || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+    const step = e.key === "ArrowDown" ? 1 : e.key === "ArrowUp" ? -1 : 0;
+    const items = step ? rovingItems(s.pick.el) : [];
+    const i = items.indexOf(s.pick.el);
+    const next = i < 0 ? undefined : items[i + step] as HTMLElement | undefined;
+    if (!next) return;
+    e.preventDefault();
+    next.click();
   }
 
   /** The panel whose pick the sheet shows, by its key; undefined while it is closed. */
@@ -73,6 +92,42 @@ export class Sheet {
 
   get opened(): Opened | undefined {
     return this.shown;
+  }
+
+  /** The name of the page the sheet shows in place of a pick; undefined while it shows a pick, or is closed. */
+  get page(): string | undefined {
+    return this.paged?.name;
+  }
+
+  /**
+   * Shows a page of the app's own in place of a pick: `kicker` names it, `draw` fills it. The panels
+   * that read a pick are not shown; the caller has taken any pick back first.
+   */
+  openPage(name: string, kicker: string, draw: (el: HTMLElement) => void): void {
+    const back = this.el.ownerDocument.activeElement;
+    // The same page drawn again, as what it shows changed: the focus stays where it is.
+    const again = this.paged?.name === name && this.el.hasClass("is-open");
+    this.shown = undefined;
+    for (const el of [...this.body.children]) if (el !== this.panels) el.remove();
+    this.panels.hidden = true;
+    this.kicker.setText(kicker);
+    this.el.setAttribute("aria-label", kicker);
+    draw(this.body.createDiv({ cls: "gz-sheet-page" }));
+    this.paged = { name, back: this.paged?.back ?? back };
+    this.el.addClass("is-open");
+    this.el.removeAttribute("inert");
+    this.el.removeAttribute("aria-hidden");
+    this.keepUnderHeader();
+    if (!again) this.el.focus({ preventScroll: true });
+  }
+
+  /** Closes a page; returns what had the focus before it, or undefined when no page was shown. */
+  closePage(): Element | null | undefined {
+    const paged = this.paged;
+    if (!paged) return undefined;
+    this.paged = undefined;
+    this.hide();
+    return paged.back;
   }
 
   /** Whether a panel's element is in the sheet. */
@@ -126,6 +181,8 @@ export class Sheet {
   /** Closes the sheet and empties it, as the panels it holds are taken down. */
   reset(): void {
     this.shown = undefined;
+    this.paged = undefined;
+    this.panels.hidden = false;
     this.hide();
     this.kicker.empty();
     this.panels.empty();
@@ -150,6 +207,8 @@ export class Sheet {
   /** Draws everything but the panels: the kicker, title and line, a record's fields, and its actions. */
   private draw(o: Opened): void {
     const { p, ctx, pick } = o;
+    this.paged = undefined;
+    this.panels.hidden = false;
     for (const el of [...this.body.children]) if (el !== this.panels) el.remove();
     const before = <T extends HTMLElement>(el: T) => this.body.insertBefore(el, this.panels);
     const kicker = p.title ?? p.view.charAt(0).toUpperCase() + p.view.slice(1);

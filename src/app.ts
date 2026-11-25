@@ -20,7 +20,7 @@ import { type Row } from "./data.ts";
 import { stampParts } from "./time.ts";
 import { DataLayer, WebError, type AppFiles } from "./datalayer.ts";
 import { EXPLAINED } from "./explain.ts";
-import type { ExplainSource } from "./explain-view.ts";
+import { drawExplain, type ExplainSource } from "./explain-view.ts";
 import { panelsOf, type DefinitionLog } from "./definitions.ts";
 import { fileDep, folderDep, nameDep } from "./deps.ts";
 import { stableJson } from "./hash.ts";
@@ -432,7 +432,30 @@ export class AppController {
 
   /** Closes the side sheet, taking its pick back and the focus to what was picked; false when it wasn't open. */
   closeSheet(): boolean {
-    return this.shut(true);
+    const back = this.sheet?.closePage();
+    if (back === undefined) return this.shut(true);
+    this.shell.removeClass("gz-sheet-open");
+    // Not instanceof: a pop-out window has its own HTMLElement.
+    if (back?.isConnected && "focus" in back) (back as HTMLElement).focus();
+    return true;
+  }
+
+  /**
+   * Shows a page of the app's own in the side sheet (Explain, History), in place of any pick, in the
+   * app's own tab as it is now, laid out by role; false where there is no sheet for it.
+   */
+  openPage(name: string, kicker: string, draw: (el: HTMLElement) => void): boolean {
+    const sheet = this.sheet;
+    if (!sheet || !this.composed || !this.ownTab || !this.grid) return false;
+    if (sheet.opened) this.shut(true);
+    sheet.openPage(name, kicker, draw);
+    this.shell.addClass("gz-sheet-open");
+    return true;
+  }
+
+  /** The name of the page the side sheet shows; undefined when it shows a pick or is closed. */
+  get page(): string | undefined {
+    return this.sheet?.page;
   }
 
   /** Puts the cursor on the line the panel is written on, in the note's source beside the app. */
@@ -1213,11 +1236,16 @@ export class AppController {
     return true;
   }
 
-  /** Opens the Explain window of a panel's figure (see explainSource). */
+  /** Opens where a panel's figure comes from (see explainSource): in the side sheet in the app's own tab, else in a window. */
   private explainPanel(id: string): void {
     const m = this.mounted.get(id);
     if (!m || m.idle || !this.env.explain) return;
-    this.env.explain(explainSource(m, this.explained));
+    const src = explainSource(m, this.explained);
+    const kicker = m.p.title ?? "This figure";
+    if (!this.openPage("explain", kicker, (el) => {
+      el.createEl("h2", { cls: "gz-sheet-title", text: "Where this figure comes from" });
+      void drawExplain(el.createDiv({ cls: "gizmo" }), src);
+    })) this.env.explain(src);
   }
 
   // ---- The side sheet -----------------------------------------------------------------------

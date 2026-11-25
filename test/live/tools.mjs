@@ -165,6 +165,7 @@ const KEYS = {
   // Pressed with Meta (4) on a Mac, so no text.
   z: { key: "z", code: "KeyZ", vk: 90 },
   x: { key: "x", code: "KeyX", vk: 88, text: "x" },
+  "=": { key: "=", code: "Equal", vk: 187, text: "=" },
 };
 
 class Skip extends Error {}

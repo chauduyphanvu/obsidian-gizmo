@@ -652,6 +652,12 @@ export function roving(root: Element, step?: Step): void {
   });
 }
 
+/** The items of the roving group `el` belongs to, in their order; none outside a group. */
+export function rovingItems(el: Element): Element[] {
+  const group = MEMBERS.get(el) ?? groupAround(el);
+  return group ? itemsOf(group) : [];
+}
+
 /** The roving group `el` is drawn in, if any. */
 function groupAround(el: Element): Group | undefined {
   for (let x = el.parentElement; x; x = x.parentElement) {

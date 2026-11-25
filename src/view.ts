@@ -5,7 +5,7 @@ import { AppController, type AppEnv } from "./app.ts";
 import { EditSession } from "./backtest.ts";
 import { DataLayer } from "./datalayer.ts";
 import { copyText, obsidianAppEnv, vaultStorePath } from "./host.ts";
-import { openActivity } from "./activity-view.ts";
+import { drawActivity, openActivity } from "./activity-view.ts";
 import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
 import { embedBlock } from "./open-app.ts";
@@ -55,10 +55,14 @@ export class AppView extends FileView {
   async onOpen(): Promise<void> {
     // The one action in the header; the rest are in the tab's menu (onPaneMenu).
     this.addAction("file-code", "Edit source", () => this.file && this.plugin.editSource(this.leaf, this.file));
+    this.addAction("history", "History", () => this.showHistory());
     this.registerEvent(this.app.metadataCache.on("changed", (f) => {
       if (f === this.file) this.session.seen(this.app.metadataCache.getFileCache(f)?.frontmatter, Date.now());
     }));
-    this.unwatch = this.plugin.activity.onChange(() => void this.refreshRail());
+    this.unwatch = this.plugin.activity.onChange(() => {
+      void this.refreshRail();
+      if (this.controller?.page === "history") this.showHistory();
+    });
     // The view's own scope hears keys only while it is the active tab. Returning false stops a key there.
     this.scope = new Scope(this.app.scope);
     this.scope.register([], "[", (evt) => this.railKey(evt, -1));
@@ -73,6 +77,20 @@ export class AppView extends FileView {
       this.rail.back();
       return false;
     });
+  }
+
+  /**
+   * What the app changed, newest first, with Undo and See it then: in the side sheet, beside the app
+   * as it is now; else (the past, ahead, the grid) in a window.
+   */
+  private showHistory(): void {
+    const path = this.file?.path;
+    if (!path) return;
+    const shown = this.controller?.openPage("history", "History", (el) => {
+      el.createEl("h2", { cls: "gz-sheet-title", text: `What ${this.file?.basename ?? "this app"} did` });
+      void drawActivity(el.createDiv(), this.plugin, { appPath: path, seeThen: (at) => this.showAt(at) });
+    });
+    if (!shown) openActivity(this.plugin, path);
   }
 
   /** `[` and `]` step through the app's changes while the rail shows and nothing is being typed in. */
@@ -150,7 +168,7 @@ export class AppView extends FileView {
   onPaneMenu(menu: Menu, source: string): void {
     super.onPaneMenu(menu, source);
     const path = this.file?.path;
-    menu.addItem((item) => item.setTitle("Activity").setIcon("history").setSection("view").onClick(() => path && openActivity(this.plugin, path)));
+    menu.addItem((item) => item.setTitle("Activity").setIcon("history").setSection("view").onClick(() => this.showHistory()));
     menu.addItem((item) => item.setTitle("As of…").setIcon("clock").setSection("view").onClick(() => new AsOfModal(this.app, (at) => this.showAt(at)).open()));
     if (this.plugin.dataLayer.ledger) menu.addItem((item) => item.setTitle("What if…").setIcon("sparkles").setSection("view").onClick(() => this.showAhead()));
     menu.addItem((item) => item.setTitle("Explain the first figure").setIcon("equal").setSection("view").onClick(() => {

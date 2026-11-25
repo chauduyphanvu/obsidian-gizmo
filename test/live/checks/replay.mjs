@@ -89,6 +89,46 @@ export default async function replay(t) {
     return `as of then ${r.past.total}, now ${r.back}; first change ${r.then.total}`;
   });
 
+  await check("= opens where Total comes from in the side sheet; History opens the app's changes there, and See it then shows the app as it was", async () => {
+    await closeAll();
+    await run(`
+      ${PANEL}
+      await na.open("Apps/Steps");
+      await na.until(() => total(), 4000);
+      app.workspace.setActiveLeaf(na.leaf(), { focus: true });
+      if (document.activeElement?.matches("input, textarea, select")) document.activeElement.blur();`);
+    await press("=");
+    const explain = await run(`
+      ${PANEL} ${MODALS}
+      const sheet = () => el().querySelector("aside.gz-sheet.is-open");
+      await na.until(() => sheet()?.querySelector(".gz-explain-rows")?.textContent, 4000);
+      await na.sleep(300);
+      return { kicker: sheet()?.querySelector(".gz-sheet-kicker")?.textContent, title: sheet()?.querySelector(".gz-sheet-page > h2")?.textContent,
+        how: sheet()?.querySelector(".gz-explain-how")?.textContent, modals: modals().length, focused: document.activeElement === sheet() };`);
+    await shot("sheet-explain.png");
+    expect(explain.kicker === "Total" && explain.title === "Where this figure comes from" && /^The sum of n over \d+ rows\.$/.test(explain.how) && explain.modals === 0 && explain.focused, explain);
+    await press("Escape");
+    const history = await run(`
+      ${PANEL} ${RAIL}
+      const closed = !el().querySelector("aside.gz-sheet.is-open");
+      na.view().containerEl.querySelector('.view-action[aria-label="History"]').click();
+      const sheet = () => el().querySelector("aside.gz-sheet.is-open");
+      await na.until(() => sheet()?.querySelectorAll(".gz-activity-entry").length >= 3, 4000);
+      await na.sleep(300);
+      const entries = [...sheet().querySelectorAll(".gz-activity-entry")];
+      const r = { closed, kicker: sheet().querySelector(".gz-sheet-kicker")?.textContent, title: sheet().querySelector(".gz-sheet-page > h2")?.textContent,
+        n: entries.length, undo: !!entries[0].querySelector(".gz-activity-undo"), tabs: app.workspace.getLeavesOfType("gizmo").length };
+      entries.at(-1).querySelector(".gz-activity-then").click();
+      await na.until(() => past(), 4000);
+      await na.sleep(300);
+      return { ...r, past: past(), tabsAfter: app.workspace.getLeavesOfType("gizmo").length, total: total() };`);
+    await shot("sheet-history-then.png");
+    expect(history.closed && history.kicker === "History" && history.title === "What Steps did" && history.n >= 3 && history.undo, history);
+    expect(history.past && history.tabsAfter === history.tabs && history.total === "1", history);
+    await run(`${PANEL} ${RAIL} rail().querySelector("button.gz-rail-now").click(); await na.until(() => current(), 4000);`);
+    return `Explain in the sheet (${explain.how}); History ${history.n} entries; See it then ${history.total}`;
+  });
+
   await check("Backtest this change: the alert moved from > 10 to > 4 fires at the second row instead of the third; Backtest this app counts one", async () => {
     await closeAll();
     const r = await run(`

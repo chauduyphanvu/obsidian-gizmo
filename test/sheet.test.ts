@@ -451,3 +451,85 @@ test("switching tabs closes the sheet, since what it shows was picked in the tab
   later.click();
   assert.ok(!s.isOpen());
 });
+
+// ---- Pages of the app's own: Explain and History open in the sheet, in place of a pick ----------
+
+const TOTAL = { view: "number", title: "Spent", source: "spend", field: "amount", agg: "sum" };
+
+test("a figure's Explain opens as a page of the sheet in the app's own tab; closing it gives the focus back", async () => {
+  const opened: unknown[] = [];
+  const s = setup({ [APP]: { fm: { app: "x", panels: [TOTAL, RECENT, PICKED] } }, [DATA]: { fm: SPEND } }, { env: (env) => ({ ...env, explain: (src) => { opened.push(src); } }) });
+  await settle();
+  const figure = s.root.querySelector(".gz-explainable") as HTMLElement;
+  figure.focus();
+  assert.ok(s.app.explainFirst());
+  await settle();
+  assert.equal(opened.length, 0, "no window in the app's own tab");
+  assert.ok(s.isOpen());
+  assert.equal(s.app.page, "explain");
+  const aside = s.sheet()!;
+  assert.equal(text(aside.querySelector(".gz-sheet-kicker")), "Spent");
+  assert.equal(text(aside.querySelector(".gz-sheet-page > h2.gz-sheet-title")), "Where this figure comes from");
+  assert.ok(aside.querySelector(".gz-sheet-page .gz-explain .gz-explain-how"));
+  assert.equal((aside.querySelector(".gz-sheet-panels") as HTMLElement).hidden, true, "no pick, so no panel that reads one");
+  assert.ok(s.app.closeSheet());
+  assert.ok(!s.isOpen());
+  assert.equal(s.app.page, undefined);
+  assert.equal(document.activeElement === figure, true, "the focus goes back to the figure");
+  assert.equal(s.app.closeSheet(), false, "nothing left to close");
+});
+
+test("a block of the app opens Explain in a window, as before", async () => {
+  const opened: unknown[] = [];
+  const fm = { app: "x", panels: [TOTAL] };
+  const s = setup({ [APP]: { fm }, [DATA]: { fm: SPEND }, "Daily.md": { fm: {} } }, {
+    hosting: { kind: "embed", grantKey: "Daily.md#gizmo", hostPath: "Daily.md", definition: () => fm } as Hosting,
+    env: (env) => ({ ...env, explain: (src) => { opened.push(src); } }),
+  });
+  await settle();
+  assert.ok(s.app.explainFirst());
+  assert.equal(opened.length, 1);
+  assert.equal(s.app.page, undefined);
+});
+
+test("a pick made while a page shows takes its place, with the panels that read it", async () => {
+  const s = setup({ [APP]: { fm: { app: "x", panels: [RECENT, PICKED] } }, [DATA]: { fm: SPEND } });
+  await settle();
+  assert.ok(s.app.openPage("history", "History", (el) => { el.createDiv({ cls: "gz-test-page", text: "What W did" }); }));
+  assert.equal(s.app.page, "history");
+  assert.equal(text(s.sheet()!.querySelector(".gz-sheet-kicker")), "History");
+  const lunch = s.rows("Recent").find((r) => text(r).includes("Lunch"))!;
+  click(lunch);
+  await settle();
+  assert.equal(s.app.page, undefined);
+  assert.equal(s.sheet()!.querySelector(".gz-test-page"), null);
+  assert.equal(text(s.sheet()!.querySelector(".gz-sheet-title")), "Lunch");
+  assert.equal((s.sheet()!.querySelector(".gz-sheet-panels") as HTMLElement).hidden, false);
+  assert.equal(text(s.panel("Picked")?.querySelector(".gz-text")), "Picked 7");
+  // And a page opened over a pick takes the pick back.
+  assert.ok(s.app.openPage("history", "History", (el) => { el.createDiv({ cls: "gz-test-page" }); }));
+  assert.ok(!lunch.classList.contains("gz-selected"));
+  assert.ok(s.sheet()!.querySelector(".gz-test-page"));
+});
+
+test("↓ and ↑ on the sheet pick the next and the last row of the panel it was picked in, and the sheet follows", async () => {
+  const s = setup({ [APP]: { fm: { app: "x", panels: [RECENT, PICKED] } }, [DATA]: { fm: SPEND } });
+  await settle();
+  const [first, second] = s.rows("Recent");
+  click(first);
+  await settle();
+  const title = () => text(s.sheet()!.querySelector(".gz-sheet-title"));
+  const before = title();
+  key(s.sheet()!, "ArrowDown");
+  await settle();
+  assert.ok(second.classList.contains("gz-selected"));
+  assert.notEqual(title(), before);
+  assert.equal(document.activeElement === s.sheet(), true, "the keys stay with the sheet");
+  key(s.sheet()!, "ArrowDown");
+  await settle();
+  assert.ok(second.classList.contains("gz-selected"), "the last row stays");
+  key(s.sheet()!, "ArrowUp");
+  await settle();
+  assert.equal(title(), before);
+  assert.ok(first.classList.contains("gz-selected"));
+});
