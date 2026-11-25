@@ -232,7 +232,7 @@ A `Gizmo policy` note defines which folders or tags are private and which destin
 
 ## Install
 
-Gizmo 0.6.0 works with Obsidian 1.11.4 or later, on desktop and mobile.
+Gizmo 0.6.1 works with Obsidian 1.11.4 or later, on desktop and mobile.
 
 ### From Obsidian Community Plugins (recommended)
 
