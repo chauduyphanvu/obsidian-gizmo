@@ -899,6 +899,31 @@ export default async function gallery(t) {
     }
   });
 
+  await check("beside its facts, a headline's figure stays on one line: every gallery app at 1100 px with the file list open", async () => {
+    const { page } = t;
+    await page.send("Emulation.setDeviceMetricsOverride", { width: 1100, height: 760, deviceScaleFactor: 1, mobile: false });
+    try {
+      const r = await run(`
+        const APPS = ${JSON.stringify(APPS)};
+        app.workspace.leftSplit.expand(); app.workspace.rightSplit.collapse();
+        await na.sleep(300);
+        const broken = {};
+        for (const name of APPS) {
+          await na.open("Apps/" + name);
+          await na.until(() => !na.view().contentEl.querySelector(".gz-loading"), 6000);
+          await na.sleep(600);
+          for (const fig of na.view().contentEl.querySelectorAll(".gz-answer .gz-headline .gz-big.gz-fig")) {
+            if (fig.getBoundingClientRect().height > parseFloat(getComputedStyle(fig).fontSize) * 1.4) broken[name] = fig.textContent;
+          }
+        }
+        return { broken, pane: na.view().contentEl.clientWidth };`);
+      expect(Object.keys(r.broken).length === 0, r);
+      return `${APPS.length} apps in a ${r.pane} px pane`;
+    } finally {
+      await page.send("Emulation.clearDeviceMetricsOverride");
+    }
+  });
+
   // Screenshots of every gallery app and kind, light and dark at desktop width, and at phone width.
   const shown = [...APPS.map((name) => `Apps/${name}`), ...KINDS.map((name) => `Kinds/${name}`)];
   for (const theme of ["light", "dark"]) {

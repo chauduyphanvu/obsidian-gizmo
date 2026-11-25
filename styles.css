@@ -94,6 +94,10 @@
   align-items: end;
   margin-top: 30px;
 }
+/* Wide, the headline's figure stays whole: its column is at least as wide as the figure, so the
+   facts beside it give way and wrap first. Narrow, it may break rather than scroll sideways. */
+.gizmo:not(.gz-narrow) .gz-answer { grid-template-columns: minmax(min-content, 1fr) fit-content(calc(55% + 48px)); }
+.gizmo:not(.gz-narrow) .gz-role-answer .gz-big.gz-fig { overflow-wrap: normal; }
 .gizmo.gz-narrow .gz-answer { grid-template-columns: minmax(0, 1fr); }
 .gizmo .gz-answer > .gz-slot {
   display: grid;
