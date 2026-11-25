@@ -1,14 +1,7 @@
 import { Modal, Notice } from "obsidian";
-import { keyAction, type Ask } from "./asks.ts";
+import { answerLabel, keyAction, type Ask } from "./asks.ts";
 import { LineBox, undoNotice } from "./capture-command.ts";
 import type GizmoPlugin from "./main.ts";
-
-/** What the main button of an ask says: what Enter does with it. */
-function answerLabel(ask: Ask): string {
-  if ("line" in ask.answer) return "Run";
-  if ("writer" in ask.answer) return "Accept";
-  return "open" in ask.answer ? `Open ${ask.app}` : "It happened";
-}
 
 /**
  * "Next": what needs the person, one ask at a time, oldest due first (see asks.ts). An ask with a

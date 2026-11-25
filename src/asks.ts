@@ -307,6 +307,13 @@ export function askRows(asks: readonly Ask[]): Row[] {
   return asks.map((a) => ({ app: a.app, text: a.text, due: stampOf(new Date(a.due)), ...("line" in a.answer && { line: a.answer.line }), path: a.path }));
 }
 
+/** What the main button of an ask says: what Enter does with it. */
+export function answerLabel(ask: Ask): string {
+  if ("line" in ask.answer) return "Run";
+  if ("writer" in ask.answer) return "Accept";
+  return "open" in ask.answer ? `Open ${ask.app}` : "It happened";
+}
+
 /**
  * What a key does in the Next window: Enter answers the ask, s skips it and x dismisses it, but
  * only while no line is being typed in (the line's own Enter runs it) and with no modifier held.

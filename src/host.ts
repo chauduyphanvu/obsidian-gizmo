@@ -5,6 +5,8 @@ import {
 import { bodyOf } from "./actions.ts";
 import { undoMessage, type LogStore, type UndoIO } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
+import type { AppAsks } from "./app-asks.ts";
+import { openCaptureWith } from "./capture-command.ts";
 import { DEVICE_FOLDERS, deviceFile, otherLogs, type PluginFiles } from "./device.ts";
 import { withPanels } from "./insert.ts";
 import { ResponseHistory } from "./responses.ts";
@@ -283,6 +285,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     now: () => new Date(),
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
+    asks: appAsks(plugin),
     tryFirst: () => void tryVaultApp(plugin, file.path),
     explain: (src) => new ExplainModal(app, src).open(),
     definitions: plugin.definitions,
@@ -292,6 +295,23 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
       (plugin.store.leftAlone ??= {})[key] = true;
       void plugin.saveSettings();
     },
+  };
+}
+
+/**
+ * What the person is asked, and how an app's tab answers, through the background service as it is
+ * at each call (it stops and starts with the plugin's settings); undefined while it isn't running.
+ */
+function appAsks(plugin: GizmoPlugin): AppAsks | undefined {
+  if (!plugin.background) return undefined;
+  const none = { ok: false, error: "Gizmo's background service isn't running" };
+  return {
+    list: () => plugin.background?.asks.list() ?? [],
+    subscribe: (cb) => plugin.background?.asks.subscribe(cb) ?? (() => {}),
+    settle: async (ask, how) => (plugin.background ? plugin.background.settleAsk(ask, how) : none),
+    skip: async (id) => plugin.background?.skipAsk(id),
+    run: async (line) => (plugin.background ? plugin.background.capture(line, undefined, true) : none),
+    fill: (line, cursor) => openCaptureWith(plugin, line, cursor),
   };
 }
 

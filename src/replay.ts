@@ -33,6 +33,7 @@ export function pastEnv(env: AppEnv, at: number, back?: () => void): AppEnv {
     undo: undefined,
     trigger: undefined,
     opened: undefined,
+    asks: undefined,
     backToNow: back,
   };
 }

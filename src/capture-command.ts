@@ -219,10 +219,13 @@ export class LineBox {
 class CaptureModal extends Modal {
   private plugin: GizmoPlugin;
   private box: LineBox | undefined;
+  /** A line to start from, typing going in at `cursor`: an ask's line that still needs a value. */
+  private start: { line: string; cursor: number } | undefined;
 
-  constructor(plugin: GizmoPlugin) {
+  constructor(plugin: GizmoPlugin, start?: { line: string; cursor: number }) {
     super(plugin.app);
     this.plugin = plugin;
+    this.start = start;
   }
 
   onOpen(): void {
@@ -232,8 +235,10 @@ class CaptureModal extends Modal {
     const box = new LineBox(this.plugin, el, "spend 14.5 food lunch, or ? spend this month", () => void this.submit(), (at) => new AskPane(this.plugin, at, () => this.close()));
     this.box = box;
     el.createDiv({ cls: "gz-muted", text: "Enter runs it · ? asks your kinds · Tab completes · Esc closes" });
+    if (this.start) box.input.value = this.start.line;
     void box.show();
     box.input.focus();
+    if (this.start) box.input.setSelectionRange(this.start.cursor, this.start.cursor);
   }
 
   onClose(): void {
@@ -413,6 +418,11 @@ class CaptureLinkModal extends Modal {
 }
 
 /** "Do…" and `;;` lines: run any app's shortcut by typing its name and values. */
+/** Opens Do… with a line typed in, typing going in at `cursor`. */
+export function openCaptureWith(plugin: GizmoPlugin, line: string, cursor: number): void {
+  new CaptureModal(plugin, { line, cursor }).open();
+}
+
 export function registerCaptureCommand(plugin: GizmoPlugin): void {
   plugin.addCommand({
     id: "capture",

@@ -9,7 +9,8 @@ import {
   renderBlocked, renderEmpty, renderErrors, renderKindToAllow, renderOpenOnce, renderPermissionPrompt,
   renderUsage, renderYamlError, yamlProblem, type CardApp,
 } from "./app-cards.ts";
-import { AppChecks } from "./app-checks.ts";
+import { AsksCard, type AppAsks } from "./app-asks.ts";
+import { AppChecks, attentionSection } from "./app-checks.ts";
 import { explainSource, type ExplainApp } from "./app-explain.ts";
 import { AppInspector } from "./app-inspector.ts";
 import { Timers } from "./app-timers.ts";
@@ -124,6 +125,8 @@ export interface AppEnv {
   ahead?: Ahead;
   /** Alerts true now across the vault, from the background service. */
   alerts?: AlertFeed;
+  /** What the person is asked across the vault and how to answer, as Next has them; absent shown as it was, ahead or in a try. */
+  asks?: AppAsks;
   /** A try before Allow: nothing it draws may reach out of Obsidian (pictures are drawn as their address). */
   preview?: boolean;
   /** Opens the app on copies of its own notes before it's allowed; absent where that can't be offered. */
@@ -253,6 +256,8 @@ export class AppController {
   private writes: AppWrites;
   private cards: CardApp;
   private checks: AppChecks;
+  /** In the app's own tab as it is now: what the person is asked of it, above its records. */
+  private asksCard: AsksCard | undefined;
   private explained: ExplainApp;
   private inspector: AppInspector;
   private refreshHandle: number | undefined;
@@ -317,6 +322,14 @@ export class AppController {
       env, appPath, hosting, writes: this.writes, shell: this.shell,
       spec: () => this.spec, dataPath: () => this.dataPath, files: () => this.files(), current: () => this.current(),
     });
+    if (env.asks && this.ownTab) {
+      this.asksCard = new AsksCard({
+        asks: env.asks, appPath,
+        host: () => (this.grid ? attentionSection(this.shell) : undefined),
+        said: (at, text, entry) => this.sayUnder(at, text, entry),
+        notify: (text) => this.env.notify(text),
+      });
+    }
     if (!hosting) this.rail = this.shell.createDiv({ cls: "gz-rail-slot" });
     const current = () => this.env;
     this.ctx = {
@@ -374,6 +387,7 @@ export class AppController {
     if (this.refreshHandle) window.clearInterval(this.refreshHandle);
     if (this.resizeHandle) window.clearTimeout(this.resizeHandle);
     this.checks.stop();
+    this.asksCard?.stop();
     this.shell.remove();
   }
 
@@ -666,6 +680,7 @@ export class AppController {
     }
     this.layout();
     this.subscribe();
+    this.asksCard?.draw();
     if (moved) this.refillHostReaders();
     // Laid out again, the panels the sheet holds are back in their slots.
     if (this.sheet?.from !== undefined && !this.mounted.has(this.sheet.from)) this.closeSheet();
@@ -1301,11 +1316,21 @@ export class AppController {
    * Says what a write did under the panel that made it (a panel, or the list a checklist ticks), else under the app's
    * header, with Undo while the log keeps it: only in an app open in its own tab, showing now.
    */
+  /** The app's own note in its own tab, as it is now: not a block or lens of it, a try, the past or a what-if. */
+  private get ownTab(): boolean {
+    return !this.hosting && !this.env.preview && !this.env.ahead && this.env.data.at === undefined;
+  }
+
   private sayAfterWrite(at: Panel | string | undefined, text: string, entry: string | undefined): void {
-    if (this.hosting || this.env.preview || this.env.ahead || this.env.data.at !== undefined) return;
+    if (!this.ownTab) return;
     const all = [...this.mounted.values()];
     const m = typeof at === "string" ? all.find((x) => x.p.view === "checklist" && checklistList(x.p) === at) : at && all.find((x) => x.p === at);
-    const anchor = m && m.el.isConnected ? m.el : this.shell.querySelector<HTMLElement>(":scope > .gz-header");
+    this.sayUnder(m && m.el.isConnected ? m.el : undefined, text, entry);
+  }
+
+  /** Says what a write did just under `at`, else under the app's header, with Undo when the log kept it. */
+  private sayUnder(at: HTMLElement | undefined, text: string, entry: string | undefined): void {
+    const anchor = at ?? ([...this.shell.children].find((c) => c.classList.contains("gz-header")) as HTMLElement | undefined);
     if (anchor) sayBelow(anchor, this.ctx as PanelCtx, text, entry);
   }
 

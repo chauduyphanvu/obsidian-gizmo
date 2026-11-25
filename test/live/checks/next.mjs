@@ -207,4 +207,37 @@ export default async function next(t) {
     expect(!reloaded.queue.includes("Stretch") && reloaded.kept && !reloaded.status.some((s) => s.includes("to do")), reloaded);
     return `skipped with s; after the plugin was turned off and on, still out (queue: ${reloaded.queue.join(", ") || "empty"})`;
   });
+
+  await check("an app's own tab asks what Next asks of it; Enter there runs the line, says so with Undo, and the ask leaves Next", async () => {
+    await closeAll();
+    const before = await run(`
+      ${NEXT}
+      await na.write("Apps/Floss.md", ${JSON.stringify(rhythmApp("Floss", "Flossed", "flossed", by))});
+      await na.sleep(800);
+      await na.open("Apps/Floss");
+      await na.plugin().background.tick();
+      await na.until(() => asks().some((a) => a.app === "Floss"), 5000);
+      const el = na.view().contentEl;
+      const row = await na.until(() => el.querySelector(".gz-attention .gz-asks li"), 3000);
+      row?.focus();
+      return {
+        title: el.querySelector(".gz-asks .gz-title")?.textContent, text: row?.querySelector(".gz-asks-text")?.textContent,
+        line: row?.querySelector(".gz-asks-line")?.textContent, buttons: [...(row?.querySelectorAll("button") ?? [])].map((b) => b.textContent),
+      };`);
+    await shot("asks-in-tab.png");
+    expect(before.title === "Needs you · 1" && before.text === `Flossed? by ${by}` && before.line === "flossed" && JSON.stringify(before.buttons) === '["Skip","Run"]', before);
+    await press("Enter");
+    const after = await run(`
+      ${NEXT}
+      const el = na.view().contentEl;
+      await na.until(() => !asks().some((a) => a.app === "Floss"), 5000);
+      await na.until(() => !el.querySelector(".gz-asks"), 3000);
+      await na.sleep(300);
+      return {
+        queue: asks().map((a) => a.app), card: !!el.querySelector(".gz-asks"), done: (na.fm("Apps/Floss data.md")?.done ?? []).length,
+        said: el.querySelector(".gz-notice-text")?.textContent, undo: !!el.querySelector(".gz-addline-under button.gz-undo"), errors: na.errors(),
+      };`);
+    expect(!after.queue.includes("Floss") && !after.card && after.done === 1 && after.said && after.undo && after.errors === 0, after);
+    return `asked “${before.text}” in the tab; Enter ran it: ${after.said}`;
+  });
 }

@@ -1422,6 +1422,15 @@ button.gz-lens-toggle {
 .gizmo .gz-reconcile-rows li { display: flex; align-items: flex-start; gap: var(--size-4-2); padding: var(--size-4-1) 0; border-top: 1px solid var(--background-modifier-border); }
 .gizmo .gz-reconcile-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; padding-top: var(--size-2-2); }
 .gizmo .gz-reconcile-rows li .gz-actions { flex: none; margin: 0 0 0 auto; }
+/* This app's asks, in its tab: as the rows to check, one per line with its buttons at the right. */
+.gizmo .gz-asks-rows { list-style: none; padding: 0; margin: var(--size-4-2) 0 0; }
+.gizmo .gz-asks-rows li { display: flex; align-items: flex-start; gap: var(--size-4-2); padding: var(--size-4-1) 0; border-top: 1px solid var(--background-modifier-border); }
+.gizmo .gz-asks-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; padding-top: var(--size-2-2); }
+.gizmo .gz-asks-line { font-family: var(--font-monospace); font-size: var(--font-ui-small); }
+.gizmo .gz-asks-rows li .gz-actions { flex: none; margin: 0 0 0 auto; }
+.gizmo.gz-narrow .gz-asks-rows li { flex-wrap: wrap; }
+.gizmo.gz-narrow .gz-asks-what { flex-basis: 100%; }
+.gizmo.gz-narrow .gz-asks-rows li .gz-actions { margin: 0; }
 /* A status dot: paired is calm, a row that pairs with nothing asks for a look. */
 .gizmo .gz-status { flex: none; width: 7px; height: 7px; margin-top: calc(var(--size-2-2) + 0.5em); border-radius: 50%; background: var(--text-faint); }
 .gizmo .gz-status.is-ok { background: var(--color-green); }
