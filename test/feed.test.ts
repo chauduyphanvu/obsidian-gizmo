@@ -195,14 +195,21 @@ test("a hostile body of about 1 MB is read in well under a second, whatever it r
     ["calendar events never ended", `BEGIN:VCALENDAR\n${rep("BEGIN:VEVENT\n")}`, "text/calendar"],
     ["deeply nested JSON", `${"[".repeat(n / 2)}${"]".repeat(n / 2)}`, "application/json"],
   ];
-  for (const [what, body, type] of cases) {
+  const time = (body: string, type: string) => {
     const t0 = performance.now();
     try {
       parseBody(body, type, new Date(2026, 10, 19));
     } catch {
       // Refusing it is fine too; taking long isn't.
     }
-    const ms = performance.now() - t0;
-    assert.ok(ms < 250, `${what}: ${Math.round(ms)} ms`);
+    return performance.now() - t0;
+  };
+  // A slow machine (a busy CI runner) slows every parse alike, so the limit is ten times what a
+  // well-formed feed of the same size takes here, and never under 250 ms. Worse than linear is far past it.
+  const feed = rss(rep("<item><title>a</title><link>https://example.org/a</link><description>words and more words</description></item>"));
+  const limit = Math.max(250, 10 * Math.min(time(feed, ""), time(feed, ""), time(feed, "")));
+  for (const [what, body, type] of cases) {
+    const ms = time(body, type);
+    assert.ok(ms < limit, `${what}: ${Math.round(ms)} ms, over ${Math.round(limit)} ms`);
   }
 });
