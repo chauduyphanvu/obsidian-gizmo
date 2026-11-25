@@ -910,8 +910,8 @@ export class AppController {
 
   /**
    * Reads where each rhythm stands and draws it on the verb buttons that log what it counts: done,
-   * due or late in the window open now. The first one due or late, in the order written, is the one
-   * to press; in an app whose buttons answer rhythms, no other button is. Read again as its rows
+   * due or late in the window open now. Of those, only the first one due or late, in the order
+   * written, keeps the accent; a button that answers no rhythm keeps it too. Read again as its rows
    * change, and at the next deadline or end of a window.
    */
   private async refreshRhythms(): Promise<void> {
@@ -938,11 +938,8 @@ export class AppController {
       next = Math.min(next, w.deadline > now.getTime() ? w.deadline : w.end);
     }
     if (run !== this.rhythmRun) return;
-    if (states.size) {
-      const first = verbs.find((m) => states.get(m.id)?.state === "due" || states.get(m.id)?.state === "late");
-      if (first) states.get(first.id)!.primary = true;
-      for (const m of verbs) if (!states.has(m.id)) states.set(m.id, { primary: false });
-    }
+    const first = verbs.find((m) => states.get(m.id)?.state === "due" || states.get(m.id)?.state === "late");
+    if (first) states.get(first.id)!.primary = true;
     this.verbStates = states;
     for (const [id, cb] of this.verbWatchers) cb(states.get(id));
     if (next < Infinity) this.rhythmTimer = window.setTimeout(() => void this.refreshRhythms(), Math.min(next - now.getTime() + 1000, 86_400_000));

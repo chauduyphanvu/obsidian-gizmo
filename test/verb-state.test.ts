@@ -48,20 +48,20 @@ function open(fm: Record<string, unknown>, hosting = false) {
   return { ...t, root, verbs, button: (label: string) => [...root.querySelectorAll("button.gz-verb")].find((b) => text(b) === label)! };
 }
 
-test("each verb button says where its rhythm stands; the first one due or late is the one to press", async () => {
+test("each verb button says where its rhythm stands; of those, only the first one due or late keeps the accent, and a button that answers no rhythm keeps it", async () => {
   const t = open(MEDS);
   await settle();
   assert.deepEqual(t.verbs(), [
     { label: "Morning dose", state: "Late: due by 10:00", cta: true },
     { label: "Evening dose", state: "Due by 21:00", cta: false },
-    { label: "A note", state: "", cta: false },
+    { label: "A note", state: "", cta: true },
   ]);
   click(t.button("Morning dose"));
   await settle();
   assert.deepEqual(t.verbs(), [
     { label: "Morning dose", state: "Done today", cta: false },
     { label: "Evening dose", state: "Due by 21:00", cta: true },
-    { label: "A note", state: "", cta: false },
+    { label: "A note", state: "", cta: true },
   ]);
   assert.ok(t.button("Morning dose").classList.contains("is-done"));
   const described = t.button("Morning dose").getAttribute("aria-describedby")!;

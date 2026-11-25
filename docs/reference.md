@@ -211,7 +211,7 @@ For a row of a list that the app saves, the sheet also has **Delete**, and its t
 
 **What waits for you.** Rows from a file to check, and the asks of the app from [Next](#next), are lists that you can do from the keyboard. They are one Tab stop. Up and down move. Enter does the main action (**Accept**, **Run**, **It happened**). `x` is **Not mine** or **Dismiss**. `s` skips an ask until tomorrow. In rows from a file, Space selects a row, and Shift Enter accepts the rows that you selected, or all rows if you selected none, as one change. After an action, the focus goes to the row that is now in the same place. An ask whose answer only opens this app is not in the list.
 
-**Verb buttons.** A `button` that saves rows for a rhythm of `expect` shows where the rhythm is now: **Done today**, **Due by 10:00**, or **Late: due by 10:00**. Only the first button that is due or late has the accent colour. Refer to [Expectations](#expectations).
+**Verb buttons.** A `button` that saves rows for a rhythm of `expect` shows where the rhythm is now: **Done today**, **Due by 10:00**, or **Late: due by 10:00**. Of these buttons, only the first one that is due or late has the accent colour. A button that saves for no rhythm keeps it. Refer to [Expectations](#expectations).
 
 **Records that come one after another.** In the app's own tab, two or more `table`, `list` or `checklist` panels with a title, one after another in the flow, show as one panel. Their titles are a switch above them. A table with more than 20 rows has a box that filters its rows by the words that you type. Escape clears it.
 
