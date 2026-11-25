@@ -476,7 +476,7 @@ test("Vitals, on its sample rows: the health export comes in by itself, its step
   const card = () => titled(root, "From my health export, not checked yet").querySelector(".gz-reconcile");
   assert.equal(text(card()!.querySelector(".gz-title")), "31 rows from a file to check");
   assert.equal(text(card()!.querySelector(".gz-reconcile-counts")), "24 pair with rows you logged7 only in the file1 only logged0 logged twice");
-  assert.equal(text(card()!.querySelector("li .gz-reconcile-what")), "Nov 9 · sleep · 7.33 = Nov 9 · sleep · 7.30");
+  assert.equal(text(card()!.querySelector("li .gz-reconcile-what")), "Nov 9 · sleep · 7.33 pairs with Nov 9 · sleep · 7.30");
   assert.deepEqual(asked(t), ["31 rows from a file to check in Measurement"]);
   click([...card()!.querySelectorAll("button")].find((b) => text(b) === "Accept all")!);
   await settle();

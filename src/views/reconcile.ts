@@ -1,4 +1,4 @@
-import { renderReconcile } from "../reconcile-card.ts";
+import { renderReconcile } from "./reconcile-card.ts";
 import { heading } from "./common.ts";
 import type { ViewDef } from "./registry.ts";
 

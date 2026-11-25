@@ -92,6 +92,35 @@ export default async function lines(t) {
     return r.counts.join(", ");
   });
 
+  await check("the rows to check are worked from the keyboard: x sets one aside and keeps the focus in the list; ⌘Z puts it back", async () => {
+    await run(`
+      await na.open("Kinds/Purchase");
+      const el = na.view().contentEl;
+      const row = await na.until(() => [...el.querySelectorAll(".gz-reconcile li")].find((li) => li.textContent.includes("BOOKSHOP")), 4000);
+      row.focus();`);
+    await t.press("x");
+    const r = await run(`
+      const el = na.view().contentEl;
+      await na.until(() => !el.querySelector(".gz-reconcile")?.textContent.includes("BOOKSHOP"), 4000);
+      await na.sleep(400);
+      const active = document.activeElement;
+      return {
+        listed: [...el.querySelectorAll(".gz-reconcile li .gz-reconcile-row")].map((c) => c.textContent),
+        inQueue: !!active?.closest(".gz-reconcile .gz-queue"), focused: active?.querySelector(".gz-reconcile-row")?.textContent,
+        inAttention: !!el.querySelector(".gz-body > .gz-attention > .gz-reconcile"),
+        said: el.querySelector(".gz-notice-text")?.textContent,
+      };`);
+    await shot("lines-reconcile-queue.png");
+    expect(r.listed.length === 2 && r.inQueue && r.inAttention && r.said === "Set aside a row from a file", r);
+    await t.press("z", 4);
+    const back = await run(`
+      const el = na.view().contentEl;
+      await na.until(() => el.querySelector(".gz-reconcile")?.textContent.includes("BOOKSHOP"), 4000);
+      return { n: el.querySelectorAll(".gz-reconcile li").length };`);
+    expect(back.n === 3, back);
+    return `set aside with x, focus on ${r.focused}; ⌘Z brought it back`;
+  });
+
   await check("an app's total is the same after the import until the rows are accepted; Accept all accepts them in one entry", async () => {
     const r = await run(`
       ${ROWS}

@@ -92,6 +92,10 @@
 .gizmo .gz-facts > .gz-slot { min-width: 0; }
 /* The line to add things, then the evidence and the records, each well apart. */
 .gizmo .gz-compose { margin-top: 30px; display: flex; flex-direction: column; gap: var(--size-4-4); }
+/* What waits to be acted on sits right under the line to add things, and takes no room when nothing does. */
+.gizmo .gz-attention { margin-top: 30px; display: flex; flex-direction: column; gap: var(--size-4-4); }
+.gizmo .gz-attention:empty { display: none; }
+.gizmo .gz-attention > .gz-card { margin-bottom: 0; }
 .gizmo .gz-flow { margin-top: 46px; }
 .gizmo .gz-flow { display: flex; flex-direction: column; gap: 46px; }
 /* The slot takes back the flow's gap and each panel showing in it brings its own, so a slot with none showing adds no space. */
@@ -1418,6 +1422,26 @@ button.gz-lens-toggle {
 .gizmo .gz-reconcile-rows li { display: flex; align-items: flex-start; gap: var(--size-4-2); padding: var(--size-4-1) 0; border-top: 1px solid var(--background-modifier-border); }
 .gizmo .gz-reconcile-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; padding-top: var(--size-2-2); }
 .gizmo .gz-reconcile-rows li .gz-actions { flex: none; margin: 0 0 0 auto; }
+/* A status dot: paired is calm, a row that pairs with nothing asks for a look. */
+.gizmo .gz-status { flex: none; width: 7px; height: 7px; margin-top: calc(var(--size-2-2) + 0.5em); border-radius: 50%; background: var(--text-faint); }
+.gizmo .gz-status.is-ok { background: var(--color-green); }
+.gizmo .gz-status.is-warn { background: var(--color-orange); }
+/* A queue worked from the keyboard: the focused row is lit, a selected one is marked. */
+.gizmo .gz-queue-row { border-radius: var(--radius-s); padding-left: var(--size-2-2); padding-right: var(--size-2-2); outline: none; transition: background-color 150ms ease-out; }
+.gizmo .gz-queue-row:focus-visible { background: var(--background-modifier-hover); box-shadow: inset 2px 0 0 var(--interactive-accent); }
+.gizmo .gz-queue-row.is-selected { background: var(--background-modifier-active-hover); }
+.gizmo .gz-queue-bulk { display: none; align-items: center; gap: var(--size-4-2); padding: var(--size-4-1) 0; }
+.gizmo .gz-queue-bulk.is-shown { display: flex; }
+.gizmo .gz-queue-count { font-variant-numeric: tabular-nums; color: var(--text-muted); font-size: var(--font-ui-small); margin-right: auto; }
+.gizmo .gz-queue-keys { margin-top: var(--size-4-2); font-size: var(--font-ui-smaller); color: var(--text-faint); }
+/* Rows stay calm until reached: their buttons show on hover, on focus, and always where nothing hovers. */
+@media (hover: hover) {
+  .gizmo .gz-queue-row .gz-actions { opacity: 0; transition: opacity 150ms ease-out; }
+  .gizmo .gz-queue-row:hover .gz-actions, .gizmo .gz-queue-row:focus-within .gz-actions, .gizmo .gz-queue-row:focus .gz-actions { opacity: 1; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .gizmo .gz-queue-row, .gizmo .gz-queue-row .gz-actions { transition: none; }
+}
 /* Narrow, the buttons go under what the row says, so its words keep the width. */
 .gizmo.gz-narrow .gz-reconcile-rows li { flex-wrap: wrap; }
 .gizmo.gz-narrow .gz-reconcile-what { flex-basis: 100%; }

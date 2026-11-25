@@ -775,6 +775,10 @@ export class AppController {
         const line = into.createEl("section", { cls: "gz-compose" });
         for (const i of scope.compose) line.appendChild(el(i));
       }
+      if (scope.attention.length) {
+        const waiting = into.createEl("section", { cls: "gz-attention" });
+        for (const i of scope.attention) waiting.appendChild(el(i));
+      }
       if (scope.flow.length || scope.sheet.length) {
         const flow = createDivIn(into, "gz-flow");
         for (const i of scope.flow) flow.appendChild(el(i));

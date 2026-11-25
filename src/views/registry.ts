@@ -2,7 +2,7 @@ import type { Placement } from "../compose.ts";
 import type { Row } from "../data.ts";
 import type { Trace } from "../pipeline.ts";
 import type { Reconcile } from "../match.ts";
-import type { ReconcileActs } from "../reconcile-card.ts";
+import type { ReconcileActs } from "./reconcile-card.ts";
 import type { Panel } from "../spec.ts";
 import { board } from "./board.ts";
 import { calendar } from "./calendar.ts";

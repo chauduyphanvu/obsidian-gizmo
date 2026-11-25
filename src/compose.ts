@@ -5,15 +5,16 @@ import { THIS } from "./template.ts";
 /**
  * How an app reads in the composed layout: each panel takes a role from its view, and the roles
  * decide where it goes. The answer comes first (number, progress, countdown, text), then the line
- * to add things (button, form), then the evidence, the workspaces and the records, in the order
- * written. A panel that reads a pick waits for it in a sheet. Nothing in the app's keys changes.
+ * to add things (button, form), then what waits to be acted on (rows from a file to check, alerts),
+ * then the evidence, the workspaces and the records, in the order written. A panel that reads a pick
+ * waits for it in a sheet. Nothing in the app's keys changes.
  */
-export type Role = "answer" | "verb" | "evidence" | "workspace" | "records" | "sheet";
+export type Role = "answer" | "verb" | "attention" | "evidence" | "workspace" | "records" | "sheet";
 
 /** Where a panel sits in the composed layout: its role, and its place among the panels of that role. */
 export interface Placement {
   role: Role;
-  slot: "headline" | "fact" | "meter" | "compose" | "flow" | "sheet";
+  slot: "headline" | "fact" | "meter" | "compose" | "attention" | "flow" | "sheet";
 }
 
 /** Each view's role; a view not listed keeps records. */
@@ -36,8 +37,9 @@ const ROLES: Record<string, Role | ((p: Panel) => Role)> = {
   table: "records",
   list: "records",
   checklist: "records",
-  alerts: "records",
-  reconcile: "records",
+  // What waits for the person to act on it comes straight after the line to add things.
+  alerts: "attention",
+  reconcile: "attention",
 };
 
 /** A panel's role; `readsSelection`: it reads a name another panel selects, so it waits in the sheet. */
@@ -91,6 +93,7 @@ export interface Scope {
   tab: string | undefined;
   answer: AnswerGroups;
   compose: number[];
+  attention: number[];
   flow: number[];
   sheet: number[];
 }
@@ -109,7 +112,8 @@ export function compose(panels: readonly Composable[], selections: readonly stri
   const roles = panels.map((ps) => roleOf(ps.panel, ps.inputs.some((n) => selections.includes(n))));
   const named = [...new Set(panels.map((ps) => ps.panel.tab).filter((t) => t !== undefined))];
   const tabs = panels.some((ps) => ps.panel.tab === undefined) ? [undefined, ...named] : named;
-  const placements: Placement[] = roles.map((role) => ({ role, slot: role === "verb" ? "compose" : role === "sheet" ? "sheet" : "flow" }));
+  const slotOf = (role: Role): Placement["slot"] => (role === "verb" ? "compose" : role === "attention" ? "attention" : role === "sheet" ? "sheet" : "flow");
+  const placements: Placement[] = roles.map((role) => ({ role, slot: slotOf(role) }));
   const scopes = tabs.map((tab): Scope => {
     const own = panels.map((_, i) => i).filter((i) => panels[i].panel.tab === tab);
     const of = (...wanted: Role[]) => own.filter((i) => wanted.includes(roles[i]));
@@ -123,7 +127,7 @@ export function compose(panels: readonly Composable[], selections: readonly stri
     if (answer.headline !== undefined) placements[answer.headline].slot = "headline";
     for (const i of answer.facts) placements[i].slot = "fact";
     for (const i of answer.meters.values()) placements[i].slot = "meter";
-    return { tab, answer, compose: of("verb"), flow: of("evidence", "workspace", "records"), sheet: of("sheet") };
+    return { tab, answer, compose: of("verb"), attention: of("attention"), flow: of("evidence", "workspace", "records"), sheet: of("sheet") };
   });
   return { scopes, placements };
 }

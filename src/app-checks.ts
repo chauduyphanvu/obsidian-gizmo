@@ -11,7 +11,7 @@ import { rowIdOf } from "./ledger-store.ts";
 import { reconcileOf, ruleOf } from "./match.ts";
 import { checklistList } from "./panel.ts";
 import { describePermission, permissionsOf } from "./permissions.ts";
-import { renderReconcile } from "./reconcile-card.ts";
+import { renderReconcile } from "./views/reconcile-card.ts";
 import { kindFiles } from "./sources/kind.ts";
 import { readSpec, type AppSpec, type Panel } from "./spec.ts";
 import { basename, defaultDataPath } from "./store.ts";
@@ -170,12 +170,12 @@ export class AppChecks {
     this.reconcileCard?.remove();
     this.reconcileCard = undefined;
     const r = reconcileOf(state.lists.get(kind.name)?.rows ?? [], kind.match);
-    const header = this.shell.querySelector<HTMLElement>(".gz-header");
-    if (!r || !header) return;
-    this.reconcileCard = renderReconcile(header, r, Object.keys(kind.fields), {
+    const host = r && attentionSection(this.shell);
+    if (!r || !host) return;
+    this.reconcileCard = renderReconcile(host, r, Object.keys(kind.fields), {
       accept: (open) => this.writes.settleRows(kind.name, open, false, kind.match),
-      dismiss: (row) => this.writes.settleRows(kind.name, [{ row }], true),
-    });
+      dismiss: (rows) => this.writes.settleRows(kind.name, rows.map((row) => ({ row })), true),
+    }, this);
   }
 
   /**
@@ -197,7 +197,7 @@ export class AppChecks {
       ...(waiting && { waiting }),
       fields: Object.keys(isPlainObject(kindFm?.fields) ? kindFm.fields : {}),
       accept: (open) => this.writes.settleRows(ref.name, open, false, rule, p),
-      dismiss: (row) => this.writes.settleRows(ref.name, [{ row }], true, {}, p),
+      dismiss: (rows) => this.writes.settleRows(ref.name, rows.map((row) => ({ row })), true, {}, p),
     };
   }
 
@@ -275,4 +275,21 @@ export class AppChecks {
       },
     });
   }
+}
+
+/**
+ * Where what waits for the person is drawn in an app: laid out by role, the section for it after the
+ * answer and the line to add things, made there when no panel has drawn one; on the grid, the header.
+ * Undefined while the app shows no panels.
+ */
+export function attentionSection(shell: HTMLElement): HTMLElement | undefined {
+  const child = (el: Element, cls: string) => [...el.children].find((c) => c.classList.contains(cls)) as HTMLElement | undefined;
+  const body = child(shell, "gz-body");
+  if (!body) return child(shell, "gz-grid") && child(shell, "gz-header");
+  const own = child(body, "gz-attention");
+  if (own) return own;
+  const section = body.createEl("section", { cls: "gz-attention" });
+  const after = [...body.children].filter((c) => c.classList.contains("gz-answer") || c.classList.contains("gz-compose")).at(-1);
+  body.insertBefore(section, after ? after.nextSibling : body.firstChild);
+  return section;
 }

@@ -70,15 +70,23 @@ test("the kind's own note shows the rows from a file to check; an app reading th
   assert.deepEqual([...card(kind)!.querySelectorAll("li .gz-reconcile-row")].map(text), ["Nov 17 · 14.50 · CORNER CAFE", "Nov 18 · 82.10 · CITY POWER", "Nov 18 · 9 · NOT ME"]);
   assert.ok(!card(app));
   assert.match(text(app), /Total89/, "until accepted, only what was logged counts");
+  // It waits in the section for what waits to be acted on, after the answer and the add line.
+  const body = kind.querySelector(".gz-body")!;
+  assert.ok(card(kind)!.parentElement!.classList.contains("gz-attention"));
+  assert.equal(card(kind)!.parentElement!.parentElement === body, true);
+  assert.equal(kind.querySelector(".gz-header .gz-reconcile"), null);
 });
 
-test("each row to check holds what it says in one box and its buttons in another beside it, so a long row wraps in its box and the buttons stay at its right", async () => {
+test("each row to check has a status dot, what it says in one box and its buttons in another beside it, so a long row wraps in its box and the buttons stay at its right", async () => {
   const t = await vault();
   const kind = t.open(KIND);
   await settle();
   const li = card(kind)!.querySelector("li")!;
-  assert.deepEqual([...li.children].map((c) => c.className), ["gz-reconcile-what", "gz-actions"]);
-  assert.equal(text(li.querySelector(".gz-reconcile-what")), "Nov 17 · 14.50 · CORNER CAFE = Nov 17 · 14.50 · lunch");
+  assert.deepEqual([...li.children].map((c) => c.className), ["gz-status is-ok", "gz-reconcile-what", "gz-actions"]);
+  assert.equal(text(li.querySelector(".gz-reconcile-what")), "Nov 17 · 14.50 · CORNER CAFE pairs with Nov 17 · 14.50 · lunch");
+  const rows = [...card(kind)!.querySelectorAll("li")];
+  assert.deepEqual(rows.map((r) => r.querySelector(".gz-status")!.className), ["gz-status is-ok", "gz-status is-warn", "gz-status is-warn"], "paired, then not logged");
+  assert.equal(text(rows[1].querySelector(".gz-reconcile-what .gz-muted")), " · not logged");
   assert.deepEqual([...li.querySelectorAll(".gz-actions button")].map(text), ["Accept", "Not mine"]);
 });
 
@@ -109,6 +117,74 @@ test("Accept pairs a row, or makes one that pairs with nothing logged; Not mine 
   await settle();
   assert.deepEqual((await t.rows()).filter((r) => r.line === "attested" && r.matched === undefined).map(rowIdOf), ["b2", "b3"]);
   assert.equal(text(card(kind)?.querySelector(".gz-title")), "2 rows from a file to check");
+});
+
+/** A key pressed on `el`, as the browser sends it; true when something took it. */
+const key = (el: Element, k: string, mods: { shift?: boolean } = {}) => {
+  const e = Object.assign(new window.Event("keydown", { bubbles: true, cancelable: true }), { key: k, shiftKey: !!mods.shift, altKey: false, ctrlKey: false, metaKey: false, isComposing: false });
+  el.dispatchEvent(e);
+  return e.defaultPrevented;
+};
+
+test("the rows to check are one Tab stop worked by keys: Enter accepts, x is Not mine, and the focus stays in place", async () => {
+  const t = await vault();
+  const kind = t.open(KIND);
+  await settle();
+  const rowsOf = () => [...card(kind)!.querySelectorAll("li")] as HTMLElement[];
+  // Which row has the focus, by what it says: comparing DOM nodes in an assert can hang the run.
+  const focused = () => rowsOf().findIndex((li) => li === document.activeElement);
+  assert.deepEqual(rowsOf().map((li) => li.getAttribute("tabindex")), ["0", "-1", "-1"]);
+  rowsOf()[0].focus();
+  assert.equal(key(rowsOf()[0], "ArrowDown"), true);
+  assert.equal(focused(), 1);
+  // Enter on CITY POWER makes it logged; the row now second, NOT ME, takes the focus.
+  assert.equal(key(rowsOf()[1], "Enter"), true);
+  await settle();
+  assert.equal((await t.rows()).find((r) => rowIdOf(r) === "b2")!.line, undefined);
+  assert.deepEqual(rowsOf().map((li) => text(li.querySelector(".gz-reconcile-row"))), ["Nov 17 · 14.50 · CORNER CAFE", "Nov 18 · 9 · NOT ME"]);
+  assert.equal(focused(), 1);
+  assert.equal(key(rowsOf()[1], "x"), true);
+  await settle();
+  assert.equal((await t.rows()).find((r) => rowIdOf(r) === "b3")!.line, "dismissed");
+  assert.equal(focused(), 0, "the last row gone, the one before it");
+  assert.deepEqual((await t.activity.list(KIND)).map((e) => e.what), ["Set aside a row from a file", "Accepted a row from a file"]);
+});
+
+test("Space selects rows and ⇧Enter accepts the selection in one entry; with none selected, ⇧Enter accepts them all", async () => {
+  const t = await vault();
+  const kind = t.open(KIND);
+  await settle();
+  const rowsOf = () => [...card(kind)!.querySelectorAll("li")] as HTMLElement[];
+  const bar = () => card(kind)!.querySelector(".gz-queue-bulk")!;
+  assert.equal(text(bar()), "", "nothing selected, no bar");
+  key(rowsOf()[0], " ");
+  key(rowsOf()[2], " ");
+  assert.deepEqual(rowsOf().map((li) => li.getAttribute("aria-selected")), ["true", "false", "true"]);
+  assert.match(text(bar()), /^2 selected/);
+  assert.equal(key(rowsOf()[2], "Enter", { shift: true }), true);
+  await settle();
+  const [entry] = await t.activity.list(KIND);
+  assert.equal(entry.what, "Accepted 2 rows from a file");
+  assert.deepEqual(rowsOf().map((li) => text(li.querySelector(".gz-reconcile-row"))), ["Nov 18 · 82.10 · CITY POWER"]);
+  assert.equal(rowsOf()[0].getAttribute("aria-selected"), "false", "what was accepted leaves the selection");
+  key(rowsOf()[0], "Enter", { shift: true });
+  await settle();
+  assert.ok(!card(kind), "nothing left to check");
+  // The bar's Not mine takes the selection too, in one entry.
+});
+
+test("the bar sets aside what is selected, in one entry", async () => {
+  const t = await vault();
+  const kind = t.open(KIND);
+  await settle();
+  const rowsOf = () => [...card(kind)!.querySelectorAll("li")] as HTMLElement[];
+  key(rowsOf()[1], " ");
+  key(rowsOf()[2], " ");
+  click(buttonIn(card(kind)!.querySelector(".gz-queue-bulk")!, "Not mine"));
+  await settle();
+  const [entry] = await t.activity.list(KIND);
+  assert.deepEqual([entry.what, entry.changes.length], ["Set aside 2 rows from a file", 2]);
+  assert.deepEqual(rowsOf().map((li) => text(li.querySelector(".gz-reconcile-row"))), ["Nov 17 · 14.50 · CORNER CAFE"]);
 });
 
 test("Accept all settles every open row in one write and one entry", async () => {

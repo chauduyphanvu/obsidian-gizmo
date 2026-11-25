@@ -70,13 +70,14 @@ const BUDGET = {
 
 // ---- Roles -----------------------------------------------------------------------------------------
 
-test("each view has a role: the answer, a verb, evidence, a workspace or records", () => {
+test("each view has a role: the answer, a verb, what waits to be acted on, evidence, a workspace or records", () => {
   assert.deepEqual(Object.fromEntries(VIEW_DEFS.map((d) => [d.id, roleOf({ view: d.id }, false)])), {
     number: "answer", text: "answer", countdown: "answer", progress: "answer",
     button: "verb", form: "verb",
     line: "evidence", bar: "evidence", pie: "evidence", scatter: "evidence",
     calendar: "workspace", board: "workspace", timeline: "workspace", timer: "workspace",
-    table: "records", list: "records", checklist: "records", alerts: "records", reconcile: "records",
+    alerts: "attention", reconcile: "attention",
+    table: "records", list: "records", checklist: "records",
   });
   // A year of days is evidence; a month is a place to work. A form that writes the note's own properties is too.
   assert.equal(roleOf({ view: "calendar", layout: "year" }, false), "evidence");
@@ -133,11 +134,12 @@ test("an app is composed scope by scope: outside any tab first, then each tab as
     p({ view: "number", tab: "Chart" }),
     p({ view: "progress", source: "log" }),
     p({ view: "list", tab: "Other" }, ["q"]),
+    p({ view: "reconcile", source: "log" }),
   ], ["pick"]);
   assert.deepEqual(scopes, [
-    { tab: undefined, answer: { headline: 2, facts: [], meters: new Map([[2, 6]]) }, compose: [1], flow: [3], sheet: [4] },
-    { tab: "Chart", answer: { headline: 5, facts: [], meters: new Map() }, compose: [], flow: [0], sheet: [] },
-    { tab: "Other", answer: { headline: undefined, facts: [], meters: new Map() }, compose: [], flow: [7], sheet: [] },
+    { tab: undefined, answer: { headline: 2, facts: [], meters: new Map([[2, 6]]) }, compose: [1], attention: [8], flow: [3], sheet: [4] },
+    { tab: "Chart", answer: { headline: 5, facts: [], meters: new Map() }, compose: [], attention: [], flow: [0], sheet: [] },
+    { tab: "Other", answer: { headline: undefined, facts: [], meters: new Map() }, compose: [], attention: [], flow: [7], sheet: [] },
   ]);
   assert.deepEqual(placements, [
     { role: "evidence", slot: "flow" },
@@ -148,6 +150,7 @@ test("an app is composed scope by scope: outside any tab first, then each tab as
     { role: "answer", slot: "headline" },
     { role: "answer", slot: "meter" },
     { role: "records", slot: "flow" },
+    { role: "attention", slot: "attention" },
   ]);
 });
 
@@ -187,6 +190,26 @@ test("an app in its own tab reads as a page: title and description, the answer, 
   assert.deepEqual(kinds(flow), ["gz-view-line", "gz-view-table", "gz-sheet-slot"]);
   assert.deepEqual([...root.querySelectorAll(".gz-panel")].map((el) => classes(el).find((c) => c.startsWith("gz-role-"))),
     ["gz-role-answer", "gz-role-answer", "gz-role-answer", "gz-role-verb", "gz-role-verb", "gz-role-evidence", "gz-role-records", "gz-role-sheet"]);
+});
+
+test("what waits to be acted on comes straight after the line to add things, wherever it is written", async () => {
+  const fm = {
+    app: "What I spend",
+    panels: [
+      { view: "number", title: "Spent so far", source: "spend", field: "amount", agg: "sum" },
+      { view: "table", title: "Recent", source: "spend", columns: ["at", "amount"] },
+      { view: "form", title: "Spent", fields: { amount: "number" }, save: "spend" },
+      { view: "alerts", title: "Needs me" },
+    ],
+  };
+  const { app, root } = setup({ [APP]: { fm }, "Apps/W data.md": { fm: SPEND } });
+  app.load();
+  await settle();
+  const body = root.querySelector(".gz-body")!;
+  assert.deepEqual([...body.children].map((c) => `${c.tagName.toLowerCase()}.${c.className}`), ["section.gz-answer", "section.gz-compose", "section.gz-attention", "div.gz-flow"]);
+  assert.deepEqual(kinds(body.querySelector(".gz-attention")!), ["gz-view-alerts"]);
+  assert.ok(body.querySelector(".gz-view-alerts")!.classList.contains("gz-role-attention"));
+  assert.deepEqual(kinds(body.querySelector(".gz-flow")!), ["gz-view-table"]);
 });
 
 test("a panel waiting for a pick waits in the sheet slot, out of sight, and shows once a row is picked", async () => {
