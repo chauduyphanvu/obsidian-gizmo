@@ -18,7 +18,7 @@ import { rowsAreSaved } from "./sources/registry.ts";
 import { minuteIn, stampOf, toTime, wallTime } from "./time.ts";
 import { sayBelow } from "./views/addline.ts";
 import { itemText } from "./views/board.ts";
-import { busy, detailText, noteLink, rovingItems, rowNote, seriesNames } from "./views/common.ts";
+import { busy, detailText, noteLink, pickOf, rovingItems, rowNote, seriesNames } from "./views/common.ts";
 import type { PanelCtx, SheetPick } from "./views/registry.ts";
 import { fieldBox, listItem, rowAction, rowFields } from "./views/rows.ts";
 
@@ -310,6 +310,33 @@ function shapeOf(o: Opened): string {
 }
 
 /** A record of one of the app's own saved lists, shown as it is now: one the sheet can move in time and delete. */
+/**
+ * ⌫ on a focused row, card or item of the app's own saved list, as it is now: deletes it as the
+ * sheet's Delete does, said under its panel with Undo, and the focus goes to the item now in its
+ * place once the panel is drawn again. False when it isn't one that may be deleted.
+ */
+export function deleteFocused(el: HTMLElement): boolean {
+  const pick = pickOf(el);
+  if (!pick?.ctx.deleteRow) return false;
+  const { p, ctx, row } = pick;
+  if (!ownRow({ key: "", p, ctx, pick: { row, el, record: pick.record, clear: () => {} } })) return false;
+  const text = `Deleted ${deletedName(p, row, ctx.now)}`;
+  const panel = el.closest<HTMLElement>(".gz-panel");
+  const items = () => [...panel?.querySelectorAll<HTMLElement>(".gz-selectable[tabindex]") ?? []];
+  const index = items().indexOf(el);
+  void (async () => {
+    const done = await ctx.deleteRow!(row);
+    if (!done || !panel?.isConnected) return;
+    sayBelow(panel, ctx, text, done.entry);
+    // Drawn again without it: the keys carry on from the item now in its place.
+    const doc = el.ownerDocument;
+    for (let i = 0; i < 50 && el.isConnected; i++) await new Promise((r) => window.setTimeout(r, 20));
+    const now = items();
+    if (!el.isConnected && now.length && (!doc.activeElement || doc.activeElement === doc.body)) now[Math.min(Math.max(index, 0), now.length - 1)].focus();
+  })();
+  return true;
+}
+
 function ownRow(o: Opened): boolean {
   const { p, ctx, pick } = o;
   if (!pick.record || ctx.readOnly || !rowsAreSaved(p.source) || ctx.rowsWritable?.() === false || theirsOf(o)) return false;

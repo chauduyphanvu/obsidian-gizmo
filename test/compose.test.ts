@@ -403,3 +403,34 @@ test("layout is composed or grid, composed when left out; in a note that is one 
   assert.equal(grid.spec!.panels[0].panel.layout, undefined);
   assert.deepEqual(read({ app: "x", view: "table", source: "books", layout: "rows" }).errors, ["layout must be cards"]);
 });
+
+test("in its own tab, records written one after another are one place, a segment each; a block draws them as written", async () => {
+  const fm = {
+    app: "What I spend",
+    panels: [
+      { view: "number", title: "Spent so far", source: "spend", field: "amount", agg: "sum" },
+      { view: "table", title: "Recent", source: "spend", columns: ["at", "amount"] },
+      { view: "list", title: "By note", source: "spend", item: "{amount}" },
+      { view: "line", title: "Each day", source: "spend", x: "at", y: "amount" },
+      { view: "table", title: "Alone", source: "spend", columns: ["amount"] },
+    ],
+  };
+  const { app, root } = setup({ [APP]: { fm }, "Apps/W data.md": { fm: SPEND } });
+  app.load();
+  await settle();
+  const flow = root.querySelector(".gz-flow")!;
+  assert.deepEqual(kinds(flow), ["gz-merged", "gz-view-line", "gz-view-table"]);
+  const merged = flow.querySelector(".gz-merged")!;
+  assert.deepEqual(kinds(merged), ["gz-merged-bar", "gz-view-table", "gz-view-list"]);
+  const segments = [...merged.querySelectorAll(".gz-merged-bar button")];
+  assert.deepEqual(segments.map((b) => `${text(b)}:${b.getAttribute("aria-selected")}`), ["Recent:true", "By note:false"]);
+  const off = () => [...merged.querySelectorAll(":scope > .gz-panel")].map((p) => p.classList.contains("gz-off"));
+  assert.deepEqual(off(), [false, true]);
+  segments[1].dispatchEvent(new window.Event("click", { bubbles: true }));
+  assert.deepEqual(off(), [true, false]);
+
+  const hosted = setup({ [APP]: { fm }, "Apps/W data.md": { fm: SPEND }, "Daily.md": { fm: {} } }, { kind: "embed", grantKey: "Daily.md#gizmo", hostPath: "Daily.md", definition: () => fm });
+  hosted.app.load();
+  await settle();
+  assert.equal(hosted.root.querySelector(".gz-merged"), null);
+});

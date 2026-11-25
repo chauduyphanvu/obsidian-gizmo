@@ -352,3 +352,41 @@ test("Gizmo's own fields on a kind's rows can't be edited: not in edit, not as a
   await writes.editRow({ p: table }, row, "line", "planned", () => {});
   assert.equal((await t.data.ledger!.state("Kinds/Spend data.md")).lists.get("spend")!.rows[0].line, undefined);
 });
+
+const keyOn = (el: Element, key: string) => {
+  const e = Object.assign(new window.Event("keydown", { bubbles: true, cancelable: true }), { key, shiftKey: false, altKey: false, ctrlKey: false, metaKey: false });
+  el.dispatchEvent(e);
+  return e.defaultPrevented;
+};
+
+test("⌫ on a focused row of the app's own list deletes it as Delete does, and the focus goes to the row now in its place", async () => {
+  const t = open({ [APP]: { fm: { app: "W", panels: [RECENT] } }, [DATA]: { fm: structuredClone(SPENT) } });
+  await settle();
+  const [first] = t.rows("Recent") as HTMLElement[];
+  first.focus();
+  assert.equal(keyOn(first, "Backspace"), true);
+  await settle();
+  assert.deepEqual(t.list("spend"), [SPENT.spend[1]]);
+  assert.equal(text(t.panel("Recent").nextElementSibling?.querySelector(".gz-notice-text")), "Deleted $5.00 · food · Coffee");
+  assert.equal(t.rows("Recent").length, 1);
+  assert.equal(document.activeElement === t.rows("Recent")[0], true, "the keys carry on from the row now there");
+  assert.equal(undoKey(), true);
+  await settle();
+  assert.deepEqual(t.list("spend"), SPENT.spend);
+});
+
+test("⌫ deletes nothing in the past, nor from a field being typed in", async () => {
+  const past = open({ [APP]: { fm: { app: "W", panels: [RECENT] } }, [DATA]: { fm: structuredClone(SPENT) } }, { past: Date.now() + 60_000 });
+  await settle();
+  const row = past.rows("Recent")[0] as HTMLElement;
+  assert.equal(keyOn(row, "Backspace"), false);
+  await settle();
+  assert.equal(past.list("spend").length, 2);
+  const edits = { ...RECENT, edit: ["note"] };
+  const t = open({ [APP]: { fm: { app: "W", panels: [edits] } }, [DATA]: { fm: structuredClone(SPENT) } });
+  await settle();
+  const input = t.rows("Recent")[0].querySelector("input")!;
+  assert.equal(keyOn(input, "Backspace"), false);
+  await settle();
+  assert.equal(t.list("spend").length, 2);
+});

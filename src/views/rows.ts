@@ -424,8 +424,47 @@ function card(grid: HTMLElement, all: RowEnv, r: Row, i: number): DrawnRow {
   return { el, show: (row) => shows.forEach((show) => show(row)) };
 }
 
-function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: Arrivals): Drawn | undefined {
+/** Rows past this many get a box that filters them, as they are drawn, by what their cells say. */
+export const FILTER_FROM = 20;
+
+/** What the filter box over a long table holds, and how it sets it. */
+interface Filter {
+  query: string;
+  total: number;
+  set(query: string): void;
+}
+
+/** Whether a row's cells, as shown or as kept, hold every word of the query. */
+function matches(p: Panel, columns: string[], r: Row, query: string, now: Date): boolean {
+  const said = columns.map((c) => {
+    const v = getPath(r, c);
+    if (v === undefined || v === null) return "";
+    const raw = typeof v === "string" || typeof v === "number" || typeof v === "boolean" ? String(v) : "";
+    return `${raw} ${display(p, c, v, now, "text")}`;
+  }).join(" ").toLowerCase();
+  return query.toLowerCase().split(/\s+/).filter(Boolean).every((w) => said.includes(w));
+}
+
+function drawRows(el: HTMLElement, p: Panel, ctx: PanelCtx, rows: Row[], news: Arrivals, filter?: Filter): Drawn | undefined {
   heading(el, p, p.label);
+  if (filter) {
+    const box = el.createDiv({ cls: "gz-filter" });
+    const input = box.createEl("input", { type: "search", cls: "gz-filter-input", attr: { placeholder: `Filter ${filter.total} rows`, "aria-label": `Filter ${p.title ?? "rows"}` } });
+    input.value = filter.query;
+    input.addEventListener("input", () => filter.set(input.value));
+    input.addEventListener("keydown", (e) => {
+      if (e.key !== "Escape" || !input.value) return;
+      // A filter typed in goes first; Escape again leaves the box to the tab.
+      e.preventDefault();
+      e.stopPropagation();
+      filter.set("");
+    });
+    if (filter.query) box.createSpan({ cls: "gz-filter-count gz-muted", text: `${rows.length} of ${filter.total}` });
+  }
+  if (rows.length === 0 && filter?.query) {
+    el.createDiv({ cls: "gz-empty", text: `No row says “${filter.query}”.` });
+    return undefined;
+  }
   if (rows.length === 0) {
     whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: emptyText(p, ctx.now, "Nothing here yet.") }));
     return undefined;
@@ -544,15 +583,31 @@ export const table: ViewDef = {
   mount(el, p, ctx) {
     let drawn: Drawn | undefined;
     const memory = rowMemory();
+    let all: Row[] = [];
+    let query = "";
+    const draw = (rows: Row[], news: Arrivals) => {
+      const long = rows.length > FILTER_FROM;
+      if (!long) query = "";
+      const shown = query ? rows.filter((r) => matches(p, columnsOf(p, rows), r, query, ctx.now)) : rows;
+      const keys = shown.map(rowKey);
+      const sees = { ...news, keys };
+      // The same rows back after a write are updated in place, so focus and typing in other cells stay.
+      if (drawn && p.edit && keys.every((k) => k !== undefined) && sameList(drawn.keys, keys) && sameList(drawn.columns, columnsOf(p, rows)) && drawn.patch(shown)) return;
+      // Typing in the filter box, the box drawn again keeps the focus and the caret.
+      const typing = el.ownerDocument.activeElement?.classList.contains("gz-filter-input") && el.contains(el.ownerDocument.activeElement);
+      memory.stop();
+      el.empty();
+      drawn = drawRows(el, p, ctx, shown, sees, long ? { query, total: rows.length, set: (q) => { query = q; draw(all, { keys: all.map(rowKey), fresh: new Set(), mark: () => {} }); } } : undefined);
+      if (typing) {
+        const input = el.querySelector<HTMLInputElement>(".gz-filter-input");
+        input?.focus();
+        input?.setSelectionRange(query.length, query.length);
+      }
+    };
     return {
       update(data) {
-        const rows = rowsOf(data);
-        const news = memory.arrive(rows);
-        // The same rows back after a write are updated in place, so focus and typing in other cells stay.
-        if (drawn && p.edit && news.keys.every((k) => k !== undefined) && sameList(drawn.keys, news.keys) && sameList(drawn.columns, columnsOf(p, rows)) && drawn.patch(rows)) return;
-        memory.stop();
-        el.empty();
-        drawn = drawRows(el, p, ctx, rows, news);
+        all = rowsOf(data);
+        draw(all, memory.arrive(all));
       },
       destroy: memory.stop,
     };

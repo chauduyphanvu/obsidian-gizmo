@@ -40,6 +40,14 @@
   border-radius: var(--radius-m);
 }
 .gizmo .gz-grid > .gz-tabs { grid-column: 1 / -1; justify-self: start; }
+/* Records written one after another, as one: their titles are the segments, so each panel's own is left out. */
+.gizmo .gz-merged { display: flex; flex-direction: column; gap: var(--size-4-3); min-width: 0; }
+.gizmo .gz-merged-bar { align-self: flex-start; }
+.gizmo .gz-merged > .gz-panel > .gz-title { display: none; }
+/* A long table's filter box: under its title, as wide as it needs, with how many rows it lets through. */
+.gizmo .gz-filter { display: flex; align-items: center; gap: var(--size-4-2); margin-bottom: var(--size-4-2); }
+.gizmo .gz-filter-input { flex: 0 1 18em; min-width: 0; }
+.gizmo .gz-filter-count { font-size: var(--font-ui-small); font-variant-numeric: tabular-nums; }
 .gizmo button.gz-segment {
   flex: none;
   height: auto;

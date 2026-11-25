@@ -389,3 +389,42 @@ test("in the past a card can't move: it isn't draggable and has no Move to; it c
   assert.equal(card(live, "Garden").getAttribute("draggable"), "true");
   assert.ok(card(live, "Garden").querySelector(".gz-move"));
 });
+
+const keyOn = (el: Element, key: string, shiftKey = false) => {
+  const e = Object.assign(new window.Event("keydown", { bubbles: true, cancelable: true }), { key, shiftKey, altKey: false, ctrlKey: false, metaKey: false });
+  el.dispatchEvent(e);
+  return e.defaultPrevented;
+};
+
+test("⇧→ and ⇧← on a card move it to the column beside; a plain arrow only moves the focus; at the end, nothing moves", async () => {
+  const { ctx, edits } = fakeCtx();
+  const { el } = mount({}, ROWS, ctx);
+  const garden = card(el, "Garden");
+  assert.equal(garden.getAttribute("tabindex") !== null, true, "a card the keys can reach, though the board picks nothing");
+  garden.focus();
+  assert.equal(keyOn(garden, "ArrowRight", true), true);
+  await settle();
+  assert.deepEqual(edits, [{ row: ROWS[0], field: "status", value: "done" }]);
+  assert.equal(document.activeElement === card(el, "Garden"), true, "the focus stays on the card");
+  assert.equal(keyOn(card(el, "Garden"), "ArrowLeft", true), true);
+  await settle();
+  assert.deepEqual(edits.at(-1), { row: ROWS[0], field: "status", value: "idea" });
+  // A plain → moves the focus to the next column's card, and writes nothing.
+  assert.equal(keyOn(card(el, "Garden"), "ArrowRight"), true);
+  assert.equal(edits.length, 2);
+  // The first column's card can't go further left.
+  const rust = card(el, "Rust");
+  assert.equal(keyOn(rust, "ArrowLeft", true), true);
+  await settle();
+  assert.equal(edits.length, 2);
+});
+
+test("shown as it was, ⇧→ on a card moves nothing", async () => {
+  const f = fakeCtx();
+  const ctx = { ...f.ctx, readOnly: true } as PanelCtx;
+  const { el } = mount({ select: "pick" }, ROWS, ctx);
+  const garden = card(el, "Garden");
+  keyOn(garden, "ArrowRight", true);
+  await settle();
+  assert.deepEqual(f.edits, []);
+});

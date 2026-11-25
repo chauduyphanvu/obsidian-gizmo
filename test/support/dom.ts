@@ -90,6 +90,14 @@ for (const target of [window.Element.prototype, window.HTMLElement.prototype] as
   });
 }
 
+// linkedom has no caret: where it was put is kept, for code that puts it after drawing a box again.
+Object.assign(window.HTMLElement.prototype, {
+  setSelectionRange(this: HTMLElement & { selectionStart?: number; selectionEnd?: number }, start: number, end: number) {
+    this.selectionStart = start;
+    this.selectionEnd = end;
+  },
+});
+
 // linkedom lays nothing out, so nothing scrolls; each element asked to be shown is kept, with how,
 // for tests that check what was brought into view.
 const scrolled: { el: Element; options: unknown }[] = [];

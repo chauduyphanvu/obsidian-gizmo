@@ -38,7 +38,7 @@ import { compilePipeline, tracePipeline } from "./pipeline.ts";
 import { panelLine } from "./yamlpos.ts";
 import { APP_MAX, APP_PAD, HOSTED_MAX, HOSTED_PAD, MAX_COLUMNS, TRACKS, columnsFor, composedWidth, isNarrow, rowTracks, spanOn, widthFor } from "./layout.ts";
 import { compose, type Placement, type Scope } from "./compose.ts";
-import { Sheet, type DrawIcon } from "./sheet.ts";
+import { deleteFocused, Sheet, type DrawIcon } from "./sheet.ts";
 import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sayBelow } from "./views/addline.ts";
@@ -267,6 +267,8 @@ export class AppController {
   private columns = MAX_COLUMNS;
   private tabs: HTMLElement | undefined;
   private tabBar: Segmented | undefined;
+  /** Of each set of records drawn as one (see mergeRecords), by its first panel's id, the panel shown. */
+  private mergedShown = new Map<string, string>();
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
   private get activeTab() { return this.memory.activeTab; }
   private set activeTab(tab: string | undefined) { this.memory.activeTab = tab; }
@@ -429,7 +431,17 @@ export class AppController {
    * in its panel.
    */
   openInPlace(icon: DrawIcon): void {
-    if (!this.hosting) this.sheet ??= new Sheet(this.shell, icon, () => this.closeSheet());
+    if (this.hosting || this.sheet) return;
+    this.sheet = new Sheet(this.shell, icon, () => this.closeSheet());
+    // ⌫ or Delete on a focused row of the app's own list deletes it, as the sheet's Delete does; a field's keys are its own.
+    this.shell.addEventListener("keydown", (e) => {
+      const target = e.target as HTMLElement;
+      if ((e.key !== "Backspace" && e.key !== "Delete") || e.defaultPrevented || e.altKey || e.ctrlKey || e.metaKey || e.shiftKey) return;
+      if (!target.classList?.contains("gz-selectable") || !this.ownTab) return;
+      if (!deleteFocused(target)) return;
+      e.preventDefault();
+      if (this.sheet?.opened?.pick.el === target) this.shut(false);
+    });
   }
 
   /** Closes the side sheet, taking its pick back and the focus to what was picked; false when it wasn't open. */
@@ -822,7 +834,14 @@ export class AppController {
       }
       if (scope.flow.length || scope.sheet.length) {
         const flow = createDivIn(into, "gz-flow");
-        for (const i of scope.flow) flow.appendChild(el(i));
+        // In its own tab, records written one after another are one place, a segment each.
+        const merges = (m: Mounted) => this.ownTab && this.placements.get(m.id)?.role === "records" && !!m.p.title;
+        for (let k = 0; k < scope.flow.length; k++) {
+          const run = [order[scope.flow[k]]];
+          while (merges(run[0]) && k + 1 < scope.flow.length && merges(order[scope.flow[k + 1]])) run.push(order[scope.flow[++k]]);
+          if (run.length > 1 && new Set(run.map((m) => m.p.title)).size === run.length) this.mergeRecords(flow, run);
+          else for (const m of run) flow.appendChild(m.el);
+        }
         if (scope.sheet.length) {
           const sheet = createDivIn(flow, "gz-sheet-slot");
           for (const i of scope.sheet) {
@@ -832,6 +851,32 @@ export class AppController {
         }
       }
     }
+  }
+
+  /**
+   * Records panels written one after another, drawn as one: a segmented control of their titles over
+   * them, the one chosen shown. Which is shown is kept, by the first panel's id, across redraws.
+   */
+  private mergeRecords(flow: HTMLElement, ms: Mounted[]): void {
+    const box = createDivIn(flow, "gz-merged");
+    const key = ms[0].id;
+    const show = () => {
+      const id = ms.some((m) => m.id === this.mergedShown.get(key)) ? this.mergedShown.get(key)! : ms[0].id;
+      for (const m of ms) m.el.classList.toggle("gz-off", m.id !== id);
+      bar.select(ms.find((m) => m.id === id)!.p.title);
+    };
+    const bar = segmented(box, ms.map((m) => m.p.title!), {
+      cls: "gz-merged-bar", label: "Records",
+      pick: (title) => {
+        const m = ms.find((x) => x.p.title === title)!;
+        this.mergedShown.set(key, m.id);
+        show();
+        // Out of sight it kept the width it had; shown, it is drawn for the room it has now.
+        this.resize();
+      },
+    });
+    for (const m of ms) box.appendChild(m.el);
+    show();
   }
 
   /** Keeps each input's value while it's still allowed, starts new ones, and draws the bar. */

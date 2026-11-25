@@ -3,7 +3,7 @@ import { fillWith, getPath, rowsOf, type Row } from "../data.ts";
 import { display, formatErrors, mapped } from "../format.ts";
 import { NONE } from "../group.ts";
 import type { Panel } from "../spec.ts";
-import { UP_DOWN, conflictChip, emptyText, heading, noteLink, roving, rowKey, rowNote, selectable, whyEmpty, type Step } from "./common.ts";
+import { conflictChip, emptyText, heading, noteLink, rove, roving, rowKey, rowNote, selectable, type Step, UP_DOWN, whyEmpty } from "./common.ts";
 import { DATA_KEYS } from "../keys.ts";
 import { editErrors } from "../edit.ts";
 import type { PanelHandle, ViewDef } from "./registry.ts";
@@ -89,9 +89,11 @@ const cardKeys: Step = (from, key, cards) => {
   return there[Math.min(place, there.length - 1)];
 };
 
-/** The card whose controls hold the focus, found again after the board is drawn afresh. */
-function focusedKey(el: HTMLElement): string | undefined {
-  return el.ownerDocument.activeElement?.closest?.(".gz-board-card")?.getAttribute("data-key") ?? undefined;
+/** The card that holds the focus, itself or in its controls, found again after the board is drawn afresh. */
+function focusedKey(el: HTMLElement): { key: string; onCard: boolean } | undefined {
+  const active = el.ownerDocument.activeElement;
+  const key = active?.closest?.(".gz-board-card")?.getAttribute("data-key");
+  return key == null ? undefined : { key, onCard: active!.classList.contains("gz-board-card") };
 }
 
 export const board: ViewDef = {
@@ -181,8 +183,18 @@ export const board: ViewDef = {
           moveTo.options[0].selected = true;
           if (picked !== "") void move(card, row, others[Number(picked)]);
         });
+        // ⇧← and ⇧→ on the card move it to the column beside; at the end, nothing.
+        card.addEventListener("keydown", (e) => {
+          if (e.target !== card || !e.shiftKey || e.altKey || e.ctrlKey || e.metaKey || (e.key !== "ArrowLeft" && e.key !== "ArrowRight")) return;
+          e.preventDefault();
+          const to = columns[columns.indexOf(column) + (e.key === "ArrowLeft" ? -1 : 1)];
+          if (to) void move(card, row, to);
+        });
+        card.setAttribute("aria-keyshortcuts", "Shift+ArrowLeft Shift+ArrowRight");
         repick(row);
-        if (key !== undefined && textOf(key) === refocus) moveTo.focus();
+        // A board that picks nothing still lets the keys reach a card, to move it.
+        if (!card.hasAttribute("tabindex")) rove(card);
+        if (key !== undefined && textOf(key) === refocus?.key) (refocus.onCard ? card : moveTo).focus();
       };
       for (const column of columns) {
         const col = root.createDiv({ cls: column.done ? "gz-board-col gz-board-done" : "gz-board-col", attr: { role: "group", "aria-label": columnTitle(p, column) } });

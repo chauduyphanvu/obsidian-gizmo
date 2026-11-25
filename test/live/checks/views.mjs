@@ -178,4 +178,43 @@ export default async function views(t) {
     expect(back.focus === `${month}-09` && !back.open, back);
     return `Tab → ${first}, → ${right}, ↓ ${down}, Enter opens it: ${r.list}; Escape comes back to ${back.focus}`;
   });
+
+  await check("a board card moves to the next column with ⇧→ and keeps the focus; two records written one after another are one place; a long table has a filter box", async () => {
+    const DESK = ["---", "app: Desk", "panels:",
+      "  - {view: board, title: Work, source: jobs, group: status, item: \"{title}\"}",
+      "  - {view: table, title: Open, source: jobs, where: {status: doing}, columns: [title]}",
+      "  - {view: list, title: Ideas, source: jobs, where: {status: idea}, item: \"{title}\"}",
+      "  - {view: line, title: Spent, source: spend, x: at, y: amount}",
+      "  - {view: table, title: All spend, source: spend, columns: [at, amount, note]}",
+      "---", ""].join("\n");
+    const jobs = [{ title: "Fence", status: "idea" }, { title: "Japan", status: "doing" }, { title: "Taxes", status: "done" }];
+    const spend = Array.from({ length: 25 }, (_, i) => ({ at: `2026-11-${String(i + 1).padStart(2, "0")}`, amount: i + 1, note: i % 5 ? "lunch" : "coffee" }));
+    const r = await run(`
+      await na.write("Apps/Desk data.md", "---\\n" + ${JSON.stringify(JSON.stringify({ jobs, spend }))} + "\\n---\\n");
+      await na.write("Apps/Desk.md", ${JSON.stringify(DESK)});
+      await na.sleep(800);
+      await na.open("Apps/Desk");
+      const el = na.view().contentEl;
+      const card = await na.until(() => [...el.querySelectorAll(".gz-board-card")].find((c) => c.textContent.includes("Fence")), 6000);
+      if (!card) return { missing: { type: na.view().getViewType(), text: el.textContent.slice(0, 400), fm: na.fm("Apps/Desk data.md") } };
+      card.focus();
+      return {
+        merged: [...el.querySelectorAll(".gz-merged-bar button")].map((b) => b.textContent),
+        filter: el.querySelector(".gz-filter-input")?.getAttribute("placeholder"),
+        focusable: card.getAttribute("tabindex") !== null,
+      };`);
+    expect(!r.missing, r);
+    await press("ArrowRight", 8);
+    const moved = await run(`
+      const el = na.view().contentEl;
+      await na.until(() => na.fm("Apps/Desk data.md")?.jobs?.find((x) => x.title === "Fence")?.status === "doing", 4000);
+      await na.sleep(500);
+      const a = document.activeElement;
+      return { status: na.fm("Apps/Desk data.md")?.jobs?.find((x) => x.title === "Fence")?.status, focus: a?.classList.contains("gz-board-card") ? a.textContent : a?.tagName,
+        column: a?.closest(".gz-board-col")?.querySelector(".gz-board-name")?.textContent, said: el.querySelector(".gz-notice-text")?.textContent };`);
+    await t.shot("board-moved.png");
+    expect(r.focusable && JSON.stringify(r.merged) === '["Open","Ideas"]' && r.filter === "Filter 25 rows", r);
+    expect(moved.status === "doing" && /Fence/.test(moved.focus ?? "") && moved.column === "doing" && moved.said === "Changed status from idea to doing", moved);
+    return `merged ${r.merged.join(" | ")}; ${r.filter}; ⇧→ moved Fence to ${moved.column}`;
+  });
 }

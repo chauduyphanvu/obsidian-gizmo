@@ -136,3 +136,34 @@ test("a selectable bar or slice is named by what it shows", () => {
   (p.querySelector("path.gz-slice") as HTMLElement).dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(picked, [{ weathercode: 0, count: 5 }]);
 });
+
+test("a table of more than 20 rows has a box that filters them by what their cells say; Escape clears it; 20 rows have none", () => {
+  const rows = Array.from({ length: 25 }, (_, i) => ({ name: i % 5 === 0 ? `Coffee ${i}` : `Lunch ${i}`, amount: i + 0.5 }));
+  const el = draw(table, { source: "s", columns: ["name", "amount"] }, rows);
+  document.body.appendChild(el);
+  const input = () => el.querySelector<HTMLInputElement>("input.gz-filter-input");
+  assert.ok(input());
+  assert.equal(input()!.getAttribute("placeholder"), "Filter 25 rows");
+  const names = () => [...el.querySelectorAll("tbody tr")].map((tr) => text_(tr.querySelector("td")));
+  assert.equal(names().length, 25);
+  input()!.focus();
+  input()!.value = "coffee";
+  input()!.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.deepEqual(names(), ["Coffee 0", "Coffee 5", "Coffee 10", "Coffee 15", "Coffee 20"]);
+  assert.equal(text_(el.querySelector(".gz-filter-count")), "5 of 25");
+  assert.equal(document.activeElement === input(), true, "typing goes on in the box drawn again");
+  input()!.value = "coffee 1";
+  input()!.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.deepEqual(names(), ["Coffee 10", "Coffee 15"], "every word, anywhere in the row");
+  input()!.value = "tea";
+  input()!.dispatchEvent(new window.Event("input", { bubbles: true }));
+  assert.equal(text_(el.querySelector(".gz-empty")), "No row says “tea”.");
+  const esc = Object.assign(new window.Event("keydown", { bubbles: true, cancelable: true }), { key: "Escape" });
+  input()!.dispatchEvent(esc);
+  assert.ok(esc.defaultPrevented);
+  assert.equal(names().length, 25);
+  assert.equal(input()!.value, "");
+  el.remove();
+
+  assert.equal(draw(table, { source: "s", columns: ["name"] }, rows.slice(0, 20)).querySelector(".gz-filter"), null);
+});

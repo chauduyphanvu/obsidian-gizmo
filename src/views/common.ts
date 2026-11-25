@@ -642,7 +642,8 @@ export function roving(root: Element, step?: Step): void {
   root.addEventListener("keydown", (e) => {
     const k = e as KeyboardEvent;
     const from = member(e.target);
-    if (!from || k.altKey || k.ctrlKey || k.metaKey) return;
+    // Shift with an arrow is an item's own (a card moving to the next column); so is a key it took.
+    if (!from || k.altKey || k.ctrlKey || k.metaKey || k.shiftKey || k.defaultPrevented) return;
     const items = itemsOf(group);
     const to = k.key === "Home" ? items[0] : k.key === "End" ? items.at(-1) : step?.(from, k.key, items);
     if (!to) return;
@@ -650,6 +651,12 @@ export function roving(root: Element, step?: Step): void {
     setStop(group, to);
     (to as HTMLElement).focus();
   });
+}
+
+/** What an element picks, as `selectable` made it: its panel, the panel's keys and its row; undefined for one that picks nothing. */
+export function pickOf(el: Element): { p: Panel; ctx: PanelCtx; row: Row; record: boolean } | undefined {
+  const pick = PICKS.get(el);
+  return pick && { p: pick.p, ctx: pick.ctx, row: pick.row, record: pick.record };
 }
 
 /** The items of the roving group `el` belongs to, in their order; none outside a group. */
