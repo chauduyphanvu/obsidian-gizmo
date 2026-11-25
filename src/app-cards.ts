@@ -4,6 +4,8 @@ import { VIEW_HINTS } from "./hints.ts";
 import { skeleton } from "./insert.ts";
 import type { Op } from "./ledger.ts";
 import { describePermission } from "./permissions.ts";
+import { askGroup, type AskGroup } from "./map.ts";
+import { svg } from "./views/chart.ts";
 import { isListName, savedFields, type AppSpec, type ComponentPreview } from "./spec.ts";
 import { basename } from "./store.ts";
 import { ROW_FIELDS } from "./kind.ts";
@@ -26,14 +28,35 @@ export interface CardApp {
   load(): void;
 }
 
-/** `covered`: how many more of its permissions the data policy grants, so they aren't asked for. */
+/** An icon for each kind of thing an app asks to do, drawn as Obsidian's (Lucide) are. */
+const ASK_ICONS: Record<AskGroup, string[]> = {
+  Reads: ["M2 3h6a4 4 0 0 1 4 4v14a3 3 0 0 0-3-3H2z", "M22 3h-6a4 4 0 0 0-4 4v14a3 3 0 0 1 3-3h7z"],
+  Fetches: ["M22 12a10 10 0 1 1-20 0 10 10 0 0 1 20 0z", "M2 12h20", "M12 2a15.3 15.3 0 0 1 4 10 15.3 15.3 0 0 1-4 10 15.3 15.3 0 0 1-4-10 15.3 15.3 0 0 1 4-10z"],
+  Sends: ["M22 2 11 13", "M22 2 15 22 11 13 2 9z"],
+  Changes: ["M17 3a2.85 2.83 0 1 1 4 4L7.5 20.5 2 22l1.5-5.5Z"],
+  Runs: ["M13 2 3 14h9l-1 8 10-12h-9l1-8z"],
+};
+
+function askIcon(parent: Element, perm: string): void {
+  const s = svg("svg", {
+    class: "gz-ask-icon", width: 16, height: 16, viewBox: "0 0 24 24", fill: "none", stroke: "currentColor",
+    "stroke-width": 2, "stroke-linecap": "round", "stroke-linejoin": "round", "aria-hidden": "true",
+  }, parent);
+  for (const d of ASK_ICONS[askGroup(perm)]) svg("path", { d }, s);
+}
+
+/**
+ * `covered`: how many more of its permissions the data policy grants, so they aren't asked for.
+ * Nothing of the app is read or drawn behind it until Allow, or a try on copies of its notes.
+ */
 export function renderPermissionPrompt(header: HTMLElement, wanted: string[], askers: Map<string, Set<string>>, app: CardApp, covered = 0): void {
-  const card = header.createDiv({ cls: "gz-card" });
+  const card = header.createDiv({ cls: "gz-card gz-permission" });
   card.createDiv({ cls: "gz-title", text: "This app needs your OK to:" });
-  const ul = card.createEl("ul");
+  const ul = card.createEl("ul", { cls: "gz-permission-list" });
   const before = new Set(app.env.granted(app.grantKey));
   for (const p of wanted) {
     const li = ul.createEl("li");
+    askIcon(li, p);
     if (before.size && !before.has(p)) li.createSpan({ cls: "gz-new", text: "New" });
     const who = [...(askers.get(p) ?? [])];
     const others = who.filter((path) => path !== app.appPath).map((path) => `[[${basename(path)}]]`);

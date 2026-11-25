@@ -637,6 +637,14 @@
 }
 .gizmo .gz-role-answer .gz-label.gz-ans-label { margin-top: 8px; font-size: 14px; color: var(--text-muted); }
 .gizmo .gz-role-answer.gz-fact .gz-label.gz-ans-label { margin-top: 6px; font-size: 12.5px; }
+/* A number among the facts reads as one line: its title, its figure, then its change or note. The
+   facts stand one under another beside the headline, as a short list. */
+.gizmo .gz-answer .gz-facts { flex-direction: column; gap: 12px; }
+.gizmo .gz-role-answer.gz-fact.gz-view-number { display: flex; flex-wrap: wrap; align-items: baseline; gap: 2px 10px; }
+.gizmo .gz-role-answer.gz-fact.gz-view-number .gz-title.gz-fact-title { margin: 0; font-size: 13px; }
+.gizmo .gz-role-answer.gz-fact.gz-view-number .gz-big.gz-fact-fig { font-size: 22px; }
+.gizmo .gz-role-answer.gz-fact.gz-view-number .gz-fact-note,
+.gizmo .gz-role-answer.gz-fact.gz-view-number .gz-label.gz-ans-label { margin: 0; }
 /* The meter: an ink fill on an 8 px track, room above it for the even-pace label. */
 .gizmo .gz-role-answer .gz-meter-track {
   position: relative;
@@ -1615,3 +1623,11 @@ button.gz-lens-toggle {
 .gizmo .gz-status.is-off { background: var(--text-faint); }
 .gizmo .gz-status.is-bad { background: var(--color-red); }
 .gizmo .gz-home-app .gz-status { margin-top: 0; }
+
+/* == permission: the card that asks for an app's OK (app-cards.ts) == */
+.gizmo .gz-permission { padding: var(--size-4-4) var(--size-4-5); }
+.gizmo .gz-permission > .gz-title { font-size: var(--font-ui-medium); margin-bottom: var(--size-4-2); }
+.gizmo .gz-permission-list { list-style: none; padding: 0; margin: 0 0 var(--size-4-3); display: flex; flex-direction: column; gap: 6px; }
+.gizmo .gz-permission-list li { display: flex; align-items: flex-start; gap: 10px; line-height: 1.4; }
+.gizmo .gz-ask-icon { flex: none; margin-top: 2px; color: var(--text-muted); }
+.gizmo .gz-permission-list .gz-new { order: 3; margin-left: auto; }
