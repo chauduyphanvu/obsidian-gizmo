@@ -77,6 +77,23 @@ test("the kind's own note shows the rows from a file to check; an app reading th
   assert.equal(kind.querySelector(".gz-header .gz-reconcile"), null);
 });
 
+test("the card writes each field as the kind's note shows it: in its unit, or in its format, in the kind's note and in view: reconcile", async () => {
+  const words = (root: Element) => [...card(root)!.querySelectorAll("li .gz-reconcile-row")].map(text);
+  const t = await vault({ ...SPEND, fields: { amount: "USD", memo: "text" } });
+  t.f.files.set("Apps/C.md", { fm: { app: "c", view: "reconcile", source: "[[Spend]]" } });
+  const kind = t.open(KIND);
+  const app = t.open("Apps/C.md");
+  await settle();
+  assert.deepEqual(words(kind), ["Nov 17 · $14.50 · CORNER CAFE", "Nov 18 · $82.10 · CITY POWER", "Nov 18 · $9.00 · NOT ME"]);
+  assert.equal(text(card(kind)!.querySelector("li .gz-muted")), " pairs with Nov 17 · $14.50 · lunch");
+  assert.deepEqual(words(app), words(kind));
+
+  const f = await vault({ ...SPEND, fields: { amount: { type: "number", format: "0.0" }, memo: "text" } });
+  const own = f.open(KIND);
+  await settle();
+  assert.deepEqual(words(own), ["Nov 17 · 14.5 · CORNER CAFE", "Nov 18 · 82.1 · CITY POWER", "Nov 18 · 9.0 · NOT ME"]);
+});
+
 test("each row to check has a status dot, what it says in one box and its buttons in another beside it, so a long row wraps in its box and the buttons stay at its right", async () => {
   const t = await vault();
   const kind = t.open(KIND);

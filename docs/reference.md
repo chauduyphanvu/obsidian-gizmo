@@ -277,7 +277,7 @@ fields:
   due: {type: date, default: today}
 ```
 
-A field type can be `text`, `number`, `date`, `checkbox`, a [unit](#units) such as `USD` or `kg`, or a list of choices. A field can also have a `label`, a `format` and a `default`. A form that takes its fields from a kind can name them in its own words with `labels`, for example `labels: {amount: Amount, note: Bill}`. These names win over the labels of the kind, in the form and in the preview of its line. Put `fields` in a `data` block, and all panels that use the block use the same fields. A table with `edit: true` then lets you edit those fields in its cells.
+A field type can be `text`, `number`, `date`, `checkbox`, a [unit](#units) such as `USD` or `kg`, or a list of choices. A field can also have a `label`, a `format` and a `default`. A form that takes its fields from a kind can name them in its own words with `labels`, for example `labels: {amount: Amount, note: Bill}`. These names win over the labels of the kind, in the form and in the preview of its line. The `fields` of a form are for that form only. Put `fields` in a `data` block, and all panels that use the block use the same fields, with their labels, units and formats. A table with `edit: true` then lets you edit those fields in its cells.
 
 ### Units
 
@@ -291,7 +291,7 @@ fields:
 ```
 
 - Gizmo knows the money codes (`USD`, `EUR`, `JPY` and the others of ISO 4217) and these measures: `kg`, `g`, `mg`, `mcg`, `lb`, `oz`, `km`, `m`, `cm`, `mm`, `mi`, `ft`, `in`, `l`, `ml`, `floz`, `cup`, `h`, `min`, `s`, `mmHg`, `kPa`, `kcal`, `kJ` and `bpm`. For a different unit, write `{type: number, unit: <word>}`.
-- The field shows in its unit, in each panel, with no `format`: `$1,284.50`, `¥1,500`, `81.2 kg`. A `format` on the field or on the panel has priority.
+- With no `format`, the field shows in its unit: `$1,284.50`, `¥1,500`, `81.2 kg`. It shows so in each panel that has the field: each panel that reads a kind or a `data` block with the field. The unit of a field in the `fields` of a form shows only in that form. A `format` on the field or on the panel has priority.
 - You can type a value in a different unit of the same measure. `180 lb` or `180lb` in a `kg` field saves 81.647. The row also keeps what you typed, in `<field>_as`, for example `weight_as: 180 lb`. When you change the number later, in a table, in its line or with **Keep**, Gizmo takes `<field>_as` out, because it no longer says what the row holds.
 - A number without a unit is in the unit of the field, as before.
 - In a sentence, `in` is a word: `move 5 in the park` saves 5 in the unit of the field. For inches, write `5in`, or end the line with `5 in`.
@@ -344,7 +344,7 @@ Push `/` to move to the first add line, when no field has focus. After a save, a
 | `save: <list>` | Saves a row into a list in the data note. |
 | `save: <notes block>`, `name` | Makes a note in the folder of that block. `template` gives its first text. |
 | `save: this` | Writes the form values into the properties of the note that shows the form. |
-| `row` | Sets the values that a save writes, for example `title: "{title}"`. A value that starts with `=` is a formula. |
+| `row` | Sets the values that a save writes, for example `title: "{title}"`. These values replace the values of the form: the row has only the fields that `row` names, the time, and the `default` of each field of the kind or `data` block that the form does not show. To keep a value that you type, name it: `note: "{note}"`. A value that starts with `=` is a formula. |
 | `append`, `line` | Adds a line to the end of a note, for example `line: "- [ ] {task}"`. `append` names the note by its path from the vault's root, plain or as a link: `Journal/Inbox` and `"[[Journal/Inbox]]"` are the same note. |
 | `notify` | Shows a notice. In the composed layout, a form or a button says it under itself. |
 | `open` | Opens a note. |
@@ -362,6 +362,7 @@ row:
   amount: "=round(yen / $this.rate, 2)"
 ```
 
+- The saved row has the fields of `row` and the time. Here, Gizmo saves `local` and `amount`, and not `yen`.
 - A formula reads the same values as text in braces: the fields of the form, or of the row of the button, and `date`, `time` and `at`.
 - It can also read `$this.<property>` and the names in `inputs` or `params`.
 - It uses the functions of `compute`, but not `prev`.
@@ -434,7 +435,7 @@ fields:
 | --- | --- |
 | `kind` | The name of the rows: letters, digits and `_`. With `fields`, this key makes the note a kind. |
 | `fields` | The fields of each row, written as the fields of a form. |
-| `shortcut` | A word that adds a row from the capture line: `spend 14.5 food lunch`. No app has to be open. |
+| `shortcut` | A word that adds a row from the capture line: `spend 14.5 food lunch`. No app has to be open, but open the kind note one time first. Until then, the line says "Open Spend once to allow it". |
 | `import` | Ways to read a file into the rows, each with a name. Refer to [Import rows from a file](#import-rows-from-a-file). |
 | `match` | How a row from a file, or a planned row, pairs with a row that you logged. Refer to [Match and reconcile](#match-and-reconcile). |
 | `expect` | Rules for the rows. Refer to [Expectations](#expectations). |
@@ -1007,7 +1008,7 @@ When the figure reads something that you can still set, the window has **Pull it
 
 For example, "The month lands at" shows 2,640 and you type 2,500. The line for the planned dinner shows `$160.00 → $20.00`. **Keep** sets that value: the row or the property changes as one change in the activity, with **Undo**. Nothing changes before **Keep**.
 
-Gizmo runs the steps of the panel again with each value that it tries. A sum or an average is solved in one step. For other figures, Gizmo looks for two values with the target between them and closes in. When no value gives the figure, for example for a count, the line says so. **Pull it to** shows only in the tab of the app as it is now, not in the past, in a what-if or in an embed, and only for rows that the app can change.
+Gizmo runs the steps of the panel again with each value that it tries. A sum or an average is solved in one step. For other figures, Gizmo looks for two values with the target between them and closes in. When no value gives the figure, for example for a count, the line says so. **Pull it to** shows only in the tab of the app as it is now, not in the past, in a what-if or in an embed, and only for rows that the app can change. An app that only reads a [kind](#kinds) cannot change the rows of the kind. There, **Pull it to** can set only the properties of the app note, and it does not show if the figure reads none. To pull a row of a kind, use **Explain** in the kind note, or in an app that saves to the kind.
 
 ## What if
 

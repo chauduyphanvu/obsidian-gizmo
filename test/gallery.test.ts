@@ -614,7 +614,7 @@ test("Budget, on its sample rows: the bank export in Inbox/Bank comes in by itse
   const card = () => titled(root, "Charges from the bank, not checked yet").querySelector(".gz-reconcile");
   assert.equal(text(card()!.querySelector(".gz-title")), "14 rows from a file to check");
   assert.equal(text(card()!.querySelector(".gz-reconcile-counts")), "10 pair with rows you logged4 only in the file2 only logged0 logged twice");
-  assert.deepEqual([...card()!.querySelectorAll("li .gz-reconcile-row")].slice(0, 2).map(text), ["Nov 2 · 1,450 · OAKWOOD APARTMENTS", "Nov 3 · 86.42 · GREENLEAF MARKET"]);
+  assert.deepEqual([...card()!.querySelectorAll("li .gz-reconcile-row")].slice(0, 2).map(text), ["Nov 2 · $1,450.00 · OAKWOOD APARTMENTS", "Nov 3 · $86.42 · GREENLEAF MARKET"]);
   assert.deepEqual(asked(t), [
     "14 rows from a file to check in Spend",
     "15.49 fun STREAMFLIX, planned Thu Nov 12, 09:00: did it happen?",

@@ -6,12 +6,11 @@ import type { AppWrites } from "./app-writes.ts";
 import type { Row } from "./data.ts";
 import type { AppFiles } from "./datalayer.ts";
 import { fileRowIds, importable } from "./import.ts";
-import { isPlainObject } from "./keys.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { reconcileOf, ruleOf } from "./match.ts";
 import { checklistList } from "./panel.ts";
 import { describePermission, permissionsOf } from "./permissions.ts";
-import { renderReconcile } from "./views/reconcile-card.ts";
+import { cardFields, renderReconcile } from "./views/reconcile-card.ts";
 import { kindFiles } from "./sources/kind.ts";
 import { readSpec, type AppSpec, type Panel } from "./spec.ts";
 import { basename, defaultDataPath } from "./store.ts";
@@ -172,7 +171,7 @@ export class AppChecks {
     const r = reconcileOf(state.lists.get(kind.name)?.rows ?? [], kind.match);
     const host = r && attentionSection(this.shell);
     if (!r || !host) return;
-    this.reconcileCard = renderReconcile(host, r, Object.keys(kind.fields), {
+    this.reconcileCard = renderReconcile(host, r, cardFields(this.env.frontmatter(this.appPath)?.fields, this.env.now()), {
       accept: (open) => this.writes.settleRows(kind.name, open, false, kind.match),
       dismiss: (rows) => this.writes.settleRows(kind.name, rows.map((row) => ({ row })), true),
     }, this);
@@ -195,7 +194,7 @@ export class AppChecks {
     return {
       card,
       ...(waiting && { waiting }),
-      fields: Object.keys(isPlainObject(kindFm?.fields) ? kindFm.fields : {}),
+      fields: cardFields(kindFm?.fields, env.now()),
       accept: (open) => this.writes.settleRows(ref.name, open, false, rule, p),
       dismiss: (rows) => this.writes.settleRows(ref.name, rows.map((row) => ({ row })), true, {}, p),
     };

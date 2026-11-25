@@ -1,5 +1,7 @@
 import { handler } from "../handler.ts";
 import { formatValue, type Row } from "../data.ts";
+import { formatWith } from "../format.ts";
+import { isPlainObject, readFields } from "../keys.ts";
 import { rowIdOf } from "../ledger-store.ts";
 import type { Reconcile } from "../match.ts";
 import { wallTime } from "../time.ts";
@@ -10,12 +12,33 @@ const RECONCILE_ROWS = 20;
 
 const MONTHS = ["Jan", "Feb", "Mar", "Apr", "May", "Jun", "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"];
 
-/** A kind's row in a few words: its day, then what each field holds, a number to the cent, as a bank's statement says it. */
-function rowWords(row: Row, fields: readonly string[]): string {
+/** A kind's fields as the card writes them: their names in order, and each value as the kind's note shows it. */
+export interface CardFields {
+  names: readonly string[];
+  show(field: string, value: unknown): string;
+}
+
+/**
+ * The fields of a kind note for the card: a field with a unit or a `format` shows in it, as in the
+ * kind's other panels; any other number to the cent, as a bank's statement says it.
+ */
+export function cardFields(written: unknown, now: Date): CardFields {
+  const fields = isPlainObject(written) ? written : {};
+  const { info } = readFields(fields);
+  return {
+    names: Object.keys(fields),
+    show: (field, v) => {
+      const format = info[field]?.format;
+      return format !== undefined ? formatWith(v, format, now) : formatValue(v, typeof v === "number" && !Number.isInteger(v) ? 2 : undefined);
+    },
+  };
+}
+
+/** A kind's row in a few words: its day, then what each field holds. */
+function rowWords(row: Row, fields: CardFields): string {
   const t = wallTime(row.at);
   const day = t === undefined ? "" : `${MONTHS[new Date(t).getMonth()]} ${new Date(t).getDate()}`;
-  const values = fields.map((f) => row[f]).filter((v) => v !== undefined && v !== null && v !== "")
-    .map((v) => formatValue(v, typeof v === "number" && !Number.isInteger(v) ? 2 : undefined));
+  const values = fields.names.filter((f) => row[f] !== undefined && row[f] !== null && row[f] !== "").map((f) => fields.show(f, row[f]));
   return [day, ...values].filter(Boolean).join(" · ");
 }
 
@@ -33,7 +56,7 @@ export interface ReconcileActs {
  * selects, ⇧Enter accepts the selection, else every row. `home` keeps the focus and the selection
  * while the card is drawn again.
  */
-export function renderReconcile(host: HTMLElement, r: Reconcile, fields: readonly string[], act: ReconcileActs, home: object = host): HTMLElement {
+export function renderReconcile(host: HTMLElement, r: Reconcile, fields: CardFields, act: ReconcileActs, home: object = host): HTMLElement {
   const card = host.createDiv({ cls: "gz-card gz-hand-edit gz-reconcile" });
   const n = r.open.length;
   card.createDiv({ cls: "gz-title", text: `${n} ${n === 1 ? "row" : "rows"} from a file to check` });

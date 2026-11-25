@@ -2,7 +2,7 @@ import type { Placement } from "../compose.ts";
 import type { Row } from "../data.ts";
 import type { Trace } from "../pipeline.ts";
 import type { Reconcile } from "../match.ts";
-import type { ReconcileActs } from "./reconcile-card.ts";
+import type { CardFields, ReconcileActs } from "./reconcile-card.ts";
 import type { Panel } from "../spec.ts";
 import { board } from "./board.ts";
 import { calendar } from "./calendar.ts";
@@ -126,7 +126,7 @@ export interface PanelCtx {
    * kind's fields, and what Accept and Not mine do there. Undefined
    * where nothing may be changed: the past, a what-if, a try.
    */
-  reconcile?(p: Panel): Promise<({ card?: Reconcile; fields: string[]; waiting?: string } & ReconcileActs) | undefined>;
+  reconcile?(p: Panel): Promise<({ card?: Reconcile; fields: CardFields; waiting?: string } & ReconcileActs) | undefined>;
   /**
    * In the app's own tab, where the rhythm a verb button answers stands, given now and again as its
    * rows change (undefined when the app keeps none); returns what stops it.
