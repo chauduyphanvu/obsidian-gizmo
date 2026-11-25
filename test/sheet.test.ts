@@ -224,7 +224,8 @@ test("a record's row actions and Open are the sheet's last part", async () => {
   assert.deepEqual([...actions.children].map((a) => `${a.tagName.toLowerCase()} ${text(a)}`), ["button Done", "a Open"]);
   click(actions.querySelector("button")!);
   await settle();
-  assert.deepEqual(s.notices, ["Done with Running"]);
+  assert.deepEqual(s.notices, [], "said under the list, not as a notice");
+  assert.equal(text(s.panel("Inbox")!.nextElementSibling?.querySelector(".gz-notice-text")), "Done with Running");
   click(actions.querySelector("a")!);
   assert.deepEqual(s.opened, ["Decisions/Running.md"]);
 });

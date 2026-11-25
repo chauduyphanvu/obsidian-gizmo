@@ -245,7 +245,7 @@ export function fakeEnv(notes: Notes = {}, responses: Record<string, unknown> = 
     showSourceAt: (line) => { source.shownAt.push(line); },
     sourceLines: async () => source.lines,
     copy: (text) => { copied.push(text); },
-    log: (entry) => void activity.add(entry),
+    log: (entry) => activity.add(entry),
     now: () => new Date(2026, 10, 18, 12, 0),
     leftAlone: (key) => Object.hasOwn(leftAlone, key),
     leaveAlone: (key) => { leftAlone[key] = true; },

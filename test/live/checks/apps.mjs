@@ -102,7 +102,8 @@ export default async function apps(t) {
       const mark = na.notices.length;
       na.button("I went for a walk", now).click();
       const walk = await na.until(() => na.fm("Apps/Weather data.md")?.walks?.[0], 3000);
-      const notices = await na.noticesSince(mark, "Walk logged");
+      // Said under the panel whose row it was, with Undo, not as a notice.
+      const notices = [await na.until(() => el.querySelector(".gz-notice-text")?.textContent, 3000)];
       await na.sleep(600);
       const daily = await na.read("Daily.md");
       const row = panel("My walks").querySelector("tbody tr");
@@ -250,7 +251,8 @@ export default async function apps(t) {
       const mark = na.notices.length;
       na.button("I sent it", item).click();
       const saved = await na.until(() => na.fm("Apps/Currency data.md")?.transfers?.[0], 3000);
-      const notices = await na.noticesSince(mark, "Logged");
+      // Said under the panel whose row it was, with Undo, not as a notice.
+      const notices = [await na.until(() => el.querySelector(".gz-notice-text")?.textContent, 3000)];
       await na.sleep(600);
       const row = panel("What I sent").querySelector("tbody tr");
       const cells = [...row.querySelectorAll("td")].slice(0, 6).map((td) => td.textContent);

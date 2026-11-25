@@ -275,11 +275,12 @@ test("a row's Add button saves it as a note, and a notes panel on that folder sh
   await settle();
   assert.equal(buttons[1].disabled, false);
   assert.deepEqual(f.files.get("Books/Emma.md"), { fm: { title: "Emma", author: "Austen", at: savedAt("2026-11-18T12:00") }, body: "" });
-  assert.deepEqual(notices, ["Added Emma"]);
+  assert.deepEqual(notices, [], "said under the list in the app's tab, not as a notice");
+  assert.equal(root.querySelector(".gz-notice-text")?.textContent, "Added Emma");
   assert.deepEqual([...root.querySelectorAll(".gz-view-table tbody tr")].map((tr) => text(tr)), ["MiddlemarchEliot", "EmmaAusten"]);
   buttons[1].click();
   await settle();
-  assert.deepEqual(notices, ["Added Emma", "“Emma” already exists"]);
+  assert.deepEqual(notices, ["“Emma” already exists"], "a refusal is still a notice");
 });
 
 test("save can't name a block that reads a base, tasks, a file or the note itself: nothing would show what it saved", () => {

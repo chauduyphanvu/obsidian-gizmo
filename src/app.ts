@@ -40,6 +40,7 @@ import { compose, type Placement, type Scope } from "./compose.ts";
 import { Sheet, type DrawIcon } from "./sheet.ts";
 import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
+import { sayBelow } from "./views/addline.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./alert-keys.ts";
 import { checklistList } from "./panel.ts";
@@ -293,6 +294,7 @@ export class AppController {
     this.writes = new AppWrites(env, {
       appPath, hostPath: this.hostPath, dataPath: () => this.dataPath, checklistName: (key) => this.checklistName(key), expect: () => this.spec?.expect ?? [],
       writesKind: (path) => this.wanted.includes(`kind-write:${path}`),
+      said: (at, text, entry) => this.sayAfterWrite(at, text, entry),
     });
     this.timers = new Timers(this.memory.timers, {
       panel: (key) => this.mounted.get(key),
@@ -1291,6 +1293,18 @@ export class AppController {
   }
 
   /** A panel's edits go through only while it is drawn and loaded; a changed row reloads it. */
+  /**
+   * Says what a write did under the panel that made it (a panel, or the list a checklist ticks), else under the app's
+   * header, with Undo while the log keeps it: only in an app open in its own tab, showing now.
+   */
+  private sayAfterWrite(at: Panel | string | undefined, text: string, entry: string | undefined): void {
+    if (this.hosting || this.env.preview || this.env.ahead || this.env.data.at !== undefined) return;
+    const all = [...this.mounted.values()];
+    const m = typeof at === "string" ? all.find((x) => x.p.view === "checklist" && checklistList(x.p) === at) : at && all.find((x) => x.p === at);
+    const anchor = m && m.el.isConnected ? m.el : this.shell.querySelector<HTMLElement>(":scope > .gz-header");
+    if (anchor) sayBelow(anchor, this.ctx as PanelCtx, text, entry);
+  }
+
   private editRow(id: string, row: Row, field: string, value: unknown): Promise<void> {
     const m = this.mounted.get(id);
     if (!m || m.idle) return Promise.resolve();

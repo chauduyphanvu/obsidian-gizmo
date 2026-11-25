@@ -170,6 +170,32 @@ export default async function interaction(t) {
     return "added, ticked, Done 1";
   });
 
+  await check("Chores: ticking a row says so under the table with Undo, and ⌘Z puts it back", async () => {
+    const r = await run(`
+      await na.open("Apps/Chores");
+      const el = na.view().contentEl;
+      const form = el.querySelector(".gz-view-form");
+      na.fill(form.querySelector('input[type="text"]'), "Water the plants");
+      na.choose(form.querySelector("select"), "garden");
+      na.button("Add", form).click();
+      const todo = () => [...el.querySelectorAll(".gz-view-table tbody tr")];
+      await na.until(() => todo().some((tr) => tr.textContent.includes("Water the plants")), 3000);
+      todo().find((tr) => tr.textContent.includes("Water the plants")).querySelector('input[type="checkbox"]').click();
+      const said = await na.until(() => el.querySelector(".gz-view-table ~ .gz-addline-under .gz-notice-text, .gz-panel + .gz-addline-under .gz-notice-text")?.textContent, 3000);
+      document.activeElement?.blur();
+      return { said, undo: !!el.querySelector(".gz-addline-under button.gz-undo") };`);
+    expect(r.said === "Changed done from false to true" && r.undo, r);
+    await t.press("z", 4);
+    const back = await run(`
+      const el = na.view().contentEl;
+      const todo = () => [...el.querySelectorAll(".gz-view-table tbody tr")];
+      await na.until(() => todo().some((tr) => tr.textContent.includes("Water the plants")), 3000);
+      await na.sleep(300);
+      return { listed: todo().some((tr) => tr.textContent.includes("Water the plants")), said: el.querySelector(".gz-notice-text")?.textContent, saved: na.fm("Apps/Chores data.md")?.chores?.find((c) => c.task === "Water the plants") };`);
+    expect(back.listed && back.saved?.done === false && back.said === "Undone", back);
+    return "said with Undo; ⌘Z put it back";
+  });
+
   await check("Planet Earth: switching the period loads that period's .geojson feed", async () => {
     const r = await run(`
       await na.open("Apps/Planet Earth");
@@ -204,7 +230,8 @@ export default async function interaction(t) {
       const mark = na.notices.length;
       na.button("Follow", row).click();
       const saved = await na.until(() => na.fm("Apps/Planet Earth data.md")?.following?.at(-1), 3000);
-      const notices = await na.noticesSince(mark, "Following");
+      // Said under the panel whose row it was, with Undo, not as a notice.
+      const notices = [await na.until(() => el.querySelector(".gz-notice-text")?.textContent, 3000)];
       await na.sleep(600);
       const followed = [...panel("Quakes I'm following").querySelectorAll("tbody tr")].find((tr) => tr.querySelector("td").textContent === saved?.quake);
       na.fill(followed.querySelector("input"), "Near family");

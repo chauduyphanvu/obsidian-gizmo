@@ -11,6 +11,8 @@ import { vaultNote } from "./support/yaml.ts";
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
+/** What the app last said in place, under the panel that did it, with Undo. */
+const saidIn = (root: Element) => text(root.querySelector(".gz-notice-text"));
 /** A panel that reads a pick nobody made: in the composed layout, empty and out of sight until there is one. */
 const waitsForPick = (el: Element) => el.classList.contains("gz-collapsed") && el.childNodes.length === 0;
 const key = (el: Element, name: string) => {
@@ -98,7 +100,8 @@ test("Library: search Open Library, read about a pick, add it to Books, set its 
   await settle();
   (items[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
-  assert.deepEqual(notices, ["“Dune” already exists", "Added Dune Messiah to Books"]);
+  assert.deepEqual(notices, ["“Dune” already exists"]);
+  assert.equal(saidIn(root), "Added Dune Messiah to Books");
   assert.deepEqual(f.files.get("Books/Dune Messiah.md")!.fm,
     { title: "Dune Messiah", author: "Frank Herbert", year: 1969, status: "to read", at: savedAt("2026-11-18T12:00") });
   const rows = [...shelf.querySelectorAll("tbody tr")];
@@ -210,12 +213,14 @@ test("Reading list: save an article from a feed as a note, then tick it off when
   const save = (li: Element) => (li.querySelector("button.gz-row-action") as HTMLButtonElement).click();
   save(hn.querySelectorAll("li")[1]);
   await settle();
+  assert.equal(saidIn(root), "Saved Show HN: A tiny & fast parser to Reading");
   save(xkcd.querySelector("li")!);
   await settle();
+  assert.equal(saidIn(root), "Saved Voyager Crash to Reading");
   // Saving the same article again is refused rather than overwriting the note.
   save(hn.querySelectorAll("li")[1]);
   await settle();
-  assert.deepEqual(notices, ["Saved Show HN: A tiny & fast parser to Reading", "Saved Voyager Crash to Reading", "“Show HN A tiny & fast parser” already exists"]);
+  assert.deepEqual(notices, ["“Show HN A tiny & fast parser” already exists"]);
   assert.deepEqual(f.files.get("Reading/Show HN A tiny & fast parser.md")!.fm,
     { link: "https://example.com/parser", date: "2026-11-18T18:05", at: savedAt("2026-11-18T12:00") });
   assert.deepEqual(f.files.get("Reading/Voyager Crash.md")!.fm, { link: "https://xkcd.com/3326/", date: "2026-11-17T19:00", at: savedAt("2026-11-18T12:00") });
@@ -245,7 +250,8 @@ test("Week: the next seven days from a calendar file; log an item as done, or so
 
   (agenda.querySelectorAll("li:not(.gz-ledger-group)")[1].querySelector("button.gz-row-action") as HTMLButtonElement).click();
   await settle();
-  assert.deepEqual(notices, ["Logged Swim practice"]);
+  assert.deepEqual(notices, []);
+  assert.equal(saidIn(root), "Logged Swim practice");
   assert.deepEqual(f.files.get("Apps/Week data.md")!.fm!.done, [{ what: "Swim practice", planned: "2026-11-24T17:30", at: savedAt("2026-11-18T12:00") }]);
 
   (form.querySelector("input") as HTMLInputElement).value = "Called the plumber";
@@ -848,7 +854,8 @@ test("Currency: today's rate told when it reaches mine, an amount converted, a t
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Currency data.md")!.fm!.transfers,
     [{ date: "2026-11-18", sent: 250, from: "USD", got: 240, to: "EUR", rate: 0.96, at: savedAt("2026-11-18T12:00") }]);
-  assert.deepEqual(t.notices.slice(1), ["Logged 250 USD → 240 EUR"]);
+  assert.deepEqual(t.notices.slice(1), []);
+  assert.equal(saidIn(root), "Logged 250 USD → 240 EUR");
   const row = sent.querySelector("tbody tr")!;
   assert.deepEqual([...row.querySelectorAll("td")].slice(0, 6).map((td) => text(td)), ["2026-11-18", "250.00", "USD", "240.00", "EUR", "0.9600"]);
   const note = row.querySelector("input") as HTMLInputElement;
@@ -914,7 +921,8 @@ test("Weather: now, the next hours and the week in words, told when rain is like
   await settle();
   assert.deepEqual(t.f.files.get("Apps/Weather data.md")!.fm!.walks, [{ sky: "overcast", temp: 8.4, feels: 6.2, wind: 12.25, at: savedAt("2026-11-18T12:00") }]);
   assert.deepEqual(lines, ["Daily.md: - Walked in London: overcast, 8.4°C, feels like 6.2°C, wind 12.25 km/h"]);
-  assert.deepEqual(t.notices.slice(1), ["Walk logged"]);
+  assert.deepEqual(t.notices.slice(1), []);
+  assert.equal(saidIn(root), "Walk logged");
   const row = walks.querySelector("tbody tr")!;
   assert.deepEqual(cells(row).slice(0, 4), ["just now", "overcast", "8.4", "6.2"]);
   const note = row.querySelector("input") as HTMLInputElement;
@@ -1005,7 +1013,8 @@ test("Planet Earth: told of a strong quake, pick one to see where and how deep w
   assert.deepEqual(t.f.files.get("Apps/Planet Earth data.md")!.fm!.following, [{
     quake: "M 7.1 - 120 km S of Hachijo-jima, Japan", when: at(17, 9), page: "https://earthquake.usgs.gov/earthquakes/eventpage/us7001", at: savedAt("2026-11-18T12:00"),
   }]);
-  assert.deepEqual(t.notices.slice(1), ["Following 120 km S of Hachijo-jima, Japan"]);
+  assert.deepEqual(t.notices.slice(1), []);
+  assert.equal(saidIn(root), "Following 120 km S of Hachijo-jima, Japan");
   const followed = panel("Quakes I'm following").querySelector("tbody tr")!;
   assert.equal(text(followed.querySelector("td")), "M 7.1 - 120 km S of Hachijo-jima, Japan");
   assert.equal(followed.querySelector("a")!.getAttribute("href"), "https://earthquake.usgs.gov/earthquakes/eventpage/us7001");

@@ -162,6 +162,8 @@ const KEYS = {
   ArrowUp: { key: "ArrowUp", code: "ArrowUp", vk: 38 },
   ArrowRight: { key: "ArrowRight", code: "ArrowRight", vk: 39 },
   ArrowDown: { key: "ArrowDown", code: "ArrowDown", vk: 40 },
+  // Pressed with Meta (4) on a Mac, so no text.
+  z: { key: "z", code: "KeyZ", vk: 90 },
 };
 
 class Skip extends Error {}

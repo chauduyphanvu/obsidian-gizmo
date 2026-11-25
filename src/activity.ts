@@ -492,6 +492,17 @@ export function describeChange(c: Change): string {
   return kindOf(c).done(c, basename(c.path));
 }
 
+/**
+ * A change as said under the panel that made it, where the list and note it is in go without
+ * saying: "Changed status from idea to doing" rather than the log's "… in projects in Board".
+ */
+export function sayChange(c: Change): string {
+  if (c.kind === "row-edited") return `Changed ${c.field} from ${shown(c.from)} to ${shown(c.to)}`;
+  if (c.kind === "row-added") return rowWords(c.row) ? `Saved ${rowWords(c.row)}` : "Saved a row";
+  if (c.kind === "row-deleted") return rowWords(c.row) ? `Deleted ${rowWords(c.row)}` : "Deleted a row";
+  return describeChange(c);
+}
+
 /** A change a run would make, worded as what it is about to do (a dry run's list). */
 export function describeAhead(c: Change): string {
   return kindOf(c).ahead(c, basename(c.path));

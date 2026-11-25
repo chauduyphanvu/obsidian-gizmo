@@ -24,6 +24,8 @@ type Notes = Parameters<typeof fakeEnv>[0];
 
 const settle = async () => { for (let i = 0; i < 8; i++) await new Promise((r) => setTimeout(r, 10)); };
 const text = (el: Element | null | undefined) => el?.textContent ?? "";
+/** What the app last said in place, under the panel that did it, with Undo. */
+const saidIn = (root: Element) => text(root.querySelector(".gz-notice-text"));
 const event = (el: Element, type: string) => el.dispatchEvent(new window.Event(type, { bubbles: true, cancelable: true }));
 const click = (el: Element) => event(el, "click");
 const change = (el: Element) => event(el, "change");
@@ -627,6 +629,8 @@ test("Budget, on its sample rows: the bank export in Inbox/Bank comes in by itse
   const [entry] = await t.activity.list(path);
   // 10 pair; the 4 that pair with nothing each become logged and keep their import's id, and 2 of them settle a bill.
   assert.deepEqual([entry.what, entry.changes.length], ["Accepted 14 rows from a file", 20]);
+  // Said under the card, with one Undo for all of it.
+  assert.equal(saidIn(root), "Accepted 14 rows from a file");
   const rows = await kindRows(t, "spend");
   const of = (note: string) => rows.filter((r) => r.note === note && String(r.at).startsWith("2026-11")).map((r) => [r.line ?? "logged", r.amount, typeof r.matched]);
   assert.deepEqual(of("METRO WATER"), [["planned", 38.2, "string"], ["logged", 38.2, "undefined"]]);
@@ -1045,7 +1049,8 @@ test("Book finder: search, read about a pick, add it to Books, then set its stat
 
   for (const li of items) click(li.querySelector("button.gz-row-action")!);
   await settle();
-  assert.deepEqual(notices, ["Added Dune to Books", "Added Piranesi to Books"]);
+  assert.deepEqual(notices, [], "each is said under the results, the latest showing");
+  assert.equal(saidIn(root), "Added Piranesi to Books");
   assert.deepEqual(f.files.get("Books/Dune.md")!.fm,
     { title: "Dune", author: "Frank Herbert", year: 1965, pages: 412, cover: 11481354, status: "to read", at: savedAt("2026-11-18T12:00") });
   // Saving the same book twice is refused, not overwritten.
@@ -1665,6 +1670,7 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   click(root.querySelector("button.gz-button")!);
   await settle();
   assert.deepEqual((data().sightings as { at: string }[]).map((s) => s.at), [savedAt("2026-11-18T12:00")]);
+  assert.equal(said(root.querySelector(".gz-view-button")!), "Sighting saved");
   // A lone sighting reads as a day and a time, not its saved stamp.
   const when = cells(sightings)[0][0];
   assert.doesNotMatch(when, /\d{4}-\d\d-\d\dT/);
@@ -1672,10 +1678,11 @@ test("Aurora watch: told when Kp is high now or forecast, an hourly record, and 
   type(sightings.querySelector("tbody input.gz-edit")!, "green arc to the north");
   await settle();
   assert.deepEqual(data().sightings, [{ at: savedAt("2026-11-18T12:00"), note: "green arc to the north" }]);
+  // The edit is said under the table now; the app says one thing at a time.
+  assert.match(saidIn(root), /^Changed note from .* to green arc to the north$/);
   await t.bg.runUri({ app: "Aurora watch", do: "saw-aurora" });
   await settle();
   assert.equal((data().sightings as unknown[]).length, 2);
-  assert.equal(said(root.querySelector(".gz-view-button")!), "Sighting saved");
   assert.deepEqual(t.notices.slice(2), ["Sighting saved"]);
 });
 
@@ -1704,13 +1711,15 @@ test("Read later: save an article from a feed as a note, then tick it off when r
 
   click(bbc.querySelectorAll("li")[1].querySelector("button.gz-row-action")!);
   await settle();
+  assert.equal(saidIn(root), "Saved A robot learns to fold to Reading");
   t.env.now = () => new Date(2026, 10, 18, 12, 5);
   click(npr.querySelector("li button.gz-row-action")!);
   await settle();
+  assert.equal(saidIn(root), "Saved Markets close higher to Reading");
   // Saving the same article again is refused rather than overwriting its note.
   click(bbc.querySelectorAll("li")[1].querySelector("button.gz-row-action")!);
   await settle();
-  assert.deepEqual(notices, ["Saved A robot learns to fold to Reading", "Saved Markets close higher to Reading", "“A robot learns to fold” already exists"]);
+  assert.deepEqual(notices, ["“A robot learns to fold” already exists"]);
   assert.deepEqual(f.files.get("Reading/A robot learns to fold.md")!.fm,
     { link: "https://www.bbc.co.uk/news/2", date: "2026-11-18T08:00", via: "BBC technology", at: savedAt("2026-11-18T12:00") });
   assert.equal(f.files.get("Reading/Markets close higher.md")!.fm!.via, "NPR news");

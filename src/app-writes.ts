@@ -1,6 +1,6 @@
 import { refusal, type Expectation } from "./expect.ts";
 import { actionDepsOf, runActions } from "./actions.ts";
-import type { Change } from "./activity.ts";
+import { sayChange, type Change } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import type { Row } from "./data.ts";
 import { editErrors, editableSource } from "./edit.ts";
@@ -35,6 +35,11 @@ export interface WriteSite {
   expect(): readonly Expectation[];
   /** Whether the app asks to change the rows of the kind with this note (`kind-write`); without this, only the kind's own note does. */
   writesKind?(kindPath: string): boolean;
+  /**
+   * Says what a write did where it was made, with Undo when the log kept it: under the panel (a
+   * panel, or the list a checklist ticks), else under the app's header. Only an app open in its own tab says.
+   */
+  readonly said?: (at: Panel | string | undefined, text: string, entry: string | undefined) => void;
 }
 
 /** What bringing rows along with a rename did, as the activity log says it. */
@@ -81,7 +86,7 @@ export class AppWrites {
       const done = ticked ?? (await store.untick(key, item));
       if (!done) return;
       const event = done.event;
-      void this.log(this.site.checklistName(key), [{ kind: "checklist", path: store.dataPath, list: key, item, checked: !!ticked, ...(event && { event }) }]);
+      void this.logSaying(key, this.site.checklistName(key), [{ kind: "checklist", path: store.dataPath, list: key, item, checked: !!ticked, ...(event && { event }) }]);
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
@@ -91,7 +96,7 @@ export class AppWrites {
     const store = this.store();
     try {
       const { items, event } = await store.clear(key);
-      if (items.length) void this.log(this.site.checklistName(key), [{ kind: "cleared", path: store.dataPath, list: key, items, ...(event && { event }) }]);
+      if (items.length) void this.logSaying(key, this.site.checklistName(key), [{ kind: "cleared", path: store.dataPath, list: key, items, ...(event && { event }) }]);
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
@@ -156,19 +161,32 @@ export class AppWrites {
     return kept ? kept.then((e) => e?.id, () => undefined) : undefined;
   }
 
+  /**
+   * Logs a change made where nothing else says it (an edited cell, a tick, a moved card, rows
+   * accepted from a file) and says it where it was made, with Undo; `text` is what is said, by
+   * default the first change as the log words it.
+   */
+  private logSaying(at: Panel | string | undefined, what: string, changes: Change[], text?: string): Promise<string | undefined> | undefined {
+    const kept = this.log(what, changes);
+    const said = this.site.said;
+    if (kept && said) void kept.then((entry) => said(at, text ?? sayChange(changes[0]), entry));
+    return kept;
+  }
+
   /** Sets one property of an existing note and keeps what it was; false when the note is gone. */
-  private async setField(path: string, field: string, value: unknown, what: string): Promise<boolean> {
-    return (await this.writeField(path, field, value, what)).written;
+  private async setField(path: string, field: string, value: unknown, what: string, at?: Panel): Promise<boolean> {
+    return (await this.writeField(path, field, value, what, at)).written;
   }
 
   /** Sets one property and keeps what it was; says whether the note was there, and the log's entry for Undo. */
-  private async writeField(path: string, field: string, value: unknown, what: string): Promise<{ written: boolean; entry?: string }> {
+  private async writeField(path: string, field: string, value: unknown, what: string, at?: Panel): Promise<{ written: boolean; entry?: string }> {
     let change: Change | undefined;
     const written = await this.env.updateFrontmatter(path, (fm) => {
       change = { kind: "property", path, field, from: fm[field], to: value, had: Object.hasOwn(fm, field) };
       fm[field] = value;
     });
-    return { written, entry: written && change ? await this.log(what, [change]) : undefined };
+    if (!written || !change) return { written };
+    return { written, entry: await (at ? this.logSaying(at, what, [change]) : this.log(what, [change])) };
   }
 
   /**
@@ -197,7 +215,7 @@ export class AppWrites {
     if (target?.kind !== "this" || !Object.hasOwn(m.p.fields ?? {}, field)) return;
     if (target.scope && !this.env.data.notes(target.scope).some((r) => r.path === this.site.hostPath)) return;
     try {
-      if (!(await this.setField(this.site.hostPath, field, value, m.p.title ?? m.p.label ?? field))) this.env.notify(GONE);
+      if (!(await this.setField(this.site.hostPath, field, value, m.p.title ?? m.p.label ?? field, m.p))) this.env.notify(GONE);
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
@@ -217,7 +235,7 @@ export class AppWrites {
         const path = row.path;
         const scope = sourceDef(m.p.source!).id === "base" ? this.env.data.allNotes() : this.env.data.notes(m.p.from ?? "");
         if (typeof path !== "string" || !scope.some((r) => r.path === path)) return;
-        if (!(await this.setField(path, field, value, m.p.title ?? field))) this.env.notify(GONE);
+        if (!(await this.setField(path, field, value, m.p.title ?? field, m.p))) this.env.notify(GONE);
         return;
       }
       const symbols = row as Record<symbol, unknown>;
@@ -250,7 +268,7 @@ export class AppWrites {
       if (plans && lineOf(row) === "logged") return await this.planRow(m, store, name, row, value, reload);
       const r = await this.setRowField(m.p, store, name, { id, index: typeof index === "number" ? index : undefined, shown: row }, row, field, value);
       if (!("refused" in r)) {
-        void this.log(m.p.title ?? field, r);
+        void this.logSaying(m.p, m.p.title ?? field, r);
         return;
       }
       this.env.notify(r.refused === "gone" ? "That row is gone; reload" : "That row has changed; reload");
@@ -306,7 +324,7 @@ export class AppWrites {
       reload();
       return;
     }
-    void this.log(m.p.title ?? "at", edits.map((e, i): Change => {
+    void this.logSaying(m.p, m.p.title ?? "at", edits.map((e, i): Change => {
       const set = e as Extract<Edit, { op: "set" }>;
       return { kind: "row-edited", path: store.dataPath, list: name, row: done[i].row, field: set.field, from: row[set.field], to: set.value, ...(done[i].event && { event: done[i].event }) };
     }));
@@ -404,7 +422,7 @@ export class AppWrites {
         return { kind: "row-edited", path, list: e.list, row, field: e.field, from: e.ref.shown[e.field], to: e.value, ...kept };
       });
       const n = edits.length / (r.kind === "choice" ? 1 : 2);
-      void this.log(renameDone(r, n), changes);
+      void this.logSaying(undefined, renameDone(r, n), changes, renameDone(r, n));
     } catch (e) {
       this.env.notify(`Couldn't move them: ${(e as Error).message}`);
     }
@@ -452,7 +470,8 @@ export class AppWrites {
         return { kind: "row-edited", path: store.dataPath, list, row: done[i].row, field: set.field, from: set.ref.shown[set.field], to: set.value, ...(done[i].event && { event: done[i].event }) };
       });
       const n = rows.length;
-      void this.log(`${dismiss ? "Set aside" : "Accepted"} ${n === 1 ? "a row" : `${n} rows`} from a file`, changes);
+      const what = `${dismiss ? "Set aside" : "Accepted"} ${n === 1 ? "a row" : `${n} rows`} from a file`;
+      void this.logSaying(panel, what, changes, what);
     } catch (e) {
       this.env.notify(`Couldn't save: ${(e as Error).message}`);
     }
@@ -464,7 +483,7 @@ export class AppWrites {
     if (typeof path !== "string" || typeof line !== "number" || typeof text !== "string" || typeof done !== "boolean") return;
     if (!this.env.data.notes(m.p.from ?? "").some((r) => r.path === path)) return;
     if (await this.env.setTaskDone(path, line, text, done)) {
-      void this.log(m.p.title ?? "tasks", [{ kind: "task", path, line, text, done }]);
+      void this.logSaying(m.p, m.p.title ?? "tasks", [{ kind: "task", path, line, text, done }]);
       return;
     }
     this.env.notify("That task has changed; reload");
@@ -480,21 +499,33 @@ export class AppWrites {
     const env = this.env;
     const appPath = this.site.appPath;
     const at = how?.at ?? env.ahead?.live.now();
+    // A run whose panel doesn't say what it did (a row's action, a button on the grid, a timer's end)
+    // is said under that panel in an app's own tab, with Undo, rather than as a notice.
+    const said = how?.inPlace ? undefined : this.site.said;
+    const inPlace = how?.inPlace || said !== undefined;
+    let first: Change | undefined;
     const r = await runActions(p, row, {
       ...actionDepsOf(env, appPath, this.site.dataPath()),
       ...(at && { at }),
       ...(how?.plan && { plan: how.plan }),
       ...(env.ahead && { whatIf: true }),
       expect: this.site.expect(),
-      log: (what, changes) => this.log(what, changes),
+      log: (what, changes) => {
+        first ??= changes[0];
+        return this.log(what, changes);
+      },
       then: async (panel, ctx) => { if (panel.then) await env.trigger?.(appPath, panel.then, ctx); },
-      inPlace: how?.inPlace,
+      inPlace,
       // A try lists what the run tells among what it does, in order, as well as saying it in place.
-      quiet: how?.inPlace && !env.preview,
+      quiet: inPlace && !env.preview,
     });
     const entry = await r.logged;
+    if (said && r.partly === undefined && !r.error) {
+      const text = r.told ?? (first && sayChange(first));
+      if (text !== undefined) said(p, text, entry);
+    }
     if (r.partly !== undefined) return { failed: `${r.partly}: ${r.error}`, ok: false, ...(entry !== undefined && { entry }) };
     if (r.error) return { error: r.error, ok: false };
-    return { ok: r.ok, ...(entry !== undefined && { entry }), ...(r.told !== undefined && { told: r.told }) };
+    return { ok: r.ok, ...(entry !== undefined && { entry }), ...(how?.inPlace && r.told !== undefined && { told: r.told }) };
   }
 }
