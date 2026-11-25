@@ -2,7 +2,7 @@ import {
   MarkdownView, Platform, Plugin, TFile, WorkspaceLeaf, type ViewState,
 } from "obsidian";
 import { ActivityLog, undoEntry, type Entry, type UndoResult } from "./activity.ts";
-import { registerActivity } from "./activity-view.ts";
+import { openActivity, registerActivity } from "./activity-view.ts";
 import { DefinitionLog } from "./definitions.ts";
 import { registerBacktest, registerWhatIf } from "./past-views.ts";
 import { registerBackground, type DeviceBeat } from "./background-glue.ts";
@@ -27,10 +27,10 @@ import { registerInsertPanel } from "./insert-command.ts";
 import { registerLenses } from "./lens.ts";
 import type { LensIndex } from "./lenses.ts";
 import { registerCaptureCommand } from "./capture-command.ts";
-import { registerNextCommand } from "./next-command.ts";
+import { openNext, registerNextCommand } from "./next-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
-import { registerMap } from "./map-view.ts";
-import { registerHome } from "./sidebar-view.ts";
+import { openMap, registerMap } from "./map-view.ts";
+import { openHome, registerHome } from "./sidebar-view.ts";
 import { registerNewApp } from "./new-app-command.ts";
 import { registerKindCommand } from "./kind-command.ts";
 import { registerExamples } from "./examples-command.ts";
@@ -151,7 +151,12 @@ export default class GizmoPlugin extends Plugin {
     registerInsertPanel(this);
     registerGalleryCommand(this);
     registerLinkCommand(this);
-    registerCaptureCommand(this);
+    registerCaptureCommand(this, () => [
+      { name: "Next", run: () => openNext(this) },
+      { name: "Gizmo sidebar", run: () => void openHome(this) },
+      { name: "Automation map", run: () => void openMap(this) },
+      { name: "Activity of every app", run: () => openActivity(this) },
+    ]);
     registerNextCommand(this);
     registerPolicyCommand(this);
     registerShareCommands(this);

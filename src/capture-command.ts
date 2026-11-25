@@ -9,6 +9,8 @@ import { frozen, rowLineText } from "./row-lines.ts";
 import { parseWhatIf, whatIfLine } from "./ahead.ts";
 import { askLine } from "./ask.ts";
 import { AskPane, type AskShown } from "./ask-view.ts";
+import { doChoices, type DoChoice } from "./do-choices.ts";
+import { orderApps } from "./open-app.ts";
 import type GizmoPlugin from "./main.ts";
 import { openAppAhead } from "./past-views.ts";
 import { kindOfPanel } from "./sources/kind.ts";
@@ -80,9 +82,12 @@ export class LineBox {
   private asked: AskShown | undefined;
   private run = 0;
   private timer = 0;
+  /** Do… only: what to offer for a line no shortcut reads (see do-choices.ts), and what taking one ends. */
+  private fallback: { choices(line: string): DoChoice[]; done(): void } | undefined;
 
-  constructor(plugin: GizmoPlugin, el: HTMLElement, placeholder: string, onEnter: () => void, ask?: (el: HTMLElement) => AskPane) {
+  constructor(plugin: GizmoPlugin, el: HTMLElement, placeholder: string, onEnter: () => void, ask?: (el: HTMLElement) => AskPane, fallback?: LineBox["fallback"]) {
     this.plugin = plugin;
+    this.fallback = fallback;
     this.input = el.createEl("input", { cls: "gz-capture-input", type: "text", attr: { placeholder, spellcheck: "false", autocapitalize: "off" } });
     this.hint = el.createDiv({ cls: "gz-capture-hint gz-muted" });
     this.chips = el.createDiv({ cls: "gz-capture-chips" });
@@ -137,6 +142,18 @@ export class LineBox {
     void this.show();
   }
 
+  /**
+   * Do… only: what the line offers when no shortcut reads it and no shortcut's name starts it (an app
+   * to open, a Gizmo window), read from the line as it is now; none for a question or a what-if.
+   */
+  choices(): DoChoice[] {
+    const bg = this.plugin.background;
+    const line = this.input.value.trim();
+    if (!this.fallback || !bg || !line || this.asking() || this.whatIf()) return [];
+    const parsed = parseLine(line, bg.captureIndex(), new Date());
+    return parsed.ok || parsed.completions.length ? [] : this.fallback.choices(line);
+  }
+
   /** Works out what the line would do as it stands, and shows it. */
   async show(): Promise<void> {
     const bg = this.plugin.background;
@@ -168,6 +185,17 @@ export class LineBox {
     for (const c of parsed.ok ? [] : parsed.completions.slice(0, 12)) {
       const chip = this.chips.createEl("button", { cls: "gz-small gz-capture-chip", text: c });
       chip.addEventListener("click", () => this.take(c));
+    }
+    const offered = whatIf ? [] : this.choices();
+    if (offered.length) {
+      this.hint.toggleClass("gz-error-text", false);
+      this.hint.setText(`No shortcut is called that · Enter: ${offered[0].label}`);
+      for (const c of offered) {
+        this.chips.createEl("button", { cls: "gz-small gz-capture-chip gz-capture-open", text: c.label }).addEventListener("click", () => {
+          c.run();
+          this.fallback?.done();
+        });
+      }
     }
     this.effects.empty();
     for (const line of effects ?? []) this.effects.createEl("li", { text: line });
@@ -216,6 +244,9 @@ export class LineBox {
  * "Do…": one line that runs any app's shortcut with its values (`spend 14.5 food lunch`), shown with
  * what it would do (see LineBox). Enter runs it.
  */
+/** Gizmo's own windows Do… opens by name (see registerCaptureCommand). */
+let doActions: () => { name: string; run(): void }[] = () => [];
+
 class CaptureModal extends Modal {
   private plugin: GizmoPlugin;
   private box: LineBox | undefined;
@@ -232,7 +263,13 @@ class CaptureModal extends Modal {
     this.titleEl.setText("Do…");
     this.modalEl.addClass("gz-capture-modal");
     const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture" });
-    const box = new LineBox(this.plugin, el, "spend 14.5 food lunch, or ? spend this month", () => void this.submit(), (at) => new AskPane(this.plugin, at, () => this.close()));
+    const plugin = this.plugin;
+    const open = (path: string) => void plugin.app.workspace.openLinkText(path, "", false);
+    const apps = () => orderApps((plugin.background?.list() ?? []).map((a) => ({ name: a.name, description: a.description, path: a.path })), plugin.app.workspace.getLastOpenFiles(), new Map());
+    const box = new LineBox(plugin, el, "spend 14.5 food lunch, an app, or ? spend this month", () => void this.submit(), (at) => new AskPane(plugin, at, () => this.close()), {
+      choices: (line) => doChoices(line, apps(), doActions(), open),
+      done: () => this.close(),
+    });
     this.box = box;
     el.createDiv({ cls: "gz-muted", text: "Enter runs it · ? asks your kinds · Tab completes · Esc closes" });
     if (this.start) box.input.value = this.start.line;
@@ -249,6 +286,13 @@ class CaptureModal extends Modal {
   private async submit(): Promise<void> {
     const box = this.box;
     if (!box) return;
+    // A line no shortcut reads opens what it names, an app or a window, rather than failing.
+    const offered = box.choices()[0];
+    if (offered) {
+      offered.run();
+      this.close();
+      return;
+    }
     const ran = await box.submit();
     if (ran) this.close();
     else box.input.focus();
@@ -428,7 +472,9 @@ export function openCaptureWith(plugin: GizmoPlugin, line: string, cursor: numbe
   new CaptureModal(plugin, { line, cursor }).open();
 }
 
-export function registerCaptureCommand(plugin: GizmoPlugin): void {
+/** `actions`: Gizmo's own windows Do… opens by name. */
+export function registerCaptureCommand(plugin: GizmoPlugin, actions: () => { name: string; run(): void }[] = () => []): void {
+  doActions = actions;
   plugin.addCommand({
     id: "capture",
     name: "Do…",

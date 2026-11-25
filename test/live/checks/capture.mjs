@@ -312,4 +312,23 @@ export default async function capture(t) {
     expect(r.ok && r.packed?.includes("Rain jacket"), r);
     return r.packed.join(", ");
   });
+
+  await check("Do… reads a line no shortcut reads as a name: typing an app's name says Enter opens it, and Enter opens it", async () => {
+    await run(`${TRUST}`);
+    await run(`${OPEN_DO}`);
+    await type("planet");
+    const shown = await run(`
+      const hint = () => (document.querySelector(".gz-capture-hint") ?? activeDocument.querySelector(".gz-capture-hint"))?.textContent;
+      await na.until(() => hint()?.includes("Enter: Open Planet Earth"), 3000);
+      return { hint: hint(), chips: [...document.querySelectorAll(".gz-capture-open")].map((c) => c.textContent) };`);
+    await shot("do-open-app.png");
+    await press("Enter");
+    const opened = await run(`
+      await na.until(() => na.view()?.file?.path === "Apps/Planet Earth.md", 4000);
+      await na.sleep(300);
+      return { path: na.view()?.file?.path, type: na.view()?.getViewType(), modal: !!document.querySelector(".gz-capture-modal") };`);
+    expect(shown.hint === "No shortcut is called that · Enter: Open Planet Earth" && shown.chips[0] === "Open Planet Earth", shown);
+    expect(opened.path === "Apps/Planet Earth.md" && opened.type === "gizmo" && !opened.modal, opened);
+    return `${shown.chips.join(", ")}; Enter opened Planet Earth`;
+  });
 }
