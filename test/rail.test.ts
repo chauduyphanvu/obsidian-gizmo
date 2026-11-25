@@ -224,3 +224,32 @@ test("Arrow keys on the track step too", async () => {
   assert.deepEqual(shown, [a]);
   r.el.remove();
 });
+
+test("the rail is folded to its chip until it is opened: the chip, a step or a past time opens it, and back to now folds it", async () => {
+  const { r, q, shown } = rail([entry(START), entry(NOW - 1000)]);
+  const chip = q("button.gz-rail-chip")!;
+  assert.ok(r.el.classList.contains("is-folded"));
+  assert.equal(chip.getAttribute("aria-expanded"), "false");
+  assert.equal(q(".gz-rail-label")?.textContent, "Now", "folded, it still says what it shows");
+  assert.equal(q(".gz-rail-meta .gz-rail-count")?.textContent, "2 changes in 30 days");
+  chip.click();
+  assert.ok(r.open && !r.el.classList.contains("is-folded"));
+  assert.equal(chip.getAttribute("aria-expanded"), "true");
+  chip.click();
+  assert.ok(!r.open);
+  // A step opens it, and the app shown then keeps it open.
+  r.step(-1);
+  assert.ok(r.open);
+  await sleep(STEP_MS + 50);
+  assert.equal(shown.length, 1);
+  r.sync(shown[0]);
+  assert.ok(r.open);
+  // Back to now folds it; the app shown now again keeps it folded.
+  q("button.gz-rail-now")!.click();
+  assert.ok(!r.open);
+  r.sync(undefined);
+  assert.ok(!r.open);
+  // Shown at a past time from elsewhere (As of…, See it then), it opens.
+  r.sync(NOW - 5000);
+  assert.ok(r.open);
+});

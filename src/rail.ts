@@ -214,13 +214,19 @@ export class TimeRail {
   private forward: { marks: number[]; show: (at: number) => void } | undefined;
   private marks: HTMLElement[] = [];
   private entries: Entry[] = [];
+  /** Folded, only the top line shows, as a chip that opens the rail: until the app is shown at another time, or the chip is pressed. */
+  private folded = true;
+  private chip: HTMLButtonElement;
 
   constructor(show: (at: number | undefined) => void, now = Date.now()) {
     this.show = show;
     this.model = railModel([], now);
     this.el = createDiv({ cls: "gz-rail" });
     const top = this.el.createDiv({ cls: "gz-rail-top" });
-    this.label = top.createSpan({ cls: "gz-rail-label" });
+    this.chip = top.createEl("button", { cls: "gz-rail-chip", attr: { type: "button", "aria-expanded": "false", title: "Show the app as of a past time ([ and ])" } });
+    this.label = this.chip.createSpan({ cls: "gz-rail-label" });
+    this.chip.createSpan({ cls: "gz-rail-caret", attr: { "aria-hidden": "true" } });
+    this.chip.addEventListener("click", () => this.fold(!this.folded));
     this.meta = top.createSpan({ cls: "gz-rail-meta" });
     this.track = this.el.createDiv({
       cls: "gz-rail-track",
@@ -231,6 +237,7 @@ export class TimeRail {
     this.listen();
     this.drawTicks();
     this.paint();
+    this.fold(true);
   }
 
   /** The app's activity entries, and the time now. */
@@ -244,9 +251,23 @@ export class TimeRail {
     this.paint();
   }
 
-  /** The app now shows this time, undefined being now. */
+  /** Whether the rail is open, not folded to its chip. */
+  get open(): boolean {
+    return !this.folded;
+  }
+
+  /** Folds the rail to its chip, or opens it. */
+  fold(folded: boolean): void {
+    this.folded = folded;
+    this.el.classList.toggle("is-folded", folded);
+    this.chip.setAttribute("aria-expanded", String(!folded));
+  }
+
+  /** The app now shows this time, undefined being now: the past opens the rail, and coming back from it folds it. */
   sync(shown: number | undefined): void {
     this.cancel();
+    if (shown !== undefined) this.fold(false);
+    else if (this.shown !== undefined) this.fold(true);
     this.shown = shown;
     this.at = shown;
     if (this.forward) {
@@ -260,6 +281,7 @@ export class TimeRail {
   /** The app now shows this time still to come, with what-if rows at `marks`; `show` shows it at another. */
   ahead(at: number, marks: number[], show: (at: number) => void, now = Date.now()): void {
     this.cancel();
+    this.fold(false);
     this.forward = { marks, show };
     this.shown = at;
     this.at = at;
@@ -278,6 +300,7 @@ export class TimeRail {
 
   /** One change back or forward (ahead, a day): at once on the rail, and in the app once the steps stop. */
   step(dir: -1 | 1): void {
+    this.fold(false);
     this.at = this.forward && (this.at ?? -Infinity) > this.model.now ? stepAhead(this.model, this.at!, dir) : step(this.model, this.at, dir);
     this.paint();
     this.cancel();
@@ -287,6 +310,7 @@ export class TimeRail {
   /** Shows the app as it is now. */
   back(): void {
     this.at = undefined;
+    this.fold(true);
     this.commit();
   }
 

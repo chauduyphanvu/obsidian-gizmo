@@ -169,3 +169,38 @@ test("a gizmo block may hold tabs", async () => {
   assert.deepEqual([...root.querySelectorAll("button.gz-tab")].map(text), ["Now", "Then"]);
   assert.equal(root.querySelectorAll(".gz-error").length, 0);
 });
+
+test("the tab bar is a segmented tab list: the open tab is selected and the one Tab stop; ← → Home End open another", async () => {
+  const fm = {
+    app: "x",
+    panels: [{ view: "number", title: "Doses", source: "doses" }],
+    tabs: {
+      Today: [{ view: "list", title: "Today", source: "doses", where: { at: "today" } }],
+      Week: [{ view: "list", title: "Week", source: "doses" }],
+      All: [{ view: "table", title: "All", source: "doses", columns: ["at", "what"] }],
+    },
+  };
+  const t = fakeEnv({ [APP]: { fm }, "Apps/Tabs data.md": { fm: LOG } });
+  const root = document.createElement("div");
+  document.body.appendChild(root);
+  const app = new AppController(root, APP, t.env);
+  started.push(app);
+  app.load();
+  await settle();
+  const bar = root.querySelector(".gz-tabs")!;
+  assert.ok(bar.classList.contains("gz-segmented"));
+  assert.equal(bar.getAttribute("role"), "tablist");
+  const tabs = () => [...bar.querySelectorAll("button.gz-tab")] as HTMLElement[];
+  const state = () => tabs().map((b) => `${text(b)}:${b.getAttribute("aria-selected")}:${b.getAttribute("tabindex")}`);
+  assert.deepEqual(state(), ["Today:true:0", "Week:false:-1", "All:false:-1"]);
+  const shown = () => [...root.querySelectorAll(".gz-panel .gz-title")].filter((x) => !x.closest(".gz-off")).map(text);
+  const press = (el: Element, key: string) => el.dispatchEvent(Object.assign(new window.Event("keydown", { bubbles: true, cancelable: true }), { key, altKey: false, ctrlKey: false, metaKey: false, shiftKey: false }));
+  press(tabs()[0], "ArrowRight");
+  assert.deepEqual(state(), ["Today:false:-1", "Week:true:0", "All:false:-1"]);
+  assert.equal(document.activeElement === tabs()[1], true);
+  assert.deepEqual(shown(), ["Doses", "Week"]);
+  press(tabs()[1], "End");
+  assert.deepEqual(shown(), ["Doses", "All"]);
+  press(tabs()[2], "Home");
+  assert.deepEqual(state(), ["Today:true:0", "Week:false:-1", "All:false:-1"]);
+});

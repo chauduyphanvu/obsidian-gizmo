@@ -42,6 +42,7 @@ import { Sheet, type DrawIcon } from "./sheet.ts";
 import { basename, dataPathOf, devicesFolder, isComponent } from "./store.ts";
 import { mountView } from "./views/common.ts";
 import { sayBelow } from "./views/addline.ts";
+import { segmented, type Segmented } from "./views/segmented.ts";
 import { sourceOf, viewDef, type PanelCtx, type PanelHandle, type SheetPick, type TimerState, type ViewDef } from "./views/registry.ts";
 import type { AlertFeed } from "./alert-keys.ts";
 import { checklistList } from "./panel.ts";
@@ -265,6 +266,7 @@ export class AppController {
   private width = 0;
   private columns = MAX_COLUMNS;
   private tabs: HTMLElement | undefined;
+  private tabBar: Segmented | undefined;
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
   private get activeTab() { return this.memory.activeTab; }
   private set activeTab(tab: string | undefined) { this.memory.activeTab = tab; }
@@ -518,7 +520,7 @@ export class AppController {
     } else {
       this.layoutGrid(redraw);
     }
-    for (const b of this.tabs?.querySelectorAll("button") ?? []) b.classList.toggle("is-active", b.textContent === this.activeTab);
+    this.tabBar?.select(this.activeTab);
   }
 
   private layoutGrid(redraw: boolean): void {
@@ -694,6 +696,7 @@ export class AppController {
     // A block showing some panels of an app, all from one of its tabs, has no other tab to pick.
     const oneTab = tabNames.length === 1 && this.hosting?.panels !== undefined;
     this.tabs = tabNames.length && !oneTab ? this.renderTabs(tabNames) : undefined;
+    if (!this.tabs) this.tabBar = undefined;
     if (composition) {
       this.arrange(composition.scopes, order);
     } else {
@@ -925,19 +928,16 @@ export class AppController {
   }
 
   private renderTabs(names: string[]): HTMLElement {
-    const bar = this.grid!.createDiv({ cls: "gz-tabs" });
-    bar.setAttr("role", "tablist");
-    for (const name of names) {
-      const b = bar.createEl("button", { cls: "gz-tab", text: name });
-      b.setAttr("role", "tab");
-      b.addEventListener("click", () => {
+    this.tabBar = segmented(this.grid!, names, {
+      cls: "gz-tabs", segmentCls: "gz-tab", label: "Tabs",
+      pick: (name) => {
         // What the sheet shows was picked in the tab being left.
         if (name !== this.activeTab) this.closeSheet();
         this.activeTab = name;
         this.layout();
-      });
-    }
-    return bar;
+      },
+    });
+    return this.tabBar.el;
   }
 
   private showOnly(header: HTMLElement): void {
@@ -969,6 +969,7 @@ export class AppController {
     this.sheet?.reset();
     this.shell.removeClass("gz-sheet-open");
     this.tabs = undefined;
+    this.tabBar = undefined;
     if (this.refreshHandle) window.clearInterval(this.refreshHandle);
     this.refreshHandle = undefined;
   }

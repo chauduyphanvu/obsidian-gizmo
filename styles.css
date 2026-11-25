@@ -27,24 +27,36 @@
 /* A button beside panels with a title lines up with the bottom of their values. */
 .gizmo .gz-grid > .gz-view-button { align-self: end; }
 .gizmo .gz-off { display: none; }
-.gizmo .gz-tabs {
-  grid-column: 1 / -1;
-  display: flex;
-  flex-wrap: wrap;
-  gap: var(--size-4-1);
-  border-bottom: 1px solid var(--background-modifier-border);
-  margin-bottom: calc(-1 * var(--size-4-3));
+/* The app's tabs: a segmented control, an inset track with the open tab raised on it (views/segmented.ts). */
+.gizmo .gz-segmented {
+  display: inline-flex;
+  gap: 2px;
+  padding: 3px;
+  max-width: 100%;
+  overflow-x: auto;
+  scrollbar-width: none;
+  background: var(--background-modifier-form-field, var(--background-secondary));
+  border: 1px solid var(--background-modifier-border);
+  border-radius: var(--radius-m);
 }
-.gizmo button.gz-tab {
+.gizmo .gz-grid > .gz-tabs { grid-column: 1 / -1; justify-self: start; }
+.gizmo button.gz-segment {
+  flex: none;
+  height: auto;
+  padding: 4px 14px;
   background: none;
   box-shadow: none;
-  border-radius: var(--radius-s) var(--radius-s) 0 0;
+  border: none;
+  border-radius: calc(var(--radius-m) - 2px);
   color: var(--text-muted);
-  border-bottom: 2px solid transparent;
-  margin-bottom: -1px;
+  font-size: var(--font-ui-small);
+  white-space: nowrap;
+  transition: background-color 150ms ease-out, color 150ms ease-out;
 }
-.gizmo button.gz-tab:hover { color: var(--text-normal); }
-.gizmo button.gz-tab.is-active { color: var(--text-normal); border-bottom-color: var(--interactive-accent); }
+.gizmo button.gz-segment:hover { color: var(--text-normal); }
+.gizmo button.gz-segment.is-active { background: var(--background-primary); color: var(--text-normal); font-weight: var(--font-semibold); box-shadow: 0 1px 2px rgba(0, 0, 0, 0.12), 0 0 0 1px var(--background-modifier-border); }
+.gizmo button.gz-segment:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
+@media (prefers-reduced-motion: reduce) { .gizmo button.gz-segment { transition: none; } }
 
 /* Composed layout: an app reads as one column, its panels placed by role (src/compose.ts). In its
    own tab the column holds at most 760 px of content, with 44 px each side, or 16 px once the app is
@@ -1072,6 +1084,18 @@ button.gz-lens-toggle {
   font-size: 12px;
   color: var(--text-muted);
 }
+/* The rail's name is its chip: pressed, the rail opens or folds; folded, only this line shows. */
+.gizmo button.gz-rail-chip {
+  display: inline-flex; align-items: center; gap: 4px; min-width: 0; height: auto; padding: 2px 8px; margin-left: -8px;
+  background: none; box-shadow: none; border: none; border-radius: var(--radius-s); font: inherit; color: inherit; cursor: pointer;
+}
+.gizmo button.gz-rail-chip:hover { background: var(--background-modifier-hover); }
+.gizmo button.gz-rail-chip:focus-visible { box-shadow: 0 0 0 2px var(--background-modifier-border-focus); }
+.gizmo .gz-rail-caret::before { content: "▾"; display: inline-block; color: var(--text-faint); transition: transform 150ms ease-out; }
+.gizmo .gz-rail:not(.is-folded) .gz-rail-caret::before { transform: rotate(180deg); }
+.gizmo .gz-rail.is-folded { margin-top: 10px; }
+.gizmo .gz-rail.is-folded .gz-rail-track, .gizmo .gz-rail.is-folded .gz-rail-scale { display: none; }
+@media (prefers-reduced-motion: reduce) { .gizmo .gz-rail-caret::before { transition: none; } }
 .gizmo .gz-rail-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; font-weight: 600; color: var(--text-normal); }
 .gizmo .gz-rail.is-past .gz-rail-label { color: var(--text-accent); }
 .gizmo .gz-rail-meta { flex: none; display: flex; align-items: center; gap: 6px; font-variant-numeric: tabular-nums; }

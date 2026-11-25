@@ -73,8 +73,10 @@ export class AppView extends FileView {
     this.scope.register([], "Escape", (evt) => {
       if (typing(evt)) return true;
       if (this.controller?.closeSheet()) return false;
-      if (!this.rail.el.isConnected || !this.rail.past) return true;
-      this.rail.back();
+      if (!this.rail.el.isConnected || !(this.rail.past || this.rail.open)) return true;
+      // Back to now folds the rail; open on now, Escape folds it.
+      if (this.rail.past) this.rail.back();
+      else this.rail.fold(true);
       return false;
     });
   }

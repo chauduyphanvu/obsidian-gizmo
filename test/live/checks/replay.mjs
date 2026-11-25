@@ -170,6 +170,48 @@ export default async function replay(t) {
     return r.text.find((l) => l.startsWith("Before"));
   });
 
+  await check("the time rail waits folded to its chip: pressing it opens the rail, Escape folds it again; the app's tabs are a segmented tab list", async () => {
+    await closeAll();
+    const r = await run(`
+      ${PANEL} ${RAIL}
+      await na.open("Apps/Steps");
+      await na.until(() => rail() && total(), 4000);
+      app.workspace.setActiveLeaf(na.leaf(), { focus: true });
+      const folded = () => rail().classList.contains("is-folded") && rail().querySelector(".gz-rail-track").offsetParent === null;
+      const chip = rail().querySelector("button.gz-rail-chip");
+      const before = { folded: folded(), chip: chip?.textContent, expanded: chip?.getAttribute("aria-expanded"), meta: railText(".gz-rail-meta") };
+      chip.click();
+      await na.sleep(200);
+      const opened = { folded: folded(), expanded: chip.getAttribute("aria-expanded") };
+      chip.blur();
+      return { before, opened };`);
+    await shot("rail-open.png");
+    await press("Escape");
+    const after = await run(`${PANEL} ${RAIL} await na.sleep(200); return { folded: rail().classList.contains("is-folded") };`);
+    await shot("rail-folded.png");
+    expect(r.before.folded && r.before.chip === "Now" && r.before.expanded === "false" && /changes in 30 days/.test(r.before.meta), r);
+    expect(!r.opened.folded && r.opened.expanded === "true" && after.folded, { r, after });
+    const tabs = await run(`
+      await na.write("Apps/Tabbed.md", "---\\napp: Tabbed\\npanels:\\n  - {view: text, text: Always}\\ntabs:\\n  One:\\n    - {view: text, title: First, text: one}\\n  Two:\\n    - {view: text, title: Second, text: two}\\n---\\n");
+      await na.sleep(800);
+      await na.open("Apps/Tabbed");
+      const el = na.view().contentEl;
+      const bar = await na.until(() => el.querySelector(".gz-tabs.gz-segmented"), 4000);
+      const b = [...bar.querySelectorAll("button.gz-tab")];
+      b[0].focus();
+      return { names: b.map((x) => x.textContent), selected: b.map((x) => x.getAttribute("aria-selected")) };`);
+    await press("ArrowRight");
+    const switched = await run(`
+      const el = na.view().contentEl;
+      await na.sleep(200);
+      const b = [...el.querySelectorAll(".gz-tabs button.gz-tab")];
+      return { selected: b.map((x) => x.getAttribute("aria-selected")), shown: [...el.querySelectorAll(".gz-panel .gz-text")].filter((x) => !x.closest(".gz-off")).map((x) => x.textContent) };`);
+    await shot("tabs-segmented.png");
+    expect(JSON.stringify(tabs.names) === '["One","Two"]' && JSON.stringify(tabs.selected) === '["true","false"]', tabs);
+    expect(JSON.stringify(switched.selected) === '["false","true"]' && switched.shown.includes("two") && !switched.shown.includes("one"), switched);
+    return "folded, opened, folded; tabs switch with →";
+  });
+
   await check("the time rail: each saved row is a tick; [ shows the app before the latest one, Back to now and Escape show it now; [ typed in a field is typed; no rail on the grid", async () => {
     await closeAll();
     /** A real key press, as Obsidian's keymap hears it. */
