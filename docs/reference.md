@@ -181,21 +181,25 @@ Each view has a role. The role tells where its panel goes:
 | --- | --- | --- |
 | Answer | `number`, `progress`, `countdown`, `text` | The answer band. |
 | Verb | `button`, and `form` unless it has `save: this` | The add line. |
+| Attention | `alerts`, `reconcile` | Under the add line. |
 | Evidence | `line`, `bar`, `pie`, `scatter`, and `calendar` with `layout: year` | The flow. |
 | Workspace | `board`, `timeline`, `timer`, other `calendar` panels, and `form` with `save: this` | The flow. |
-| Records | `table`, `list`, `checklist`, `alerts`, `reconcile` | The flow. |
+| Records | `table`, `list`, `checklist` | The flow. |
 | Sheet | Any panel that reads a name that another panel selects | The side sheet, when you pick. |
 
 The app is at most 848 px wide. It reads from the top down:
 
 1. The title of the note, and the text of `app`.
-2. The time rail. Refer to [Activity, history and replay](#activity-history-and-replay).
+2. The time rail, folded to **Now** until you open it. Refer to [Activity, history and replay](#activity-history-and-replay).
 3. The answer band. Controls from `inputs` come before it.
 4. The add line.
-5. The flow: evidence, workspaces and records, in the order that you write them.
-6. The side sheet, at the right, when you pick something.
+5. What waits for you: rows from a file to check, alerts, and what [Next](#next) asks of this app.
+6. The flow: evidence, workspaces and records, in the order that you write them.
+7. The side sheet, at the right, when you pick something, or for **Explain** and **History**.
 
 **The answer band.** The first `number` is the headline: a big figure with its unit and label. If there is no `number`, the first `progress` is the headline, or else the first answer panel. The other answer panels sit beside it as facts. A figure counts up when its value changes, unless your system is set for reduced motion. With `compare: previous`, the headline says how the value differs from the window before, for example `↑ 12% more than Oct 1–20 · $1,146.90`. If that window is shorter than 3 days, it gives the amount and not the percent. When the `alert` of an answer panel is on, a line under the panel says so, in the error colour.
+
+**The facts.** Each other `number` is one line beside the headline: its title, its figure, and its change or note.
 
 **The meter.** A `progress` with the same `source`, `where`, `field` and `agg` as a `number` is not a fact. Gizmo draws it under that number, as its meter. The meter shows how much is left. If `where` has a date window that holds now, it also shows how much is left for each of the days that remain, and a tick marks an even pace. The fill turns to the error colour only when the value is greater than `max`. A value equal to `max` is not over.
 
@@ -203,9 +207,17 @@ The app is at most 848 px wide. It reads from the top down:
 
 For a row of a list that the app saves, the sheet also has **Delete**, and its time (**When**) is a date and time field. A row of a [kind](#kinds) is one only in the kind note, or in an app that saves to the kind: an app that only reads a kind cannot delete or move its rows, or change them by any other way. **Delete** removes the row, closes the sheet and shows "Deleted …" under the panel for 6 seconds, with **Undo**. Undo puts back the same row, so edits from other devices still find it. A change to **When** cannot be a time that has not come yet. The activity log and the time rail show the two changes, and you can undo them later. You cannot delete or move notes, tasks, web rows or rows of a base, or any row in the past.
 
-**Keyboard and screen readers.** The items that you can pick in a panel have one Tab stop together: rows, list items, cards, days, bars, the legend of a pie and the dots of a scatter. Tab goes to the picked item, or else to the first item. The next Tab goes out of the panel. The arrow keys move between the items and do not pick: up and down in tables and lists, left and right on bars and dots, and all four in cards, a board and a calendar. Home and End go to the first and the last item. Enter or Space picks the item. A screen reader reads each chart as one sentence, for example "Weight, last 6 months: 24 entries from 82.1 kg on May 3 to 79.4 kg on Nov 20, lowest 79.1, goal 75". A hidden table after a line or bar chart gives each point. On a touch screen, checklist rows, chips, row actions, the **Move** control of a card, the buttons of the add line and the **Close** button of the sheet are at least 44 px tall.
+**Said in place, with Undo.** Each change that you make in the app, in its own tab, shows under the panel where you made it, with **Undo**: an edited cell, a tick, a moved card, a field that a form sets, rows that you accept, a row action. ⌘Z (Ctrl Z) undoes the latest one while you do not type in a field. A change that fails shows as a notice.
 
-**Tabs and hosts.** Each tab keeps its own pane, laid out the same way. An app in an embed or a lens has the same layout, with no title, no time rail, no side sheet and no width limit. There, the `detail` text shows under the rows, and the panels that read a pick show at the end of the app.
+**What waits for you.** Rows from a file to check, and the asks of the app from [Next](#next), are lists that you can do from the keyboard. They are one Tab stop. Up and down move. Enter does the main action (**Accept**, **Run**, **It happened**). `x` is **Not mine** or **Dismiss**. `s` skips an ask until tomorrow. In rows from a file, Space selects a row, and Shift Enter accepts the rows that you selected, or all rows if you selected none, as one change. After an action, the focus goes to the row that is now in the same place. An ask whose answer only opens this app is not in the list.
+
+**Verb buttons.** A `button` that saves rows for a rhythm of `expect` shows where the rhythm is now: **Done today**, **Due by 10:00**, or **Late: due by 10:00**. Only the first button that is due or late has the accent colour. Refer to [Expectations](#expectations).
+
+**Records that come one after another.** In the app's own tab, two or more `table`, `list` or `checklist` panels with a title, one after another in the flow, show as one panel. Their titles are a switch above them. A table with more than 20 rows has a box that filters its rows by the words that you type. Escape clears it.
+
+**Keyboard and screen readers.** The items that you can pick in a panel have one Tab stop together: rows, list items, cards, days, bars, the legend of a pie and the dots of a scatter. Tab goes to the picked item, or else to the first item. The next Tab goes out of the panel. The arrow keys move between the items and do not pick: up and down in tables and lists, left and right on bars and dots, and all four in cards, a board and a calendar. Home and End go to the first and the last item. Enter or Space picks the item. On a board, Shift ← and Shift → move the card to the column beside it. In the app's own tab, Backspace or Delete on a row, card or item of a list that the app saves deletes it, as **Delete** in the sheet does. With the sheet open, up and down pick the item before or after the one that it shows. The tabs of an app are a switch: ← and → go to the tab beside, Home and End to the first and the last. A screen reader reads each chart as one sentence, for example "Weight, last 6 months: 24 entries from 82.1 kg on May 3 to 79.4 kg on Nov 20, lowest 79.1, goal 75". A hidden table after a line or bar chart gives each point. On a touch screen, checklist rows, chips, row actions, the **Move** control of a card, the buttons of the add line and the **Close** button of the sheet are at least 44 px tall.
+
+**Tabs and hosts.** Each tab keeps its own pane, laid out the same way. An app in an embed or a lens has the same layout, with no title, no time rail, no side sheet, no asks, no merged records and no width limit. There, the `detail` text shows under the rows, and the panels that read a pick show at the end of the app.
 
 **`layout: grid`.** Add `layout: grid` to keep the earlier layout. Panels sit in a grid of up to 4 columns, in the order that you write them, and `span` sets the width of each. Forms, buttons and picks are as they were, with no side sheet. Only the text `composed` or `grid` sets the layout of the app. In a note that is one panel, any other `layout` value belongs to that panel, for example `cards` for a table or `year` for a calendar.
 
@@ -756,6 +768,8 @@ The [add line](#the-add-line) of a form reads more freely than **Do…**. **Do�
 
 A line that starts with `?` asks a question. Refer to [The ask line](#the-ask-line).
 
+A line that no shortcut reads, and that is not the start of a shortcut's name, is a name: **Do…** offers the apps whose name has all the words that you typed, and Gizmo's own windows (Next, the sidebar, the automation map, the activity of all apps). Enter opens the first.
+
 ### Lines are rows
 
 Type `;;` and a capture line in a note, for example `;; spend 14.5 food lunch` in your daily note, and select **Run**. When the line saves one row, Gizmo writes this in its place:
@@ -950,15 +964,16 @@ An app that you revoked shows **Not allowed: you revoked it**, with no **Revoke*
 
 ## Activity, history and replay
 
-- **Gizmo: Show app activity** shows each change, with **Undo**. Undo operates only while the vault still has what the app wrote. Gizmo moves a note that an app made to the trash only if the note is unchanged.
+- **History** in the tab header, or **Activity** in the tab menu, shows the changes of the app in its side sheet, with **Undo** and **See it then**. **Gizmo: Show app activity** shows them in a window, and for all apps when no app is open.
+- Undo operates only while the vault still has what the app wrote. Gizmo moves a note that an app made to the trash only if the note is unchanged.
 - **See it then** on a change shows the app at that time.
-- The **time rail** is under the title of an app, in its own tab. Each change of the last 30 days is a tick. A change that you undid has no tick. Drag the handle, or push `[` and `]`, to show the app as it was at a change. With the rail in focus, the arrow keys do the same. Select **Back to now**, or push Escape, to return. The rail is only in the composed layout, and not in an embed or a lens. It uses **As of…** and the activity log, so the past is read only.
+- The **time rail** is under the title of an app, in its own tab. It is folded to one line (**Now**, and how many changes) until you select **Now**, or push `[` or `]`. When you return to now, it folds again. Escape folds it too. Each change of the last 30 days is a tick. A change that you undid has no tick. Drag the handle, or push `[` and `]`, to show the app as it was at a change. With the rail in focus, the arrow keys do the same. Select **Back to now**, or push Escape, to return. The rail is only in the composed layout, and not in an embed or a lens. It uses **As of…** and the activity log, so the past is read only.
 - **As of…** in the tab menu (**⋯** in the tab header) shows the app at a past time. Saved lists and web answers come from history. Notes, tasks and files show as they are now, and a banner shows the names of those panels. The fields of `edit` show as text, with no row actions, and you cannot move the cards of a board. Buttons, forms and checklists are dim, and you cannot use them.
 - **Gizmo: Backtest this app** applies the alerts and `expect` rules of the app, as they are now, to its past data.
 
 ## Explain a figure
 
-Each `number` and `progress` panel can tell you where its figure comes from. Select the figure, or push `=` in the app for the first figure. The tab menu has **Explain the first figure** too. A figure is not a Tab stop. The window shows:
+Each `number` and `progress` panel can tell you where its figure comes from. Select the figure, or push `=` in the app for the first figure. The tab menu has **Explain the first figure** too. A figure is not a Tab stop. In the app's own tab, Explain opens in the side sheet; in an embed, a lens, the past or what if, it opens in a window. It shows:
 
 - **How Gizmo works the figure out**, for example "The sum of amount over 14 rows. 1 row with no number in amount is left out."
 - **The rows behind it**, the largest first for a sum. Each row shows its value, its time and its other fields. A saved row also shows when the device wrote it, on which device, and how many times it changed since. A row from a file or from a different person says so.
@@ -1095,7 +1110,8 @@ Obsidian keeps the value in its secret storage, not in a note. The permission ca
 | Make a list a kind | Changes a list that the open app saves into a kind that all apps can read. Refer to [Kinds](#kinds). |
 | Import rows into a kind… | Reads a `.csv`, `.json` or `.ics` file into a kind, with one of its `import` ways. Refer to [Import rows from a file](#import-rows-from-a-file). |
 | Embed an app's panels here | Puts a `gizmo` block at the cursor for the panels that you select. |
-| Do… | Runs a capture line. A line that starts with `?` asks your kinds a question. Refer to [The ask line](#the-ask-line). |
+| Do… | Runs a capture line. A line that starts with `?` asks your kinds a question. Refer to [The ask line](#the-ask-line). A line that no shortcut reads opens the app, or the Gizmo window, that it names. |
+| Open sidebar | Shows Gizmo in the left sidebar: **Do or find…**, what needs you (as in Next), and all apps with their state, how many asks wait, and their figure or latest change. |
 | Next | Shows what needs you, one ask at a time. Refer to [Next](#next). |
 | Copy capture link | Copies a link that runs a capture line. |
 | Copy link to an app shortcut | Copies the link of a shortcut, with its key. |
