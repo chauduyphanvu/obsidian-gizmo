@@ -32,7 +32,7 @@ interface Column {
  * The board's columns: the schema's choices for the group field, in order, then other values as
  * they first appear, then "(none)" for rows without one (only when there are some).
  */
-export function columnsOf(p: Panel, rows: Row[]): Column[] {
+export function columnsOf(p: Panel, rows: Row[], known: readonly unknown[] = []): Column[] {
   const columns: Column[] = [];
   const byName = new Map<string, Column>();
   const column = (value: unknown): Column => {
@@ -51,13 +51,17 @@ export function columnsOf(p: Panel, rows: Row[]): Column[] {
     const last = choices.at(-1);
     if (last !== undefined && DONE.includes(String(last).toLowerCase())) column(last).done = true;
   }
+  const declared = columns.length;
+  // Columns a board drew before keep their places; one with no card left still goes.
+  known.forEach(column);
   const none: Row[] = [];
   for (const row of rows) {
     const v = getPath(row, p.group);
     if (v === undefined || v === null || v === "") none.push(row);
     else column(v).rows.push(row);
   }
-  return none.length ? [...columns, { name: NONE, value: null, rows: none }] : columns;
+  const shown = columns.filter((c, i) => i < declared || c.rows.length);
+  return none.length ? [...shown, { name: NONE, value: null, rows: none }] : shown;
 }
 
 /** What a column is called: the panel's `values` for its group value, else the value. */
@@ -117,12 +121,15 @@ export const board: ViewDef = {
   mount(el, p, ctx): PanelHandle {
     // Cards are raw rows, so selecting tells them apart by note or place in the list, not by group.
     const own: Panel = { ...p, group: undefined };
+    // Each group value in the order the board first drew it, so a moved card's column doesn't jump.
+    const known: unknown[] = [];
     const draw = (rows: Row[]) => {
       const refocus = focusedKey(el);
       const scrolled = el.querySelector<HTMLElement>(".gz-board")?.scrollLeft;
       el.empty();
       heading(el, p, p.label);
-      const columns = columnsOf(p, rows);
+      const columns = columnsOf(p, rows, known);
+      for (const c of columns) if (c.value !== null && !known.some((k) => String(k) === c.name)) known.push(c.value);
       if (columns.length === 0) {
         whyEmpty(el, p, ctx, el.createDiv({ cls: "gz-empty", text: emptyText(p, ctx.now, "Nothing here yet.") }));
         return;

@@ -419,6 +419,32 @@ test("⇧→ and ⇧← on a card move it to the column beside; a plain arrow on
   assert.equal(edits.length, 2);
 });
 
+test("on a board whose columns come from its rows, a column keeps its place as cards move, so ⇧→ walks a card to the last column and stops there", async () => {
+  const { ctx, edits } = fakeCtx();
+  const rows = (fence: string): Row[] => [
+    { name: "Fence", path: "Projects/Fence.md", status: fence },
+    { name: "Japan", path: "Projects/Japan.md", status: "doing" },
+    { name: "Taxes", path: "Projects/Taxes.md", status: "done" },
+  ];
+  const { el, handle } = mount({}, rows("idea"), ctx, {});
+  assert.deepEqual(names(el), ["idea", "doing", "done"]);
+  card(el, "Fence").focus();
+  keyOn(card(el, "Fence"), "ArrowRight", true);
+  await settle();
+  handle.update(rows("doing"));
+  assert.deepEqual(names(el), ["doing", "done"], "an emptied column goes, as before");
+  keyOn(card(el, "Fence"), "ArrowRight", true);
+  await settle();
+  handle.update(rows("done"));
+  assert.deepEqual(names(el), ["doing", "done"], "Fence, now the first row that is done, doesn't put done first");
+  assert.equal(document.activeElement === card(el, "Fence"), true);
+  keyOn(card(el, "Fence"), "ArrowRight", true);
+  await settle();
+  assert.deepEqual(edits.map((e) => e.value), ["doing", "done"]);
+  handle.update(rows("idea"));
+  assert.deepEqual(names(el), ["idea", "doing", "done"], "a column that comes back takes its old place");
+});
+
 test("shown as it was, ⇧→ on a card moves nothing", async () => {
   const f = fakeCtx();
   const ctx = { ...f.ctx, readOnly: true } as PanelCtx;
