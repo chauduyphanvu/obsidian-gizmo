@@ -39,6 +39,8 @@ export function makeSandbox(opts: {
   notes: Map<string, SandboxNote>;
   parseYaml: (text: string) => unknown;
   now(): Date;
+  /** Runs cb once, soon, as the vault's own host does. */
+  schedule: Host["schedule"];
   /** The web, for requests to an allowed host. */
   fetch: Host["fetch"];
   copy(text: string): void;
@@ -85,7 +87,7 @@ export function makeSandbox(opts: {
     tags: () => [],
     secret: () => { throw new Error("A try never uses your saved secrets"); },
     now: () => opts.now().getTime(),
-    schedule: (cb) => { window.setTimeout(cb, 30); },
+    schedule: (cb) => opts.schedule(cb),
     async readFile(path) {
       const text = await overlay.text(path);
       if (text === undefined) throw new Error(`Can't find ${path}`);

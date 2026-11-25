@@ -56,7 +56,7 @@ export default async function data(t) {
     const r = await run(`
       await na.open("Apps/Movers");
       const el = na.view().contentEl;
-      const host = na.plugin().dataLayer.host;
+      const host = na.plugin().runtime.dataLayer.host;
       const fetch = host.fetch;
       const urls = [];
       host.fetch = (url, ...rest) => { urls.push(url); return fetch.call(host, url, ...rest); };

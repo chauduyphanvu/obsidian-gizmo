@@ -7,6 +7,7 @@ import { openActivity, when } from "./activity-view.ts";
 import { blockKey, parseHosted } from "./hosted.ts";
 import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
+import type { GizmoRuntime } from "./runtime.ts";
 import { mapCanvas } from "./map-canvas.ts";
 import { ASK_GROUPS, buildMap, gizmoBlocks, writersOf, type AppSummary, type Ask, type MapApp, type MapEmbed, type MapLens, type VaultMap } from "./map.ts";
 import { writersOf as storedWriters } from "./stored.ts";
@@ -56,10 +57,9 @@ export class MapView extends ItemView {
 
   async onOpen(): Promise<void> {
     const later = () => this.schedule();
-    this.register(this.plugin.onGrantsChange(later));
-    this.register(this.plugin.activity.onChange(later));
-    const bg = this.plugin.background;
-    if (bg) this.register(bg.onIndexChange(later));
+    this.register(this.plugin.runtime.onGrantsChange(later));
+    this.register(this.plugin.runtime.activity.onChange(later));
+    this.register(this.plugin.runtime.background.onIndexChange(later));
     this.render();
   }
 
@@ -79,10 +79,10 @@ export class MapView extends ItemView {
   private async draw(): Promise<void> {
     const run = ++this.rendering;
     const plugin = this.plugin;
-    const apps = plugin.background?.list() ?? [];
-    const activity = await plugin.activity.list();
+    const apps = plugin.runtime.background.list();
+    const activity = await plugin.runtime.activity.list();
     if (run !== this.rendering) return;
-    const map = buildMap(apps, plugin.store.grants, plugin.lenses.lenses(), activity);
+    const map = buildMap(apps, plugin.runtime.store.grants, plugin.runtime.lenses.lenses(), activity);
     const el = this.contentEl;
     el.empty();
     const box = el.createDiv({ cls: "gizmo gz-map" });
@@ -116,13 +116,13 @@ export class MapView extends ItemView {
     if (!shared.length) return;
     el.createEl("h4", { text: "Shared kinds" });
     const plugin = this.plugin;
-    const waiting = plugin.background?.asks.list().filter((a) => a.id.startsWith("writer\n")) ?? [];
+    const waiting = plugin.runtime.background.asks.list().filter((a) => a.id.startsWith("writer\n"));
     for (const a of shared) {
       const card = el.createDiv({ cls: "gz-card gz-map-app gz-map-shared" });
       const head = card.createDiv({ cls: "gz-map-app-head" });
       this.link(head, a.path, a.name, "gz-title");
       card.createDiv({ cls: "gz-muted", text: `Shared through ${a.shared!.host}. Rows from the writers you accept count as logged.` });
-      const writers = Object.entries(storedWriters(plugin.store, a.path)).sort(([, x], [, y]) => x.name.localeCompare(y.name));
+      const writers = Object.entries(storedWriters(plugin.runtime.store, a.path)).sort(([, x], [, y]) => x.name.localeCompare(y.name));
       const asked = waiting.filter((w) => w.path === a.path);
       if (!writers.length && !asked.length) card.createDiv({ cls: "gz-muted", text: "No one else has written to it yet." });
       const ul = card.createEl("ul", { cls: "gz-map-writer-list" });
@@ -130,8 +130,8 @@ export class MapView extends ItemView {
         const li = ul.createEl("li");
         li.createSpan({ text: `${w.name}${w.guest ? " (guest page)" : ""}: ${w.state === "accepted" ? "accepted" : "removed; nothing more comes in from them"}` });
         const set = (state: "accepted" | "removed") => handler(async () => {
-          (plugin.store.writers ??= {})[`${a.path}\n${writer}`] = { ...w, state, at: Date.now() };
-          await plugin.saveSettings();
+          (plugin.runtime.store.writers ??= {})[`${a.path}\n${writer}`] = { ...w, state, at: Date.now() };
+          await plugin.runtime.saveSettings();
           new Notice(state === "removed"
             ? `${a.name}: rows from ${w.name} no longer come in. The rows of theirs already here stay; delete them like any row if you want them gone.`
             : `${a.name}: rows from ${w.name} come in again, from what they send next`);
@@ -148,12 +148,12 @@ export class MapView extends ItemView {
   /** Whether a data policy is applied, and when its note says something else, a way to review it. */
   private drawPolicy(el: HTMLElement, map: VaultMap): void {
     const plugin = this.plugin;
-    const pending = plugin.policyPending();
-    if (!plugin.store.policy && !pending) return;
+    const pending = plugin.runtime.policyPending();
+    if (!plugin.runtime.store.policy && !pending) return;
     const card = el.createDiv({ cls: `gz-card gz-map-policy${pending ? " is-pending" : ""}` });
     const blocked = map.apps.filter((a) => a.state === "blocked").length;
     card.createSpan({
-      text: pending && !plugin.store.policy
+      text: pending && !plugin.runtime.store.policy
         ? "Gizmo policy.md isn't applied yet; until it is, apps ask for everything as before."
         : pending
           ? "Gizmo policy.md has changes that aren't applied yet; apps follow the policy as it was."
@@ -164,7 +164,7 @@ export class MapView extends ItemView {
 
   /** Capture links' keys, each with the names it runs without asking, and Revoke. */
   private drawCaptureKeys(el: HTMLElement): void {
-    const keys = Object.entries(this.plugin.store.captureKeys ?? {});
+    const keys = Object.entries(this.plugin.runtime.store.captureKeys ?? {});
     if (!keys.length) return;
     el.createEl("h4", { text: "Capture links" });
     for (const [key, granted] of keys) {
@@ -173,7 +173,7 @@ export class MapView extends ItemView {
       const head = card.createDiv({ cls: "gz-map-app-head" });
       head.createSpan({ cls: "gz-title", text: `Key ${key.slice(0, 4)}…` });
       head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", handler(async () => {
-        await this.plugin.revokeCaptureKey(key);
+        await this.plugin.runtime.revokeCaptureKey(key);
         new Notice("That capture link's lines now ask before they run");
       }));
       card.createDiv({ cls: "gz-muted", text: names.length ? `Runs without asking: ${names.join(", ")}` : "Every line it sends asks first" });
@@ -202,11 +202,11 @@ export class MapView extends ItemView {
   }
 
   /** The apps that can change one note, from their keys and from what the log saw. */
-  private drawWriters(box: HTMLElement, note: string, apps: ReturnType<NonNullable<GizmoPlugin["background"]>["list"]>, activity: Awaited<ReturnType<GizmoPlugin["activity"]["list"]>>): void {
+  private drawWriters(box: HTMLElement, note: string, apps: ReturnType<GizmoRuntime["background"]["list"]>, activity: Awaited<ReturnType<GizmoRuntime["activity"]["list"]>>): void {
     const card = box.createDiv({ cls: "gz-card gz-map-writers" });
     card.createDiv({ cls: "gz-title", text: `Apps that can change ${basename(note)}` });
-    const writers = writersOf(note, apps, activity, (scope, path) => this.plugin.dataLayer.inScope(scope, path));
-    const embedded = Object.keys(this.plugin.store.grants).filter((k) => k.startsWith(`${note}#`));
+    const writers = writersOf(note, apps, activity, (scope, path) => this.plugin.runtime.dataLayer.inScope(scope, path));
+    const embedded = Object.keys(this.plugin.runtime.store.grants).filter((k) => k.startsWith(`${note}#`));
     if (!writers.length && !embedded.length) card.createDiv({ cls: "gz-muted", text: "None: no app's keys let it change this note, and the log has no change to it." });
     const ul = card.createEl("ul");
     const now = new Date();
@@ -238,7 +238,7 @@ export class MapView extends ItemView {
     actions.createEl("button", { text: "Activity" }).addEventListener("click", () => openActivity(this.plugin, a.path));
     if (a.state !== "not-opened" && a.state !== "revoked") {
       actions.createEl("button", { text: "Revoke" }).addEventListener("click", handler(async () => {
-        await this.plugin.revoke(a.path);
+        await this.plugin.runtime.revoke(a.path);
         new Notice(`${a.name} is stopped; open it to allow it again`);
       }));
     }
@@ -265,11 +265,11 @@ export class MapView extends ItemView {
         row.createEl("button", { text: "Dry run" }).addEventListener("click", () => new DryRunModal(this.plugin, a.path, a.name, s).open());
       }
       row.createEl("button", { text: "Copy link" }).addEventListener("click", () => {
-        const link = this.plugin.background?.shortcutLinks().find((l) => l.path === a.path && l.shortcut === s.id);
+        const link = this.plugin.runtime.background.shortcutLinks().find((l) => l.path === a.path && l.shortcut === s.id);
         if (link) copyShortcutLink(link);
       });
       row.createEl("button", { text: "New link key" }).addEventListener("click", handler(async () => {
-        await this.plugin.resetLinkKey(a.path, s.id);
+        await this.plugin.runtime.resetLinkKey(a.path, s.id);
         new Notice(`Links to “${s.label}” copied before now ask before they run`);
       }));
     }
@@ -314,7 +314,7 @@ export class MapView extends ItemView {
     const source = file ? gizmoBlocks(await this.app.vault.cachedRead(file)).find((b) => blockKey(embed.hostPath, b) === embed.key) : undefined;
     if (source === undefined) {
       card.createDiv({ cls: "gz-muted", text: "This block is no longer in the note; what it was allowed is kept until removed." });
-      actions.createEl("button", { text: "Remove" }).addEventListener("click", () => void this.plugin.revoke(embed.key));
+      actions.createEl("button", { text: "Remove" }).addEventListener("click", () => void this.plugin.runtime.revoke(embed.key));
       return;
     }
     let what: string;
@@ -325,7 +325,7 @@ export class MapView extends ItemView {
       what = "Its keys aren't YAML Gizmo can read";
     }
     card.createDiv({ cls: "gz-muted", text: what });
-    actions.createEl("button", { text: "Revoke" }).addEventListener("click", () => void this.plugin.revoke(embed.key));
+    actions.createEl("button", { text: "Revoke" }).addEventListener("click", () => void this.plugin.runtime.revoke(embed.key));
     this.drawAllowed(card, embed.allowed);
   }
 
@@ -334,7 +334,7 @@ export class MapView extends ItemView {
     this.link(head, lens.path, lens.name, "gz-title");
     head.createSpan({ cls: `gz-map-state is-${lens.allowed ? "allowed" : "not-opened"}`, text: lens.allowed ? "Allowed" : "Not allowed yet" });
     if (lens.allowed) {
-      head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", () => void this.plugin.revoke(lens.path));
+      head.createDiv({ cls: "gz-map-actions" }).createEl("button", { text: "Revoke" }).addEventListener("click", () => void this.plugin.runtime.revoke(lens.path));
     }
     card.createDiv({ cls: "gz-muted", text: `Shows on every note in ${lens.scope}` });
     if (lens.allowed) this.drawAllowed(card, lens.allowed);
@@ -380,7 +380,7 @@ class DryRunModal extends Modal {
     this.titleEl.setText(`If “${this.shortcut.label}” in ${this.name} ran now`);
     const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-dry" });
     // Each field as the form draws it, holding what a link that left it out would save.
-    const start = this.plugin.background?.formStart(this.path, this.shortcut.id);
+    const start = this.plugin.runtime.background.formStart(this.path, this.shortcut.id);
     if (start) {
       const form = el.createDiv({ cls: "gz-dry-fields" });
       // An empty number is saved empty, as the form saves it; a link can't say empty, so it is left out.
@@ -424,7 +424,7 @@ class DryRunModal extends Modal {
   private async show(list: HTMLElement): Promise<void> {
     const run = ++this.run;
     const params = this.shortcut.fields.length ? { ...this.values } : undefined;
-    const steps = await this.plugin.background?.dryRun(this.path, this.shortcut.id, params);
+    const steps = await this.plugin.runtime.background.dryRun(this.path, this.shortcut.id, params);
     if (run !== this.run) return;
     list.empty();
     for (const line of dryLines(steps ?? [])) list.createEl("li", { text: line });
@@ -434,7 +434,7 @@ class DryRunModal extends Modal {
 /** Saves the map as a new canvas at the vault's top, never over one already there, and opens it. */
 export async function saveMapCanvas(plugin: GizmoPlugin): Promise<void> {
   const vault = plugin.app.vault;
-  const data = mapCanvas(plugin.background?.list() ?? [], (path) => !!vault.getFileByPath(path));
+  const data = mapCanvas(plugin.runtime.background.list(), (path) => !!vault.getFileByPath(path));
   const day = dayIn(Date.now());
   let path = `Gizmo map ${day}.canvas`;
   for (let n = 2; vault.getAbstractFileByPath(path); n++) path = `Gizmo map ${day} ${n}.canvas`;

@@ -69,7 +69,7 @@ export default async function askLine(t) {
         allow: [...(answer()?.querySelectorAll("button") ?? [])].some((b) => b.textContent === "Allow"),
         errors: na.errors(answer()), wide: !!document.querySelector(".modal.gz-asking"),
         sameNote: (await na.read("Kinds/Spend data.md")) === note, sameLogs: logs() === logsBefore,
-        asked: na.plugin().granted("ask:Kinds/Spend.md") ?? null,
+        asked: na.plugin().runtime.granted("ask:Kinds/Spend.md") ?? null,
       };`);
     await shot("ask-bar.png", 1100, 900);
     expect(r.hint.startsWith("Asks Spend: reads its rows, saves nothing.") && !r.error && r.wide, r);

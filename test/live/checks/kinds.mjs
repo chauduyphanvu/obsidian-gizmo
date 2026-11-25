@@ -131,7 +131,7 @@ export default async function kinds(t) {
     const r = await run(`
       ${KEPT}
       await na.open("Daily");
-      const ran = await na.plugin().background.capture("outlay 7 food coffee");
+      const ran = await na.plugin().runtime.background.capture("outlay 7 food coffee");
       await na.until(() => kept().length === 3, 3000);
       return { ok: ran.ok, kept: kept().map((row) => row.memo) };`);
     expect(r.ok && r.kept.includes("coffee"), r);
@@ -152,7 +152,7 @@ export default async function kinds(t) {
       const go = await na.until(() => [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Make the kind"), 4000);
       const said = go?.closest(".modal")?.innerText.replace(/\\n+/g, " | ");
       // A row saved while the modal is open is carried over too, as the rows are at the click.
-      await na.plugin().dataLayer.ledger.write("Apps/Rounds data.md", [{ op: "add", l: "rounds", row: "livehill0000001", v: { km: 11, where: "hill", at: "2026-11-01T08:00" } }]);
+      await na.plugin().runtime.dataLayer.ledger.write("Apps/Rounds data.md", [{ op: "add", l: "rounds", row: "livehill0000001", v: { km: 11, where: "hill", at: "2026-11-01T08:00" } }]);
       go?.click();
       await na.until(() => na.fm("Apps/Rounds rows data.md")?.rounds?.length === 3, 5000);
       await na.sleep(1200);

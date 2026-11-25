@@ -33,15 +33,15 @@ function tell(done: Synced, note: string): void {
  */
 export function registerRowLines(plugin: GizmoPlugin): RowLines | undefined {
   const { app } = plugin;
-  const ledger = plugin.dataLayer.ledger;
+  const ledger = plugin.runtime.dataLayer.ledger;
   if (!ledger) return undefined;
   const fm = vaultFrontmatter(app);
   const store = (home: RowHome) => ledgerStore(ledger, home.dataPath, () => fm(home.owner) ?? {});
-  const log = (home: RowHome, note: string, changes: Change[]) => void plugin.activity.add({ app: home.owner, actor: "you", what: `Edited in ${basename(note)}`, changes });
+  const log = (home: RowHome, note: string, changes: Change[]) => void plugin.runtime.activity.add({ app: home.owner, actor: "you", what: `Edited in ${basename(note)}`, changes });
   const sync = new RowLines({
     now: () => new Date(),
-    index: () => plugin.background?.captureIndex() ?? { names: new Map(), clashes: new Map() },
-    home: (path, shortcut) => plugin.background?.rowHome(path, shortcut),
+    index: () => plugin.runtime.background.captureIndex(),
+    home: (path, shortcut) => plugin.runtime.background.rowHome(path, shortcut),
     rows: async (dataPath, list) => (await ledger.state(dataPath)).lists.get(list)?.rows ?? [],
     async set(home, row, changes, note) {
       const s = store(home);

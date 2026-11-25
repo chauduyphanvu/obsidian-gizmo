@@ -20,17 +20,17 @@ import { homedir, userInfo } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
 import { promisify } from "node:util";
-import { Background, type AlertNotice } from "../../src/background.ts";
+import type { AlertNotice, Background } from "../../src/background.ts";
 import { dryLines, type ShortcutResult } from "../../src/background-shortcuts.ts";
 import { parseLine, swallowed } from "../../src/capture.ts";
 import { captureCovers } from "../../src/links.ts";
+import { captureNamesOf } from "../../src/stored.ts";
 import { gizmodEnv } from "./host.ts";
 import { isPlainObject } from "../../src/keys.ts";
 
 const run = promisify(execFile);
 export const DEFAULT_PORT = 7468;
 export const DEFAULT_LABEL = "com.gizmo.gizmod";
-const TICK_MS = 60_000;
 const ADDRESS_EVERY_MS = 5 * 60_000;
 const MAX_BODY = 64 * 1024;
 
@@ -267,21 +267,17 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     return `http, Done, http://${ip}:${port}/answer/${token}, method=POST, clear=true`;
   };
   const env = gizmodEnv({ vault: vaultPath, device: id, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, log, answerButton });
+  const { runtime } = env;
+  const bg = runtime.background;
   await env.vault.scan();
-  const bg = new Background(env.bgEnv);
-  env.beat.onStartOver = () => bg.startOver();
   env.vault.onChange((path, gone) => {
-    if (gone) env.data.fileDeleted(path);
-    else env.data.fileChanged(path);
-    bg.noteChanged(path);
+    if (gone) runtime.fileDeleted(path);
+    else runtime.fileChanged(path);
   });
   env.vault.watch();
-  await env.beat.beat();
-  await bg.start();
-  const timer = setInterval(() => {
-    void env.beat.beat().catch(() => {}).then(() => bg.tick());
-  }, TICK_MS);
-  log(`gizmod ${id} reads ${vaultPath}; ${env.beat.isRunner() ? "it runs background work" : `${env.beat.runner?.name ?? "another device"} runs background work`}`);
+  await runtime.open();
+  await runtime.start();
+  log(`gizmod ${id} reads ${vaultPath}; ${runtime.beat.isRunner() ? "it runs background work" : `${runtime.beat.runner?.name ?? "another device"} runs background work`}`);
 
   const handle = async (req: IncomingMessage, res: ServerResponse): Promise<void> => {
     const reply = (status: number, body: unknown) => {
@@ -321,14 +317,14 @@ export async function serve(opts: ServeOptions): Promise<Served> {
           if ("error" in found) throw new HttpError(404, found.error);
           return found.path;
         }
-        const expected = "error" in found ? undefined : env.bgEnv.linkKey(found.path, shortcut, false);
+        const expected = "error" in found ? undefined : runtime.linkKey(found.path, shortcut, false);
         if ("error" in found || expected === undefined || !sameKey(expected, auth)) throw new HttpError(403, "that key doesn't run this");
         return found.path;
       };
       if (req.method === "GET" && parts[0] === "status" && parts.length === 1) {
         if (!trusted) throw new HttpError(403, "status is for this computer's own user");
         return reply(200, {
-          device: id, vault: vaultPath, runsBackground: env.beat.isRunner(), runner: env.beat.runner?.name, apps: bg.list().length,
+          device: id, vault: vaultPath, runsBackground: runtime.beat.isRunner(), runner: runtime.beat.runner?.name, apps: bg.list().length,
           paused: bg.paused().map((p) => ({ app: p.name, path: p.path, reason: p.reason, since: new Date(p.since).toISOString() })),
         });
       }
@@ -348,7 +344,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
           const r = await bg.capture(line, "shortcut");
           return reply(r.ok ? 200 : 422, { ok: r.ok, error: r.error, entryId: r.entryId });
         }
-        const names = env.bgEnv.captureKey(auth);
+        const names = captureNamesOf(runtime.store, auth);
         if (!names) throw new HttpError(403, "that isn't a capture key");
         const parsed = parseLine(line, bg.captureIndex(), new Date());
         if (!parsed.ok) return reply(422, { ok: false, error: parsed.error });
@@ -403,14 +399,11 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     handle,
     addresses: () => [...servers.keys()],
     async close() {
-      clearInterval(timer);
       if (addressTimer) clearInterval(addressTimer);
-      bg.stop();
       // What's waiting is written before the vault is let go of, and gizmod says it's leaving.
-      await env.data.flushSnapshots().catch(() => {});
-      await env.beat.leave();
+      await runtime.quit().catch(() => {});
+      runtime.stop();
       env.vault.close();
-      env.data.dispose();
       await Promise.all([...servers.values()].map((s) => new Promise((r) => s.close(r))));
     },
   };

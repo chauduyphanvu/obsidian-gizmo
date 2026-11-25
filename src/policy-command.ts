@@ -18,8 +18,8 @@ export class PolicyModal extends Modal {
     const { contentEl } = this;
     contentEl.addClass("gizmo", "gz-policy");
     this.titleEl.setText("Your data policy");
-    const now = this.plugin.readPolicyNote();
-    const applied = this.plugin.store.policy;
+    const now = this.plugin.runtime.readPolicyNote();
+    const applied = this.plugin.runtime.store.policy;
     if ("errors" in now) {
       contentEl.createDiv({ text: `${POLICY_PATH} can't be applied until these are fixed:` });
       const ul = contentEl.createEl("ul", { cls: "gz-error" });
@@ -43,7 +43,7 @@ export class PolicyModal extends Modal {
 
   /** Each app under the new rules: what stops, what no longer asks, what still does. */
   private drawEffects(next: AppliedPolicy): void {
-    const judged = this.plugin.background?.judge(next.rules) ?? [];
+    const judged = this.plugin.runtime.background.judge(next.rules);
     const blocked = judged.filter((j) => j.verdict.violations.length);
     const fits = judged.filter((j) => !j.verdict.violations.length);
     const el = this.contentEl;
@@ -76,7 +76,7 @@ export class PolicyModal extends Modal {
     const row = this.contentEl.createDiv({ cls: "gz-actions" });
     if (canApply) {
       row.createEl("button", { cls: "mod-cta", text: next ? "Apply" : "Stop using a policy" }).addEventListener("click", handler(async () => {
-        await this.plugin.applyPolicy(next);
+        await this.plugin.runtime.applyPolicy(next);
         new Notice(next ? "Your data policy is applied" : "No data policy is used now");
         this.close();
       }));

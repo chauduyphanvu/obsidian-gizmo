@@ -42,7 +42,7 @@ export function registerLinkCommand(plugin: GizmoPlugin): void {
     id: "copy-shortcut-link",
     name: "Copy link to an app shortcut",
     callback: () => {
-      const links = plugin.background?.shortcutLinks() ?? [];
+      const links = plugin.runtime.background.shortcutLinks();
       if (!links.length) return void new Notice("No app has a shortcut yet; add shortcut: to a button or form");
       new ShortcutPicker(plugin.app, links).open();
     },

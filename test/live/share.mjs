@@ -92,7 +92,7 @@ const snap = async (t, name) => {
 };
 
 // What each vault's page reads: the kind's rows with their lines, and its asks.
-const ROWS = `const rows = async () => (await na.plugin().background.env.actionDeps("Chore.md", "Chore data.md", "you").store.rows("chore")).map((r) => ({ task: r.task, line: r.line, by: r.by, writer: r.writer }));`;
+const ROWS = `const rows = async () => (await na.plugin().runtime.background.env.actionDeps("Chore.md", "Chore data.md", "you").store.rows("chore")).map((r) => ({ task: r.task, line: r.line, by: r.by, writer: r.writer }));`;
 
 let a, b, chrome, daemon;
 try {
@@ -111,7 +111,7 @@ try {
       const mark = na.notices.length;
       na.button("Allow").click();
       await na.settle();
-      await na.plugin().background.share("Chore.md");
+      await na.plugin().runtime.background.share("Chore.md");
       return na.noticesSince(mark, "nothing is shared", 4000);`);
     ta.expect(told.some((n) => n.includes("Chore: nothing is shared from this device until the secret chore-key holds the kind's key")) && requests.length === 0, { told, requests });
     return `${asked.join(" · ")}; allowed, and without a key nothing reached the relay`;
@@ -170,16 +170,16 @@ try {
       na.button("Join", modal).click();
       await na.until(() => na.exists("Chore.md"), 5000);
       const r = await na.open("Chore");
-      return { asked: r.prompt, secret: app.secretStorage.getSecret("chore-key")?.slice(0, 5), note: await na.read("Chore.md"), writers: Object.values(na.plugin().store.writers ?? {}) };`);
+      return { asked: r.prompt, secret: app.secretStorage.getSecret("chore-key")?.slice(0, 5), note: await na.read("Chore.md"), writers: Object.values(na.plugin().runtime.store.writers ?? {}) };`);
     ta.expect(joined.secret === "gzk1." && joined.asked?.some((t) => t.includes(`through ${stubHost}`)) && joined.writers.some((w) => w.name === "Ann" && w.state === "accepted") && !joined.note.includes("gzk1"), joined);
     return `previewed pasted and opened by the link; joined as Bo; Ann accepted`;
   });
 
   await ta.check("a chore added in A comes into B as logged, from Ann", async () => {
     const before = posts();
-    await ta.run(`await na.plugin().background.capture("chore Bins Alex"); return true;`);
+    await ta.run(`await na.plugin().runtime.background.capture("chore Bins Alex"); return true;`);
     for (let i = 0; i < 30 && posts() === before; i++) await sleep(200);
-    const got = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
+    const got = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return rows();`);
     ta.expect(got.some((r) => r.task === "Bins" && r.line === undefined && r.by === "Ann" && r.writer), { got, posts: posts() - before });
     const shown = await tb.run(`
       await na.open("Chore");
@@ -191,11 +191,11 @@ try {
   });
 
   await ta.check("a chore from B, whom A never accepted, waits in A's Next; Accept makes it count", async () => {
-    await tb.run(`await na.plugin().background.capture("chore Dishes Sam"); await na.sleep(800); await na.plugin().background.share("Chore.md"); return true;`);
+    await tb.run(`await na.plugin().runtime.background.capture("chore Dishes Sam"); await na.sleep(800); await na.plugin().runtime.background.share("Chore.md"); return true;`);
     const waiting = await ta.run(`${ROWS}
-      await na.plugin().background.share("Chore.md");
-      await na.until(() => na.plugin().background.asks.list().some((a) => a.id.startsWith("writer\\n")), 5000);
-      return { rows: await rows(), asks: na.plugin().background.asks.list().map((a) => a.text) };`);
+      await na.plugin().runtime.background.share("Chore.md");
+      await na.until(() => na.plugin().runtime.background.asks.list().some((a) => a.id.startsWith("writer\\n")), 5000);
+      return { rows: await rows(), asks: na.plugin().runtime.background.asks.list().map((a) => a.text) };`);
     ta.expect(waiting.rows.some((r) => r.task === "Dishes" && r.line === "attested" && r.by === "Bo") && waiting.asks.some((t) => /^Accept rows from Bo \(key [0-9a-f]{4}\) in Chore\? 1 row waits, and later ones will count as logged$/.test(t)), waiting);
     const shown = await ta.run(`
       app.commands.executeCommandById("gizmo:next");
@@ -208,7 +208,7 @@ try {
       const modal = [...document.querySelectorAll(".modal")].find((m) => m.innerText.includes("Accept rows from Bo"));
       na.button("Accept", modal).click();
       const told = await na.noticesSince(mark, "Accepted", 4000);
-      return { told, rows: await rows(), writers: Object.values(na.plugin().store.writers ?? {}) };`);
+      return { told, rows: await rows(), writers: Object.values(na.plugin().runtime.store.writers ?? {}) };`);
     await shut(ta, ".gz-next-modal");
     ta.expect(shown?.includes("Refuse") && after.told.some((n) => n.startsWith("Chore: Accepted rows from Bo.")) && after.rows.some((r) => r.task === "Dishes" && r.line === undefined) && after.writers.some((w) => w.name === "Bo" && w.state === "accepted"), { shown, after });
     return `asked “Accept rows from Bo in Chore?”; accepted, Dishes logged`;
@@ -216,22 +216,22 @@ try {
 
   await ta.check("a chore undone in A is set aside in B", async () => {
     const undone = await ta.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       const entry = (await p.activity.list("Chore.md")).find((e) => e.changes.some((c) => c.kind === "row-added" && c.row.task === "Bins"));
       return entry ? (await p.undo(entry)).undone : "no entry";`);
     await sleep(1500);
-    const got = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
+    const got = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return rows();`);
     ta.expect(undone === 1 && got.some((r) => r.task === "Bins" && r.line === "dismissed"), { undone, got });
     return "Bins is dismissed in B";
   });
 
   await ta.check("a message the relay loses is sent again once B says what it holds", async () => {
     relay.drop = 1;
-    await ta.run(`await na.plugin().background.capture("chore Laundry Sam"); await na.sleep(1500); return true;`);
-    await ta.run(`await na.plugin().background.capture("chore Windows Alex"); await na.sleep(1500); return true;`);
-    const first = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
-    await ta.run(`await na.plugin().background.share("Chore.md"); return true;`);
-    const then = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
+    await ta.run(`await na.plugin().runtime.background.capture("chore Laundry Sam"); await na.sleep(1500); return true;`);
+    await ta.run(`await na.plugin().runtime.background.capture("chore Windows Alex"); await na.sleep(1500); return true;`);
+    const first = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return rows();`);
+    await ta.run(`await na.plugin().runtime.background.share("Chore.md"); return true;`);
+    const then = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return rows();`);
     ta.expect(first.some((r) => r.task === "Windows") && !first.some((r) => r.task === "Laundry") && then.some((r) => r.task === "Laundry" && r.line === undefined), { first, then });
     return "Laundry lost on the way, then sent again from B's summary";
   });
@@ -247,36 +247,36 @@ try {
       const sheet = await na.until(() => na.view().contentEl.querySelector(".gz-sheet.is-open"), 3000);
       [...(sheet?.querySelectorAll(".gz-sheet-actions > button") ?? [])].find((b) => b.textContent === "Delete")?.click();
       await na.until(async () => !(await rows()).some((r) => r.task === "Windows"), 4000);
-      await na.plugin().background.share("Chore.md");
+      await na.plugin().runtime.background.share("Chore.md");
       return (await rows()).filter((r) => r.task === "Windows");`);
     await sleep(1500);
-    const gone = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return (await rows()).filter((r) => r.task === "Windows");`);
+    const gone = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return (await rows()).filter((r) => r.task === "Windows");`);
     const back = await ta.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       const entry = (await p.activity.list("Chore.md")).find((e) => e.changes.some((c) => c.kind === "row-deleted" && c.row.task === "Windows"));
       const undone = entry ? (await p.undo(entry)).undone : "no entry";
       await na.sleep(800);
       await p.background.share("Chore.md");
       return undone;`);
     await sleep(1500);
-    const again = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return (await rows()).filter((r) => r.task === "Windows");`);
+    const again = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return (await rows()).filter((r) => r.task === "Windows");`);
     ta.expect(deleted.length === 0 && gone.length === 1 && gone[0].line === "dismissed" && back === 1 && again.length === 1 && again[0].line === undefined, { deleted, gone, back, again });
     return "Windows set aside in B when A deleted it; logged in B again after A's Undo";
   });
 
   await ta.check("a field A changes in its own row goes to B as a newer version; in B, Ann's row can't be changed or deleted, says whose it is, and Not mine sets it aside in B only", async () => {
-    const WHO = `const who = async (task) => (await na.plugin().background.env.actionDeps("Chore.md", "Chore data.md", "you").store.rows("chore")).filter((r) => r.task === task).map((r) => ({ who: r.who, line: r.line }));`;
+    const WHO = `const who = async (task) => (await na.plugin().runtime.background.env.actionDeps("Chore.md", "Chore data.md", "you").store.rows("chore")).filter((r) => r.task === task).map((r) => ({ who: r.who, line: r.line }));`;
     const changed = await ta.run(`${WHO}
       await na.open("Chore");
       const shows = (tr) => [...tr.querySelectorAll("td")].some((td) => (td.querySelector("input, select")?.value ?? td.textContent).includes("Laundry"));
       const row = await na.until(() => [...na.view().contentEl.querySelectorAll("tbody tr:not(.gz-ledger-group)")].find(shows), 4000);
       na.choose(row.querySelector("select.gz-edit"), "Alex");
       await na.until(async () => (await who("Laundry"))[0]?.who === "Alex", 4000);
-      await na.plugin().background.share("Chore.md");
+      await na.plugin().runtime.background.share("Chore.md");
       return who("Laundry");`);
     await sleep(1500);
     const inB = await tb.run(`${WHO}
-      await na.plugin().background.share("Chore.md");
+      await na.plugin().runtime.background.share("Chore.md");
       await na.open("Chore");
       const shows = (tr) => [...tr.querySelectorAll("td")].some((td) => (td.querySelector("input, select")?.value ?? td.textContent).includes("Laundry"));
       const row = await na.until(() => [...na.view().contentEl.querySelectorAll("tbody tr:not(.gz-ledger-group)")].find(shows), 4000);
@@ -291,11 +291,11 @@ try {
       await na.until(async () => (await who("Laundry"))[0]?.line === "dismissed", 4000);
       await na.sleep(600);
       const said = na.view().contentEl.querySelector(".gz-said, .gz-undo-bar")?.textContent;
-      await na.plugin().background.share("Chore.md");
+      await na.plugin().runtime.background.share("Chore.md");
       return { rows: await who("Laundry"), said };`);
     await snap(tb, "share-theirs-aside.png");
     await sleep(1500);
-    const inA = await ta.run(`${WHO} await na.plugin().background.share("Chore.md"); return who("Laundry");`);
+    const inA = await ta.run(`${WHO} await na.plugin().runtime.background.share("Chore.md"); return who("Laundry");`);
     ta.expect(changed[0]?.who === "Alex" && inB.rows[0]?.who === "Alex", { changed, inB: inB.rows });
     ta.expect(inB.cells.inputs === 0 && inB.cells.title === "By Ann; only Ann can change it" && inB.theirs === "By Ann; only Ann can change it." && inB.buttons.includes("Not mine") && !inB.buttons.includes("Delete") && inB.editable === 0, inB);
     ta.expect(aside.rows[0]?.line === "dismissed" && inA[0]?.line === undefined && inA[0]?.who === "Alex", { aside, inA });
@@ -371,8 +371,8 @@ try {
     ta.expect(!refused.form && refused.why.startsWith("This code isn't for this page.") && before === start, { refused, posts: before - start });
     ta.expect(offline?.cls === "bad" && offline.text.endsWith("Nothing was added; try again.") && offline.task === "Fed the cat" && !offline.list, offline);
     ta.expect(shown.form && shown.text.includes("This page is for Sitter") && said?.cls === "ok" && posts() === before + 1 && requests.at(-1).origin === "null", { shown, said, last: requests.at(-1) });
-    const inA = await ta.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
-    const inB = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); await na.sleep(500); return { rows: await rows(), asks: na.plugin().background.asks.list().map((a) => a.text) };`);
+    const inA = await ta.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return rows();`);
+    const inB = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); await na.sleep(500); return { rows: await rows(), asks: na.plugin().runtime.background.asks.list().map((a) => a.text) };`);
     ta.expect(inA.some((r) => r.task === "Fed the cat" && r.line === undefined && r.by === "Sitter") && inB.rows.some((r) => r.task === "Fed the cat" && r.line === "attested" && r.by === "Sitter") && inB.asks.some((t) => /^Accept rows from Sitter \(key [0-9a-f]{4}\) in Chore\?/.test(t)), { inA, inB });
     return `changed code: “${refused.why.split(".")[0]}”; offline: “${offline.text}”; then ${said.text} A: logged, by Sitter; B asks “Accept rows from Sitter in Chore?”`;
   });
@@ -390,7 +390,7 @@ try {
       const mark = na.notices.length;
       na.button("Remove", li).click();
       const told = await na.noticesSince(mark, "no longer", 3000);
-      return { told, state: Object.values(na.plugin().store.writers).find((w) => w.name === "Sitter")?.state, rows: await rows() };`);
+      return { told, state: Object.values(na.plugin().runtime.store.writers).find((w) => w.name === "Sitter")?.state, rows: await rows() };`);
     ta.expect(card?.includes("Bo: accepted") && card.includes("Sitter (guest page): accepted") && removed.state === "removed" && removed.told.some((n) => n.includes("rows from Sitter no longer come in. The rows of theirs already here stay")) && removed.rows.some((r) => r.task === "Fed the cat"), { card, removed });
     return card.split("\n").slice(0, 4).join(" · ");
   });
@@ -405,9 +405,9 @@ try {
     const r = await ta.run(`${ROWS}
       const before = (await rows()).length;
       const mark = na.notices.length;
-      await na.plugin().background.share("Chore.md");
+      await na.plugin().runtime.background.share("Chore.md");
       await na.sleep(500);
-      const id = na.plugin().device.id;
+      const id = na.plugin().runtime.device.id;
       const st = JSON.parse(await app.vault.adapter.read(".obsidian/plugins/gizmo/share/" + id + ".json"));
       return { before, after: (await rows()).length, notices: na.notices.slice(mark), ignored: st.kinds["Chore.md"].ignored };`);
     ta.expect(r.before === r.after && r.notices.length === 0 && r.ignored >= 2, r);
@@ -415,11 +415,11 @@ try {
   });
 
   await ta.check("A offline: what B adds meanwhile comes in when A's Obsidian opens again", async () => {
-    await ta.run(`await na.plugin().beat.leave(); return true;`);
+    await ta.run(`await na.plugin().runtime.beat.leave(); return true;`);
     a.page.close();
     a.quit();
     await sleep(1500);
-    await tb.run(`await na.plugin().background.capture("chore Mop Sam"); await na.sleep(800); await na.plugin().background.capture("chore Sweep Alex"); await na.sleep(800); await na.plugin().background.share("Chore.md"); return true;`);
+    await tb.run(`await na.plugin().runtime.background.capture("chore Mop Sam"); await na.sleep(800); await na.plugin().runtime.background.capture("chore Sweep Alex"); await na.sleep(800); await na.plugin().runtime.background.share("Chore.md"); return true;`);
     a = await launch({ repo, dir: join(work, "a"), port, vault: a.vault });
     const ta2 = await tools(a.page, shots, "vault A", results);
     Object.assign(ta, ta2);
@@ -431,13 +431,13 @@ try {
   await ta.check("gizmod keeps A in step while its Obsidian is closed: sends what A saved while the relay was down, and takes in B's", async () => {
     const secret = await ta.run(`return app.secretStorage.getSecret("chore-key");`);
     relay.down = true;
-    const saved = await ta.run(`${ROWS} await na.plugin().background.capture('chore "Feed the fish" Sam'); await na.sleep(800); await na.plugin().background.share("Chore.md"); return (await rows()).some((r) => r.task === "Feed the fish");`);
-    await ta.run(`await na.plugin().beat.leave(); return true;`);
+    const saved = await ta.run(`${ROWS} await na.plugin().runtime.background.capture('chore "Feed the fish" Sam'); await na.sleep(800); await na.plugin().runtime.background.share("Chore.md"); return (await rows()).some((r) => r.task === "Feed the fish");`);
+    await ta.run(`await na.plugin().runtime.beat.leave(); return true;`);
     a.page.close();
     a.quit();
     a = undefined;
     relay.down = false;
-    await tb.run(`await na.plugin().background.capture('chore "Water plants" Alex'); await na.sleep(800); await na.plugin().background.share("Chore.md"); return true;`);
+    await tb.run(`await na.plugin().runtime.background.capture('chore "Water plants" Alex'); await na.sleep(800); await na.plugin().runtime.background.share("Chore.md"); return true;`);
     const home = join(work, "gizmod-home");
     mkdirSync(home, { recursive: true });
     const env = { ...process.env, GIZMOD_HOME: home, GIZMOD_PORT: String(gizmodPort), GIZMOD_MAC_NOTICES: "0", GIZMO_SECRET_CHORE_KEY: secret };
@@ -452,7 +452,7 @@ try {
       await sleep(300);
       note = existsSync(dataNote) ? readFileSync(dataNote, "utf8") : "";
     }
-    const inB = await tb.run(`${ROWS} await na.plugin().background.share("Chore.md"); return rows();`);
+    const inB = await tb.run(`${ROWS} await na.plugin().runtime.background.share("Chore.md"); return rows();`);
     const shareFiles = readdirSync(join(work, "a", "vault", ".obsidian/plugins/gizmo/share"));
     ta.expect(saved && note.includes("Water plants") && inB.some((r) => r.task === "Feed the fish" && r.by === "Ann"), { saved, note: note.slice(0, 600), inB, log: log.slice(-800) });
     return `gizmod took in Water plants and sent Feed the fish; share files: ${shareFiles.join(", ")}`;

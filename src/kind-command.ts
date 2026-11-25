@@ -83,7 +83,7 @@ class ListPicker extends FuzzySuggestModal<string> {
 
 /** The list's rows as the app keeps them now, each as an add to the kind's rows (see carriedOps). */
 async function carried(plugin: GizmoPlugin, file: TFile, fm: Record<string, unknown>, list: string): Promise<Op[]> {
-  const ledger = plugin.dataLayer.ledger;
+  const ledger = plugin.runtime.dataLayer.ledger;
   if (!ledger) return [];
   const state = await ledger.state(defaultDataPath(file.path), fm);
   return carriedOps(list, state.lists.get(list)?.rows ?? [], () => ledger.newRowId());
@@ -105,9 +105,9 @@ async function offer(plugin: GizmoPlugin, file: TFile, fm: Record<string, unknow
       // The kind and its rows first: if the app's lines can't be changed after, nothing is lost and the app still reads its own list.
       await app.vault.create(plan.path, plan.text);
       const kindData = defaultDataPath(plan.path);
-      plugin.dataLayer.noteApp(kindData, plan.path);
-      await plugin.dataLayer.ledger?.write(kindData, adds);
-      await plugin.dataLayer.snapshotNow(kindData, false).catch(() => undefined);
+      plugin.runtime.dataLayer.noteApp(kindData, plan.path);
+      await plugin.runtime.dataLayer.ledger?.write(kindData, adds);
+      await plugin.runtime.dataLayer.snapshotNow(kindData, false).catch(() => undefined);
       let changed = false;
       await app.vault.process(file, (now) => {
         changed = now === appText;

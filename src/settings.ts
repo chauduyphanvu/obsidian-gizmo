@@ -17,23 +17,23 @@ export class GizmoSettings extends PluginSettingTab {
 
   /** Where background work runs, and the other devices with when each was last open. */
   private devices(): { background: string; others: { name: string; desc: string }[] } {
-    const { device, beat } = this.plugin;
+    const { device, beat } = this.plugin.runtime;
     // One device runs records and alerts' thens: the one most suited to it that is open, chosen by every device alike.
-    const runner = beat?.runner;
+    const runner = beat.runner;
     const background = !runner || runner.id === device.id
       ? "Runs on this device: records, and the thens alerts run. Shortcuts, links, pins and alert notices work on every device."
       : `Runs on ${runner.name}${runner.priority === PRIORITY.gizmod ? " (gizmod)" : ""}, last heard from ${when(runner.seen, new Date())}. This device takes it over if that one isn't heard from for 20 minutes.`;
     const now = new Date();
-    const others = (beat?.beats ?? []).filter((s) => s.id !== device.id).sort((a, b) => b.seen - a.seen)
+    const others = beat.beats.filter((s) => s.id !== device.id).sort((a, b) => b.seen - a.seen)
       .map((s) => ({ name: s.name, desc: `${s.id === runner?.id ? "Runs background work" : "Doesn't run background work"} · last open ${when(s.seen, now)}` }));
     return { background, others };
   }
 
   private rename(value: string): void {
     const { plugin } = this;
-    plugin.device.name = value.trim();
-    saveDevice(plugin.deviceStore, plugin.device);
-    void plugin.beat?.beat(true);
+    plugin.runtime.device.name = value.trim();
+    saveDevice(plugin.deviceStore, plugin.runtime.device);
+    void plugin.runtime.beat.beat(true);
   }
 
   /** The tab from Obsidian 1.13 on, where settings search finds it. */
@@ -58,7 +58,7 @@ export class GizmoSettings extends PluginSettingTab {
   }
 
   getControlValue(key: string): unknown {
-    return key === "name" ? this.plugin.device.name : undefined;
+    return key === "name" ? this.plugin.runtime.device.name : undefined;
   }
 
   setControlValue(key: string, value: unknown): void {
@@ -74,7 +74,7 @@ export class GizmoSettings extends PluginSettingTab {
     new Setting(el)
       .setName("Name")
       .setDesc(NAME_DESC)
-      .addText((t) => t.setValue(this.plugin.device.name).onChange((value) => {
+      .addText((t) => t.setValue(this.plugin.runtime.device.name).onChange((value) => {
         if (value.trim()) this.rename(value);
       }));
     new Setting(el).setName("Background work").setDesc(background);

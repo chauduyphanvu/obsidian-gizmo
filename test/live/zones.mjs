@@ -56,7 +56,7 @@ try {
 
   await ta.check("each device runs in its own zone and says so in its beat", async () => {
     const zones = await Promise.all([ta, tb].map((t) => t.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       await p.beat.beat(true);
       return { clock: Intl.DateTimeFormat().resolvedOptions().timeZone, beat: p.beat.beats[0].zone, used: typeof p.beat.beats[0].used };`)));
     ta.expect(zones[0].clock === "America/Los_Angeles" && zones[0].beat === zones[0].clock && HCM.includes(zones[1].clock) && zones[1].beat === zones[1].clock && zones.every((z) => z.used === "number"), zones);
@@ -79,8 +79,8 @@ try {
   });
 
   await ta.check("deadlines follow the device used last: B touched, then A", async () => {
-    const touch = (t) => t.run(`document.dispatchEvent(new PointerEvent("pointerdown")); await na.plugin().beat.beat(true); return true;`);
-    const where = () => ta.run(`await na.plugin().beat.beat(true); return na.plugin().beat.whereYouAre();`);
+    const touch = (t) => t.run(`document.dispatchEvent(new PointerEvent("pointerdown")); await na.plugin().runtime.beat.beat(true); return true;`);
+    const where = () => ta.run(`await na.plugin().runtime.beat.beat(true); return na.plugin().runtime.beat.whereYouAre();`);
     await touch(tb);
     await new Promise((r) => setTimeout(r, 1500));
     const afterB = await where();

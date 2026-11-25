@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, readFileSync, readdirSync, rmSync, utimesSync, writeFileSync } from "node:fs";
 import { createServer, type IncomingMessage, type ServerResponse } from "node:http";
 import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
@@ -7,13 +7,13 @@ import { after, test } from "node:test";
 import { stringify } from "yaml";
 import { ANSWER_MS, AnswerTokens, adminToken, ownHost, plist, runScript, serve } from "../scripts/gizmod/gizmod.ts";
 import { gizmodEnv, pushText, secretFromEnv } from "../scripts/gizmod/host.ts";
-import { Background } from "../src/background.ts";
 import { identityText, kindKeys, newIdentity } from "../src/share-crypto.ts";
 import { NodeVault, inlineTags, splitNote } from "../scripts/gizmod/vault.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
 import { PRIORITY, readBeat, runnerOf } from "../src/device.ts";
 import { stampOf } from "../src/time.ts";
+import { textHash } from "../src/hash.ts";
 
 const made: string[] = [];
 after(() => { for (const d of made) rmSync(d, { recursive: true, force: true }); });
@@ -141,7 +141,7 @@ async function served(settings: Record<string, unknown> = {}, inbox: Record<stri
     await s.handle(req, res);
     return { status, body: JSON.parse(out) as Record<string, unknown> };
   };
-  const rows = async () => (await s.env.data.ledger!.state("Apps/Inbox data.md")).lists.get("todo")?.rows.map((r) => r.task) ?? [];
+  const rows = async () => (await s.env.runtime.dataLayer.ledger!.state("Apps/Inbox data.md")).lists.get("todo")?.rows.map((r) => r.task) ?? [];
   return { s, root, home, token, ask, rows, lines };
 }
 
@@ -371,7 +371,7 @@ test("gizmod reads data.json again when Obsidian changes it", async () => {
 
 test("gizmod stopping writes what's waiting and says it's leaving, so Obsidian takes over at once", async () => {
   const t = await served();
-  await t.s.env.beat.beat(true);
+  await t.s.env.runtime.beat.beat(true);
   const beatFile = () => readdirSync(join(t.root, ".obsidian/plugins/gizmo/devices")).map((f) => readBeat(readFileSync(join(t.root, ".obsidian/plugins/gizmo/devices", f), "utf8"))!);
   assert.equal(beatFile()[0].left, undefined);
   await t.s.close();
@@ -439,7 +439,7 @@ async function missedPills(tailscaleAddress: () => Promise<string | undefined>, 
     await s.handle(req, res);
     return { status, body: JSON.parse(out) as Record<string, unknown> };
   };
-  const doses = async () => (await s.env.data.ledger!.state("Apps/Pills data.md")).lists.get("doses")?.rows ?? [];
+  const doses = async () => (await s.env.runtime.dataLayer.ledger!.state("Apps/Pills data.md")).lists.get("doses")?.rows ?? [];
   return { s, stub, pushes, due, by, home, post, doses, close: async () => { await s.close(); stub.close(); } };
 }
 
@@ -456,7 +456,7 @@ test("a missed rhythm is pushed with a Done button to gizmod's Tailscale address
     const ran = await t.post(m[1]);
     assert.deepEqual([ran.status, ran.body.ok], [200, true], JSON.stringify(ran.body));
     assert.deepEqual((await t.doses()).map((r) => r.at), [stampOf(t.due)], "logged at the window's deadline, so the window is met");
-    const [entry] = await t.s.env.activity.list("Apps/Pills.md");
+    const [entry] = await t.s.env.runtime.activity.list("Apps/Pills.md");
     assert.equal(entry?.actor, "link");
     const again = await t.post(m[1]);
     assert.equal(again.status, 410, "a button answers once");
@@ -498,8 +498,8 @@ test("gizmod asks the network only for what a note names: nothing at all without
   });
   const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch });
   await env.vault.scan();
-  const bg = new Background(env.bgEnv);
-  await env.beat.beat();
+  const bg = env.runtime.background;
+  await env.runtime.beat.beat();
   await bg.start();
   await bg.tick();
   assert.equal(calls.length, 0, JSON.stringify(calls));
@@ -514,8 +514,8 @@ test("gizmod asks the network only for what a note names: nothing at all without
   try {
     const env2 = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch });
     await env2.vault.scan();
-    const bg2 = new Background(env2.bgEnv);
-    await env2.beat.beat();
+    const bg2 = env2.runtime.background;
+    await env2.runtime.beat.beat();
     await bg2.start();
     await bg2.tick();
     const topic = (await kindKeys(id.key)).topic;
@@ -568,4 +568,65 @@ test("a missed window is still pushed when the answers file can't be read or wri
   } finally {
     await unwritable.close();
   }
+});
+
+test("gizmod seals as the device running background work: a sealed kind once allowed, its hash sent to the authority it was allowed to ask", async () => {
+  const ev = (t: number, row: string) => `${JSON.stringify({ op: "add", l: "dose", row, v: { what: "morning" }, t: `${new Date(t).toISOString()}/0`, d: "gztest01" })}\n`;
+  const root = vaultDir({
+    "Kinds/Dose.md": { fm: { kind: "dose", fields: { what: "text" }, seal: { authority: "https://tsa.example.com/tsr" } } },
+    "Kinds/Dose data/log/gztest01-2026-11.jsonl": ev(Date.UTC(2026, 10, 19), "00000000000000a1"),
+    ".obsidian/plugins/gizmo/data.json": JSON.stringify({ grants: { "Kinds/Dose.md": [] } }),
+  });
+  const posts: { url: string; type: string | null }[] = [];
+  const fetch = (async (url: string, init?: RequestInit) => {
+    posts.push({ url, type: new Headers(init?.headers).get("content-type") });
+    return new Response(new Uint8Array([0]), { status: 503 });
+  }) as typeof globalThis.fetch;
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch, now: () => Date.UTC(2026, 10, 22) });
+  await env.vault.scan();
+  await env.runtime.beat.beat();
+  assert.equal(env.runtime.beat.isRunner(), true);
+  await env.runtime.sealDue();
+  const seals = () => readdirSync(join(root, "Kinds/Dose data/log")).filter((f) => f.endsWith(".seals")).map((f) => readFileSync(join(root, "Kinds/Dose data/log", f), "utf8").trim().split("\n").length);
+  assert.deepEqual(seals(), [], "a kind runs nothing of its own until allowed what it asks for");
+  assert.deepEqual(posts, []);
+
+  // Allowed in Obsidian to ask its authority: the seal is made and its hash goes there (which answers 503 here).
+  writeFileSync(join(root, ".obsidian/plugins/gizmo/data.json"), JSON.stringify({ grants: { "Kinds/Dose.md": ["seal:Kinds/Dose.md|tsa.example.com"] } }));
+  const later = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch, now: () => Date.UTC(2026, 10, 23, 1) });
+  await later.vault.scan();
+  await later.runtime.beat.beat();
+  await later.runtime.sealDue();
+  assert.deepEqual(posts, [{ url: "https://tsa.example.com/tsr", type: "application/timestamp-query" }]);
+  assert.deepEqual(seals(), [1], "sealed without a time stamp when the authority fails");
+  await later.runtime.sealDue();
+  assert.deepEqual(seals(), [1], "not again within the day");
+});
+
+test("gizmod's host: no answer at all is the network's failure, naming the host; a missing secret says which variable to set", async () => {
+  const root = vaultDir({});
+  const fetch = (async () => { throw new TypeError("fetch failed"); }) as typeof globalThis.fetch;
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, fetch });
+  await assert.rejects(env.host.fetch("https://api.example.com/w", {}), (e: Error & { kind?: string; host?: string }) => e.kind === "network" && e.host === "api.example.com");
+  assert.match(env.host.whereSecrets!("api-key"), /GIZMO_SECRET_API_KEY/);
+});
+
+test("gizmod makes a note only where none is, and undoing a note it made moves it to the vault's .trash while it is unchanged", async () => {
+  const root = vaultDir({ "Daily.md": "# Today\n" });
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {} });
+  await env.vault.scan();
+  await assert.rejects(env.vault.create("Daily.md", "over"), /EEXIST/);
+  assert.equal(readFileSync(join(root, "Daily.md"), "utf8"), "# Today\n");
+
+  const made = await env.io.createNote("Notes/Idea.md", {}, "an idea\n");
+  assert.equal(typeof made, "string");
+  const entry = await env.runtime.activity.add({ app: "Apps/Ideas.md", actor: "you", what: "Made a note", changes: [{ kind: "note-created", path: "Notes/Idea.md", hash: textHash(made as string) }] });
+  assert.equal((await env.runtime.undo(entry!)).undone, 1);
+  assert.equal(existsSync(join(root, "Notes/Idea.md")), false);
+  assert.equal(readFileSync(join(root, ".trash/Idea.md"), "utf8"), "an idea\n");
+  // A second note of that name in the trash keeps both.
+  const again = await env.io.createNote("Notes/Idea.md", {}, "another\n");
+  const second = await env.runtime.activity.add({ app: "Apps/Ideas.md", actor: "you", what: "Made a note", changes: [{ kind: "note-created", path: "Notes/Idea.md", hash: textHash(again as string) }] });
+  await env.runtime.undo(second!);
+  assert.deepEqual(readdirSync(join(root, ".trash")).sort(), ["Idea 2.md", "Idea.md"]);
 });

@@ -34,7 +34,7 @@ export default async function background(t) {
     const r = await run(`
       const log = await na.until(() => na.fm("Apps/Space weather data.md")?.kp_log, 5000);
       // Kept in this device's response history: its newest answers, by request.
-      const dir = ".obsidian/plugins/gizmo/responses/" + na.plugin().device.id;
+      const dir = ".obsidian/plugins/gizmo/responses/" + na.plugin().runtime.device.id;
       const files = (await app.vault.adapter.exists(dir + "/blobs")) ? (await app.vault.adapter.list(dir + "/blobs")).files : [];
       const noaa = await na.until(async () => (await app.vault.adapter.exists(dir + "/latest.json")) && (await app.vault.adapter.read(dir + "/latest.json")).includes("services.swpc.noaa.gov/json/planetary_k_index_1m.json"), 3000);
       return { log, files: files.length, noaa, status: na.status().find((s) => s.startsWith("Kp now")) };`);
@@ -49,7 +49,7 @@ export default async function background(t) {
       const before = count();
       const mark = na.notices.length;
       // The link as "Copy link to an app shortcut" gives it, key and all.
-      const url = new URL(na.plugin().background.shortcutLinks().find((l) => l.app === "Space weather" && l.shortcut === "saw-aurora").link);
+      const url = new URL(na.plugin().runtime.background.shortcutLinks().find((l) => l.app === "Space weather" && l.shortcut === "saw-aurora").link);
       app.workspace.protocolHandler.dispatch({ action: url.host, ...Object.fromEntries(url.searchParams) });
       const notices = await na.noticesSince(mark, "Sighting saved");
       await na.until(() => count() === before + 1, 3000);
@@ -97,7 +97,7 @@ export default async function background(t) {
     // The stub stays in place across the resize below; the last step puts the real fetch back.
     const r = await run(`
       await na.open("Apps/Weather");
-      const host = na.plugin().dataLayer.host;
+      const host = na.plugin().runtime.dataLayer.host;
       window.__naFetch = host.fetch;
       host.fetch = async () => ({ status: 503, text: "Service Unavailable", contentType: "text/plain" });
       na.menuItem("Reload data");
@@ -116,7 +116,7 @@ export default async function background(t) {
         return { width: el.clientWidth, marked: web.map((p) => p.getAttribute("data-asof")), lines: el.querySelectorAll(".gz-view-line path.gz-line").length, errors: el.querySelectorAll(".gz-error").length };`);
     } finally {
       await page.send("Emulation.clearDeviceMetricsOverride");
-      await run(`if (window.__naFetch) na.plugin().dataLayer.host.fetch = window.__naFetch; delete window.__naFetch;`);
+      await run(`if (window.__naFetch) na.plugin().runtime.dataLayer.host.fetch = window.__naFetch; delete window.__naFetch;`);
     }
     expect(r.marked.length === 5 && r.marked.every((m) => m?.startsWith("as of")) && r.errors === 0, r);
     expect(after.marked.every((m) => m?.startsWith("as of")) && after.lines === 2 && after.errors === 0, after);

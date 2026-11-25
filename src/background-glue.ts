@@ -1,144 +1,96 @@
 import { Notice, Platform } from "obsidian";
-import { actionDepsOf } from "./actions.ts";
-import { Background, TICK_MS, type StatusItem } from "./background.ts";
-import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherShareStates, otherTriggers, whereYouAre } from "./device.ts";
-import { obsidianAppEnv, pluginFile, pluginFiles, vaultFrontmatter, vaultNotes } from "./host.ts";
+import type { BackgroundSink, StatusItem } from "./background.ts";
+import { PRIORITY, type Device } from "./device.ts";
 import { openMap } from "./map-view.ts";
-import { dropKeys } from "./identity.ts";
 import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
-import { shortcutId } from "./links.ts";
-import { captureNamesOf, destinationsOf, writersOf } from "./stored.ts";
+import type { RuntimeHost } from "./runtime.ts";
 import { openInstall } from "./share-command.ts";
 import { openInvite } from "./invite-command.ts";
 import { openNext } from "./next-command.ts";
-import { isApp, isKind, notePath, storeTarget } from "./store.ts";
 import { localZone } from "./time.ts";
 
+const openApp = (plugin: GizmoPlugin, path: string) => void plugin.app.workspace.openLinkText(path, "", false);
+
 /**
- * Obsidian glue for the background service: it starts once the layout is ready, hears about app
- * notes from the metadata cache, ticks on one interval, and stops when the plugin unloads.
+ * What the background tells and shows in Obsidian: notices, a command per app shortcut, the status
+ * bar (none on mobile) and the Run windows. Its status items go when the plugin unloads.
  */
-export function registerBackground(plugin: GizmoPlugin): Background {
-  const app = plugin.app;
-  const frontmatter = vaultFrontmatter(app);
-  // An env without a tab: actions never ask for the source view, the only thing a leaf is for.
-  const envFor = (path: string) => {
-    const file = app.vault.getFileByPath(path);
-    return file ? obsidianAppEnv(plugin, undefined, file) : undefined;
-  };
-  const openApp = (path: string) => void app.workspace.openLinkText(path, "", false);
+export function obsidianSink(plugin: GizmoPlugin): BackgroundSink {
   /** Command id (without the plugin's prefix) → name, as registered. */
   const commands = new Map<string, string>();
   const bar: HTMLElement[] = [];
   let pausedItem: HTMLElement | undefined;
-  let asksItem: HTMLElement | undefined;
   let shown: StatusItem[] = [];
-  let stopped = false;
-
-  const bg: Background = new Background({
-    data: plugin.dataLayer,
-    frontmatter,
-    notes: vaultNotes(app),
-    appPaths: () => app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path)) || isKind(frontmatter(f.path))).map((f) => f.path),
-    isGranted: (path, wanted, asked) => plugin.isGranted(path, wanted, true, asked),
-    granted: (path) => plugin.granted(path),
-    policy: () => plugin.store.policy,
-    storePath: (store, from) => envFor(from)?.storePath(store, from) ?? notePath(storeTarget(store)),
-    actionDeps(appPath, dataPath, actor) {
-      const env = envFor(appPath);
-      if (!env) throw new Error(`can't find ${appPath}`);
-      return {
-        ...actionDepsOf(env, appPath, dataPath),
-        // The run has already written; a log that can't be kept doesn't make it fail.
-        log: actor ? (what, changes) => plugin.activity.add({ app: appPath, actor, what, changes }).then((e) => e?.id, () => undefined) : undefined,
-      };
-    },
-    now: () => new Date(),
-    // What alerts already ran for is this device's own: only the device running them writes it.
-    triggers: pluginFile(plugin, deviceFile(DEVICE_FOLDERS.triggers, plugin.device.id)),
-    renamed: (from, to) => void plugin.activity.rename(from, to),
-    dropped: (path) => { if (dropKeys(plugin.store, path)) void plugin.saveSettings(); },
-    otherTriggers: () => otherTriggers(pluginFiles(plugin), plugin.device.id),
-    shareState: pluginFile(plugin, deviceFile(DEVICE_FOLDERS.share, plugin.device.id)),
-    otherShareStates: () => otherShareStates(pluginFiles(plugin), plugin.device.id),
-    writers: (kindPath) => writersOf(plugin.store, kindPath),
-    setWriter(kindPath, writer, record) {
-      const all = (plugin.store.writers ??= {});
-      if (record) all[`${kindPath}\n${writer}`] = record;
-      else delete all[`${kindPath}\n${writer}`];
-      void plugin.saveSettings();
-    },
-    linkKey: (path, shortcut, create) => plugin.linkKey(path, shortcut, create),
-    captureKey: (key) => captureNamesOf(plugin.store, key),
-    destinations: (path, shortcut) => destinationsOf(plugin.store, path, shortcut),
-    allowDestination(path, shortcut, to) {
-      const id = shortcutId(path, shortcut);
-      const all = (plugin.store.answerTo ??= {});
-      all[id] = [...new Set([...(all[id] ?? []), to])];
-      void plugin.saveSettings();
-    },
-    logSent: (entry) => void plugin.activity.add(entry),
-    runsBackground: () => plugin.beat?.isRunner() ?? false,
-    // gizmod on this computer tells of alerts itself; Obsidian beside it would tell twice.
-    quietAlerts: () => plugin.beat?.gizmodHere() ?? false,
-    zone: () => plugin.beat?.whereYouAre(),
-    sink: {
-      notify: (message) => { new Notice(message); },
-      // Commands come and go with the apps that declare them; a hotkey stays bound to the id.
-      setCommands(list) {
-        const next = new Map(list.map((c) => [c.id, c.name]));
-        for (const [id, name] of commands) {
-          if (next.get(id) === name) continue;
-          plugin.removeCommand(id);
-          commands.delete(id);
-        }
-        for (const [id, name] of next) {
-          if (commands.has(id)) continue;
-          plugin.addCommand({ id, name, callback: () => void bg.runCommand(id) });
-          commands.set(id, name);
-        }
-      },
-      // One item per pinned panel, reused in place; Obsidian has no status bar on mobile.
-      setStatus(items) {
-        if (Platform.isMobile) return;
-        while (bar.length < items.length) {
-          const el = plugin.addStatusBarItem();
-          el.addClass("gz-status", "mod-clickable");
-          const i = bar.length;
-          el.addEventListener("click", () => { if (shown[i]) openApp(shown[i].appPath); });
-          bar.push(el);
-        }
-        while (bar.length > items.length) bar.pop()!.remove();
-        shown = items;
-        items.forEach((item, i) => {
-          bar[i].setText(item.text);
-          bar[i].setAttr("aria-label", `Open ${item.title}`);
-        });
-      },
-      // One item saying how many apps are paused, opening the automation map, which says why.
-      setPaused(apps) {
-        if (Platform.isMobile) return;
-        if (!apps.length) {
-          pausedItem?.remove();
-          pausedItem = undefined;
-          return;
-        }
-        if (!pausedItem) {
-          pausedItem = plugin.addStatusBarItem();
-          pausedItem.addClass("gz-status", "gz-status-paused", "mod-clickable");
-          pausedItem.addEventListener("click", () => void openMap(plugin));
-        }
-        pausedItem.setText(`Gizmo: ${apps.length} paused`);
-        pausedItem.setAttr("aria-label", apps.map((a) => `${a.name}: it ${a.reason}`).join("\n"));
-      },
-      openApp,
-      confirm: (title, lines, effects) => askToRun(app, title, lines, effects),
-      choose: (title, lines, choices) => askWhereTo(app, title, lines, choices),
-      openUrl: (url) => { window.open(url); },
-    },
+  plugin.register(() => {
+    for (const el of bar.splice(0)) el.remove();
+    pausedItem?.remove();
   });
+  return {
+    notify: (message) => { new Notice(message); },
+    // Commands come and go with the apps that declare them; a hotkey stays bound to the id.
+    setCommands(list) {
+      const next = new Map(list.map((c) => [c.id, c.name]));
+      for (const [id, name] of commands) {
+        if (next.get(id) === name) continue;
+        plugin.removeCommand(id);
+        commands.delete(id);
+      }
+      for (const [id, name] of next) {
+        if (commands.has(id)) continue;
+        plugin.addCommand({ id, name, callback: () => void plugin.runtime.background.runCommand(id) });
+        commands.set(id, name);
+      }
+    },
+    // One item per pinned panel, reused in place; Obsidian has no status bar on mobile.
+    setStatus(items) {
+      if (Platform.isMobile) return;
+      while (bar.length < items.length) {
+        const el = plugin.addStatusBarItem();
+        el.addClass("gz-status", "mod-clickable");
+        const i = bar.length;
+        el.addEventListener("click", () => { if (shown[i]) openApp(plugin, shown[i].appPath); });
+        bar.push(el);
+      }
+      while (bar.length > items.length) bar.pop()!.remove();
+      shown = items;
+      items.forEach((item, i) => {
+        bar[i].setText(item.text);
+        bar[i].setAttr("aria-label", `Open ${item.title}`);
+      });
+    },
+    // One item saying how many apps are paused, opening the automation map, which says why.
+    setPaused(apps) {
+      if (Platform.isMobile) return;
+      if (!apps.length) {
+        pausedItem?.remove();
+        pausedItem = undefined;
+        return;
+      }
+      if (!pausedItem) {
+        pausedItem = plugin.addStatusBarItem();
+        pausedItem.addClass("gz-status", "gz-status-paused", "mod-clickable");
+        pausedItem.addEventListener("click", () => void openMap(plugin));
+      }
+      pausedItem.setText(`Gizmo: ${apps.length} paused`);
+      pausedItem.setAttr("aria-label", apps.map((a) => `${a.name}: it ${a.reason}`).join("\n"));
+    },
+    openApp: (path) => openApp(plugin, path),
+    confirm: (title, lines, effects) => askToRun(plugin.app, title, lines, effects),
+    choose: (title, lines, choices) => askWhereTo(plugin.app, title, lines, choices),
+    openUrl: (url) => { window.open(url); },
+  };
+}
+
+/**
+ * Obsidian around the background service: it starts once the layout is ready, a status item says
+ * how many asks wait, and `obsidian://gizmo` links are answered once the apps are known.
+ */
+export function registerBackground(plugin: GizmoPlugin): void {
+  const app = plugin.app;
+  const bg = plugin.runtime.background;
+  let asksItem: HTMLElement | undefined;
 
   // How many asks wait, opening Next; nothing when none does. Obsidian has no status bar on mobile.
   bg.asks.subscribe(() => {
@@ -158,8 +110,6 @@ export function registerBackground(plugin: GizmoPlugin): Background {
     asksItem.setText(`${n} to do`);
   });
 
-  plugin.registerEvent(app.metadataCache.on("changed", (file) => bg.noteChanged(file.path)));
-  plugin.registerEvent(app.vault.on("rename", (file) => bg.noteChanged(file.path)));
   // A link may open Obsidian; it's answered once the apps are known. An install or invite link only
   // opens its window, which writes nothing until the person says so.
   plugin.registerObsidianProtocolHandler("gizmo", (params) => {
@@ -173,26 +123,8 @@ export function registerBackground(plugin: GizmoPlugin): Background {
       void bg.runUri({ ...params });
     });
   });
-  const beat = new DeviceBeat(plugin);
-  plugin.beat = beat;
-  app.workspace.onLayoutReady(() => {
-    if (stopped) return;
-    void beat.beat().catch(() => {}).finally(() => {
-      if (!stopped) void bg.start();
-    });
-    plugin.registerInterval(window.setInterval(() => {
-      void bg.tick();
-      void beat.beat();
-    }, TICK_MS));
-  });
-  plugin.register(() => {
-    stopped = true;
-    bg.stop();
-    for (const el of bar.splice(0)) el.remove();
-    pausedItem?.remove();
-    asksItem?.remove();
-  });
-  return bg;
+  app.workspace.onLayoutReady(() => void plugin.runtime.start());
+  plugin.register(() => asksItem?.remove());
 }
 
 /** The computer Obsidian runs on, by name; empty where there's none to ask (a phone). */
@@ -206,38 +138,17 @@ function hostName(): string {
 }
 
 /**
- * This device's heartbeat (see Heartbeat). It says a new name or zone at once, and with each beat when
- * the person last touched Obsidian here, so a phone opened abroad moves deadlines there.
+ * What this device says in its beat (see Heartbeat): a new name or zone at once, and with each beat
+ * when the person last touched Obsidian here, so a phone opened abroad moves deadlines there.
  */
-export class DeviceBeat extends Heartbeat {
-  constructor(plugin: GizmoPlugin) {
-    const used = { at: Date.now() };
-    super({
-      id: plugin.device.id,
-      files: pluginFiles(plugin),
-      now: () => Date.now(),
-      // Read at every beat: a laptop renamed, or moved to another network, says so.
-      mine: (now) => {
-        const d = plugin.device;
-        return { id: d.id, name: d.name, host: hostName(), priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now, zone: localZone(), used: used.at };
-      },
-      sayChanges: true,
-    });
-    this.onStartOver = () => plugin.background?.startOver();
-    const touched = () => { used.at = Date.now(); };
-    plugin.registerDomEvent(activeDocument, "pointerdown", touched, { passive: true });
-    plugin.registerDomEvent(activeDocument, "keydown", touched, { passive: true });
-  }
-
-  /** The zone a rhythm's deadline means: that of the phone or desktop used last. */
-  whereYouAre(): string | undefined {
-    return whereYouAre(this.beats);
-  }
-
-  /** gizmod runs on this computer and was heard from lately: it tells of alerts, so Obsidian here doesn't as well. */
-  gizmodHere(): boolean {
-    const now = Date.now();
-    const host = hostName();
-    return !!host && this.beats.some((b) => b.priority === PRIORITY.gizmod && b.host === host && now - b.seen < UNSEEN_MS && !b.left);
-  }
+export function obsidianBeat(plugin: GizmoPlugin, device: Device): RuntimeHost["beat"] {
+  const used = { at: Date.now() };
+  const touched = () => { used.at = Date.now(); };
+  plugin.registerDomEvent(activeDocument, "pointerdown", touched, { passive: true });
+  plugin.registerDomEvent(activeDocument, "keydown", touched, { passive: true });
+  return {
+    // Read at every beat: a laptop renamed, or moved to another network, says so.
+    mine: (now) => ({ id: device.id, name: device.name, host: hostName(), priority: Platform.isMobile ? PRIORITY.phone : PRIORITY.desktop, seen: now, zone: localZone(), used: used.at }),
+    sayChanges: true,
+  };
 }

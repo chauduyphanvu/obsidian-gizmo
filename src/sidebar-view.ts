@@ -32,14 +32,12 @@ export class HomeView extends ItemView {
 
   async onOpen(): Promise<void> {
     const later = () => this.schedule();
-    this.register(this.plugin.onGrantsChange(later));
-    this.register(this.plugin.activity.onChange(later));
-    this.register(this.plugin.onHeadline(later));
-    const bg = this.plugin.background;
-    if (bg) {
-      this.register(bg.onIndexChange(later));
-      this.register(bg.asks.subscribe(later));
-    }
+    this.register(this.plugin.runtime.onGrantsChange(later));
+    this.register(this.plugin.runtime.activity.onChange(later));
+    this.register(this.plugin.runtime.onHeadline(later));
+    const bg = this.plugin.runtime.background;
+    this.register(bg.onIndexChange(later));
+    this.register(bg.asks.subscribe(later));
     this.registerEvent(this.app.workspace.on("layout-change", () => { if (this.stale && this.shown()) this.schedule(); }));
     void this.draw();
   }
@@ -65,9 +63,9 @@ export class HomeView extends ItemView {
   /** The model as it is now: the map's apps (as the automation map reads them) and Next's asks. */
   private async model(): Promise<SidebarModel> {
     const plugin = this.plugin;
-    const activity = await plugin.activity.list();
-    const map = buildMap(plugin.background?.list() ?? [], plugin.store.grants, plugin.lenses.lenses(), activity);
-    return sidebarModel(map, plugin.background?.asks.list() ?? [], plugin.headlines);
+    const activity = await plugin.runtime.activity.list();
+    const map = buildMap(plugin.runtime.background.list(), plugin.runtime.store.grants, plugin.runtime.lenses.lenses(), activity);
+    return sidebarModel(map, plugin.runtime.background.asks.list(), plugin.runtime.headlines);
   }
 
   private async draw(): Promise<void> {
@@ -86,7 +84,7 @@ export class HomeView extends ItemView {
     const needs = box.createDiv({ cls: "gz-home-section" });
     needs.createDiv({ cls: "gz-home-heading", text: model.asks.length ? `Needs you · ${model.asks.length}` : "Needs you" });
     const asksAt = needs.createDiv();
-    const bg = plugin.background;
+    const bg = plugin.runtime.background;
     if (!model.asks.length || !bg) needs.createDiv({ cls: "gz-muted gz-home-empty", text: "Nothing needs you." });
     else {
       this.card = new AsksCard({

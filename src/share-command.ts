@@ -136,7 +136,7 @@ class InstallModal extends Modal {
     if (url) {
       this.say(`Fetching ${new URL(url).hostname}…`);
       try {
-        const res = await this.plugin.dataLayer.host.fetch(url, {});
+        const res = await this.plugin.runtime.dataLayer.host.fetch(url, {});
         if (res.status >= 400) return this.say(`${new URL(url).hostname} answered ${res.status}`, "gz-error-text");
         got = fromFetched(res.text, url, parseYaml);
         if ("error" in got && new URL(trimmed).hostname === "gist.github.com") got = { error: `${got.error}. For a gist of several files, use the raw link of the shared file` };
@@ -159,7 +159,7 @@ class InstallModal extends Modal {
       judge: (spec, path, notes) => {
         // The shared notes resolve as they will once installed: a store or a then target among them counts.
         const storePath = (store: string, from: string) => notes.resolve(storeTarget(store), from) ?? notePath(storeTarget(store));
-        return this.plugin.verdict(spec, permissionsOf(spec, path), { appPath: path, dataPath: dataPathOf(spec.store, path, storePath), hostPath: path }, undefined, notes, storePath);
+        return this.plugin.runtime.verdict(spec, permissionsOf(spec, path), { appPath: path, dataPath: dataPathOf(spec.store, path, storePath), hostPath: path }, undefined, notes, storePath);
       },
     });
     if ("error" in preview) return this.say(cap(preview.error), "gz-error-text");

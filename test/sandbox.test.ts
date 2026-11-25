@@ -31,6 +31,7 @@ function tryApp(fm: Record<string, unknown> = APP) {
     notes,
     parseYaml,
     now: () => new Date(2026, 10, 18, 12, 0),
+    schedule: (cb) => { setTimeout(cb, 30); },
     fetch: async (url) => {
       requests.push(url);
       return { status: 200, text: JSON.stringify({ t: 21 }), contentType: "application/json" };

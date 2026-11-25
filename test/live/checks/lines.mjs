@@ -33,7 +33,7 @@ panels:
 /** Page code: the purchase kind's rows on every line, as the ledger folds them. */
 const ROWS = `const rows = async () => {
     const fm = na.fm("Kinds/Purchase.md");
-    const state = await na.plugin().dataLayer.ledger.state("Kinds/Purchase data.md", fm);
+    const state = await na.plugin().runtime.dataLayer.ledger.state("Kinds/Purchase data.md", fm);
     return (state.lists.get("purchase")?.rows ?? []).map((r) => ({ ...r }));
   };`;
 /** Page code: a day n days from now as a US bank writes it, and a bank export of three rows. */
@@ -133,7 +133,7 @@ export default async function lines(t) {
       await na.sleep(600);
       const kindView = na.text();
       const all = await rows();
-      const [entry] = await na.plugin().activity.list("Kinds/Purchase.md");
+      const [entry] = await na.plugin().runtime.activity.list("Kinds/Purchase.md");
       await na.open("Apps/Purchases");
       await na.sleep(800);
       return {
@@ -170,8 +170,8 @@ export default async function lines(t) {
       const said = el.querySelector(".gz-notice .gz-notice-text")?.textContent;
       const d = new Date(Date.now() + 75 * 86400000);
       const until = d.getFullYear() + "-" + String(d.getMonth() + 1).padStart(2, "0") + "-" + String(d.getDate()).padStart(2, "0");
-      const preview = await na.plugin().background.previewLine("purchase 900 travel flight @every month until " + until);
-      const ran = await na.plugin().background.capture("purchase 900 travel flight @every month until " + until);
+      const preview = await na.plugin().runtime.background.previewLine("purchase 900 travel flight @every month until " + until);
+      const ran = await na.plugin().runtime.background.capture("purchase 900 travel flight @every month until " + until);
       await na.until(async () => (await rows()).filter((row) => row.line === "planned").length >= 3, 3000);
       await na.open("Apps/Purchases");
       await na.sleep(800);

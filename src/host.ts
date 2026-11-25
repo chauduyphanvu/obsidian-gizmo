@@ -3,11 +3,11 @@ import {
   Notice, TFile, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type WorkspaceLeaf,
 } from "obsidian";
 import { bodyOf } from "./actions.ts";
-import { undoMessage, type LogStore, type UndoIO } from "./activity.ts";
+import { undoMessage, type LogStore } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import type { AppAsks } from "./app-asks.ts";
 import { openCaptureWith } from "./capture-command.ts";
-import { DEVICE_FOLDERS, deviceFile, otherLogs, type PluginFiles } from "./device.ts";
+import { DEVICE_FOLDERS, deviceFile, type PluginFiles } from "./device.ts";
 import { withPanels } from "./insert.ts";
 import { ResponseHistory } from "./responses.ts";
 import { urlHost } from "./sources/url.ts";
@@ -69,22 +69,15 @@ export function pluginFiles(plugin: GizmoPlugin): PluginFiles {
 }
 
 /** The log kept before Gizmo told devices apart becomes this device's own, unless another device already keeps one. */
-export async function adoptOldLog(plugin: GizmoPlugin): Promise<void> {
+export async function adoptOldLog(plugin: GizmoPlugin, device: string): Promise<void> {
   const adapter = plugin.app.vault.adapter;
   const dir = plugin.manifest.dir ?? "";
   const old = normalizePath(`${dir}/activity.json`);
-  const mine = normalizePath(`${dir}/${deviceFile(DEVICE_FOLDERS.activity, plugin.device.id)}`);
+  const mine = normalizePath(`${dir}/${deviceFile(DEVICE_FOLDERS.activity, device)}`);
   if (!(await adapter.exists(old)) || (await adapter.exists(mine))) return;
   if ((await pluginFolder(plugin, DEVICE_FOLDERS.activity)).length) return;
   if (!(await adapter.exists(normalizePath(`${dir}/${DEVICE_FOLDERS.activity}`)))) await adapter.mkdir(normalizePath(`${dir}/${DEVICE_FOLDERS.activity}`));
   await adapter.rename(old, mine);
-}
-
-/** The other devices' logs, and an old shared one no device took, each named for its device. */
-export async function obsidianOtherLogs(plugin: GizmoPlugin): Promise<{ device: string; text: string }[]> {
-  const logs = await otherLogs(pluginFiles(plugin), plugin.device.id);
-  const old = await pluginFile(plugin, "activity.json").read().catch(() => undefined);
-  return old ? [...logs, { device: "another device", text: old }] : logs;
 }
 
 /** Puts text on the clipboard, then runs `done`; says so when it can't. */
@@ -139,6 +132,7 @@ export function obsidianHost(app: App, pluginDir?: string, device?: () => string
     now: () => Date.now(),
     // A short timer rather than requestAnimationFrame, which stops while the window is hidden.
     schedule: (cb) => { window.setTimeout(cb, 30); },
+    pause: () => new Promise((r) => window.setTimeout(r, 0)),
     async readFile(path) {
       const f = file(normalizePath(path));
       if (!f) throw new Error(`Can't find ${path}`);
@@ -205,6 +199,16 @@ function obsidianFiles(app: App): VaultFiles {
   };
 }
 
+/** Moves a file or folder where nothing is yet, as a rename here does: Obsidian updates the links to it. */
+export async function obsidianRename(app: App, from: string, to: string): Promise<boolean> {
+  const file = app.vault.getAbstractFileByPath(from);
+  if (!file || app.vault.getAbstractFileByPath(to)) return false;
+  const parent = to.includes("/") ? to.slice(0, to.lastIndexOf("/")) : "";
+  if (parent && !app.vault.getAbstractFileByPath(parent)) await app.vault.createFolder(parent);
+  await app.fileManager.renameFile(file, to);
+  return true;
+}
+
 /** Every write to the vault, one note at a time across every open app. */
 const writesOf = new WeakMap<App, VaultWrites>();
 export function obsidianWrites(app: App): VaultWrites {
@@ -218,7 +222,7 @@ export function obsidianWrites(app: App): VaultWrites {
 
 /** Where an app's lists are kept: the ledger, when the vault's data layer keeps one. */
 export function vaultStore(plugin: GizmoPlugin): ((dataPath: string, appPath: string) => DataStore) | undefined {
-  const ledger = plugin.dataLayer.ledger;
+  const ledger = plugin.runtime.dataLayer.ledger;
   const fm = vaultFrontmatter(plugin.app);
   return ledger && ((dataPath, appPath) => ledgerStore(ledger, dataPath, () => fm(appPath) ?? {}));
 }
@@ -227,14 +231,14 @@ export function vaultStore(plugin: GizmoPlugin): ((dataPath: string, appPath: st
 export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
   const app = plugin.app;
   return {
-    data: plugin.dataLayer,
+    data: plugin.runtime.dataLayer,
     frontmatter: vaultFrontmatter(app),
     notes: vaultNotes(app),
-    isGranted: (path, wanted, asked) => plugin.isGranted(path, wanted, false, asked),
-    granted: (path) => plugin.granted(path),
-    grant: (path, wanted) => plugin.grant(path, wanted),
-    verdict: (spec, wanted, where) => plugin.verdict(spec, wanted, where),
-    policyPending: () => plugin.policyPending(),
+    isGranted: (path, wanted, asked) => plugin.runtime.isGranted(path, wanted, false, asked),
+    granted: (path) => plugin.runtime.granted(path),
+    grant: (path, wanted) => plugin.runtime.grant(path, wanted),
+    verdict: (spec, wanted, where) => plugin.runtime.verdict(spec, wanted, where),
+    policyPending: () => plugin.runtime.policyPending(),
     storePath: vaultStorePath(app),
     writeFrontmatter: (path, fn) => obsidianWrites(app).writeFrontmatter(path, fn),
     store: vaultStore(plugin),
@@ -276,59 +280,35 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
       },
     }),
     copy: (text) => copyText(text),
-    log: (entry) => plugin.activity.add(entry),
+    log: (entry) => plugin.runtime.activity.add(entry),
     async undo(id) {
-      const entry = await plugin.activity.get(id);
-      return entry ? undoMessage(await plugin.undo(entry)) : "That change is no longer in the activity log";
+      const entry = await plugin.runtime.activity.get(id);
+      return entry ? undoMessage(await plugin.runtime.undo(entry)) : "That change is no longer in the activity log";
     },
-    trigger: async (from, then, ctx) => plugin.background?.runThen(from, then, ctx),
+    trigger: async (from, then, ctx) => plugin.runtime.background.runThen(from, then, ctx),
     now: () => new Date(),
-    opened: (path) => plugin.background?.opened(path),
-    alerts: plugin.background?.alerts,
+    opened: (path) => plugin.runtime.background.opened(path),
+    alerts: plugin.runtime.background.alerts,
     asks: appAsks(plugin),
-    headline: (path, text) => plugin.setHeadline(path, text),
+    headline: (path, text) => plugin.runtime.setHeadline(path, text),
     tryFirst: () => void tryVaultApp(plugin, file.path),
     explain: (src) => new ExplainModal(app, src).open(),
-    definitions: plugin.definitions,
-    deviceName: (id) => (id === plugin.device.id ? plugin.device.name : plugin.beat?.beats.find((b) => b.id === id)?.name),
-    leftAlone: (key) => plugin.store.leftAlone?.[key] === true,
-    leaveAlone(key) {
-      (plugin.store.leftAlone ??= {})[key] = true;
-      void plugin.saveSettings();
-    },
+    definitions: plugin.runtime.definitions,
+    deviceName: (id) => (id === plugin.runtime.device.id ? plugin.runtime.device.name : plugin.runtime.beat.beats.find((b) => b.id === id)?.name),
+    leftAlone: (key) => plugin.runtime.leftAlone(key),
+    leaveAlone: (key) => plugin.runtime.leaveAlone(key),
   };
 }
 
-/**
- * What the person is asked, and how an app's tab answers, through the background service as it is
- * at each call (it stops and starts with the plugin's settings); undefined while it isn't running.
- */
-function appAsks(plugin: GizmoPlugin): AppAsks | undefined {
-  if (!plugin.background) return undefined;
-  const none = { ok: false, error: "Gizmo's background service isn't running" };
+/** What the person is asked, and how an app's tab answers, through the background service. */
+function appAsks(plugin: GizmoPlugin): AppAsks {
+  const bg = plugin.runtime.background;
   return {
-    list: () => plugin.background?.asks.list() ?? [],
-    subscribe: (cb) => plugin.background?.asks.subscribe(cb) ?? (() => {}),
-    settle: async (ask, how) => (plugin.background ? plugin.background.settleAsk(ask, how) : none),
-    skip: async (id) => plugin.background?.skipAsk(id),
-    run: async (line) => (plugin.background ? plugin.background.capture(line, undefined, true) : none),
+    list: () => bg.asks.list(),
+    subscribe: (cb) => bg.asks.subscribe(cb),
+    settle: (ask, how) => bg.settleAsk(ask, how),
+    skip: async (id) => bg.skipAsk(id),
+    run: (line) => bg.capture(line, undefined, true),
     fill: (line, cursor) => openCaptureWith(plugin, line, cursor),
-  };
-}
-
-/** Undoing in Obsidian: each write re-reads the note as it writes, in line with the app's own writes to it. */
-export function obsidianUndoIO(plugin: GizmoPlugin): UndoIO {
-  const app = plugin.app;
-  const w = obsidianWrites(app);
-  return {
-    frontmatter: vaultFrontmatter(app),
-    updateFrontmatter: (path, fn) => w.updateFrontmatter(path, fn),
-    setTaskDone: (path, line, text, done) => w.setTaskDone(path, line, text, done),
-    undoEvents: async (dataPath, events) => {
-      const ledger = plugin.dataLayer.ledger;
-      if (ledger) await ledgerStore(ledger, dataPath).undo(events);
-    },
-    processText: (path, fn) => w.processText(path, fn),
-    trashIf: (path, unchanged) => w.trashIf(path, unchanged),
   };
 }

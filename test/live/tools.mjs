@@ -48,7 +48,7 @@ const PAGE_HELPERS = `(async () => {
   // The device running background work writes a data note's snapshot 5 s after a save; checks read
   // the note, so here it is written sooner, after each plugin load too. It's still written later, off the save.
   setInterval(() => {
-    const s = app.plugins.plugins["gizmo"]?.dataLayer?.snapshotWriter?.snapshots;
+    const s = app.plugins.plugins["gizmo"]?.runtime?.dataLayer?.snapshotWriter?.snapshots;
     if (s && s.delayMs !== 300) s.delayMs = 300;
   }, 50);
   window.__na = {

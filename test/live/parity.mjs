@@ -56,7 +56,7 @@ try {
       out[f.path] = {
         fm: cache?.frontmatter ?? null,
         // Gizmo's own host reads tags with Obsidian's getAllTags.
-        tags: na.plugin().dataLayer.host.tags(f.path),
+        tags: na.plugin().runtime.dataLayer.host.tags(f.path),
         ctime: f.stat.ctime,
         links: Object.fromEntries(links.map((l) => [l, app.metadataCache.getFirstLinkpathDest(l.split("#")[0].split("|")[0], f.path)?.path ?? null])),
       };

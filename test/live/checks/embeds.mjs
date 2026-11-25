@@ -76,7 +76,7 @@ export default async function embeds(t) {
       await na.openMd("Scratch/Shelf notes.md", "preview");
       await na.sleep(800);
       const block = na.embeds()[0];
-      return { text: na.text(block), asks: !!na.button("Allow", block), grants: Object.keys(na.plugin().store.grants).filter((k) => k.startsWith("Scratch/Shelf note")) };`);
+      return { text: na.text(block), asks: !!na.button("Allow", block), grants: Object.keys(na.plugin().runtime.store.grants).filter((k) => k.startsWith("Scratch/Shelf note")) };`);
     expect(!r.asks && r.text.includes("Books done") && r.grants.length === 1 && r.grants[0].startsWith("Scratch/Shelf notes.md#"), r);
     return `no prompt; grant moved to ${r.grants[0]}`;
   });
@@ -94,7 +94,7 @@ export default async function embeds(t) {
 
   await check("switching between Today and another note 10 times leaves no listeners behind", async () => {
     const r = await run(`
-      const dl = na.plugin().dataLayer;
+      const dl = na.plugin().runtime.dataLayer;
       await na.openMd("Daily.md", "live");
       await na.sleep(500);
       const start = dl.listeners.size;

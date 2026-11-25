@@ -34,7 +34,7 @@ export function registerWhatIf(plugin: GizmoPlugin): void {
     name: "What if…",
     checkCallback: (checking) => {
       const file = plugin.app.workspace.getActiveFile();
-      if (!file || !plugin.isApp(file) || !plugin.dataLayer.ledger) return false;
+      if (!file || !plugin.isApp(file) || !plugin.runtime.dataLayer.ledger) return false;
       if (checking) return true;
       const view = plugin.app.workspace.getActiveViewOfType(AppView);
       if (view?.file === file) view.showAhead();
@@ -123,12 +123,12 @@ export class BacktestModal extends Modal {
     const bar = box.createEl("progress");
     const cancel = box.createEl("button", { text: "Cancel" });
     cancel.addEventListener("click", () => this.close());
-    const host = this.plugin.dataLayer.host;
+    const host = this.plugin.runtime.dataLayer.host;
     // Another device's history may have grown since it was last read.
     host.responses?.changed?.();
     const dataPath = dataPathOf(after.store, this.path, vaultStorePath(this.app));
     const result = await backtest({
-      layer: new DataLayer(host, { at: now.getTime(), like: this.plugin.dataLayer }),
+      layer: new DataLayer(host, { at: now.getTime(), like: this.plugin.runtime.dataLayer }),
       appPath: this.path,
       dataPath,
       devices: after.split ? devicesFolder(dataPath) : undefined,

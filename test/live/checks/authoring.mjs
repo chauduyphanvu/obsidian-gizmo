@@ -380,7 +380,7 @@ export default async function authoring(t) {
       await na.settle();
       const { prompt } = await na.open("Trip planner", false);
       return { app: await na.read("Trip planner.md"), part: await na.read("Destination weather.md"), kind: await na.read("Spend.md"), state: na.state(), prompt, after: app.vault.getMarkdownFiles().length,
-        allowed: app.plugins.plugins["gizmo"].granted("Trip planner.md") };`);
+        allowed: app.plugins.plugins["gizmo"].runtime.granted("Trip planner.md") };`);
     expect(r.items.length && r.items[0].startsWith("Trip planner"), r.items);
     expect(after.app === gallery("Apps/Trip planner.md") && after.part === gallery("Components/Destination weather.md") && after.kind === gallery("Kinds/Spend.md"), "the copies differ from the gallery's");
     expect(after.state === "gizmo:Trip planner.md" && after.after === r.before + 2, after);

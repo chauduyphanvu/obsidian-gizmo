@@ -51,7 +51,7 @@ const NEXT = `const modals = () => [document, activeDocument].flatMap((d) => [..
       focus: (activeDocument.activeElement === el) ? "window" : activeDocument.activeElement?.className,
     };
   };
-  const asks = () => na.plugin().background.asks.list();`;
+  const asks = () => na.plugin().runtime.background.asks.list();`;
 /** Page code: closes what an earlier check left open, so it can't take the keys typed next. */
 const TRUST = `
   const trust = [...document.querySelectorAll(".modal button")].find((b) => b.textContent === "Trust author and enable plugins");
@@ -80,11 +80,11 @@ export default async function next(t) {
     const before = await run(`
       ${NEXT}
       // Asks earlier checks left are put off, so this check's own are the queue.
-      for (const a of asks()) await na.plugin().background.skipAsk(a.id);
+      for (const a of asks()) await na.plugin().runtime.background.skipAsk(a.id);
       await na.write("Apps/Water.md", ${JSON.stringify(rhythmApp("Water", "Drank a glass", "drank", by))});
       await na.sleep(800);
       await na.open("Apps/Water");
-      await na.plugin().background.tick();
+      await na.plugin().runtime.background.tick();
       await na.until(() => asks().some((a) => a.app === "Water"), 5000);
       await na.sleep(300);
       const status = na.status();
@@ -125,10 +125,10 @@ export default async function next(t) {
       if (new Date().getSeconds() >= 55) await na.sleep(6000);
       const at = new Date(Date.now() + 60000);
       const hhmm = String(at.getHours()).padStart(2, "0") + ":" + String(at.getMinutes()).padStart(2, "0");
-      const ran = await na.plugin().background.capture("bill 80 power @" + hhmm);
+      const ran = await na.plugin().runtime.background.capture("bill 80 power @" + hhmm);
       at.setSeconds(0, 0);
       await na.until(() => Date.now() > at.getTime() + 1000, 70000);
-      await na.plugin().background.tick();
+      await na.plugin().runtime.background.tick();
       await na.until(() => asks().some((a) => a.app === "Bill"), 5000);
       app.commands.executeCommandById("gizmo:next");
       await na.until(() => shown()?.text, 3000);
@@ -152,8 +152,8 @@ export default async function next(t) {
       await na.until(() => shown()?.empty, 3000);
       await na.sleep(300);
       const fm = na.fm("Kinds/Bill.md");
-      const state = await na.plugin().dataLayer.ledger.state("Kinds/Bill data.md", fm);
-      const [entry] = await na.plugin().activity.list("Kinds/Bill.md");
+      const state = await na.plugin().runtime.dataLayer.ledger.state("Kinds/Bill data.md", fm);
+      const [entry] = await na.plugin().runtime.activity.list("Kinds/Bill.md");
       return {
         rows: (state.lists.get("bill")?.rows ?? []).map((r) => [r.amount, r.line ?? "logged"]), shown: shown(), entry: entry && [entry.what, entry.actor],
         notice: na.notices.slice(-4).find((n) => n.includes("happened")),
@@ -172,7 +172,7 @@ export default async function next(t) {
       await na.write("Apps/Stretch.md", ${JSON.stringify(rhythmApp("Stretch", "Stretched", "stretched", by))});
       await na.sleep(800);
       await na.open("Apps/Stretch");
-      await na.plugin().background.tick();
+      await na.plugin().runtime.background.tick();
       await na.until(() => asks().some((a) => a.app === "Stretch"), 5000);
       app.commands.executeCommandById("gizmo:next");
       await na.until(() => shown()?.line === "stretched", 3000);
@@ -200,9 +200,9 @@ export default async function next(t) {
       await na.reload();
       await na.until(() => na.plugin()?.background, 5000);
       await na.sleep(2500);
-      await na.plugin().background.tick();
+      await na.plugin().runtime.background.tick();
       await na.sleep(500);
-      const file = await app.vault.adapter.read(na.plugin().manifest.dir + "/triggers/" + na.plugin().device.id + ".json").catch(() => "");
+      const file = await app.vault.adapter.read(na.plugin().manifest.dir + "/triggers/" + na.plugin().runtime.device.id + ".json").catch(() => "");
       return { queue: asks().map((a) => a.app), kept: file.includes("skip:rhythm\\\\nApps/Stretch.md"), status: na.status() };`);
     expect(!reloaded.queue.includes("Stretch") && reloaded.kept && !reloaded.status.some((s) => s.includes("to do")), reloaded);
     return `skipped with s; after the plugin was turned off and on, still out (queue: ${reloaded.queue.join(", ") || "empty"})`;
@@ -215,7 +215,7 @@ export default async function next(t) {
       await na.write("Apps/Floss.md", ${JSON.stringify(rhythmApp("Floss", "Flossed", "flossed", by))});
       await na.sleep(800);
       await na.open("Apps/Floss");
-      await na.plugin().background.tick();
+      await na.plugin().runtime.background.tick();
       await na.until(() => asks().some((a) => a.app === "Floss"), 5000);
       const el = na.view().contentEl;
       const row = await na.until(() => el.querySelector(".gz-attention .gz-asks li"), 3000);

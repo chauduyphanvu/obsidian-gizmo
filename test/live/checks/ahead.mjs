@@ -40,11 +40,11 @@ const TABS = `const tabs = () => app.workspace.getLeavesOfType("gizmo").filter((
   const card = () => aheadTab()?.view.contentEl.querySelector(".gz-ahead");
   const cardText = () => card()?.innerText.replace(/\\n+/g, " | ");
   const cardButton = (label) => [...(card()?.querySelectorAll("button") ?? [])].find((b) => b.textContent === label);
-  const device = () => na.plugin().device.id;
+  const device = () => na.plugin().runtime.device.id;
   // branchName("Apps/Allowance.md"): the note's name and a hash of its path.
   const branch = () => "Kinds/Cost data/log/" + device() + ".Allowance-bc41c897.branch";
   const readRaw = async (p) => (await app.vault.adapter.exists(p)) ? app.vault.adapter.read(p) : undefined;
-  const liveRows = async () => (await na.plugin().dataLayer.ledger.state("Kinds/Cost data.md", na.fm("Kinds/Cost.md"))).lists.get("cost")?.rows.map((r) => ({ ...r })) ?? [];`;
+  const liveRows = async () => (await na.plugin().runtime.dataLayer.ledger.state("Kinds/Cost data.md", na.fm("Kinds/Cost.md"))).lists.get("cost")?.rows.map((r) => ({ ...r })) ?? [];`;
 
 /** A day this month a few days on (its last day at the latest), at 20:00, and the words for it on a line. */
 const SOON = `const soon = (() => {
@@ -75,7 +75,7 @@ export default async function ahead(t) {
       await na.sleep(800);
       await na.open("Kinds/Cost");
       await na.open("Apps/Allowance");
-      await na.plugin().background.capture("cost 600 home rent");
+      await na.plugin().runtime.background.capture("cost 600 home rent");
       await na.until(() => big(liveTab()) === "600", 4000);
       await na.until(() => (na.fm("Kinds/Cost data.md")?.cost ?? []).length === 1, 4000);
       await na.sleep(400);
@@ -104,7 +104,7 @@ export default async function ahead(t) {
         sameNote: (await na.read("Kinds/Cost data.md")) === noteBefore,
         logs: app.vault.getFolderByPath("Kinds/Cost data/log").children.map((f) => f.path).sort(), logsBefore,
         branch: await readRaw(branch()), rows: await liveRows(), errors: na.errors(aheadTab()?.view.contentEl),
-        activity: (await na.plugin().activity.list("Apps/Allowance.md")).length,
+        activity: (await na.plugin().runtime.activity.list("Apps/Allowance.md")).length,
       };`);
     await shot("ahead-what-if.png");
     expect(r.hint?.startsWith("What if, in Allowance: ") && r.hint.endsWith("Nothing real changes until Keep."), r);
@@ -127,10 +127,10 @@ export default async function ahead(t) {
       await na.until(async () => (await liveRows()).length === 2, 4000);
       await na.sleep(800);
       const first = { card: cardText(), rows: await liveRows(), branch: await readRaw(branch()), live: big(liveTab()), ahead: big(aheadTab()),
-        note: (na.fm("Kinds/Cost data.md")?.cost ?? []).map((x) => x.amount), activity: (await na.plugin().activity.list("Apps/Allowance.md")).map((e) => e.what) };
+        note: (na.fm("Kinds/Cost data.md")?.cost ?? []).map((x) => x.amount), activity: (await na.plugin().runtime.activity.list("Apps/Allowance.md")).map((e) => e.what) };
       // As if the branch hadn't been emptied (a Keep cut short, or one retried): Keep again, from What if…
       await app.vault.adapter.write(branch(), saved);
-      na.plugin().dataLayer.fileChanged(branch());
+      na.plugin().runtime.dataLayer.fileChanged(branch());
       app.workspace.setActiveLeaf(aheadTab(), { focus: true });
       na.menuItem("What if…");
       await na.until(() => cardButton("Keep as planned"), 5000);

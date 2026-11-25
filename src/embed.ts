@@ -90,7 +90,7 @@ export function registerEmbeds(plugin: GizmoPlugin): void {
   plugin.registerEvent(app.workspace.on("resize", () => { for (const h of live) h.resize(); }));
   // Allowing an app (or a block) in one tab shows in the others once they are looked at.
   plugin.registerEvent(app.workspace.on("active-leaf-change", () => { for (const h of live) h.recheck(); }));
-  plugin.register(plugin.onGrantsChange(() => { for (const h of live) h.recheck(); }));
+  plugin.register(plugin.runtime.onGrantsChange(() => { for (const h of live) h.recheck(); }));
   plugin.register(() => {
     for (const h of live) h.dispose();
     live.clear();

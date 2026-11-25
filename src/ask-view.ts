@@ -115,8 +115,7 @@ export class AskPane {
 
   /** Reads an ask line (the text after `?`) and shows its answer, or what keeps it from one. */
   async show(text: string): Promise<AskShown> {
-    const bg = this.plugin.background;
-    if (!bg) return { hint: "Gizmo is starting", error: true, completions: [] };
+    const bg = this.plugin.runtime.background;
     this.el.removeClass("gz-off");
     this.el.closest(".modal")?.addClass("gz-asking");
     // The kinds and the values their rows hold, read once for the window.

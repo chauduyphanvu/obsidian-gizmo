@@ -5,6 +5,9 @@ import type { Panel } from "./spec.ts";
 import { basename } from "./store.ts";
 import { asField } from "./units.ts";
 
+/** Where every Gizmo link starts: what the program it opens in answers. */
+export const GIZMO_LINK = "obsidian://gizmo";
+
 /** A shortcut as a link from outside Obsidian (a phone's shortcut, a tag, a bookmark) runs it. */
 export interface ShortcutLink {
   path: string;
@@ -146,7 +149,7 @@ export function appsNamed<T extends { path: string; name: string }>(apps: Readon
 export function shortcutLink(apps: ReadonlyMap<string, { path: string; name: string }>, path: string, shortcut: string, key: string): string {
   const name = basename(path);
   const app = appsNamed(apps, name).length === 1 ? name : path.replace(/\.md$/i, "");
-  return `obsidian://gizmo?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}&key=${encodeURIComponent(key)}`;
+  return `${GIZMO_LINK}?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}&key=${encodeURIComponent(key)}`;
 }
 /**
  * A form's row from a link's parameters, each read as its field's type; a field the link doesn't

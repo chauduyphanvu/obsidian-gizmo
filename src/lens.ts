@@ -1,6 +1,6 @@
 import { MarkdownView, TFile } from "obsidian";
 import type { AppEnv } from "./app.ts";
-import { LensIndex, LensStack, type LensFolds } from "./lenses.ts";
+import { LensStack, type LensFolds } from "./lenses.ts";
 import { obsidianAppEnv } from "./host.ts";
 import type GizmoPlugin from "./main.ts";
 
@@ -10,18 +10,13 @@ import type GizmoPlugin from "./main.ts";
  * preview inside the view's content, so the note's text and the editor's document are untouched and
  * switching modes keeps it. Kept in line with the open notes, their properties and the components.
  */
-export function registerLenses(plugin: GizmoPlugin): LensIndex {
+export function registerLenses(plugin: GizmoPlugin): void {
   const app = plugin.app;
-  const index = new LensIndex(plugin.dataLayer);
+  const index = plugin.runtime.lenses;
   const stacks = new Map<MarkdownView, LensStack>();
   const folds: LensFolds = {
-    folded: (component) => plugin.store.folded?.[component] === true,
-    setFolded(component, folded) {
-      const store = (plugin.store.folded ??= {});
-      if (folded) store[component] = true;
-      else delete store[component];
-      void plugin.saveSettings();
-    },
+    folded: (component) => plugin.runtime.folded(component),
+    setFolded: (component, folded) => plugin.runtime.setFolded(component, folded),
   };
   // Links and templates in a lens resolve from its component.
   const envFor = (view: MarkdownView) => (component: string): AppEnv => {
@@ -75,7 +70,6 @@ export function registerLenses(plugin: GizmoPlugin): LensIndex {
     sync();
   }));
   plugin.registerEvent(app.workspace.on("resize", () => { for (const stack of stacks.values()) stack.resize(); }));
-  plugin.register(plugin.onGrantsChange(() => { for (const stack of stacks.values()) stack.recheck(); }));
+  plugin.register(plugin.runtime.onGrantsChange(() => { for (const stack of stacks.values()) stack.recheck(); }));
   plugin.register(() => { for (const [view, stack] of stacks) drop(view, stack); });
-  return index;
 }

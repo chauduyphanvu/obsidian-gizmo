@@ -42,8 +42,23 @@ export const UNSEEN_MS = 20 * 60_000;
  * been unseen for 20 minutes.
  */
 export function runnerOf(beats: readonly Beat[], now: number): Beat | undefined {
-  const live = beats.filter((b) => now - b.seen < UNSEEN_MS && !b.left);
-  return live.sort((a, b) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0))[0];
+  return beats.filter((b) => live(b, now)).sort(ranked)[0];
+}
+
+const live = (b: Beat, now: number) => now - b.seen < UNSEEN_MS && !b.left;
+/** Most suited to running background work first, then the lowest id. */
+const ranked = (a: Beat, b: Beat) => b.priority - a.priority || (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+/**
+ * Whether this device leaves telling of alerts to another program on the same computer: of the
+ * devices there that were heard from lately, only the one most suited to background work tells
+ * them (gizmod over Obsidian beside it), so the person isn't told twice. A device whose computer
+ * has no name (a phone) is never quiet.
+ */
+export function quietHere(beats: readonly Beat[], me: Beat, now: number): boolean {
+  if (!me.host) return false;
+  const here = beats.filter((b) => b.id !== me.id && b.host === me.host && live(b, now));
+  return here.some((b) => ranked(b, me) < 0);
 }
 
 /**
@@ -77,13 +92,13 @@ export function readBeat(text: string): Beat | undefined {
 }
 
 /**
- * Where the person is, for a deadline that says "by 10:00": the zone of the phone or desktop they
- * used last, however long ago, since a phone abroad may not have been heard from since. Undefined
- * when no device says, and the runner's own clock decides.
+ * Where the person is, for a deadline that says "by 10:00": the zone of the device they used last
+ * (one a person uses says when; gizmod never does), however long ago, since a phone abroad may not
+ * have been heard from since. Undefined when no device says, and the runner's own clock decides.
  */
 export function whereYouAre(beats: readonly Beat[]): string | undefined {
   let latest: Beat | undefined;
-  for (const b of beats) if (b.used !== undefined && b.zone && b.priority < PRIORITY.gizmod && (!latest || b.used > latest.used!)) latest = b;
+  for (const b of beats) if (b.used !== undefined && b.zone && (!latest || b.used > latest.used!)) latest = b;
   return latest?.zone;
 }
 
@@ -203,6 +218,17 @@ export class Heartbeat {
   /** Whether this device runs background work; not until it has read every device's beat. */
   isRunner(): boolean {
     return this.heard && this.runner?.id === this.io.id;
+  }
+
+  /** The zone a rhythm's deadline means: that of the device the person used last. */
+  whereYouAre(): string | undefined {
+    return whereYouAre(this.beats);
+  }
+
+  /** Whether another program on this computer tells of alerts, so this one doesn't as well (see quietHere). */
+  quietHere(): boolean {
+    const now = this.io.now();
+    return quietHere(this.beats, this.io.mine(now), now);
   }
 
   /** Says this device is leaving, as it quits, so another takes over background work now. */

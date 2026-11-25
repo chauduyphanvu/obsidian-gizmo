@@ -21,7 +21,7 @@ export default async function policy(t) {
   await check("Policy: until it's applied, Gizmo policy.md changes nothing, and the map says so", async () => {
     await closeAll();
     const r = await run(`
-      await na.plugin().applyPolicy(undefined);
+      await na.plugin().runtime.applyPolicy(undefined);
       ${MAP}
       await na.until(() => map.querySelector(".gz-map-policy"), 3000);
       const banner = map.querySelector(".gz-map-policy")?.textContent;
@@ -45,7 +45,7 @@ export default async function policy(t) {
       [...modal.querySelectorAll("button")].find((b) => b.textContent === "Apply").click();
       await na.until(() => !modals().length, 3000);
       await na.sleep(500);
-      const stored = na.plugin().store.policy;
+      const stored = na.plugin().runtime.store.policy;
       await na.open("Apps/Appointments");
       const el = na.view().contentEl;
       const blocked = [...el.querySelectorAll(".gz-blocked li")].map((li) => li.textContent);
@@ -69,12 +69,12 @@ export default async function policy(t) {
   await check("Policy: an app it covers in part asks only for the rest, and says how much the policy covers", async () => {
     await closeAll();
     const r = await run(`
-      await na.plugin().revoke("Apps/Weather.md");
+      await na.plugin().runtime.revoke("Apps/Weather.md");
       const { prompt } = await na.open("Apps/Weather", false);
       const covered = na.view().contentEl.querySelector(".gz-covered")?.textContent;
       na.button("Allow").click();
       await na.until(() => na.view().contentEl.querySelector(".gz-panel"), 5000);
-      return { prompt, covered, granted: na.plugin().granted("Apps/Weather.md"), panels: na.view().contentEl.querySelectorAll(".gz-panel").length };`);
+      return { prompt, covered, granted: na.plugin().runtime.granted("Apps/Weather.md"), panels: na.view().contentEl.querySelectorAll(".gz-panel").length };`);
     expect(JSON.stringify(r.prompt) === JSON.stringify(["Add lines to Daily.md"]), r);
     expect(r.covered === "Your data policy covers 1 more." && JSON.stringify(r.granted) === JSON.stringify(["write:Daily.md"]) && r.panels > 0, r);
     return `${r.prompt.join(", ")}; ${r.covered}`;
@@ -91,7 +91,7 @@ export default async function policy(t) {
       const still = !!na.view().contentEl.querySelector(".gz-blocked");
       await app.vault.adapter.write(${JSON.stringify(POLICY)}, ${JSON.stringify(original)});
       await na.sleep(800);
-      await na.plugin().applyPolicy(undefined);
+      await na.plugin().runtime.applyPolicy(undefined);
       await na.sleep(500);
       await na.open("Apps/Appointments");
       return { banner, still, after: na.view().contentEl.querySelectorAll(".gz-panel").length, blocked: !!na.view().contentEl.querySelector(".gz-blocked") };`);

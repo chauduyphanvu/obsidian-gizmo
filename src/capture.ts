@@ -3,6 +3,7 @@ import type { PanelSpec } from "./spec.ts";
 import { nearMiss } from "./template.ts";
 import { asField, convert, quantityIn, typedAs, unitDef, unitOf, type FieldUnit, type UnitBy, type UnitDef } from "./units.ts";
 import { typedFields } from "./panel.ts";
+import { GIZMO_LINK } from "./links.ts";
 
 /** A shortcut a capture line can run: a form, button or checklist with a name to type. */
 export interface CaptureTarget {
@@ -865,6 +866,6 @@ export function captureLine(text: string): string | undefined {
  */
 export function receipt(line: string, app: string, now: Date, entryId: string | undefined): string {
   const time = stampParts(now).time;
-  const details = entryId ? ` · [details](obsidian://gizmo?activity=${encodeURIComponent(entryId)})` : "";
+  const details = entryId ? ` · [details](${GIZMO_LINK}?activity=${encodeURIComponent(entryId)})` : "";
   return `✓ ${line} · ${app} · ${time}${details}`;
 }

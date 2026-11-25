@@ -4,9 +4,9 @@ import { blockAt, embedBlock, embedChoices, embedPanels, orderApps, type AppItem
 
 /** Every app in the vault, those used lately first (see orderApps). */
 async function appItems(plugin: GizmoPlugin): Promise<AppItem[]> {
-  const apps = (plugin.background?.list() ?? []).map(({ name, description, path }) => ({ name, description, path }));
+  const apps = plugin.runtime.background.list().map(({ name, description, path }) => ({ name, description, path }));
   const lastActive = new Map<string, number>();
-  for (const e of await plugin.activity.list().catch(() => [])) if (!lastActive.has(e.app)) lastActive.set(e.app, e.at);
+  for (const e of await plugin.runtime.activity.list().catch(() => [])) if (!lastActive.has(e.app)) lastActive.set(e.app, e.at);
   return orderApps(apps, plugin.app.workspace.getLastOpenFiles(), lastActive);
 }
 
@@ -138,7 +138,7 @@ function insertBlock(editor: Editor, block: string): void {
 /** Asks for an app, then for which of its panels to show, and puts a `gizmo` block for them at the cursor. */
 function embedHere(plugin: GizmoPlugin, editor: Editor, sourcePath: string): void {
   pickApp(plugin, "Embed an app's panels here", false, (item) => {
-    const spec = plugin.background?.spec(item.path);
+    const spec = plugin.runtime.background.spec(item.path);
     const file = plugin.app.vault.getFileByPath(item.path);
     if (!spec || !file) return void new Notice(`Can't read ${item.name}`);
     const link = plugin.app.metadataCache.fileToLinktext(file, sourcePath);

@@ -31,7 +31,7 @@ class NextModal extends Modal {
     this.body = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture gz-next", attr: { tabindex: "-1" } });
     this.modalEl.addEventListener("keydown", (e) => this.onKey(e));
     // An ask answered elsewhere meanwhile gives way to the next; any other change only moves the count.
-    this.unsubscribe = this.plugin.background?.asks.subscribe(() => {
+    this.unsubscribe = this.plugin.runtime.background.asks.subscribe(() => {
       const queue = this.queue();
       if (!this.ask || !queue.some((a) => a.id === this.ask!.id)) this.draw();
       else this.count?.setText(this.countText(queue.length));
@@ -52,7 +52,7 @@ class NextModal extends Modal {
   }
 
   private queue(): Ask[] {
-    return (this.plugin.background?.asks.list() ?? []).filter((a) => !this.done.has(a.id));
+    return this.plugin.runtime.background.asks.list().filter((a) => !this.done.has(a.id));
   }
 
   private countText(n: number): string {
@@ -122,7 +122,7 @@ class NextModal extends Modal {
 
   private async act(what: "answer" | "skip" | "dismiss"): Promise<void> {
     const ask = this.ask;
-    const bg = this.plugin.background;
+    const bg = this.plugin.runtime.background;
     if (!ask || !bg || this.acting) return;
     this.acting = true;
     try {

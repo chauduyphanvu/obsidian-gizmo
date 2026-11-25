@@ -30,9 +30,13 @@ export interface Host {
   frontmatter(path: string): Record<string, unknown> | undefined;
   tags(path: string): string[];
   secret(id: string): string | null;
+  /** Where the person adds a secret this host can't find, said after "Missing secret …"; Obsidian's Keychain when left out. */
+  whereSecrets?(id: string): string;
   now(): number;
   /** Runs cb once, soon; used to batch change notifications. */
   schedule(cb: () => void): void;
+  /** Gives the window a moment to draw and take input during a long run (a backtest); absent where nothing draws. */
+  pause?(): Promise<void>;
   /** The whole text of any file in the vault (a note's frontmatter included); rejects with `Can't find <path>` when there is none. */
   readFile(path: string): Promise<string>;
   /** The vault path a link or file name points at from the note at `from`, or undefined when no file matches. */
@@ -356,7 +360,7 @@ export class DataLayer {
   private withSecrets(text: string): string {
     return text.replace(SECRET, (_, id: string) => {
       const value = this.host.secret(id);
-      if (!value) throw new Error(`Missing secret "${id}". Add it under Settings → Keychain.`);
+      if (!value) throw new Error(`Missing secret "${id}". ${this.host.whereSecrets?.(id) ?? "Add it under Settings → Keychain."}`);
       return value;
     });
   }
@@ -457,6 +461,9 @@ export class DataLayer {
   }
 
   fileDeleted(path: string): void {
+    // A log file gone (undone, or deleted by a sync) is read again, as a changed one is.
+    const dataPath = this.ledger?.fileChanged(path);
+    if (dataPath) this.snapshotWriter.soon(dataPath);
     this.parsed.delete(path);
     const before = this.index?.get(path);
     this.index?.delete(path);

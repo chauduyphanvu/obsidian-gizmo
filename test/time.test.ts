@@ -94,9 +94,11 @@ test("periods and deadlines in a zone: Ho Chi Minh City's day, and Los Angeles' 
   assert.equal(periodStart(local(2026, 11, 18, 12), "day", "Nowhere/Atlantis"), local(2026, 11, 18));
 });
 
-test("where you are is the zone of the phone or desktop used last, never gizmod's", () => {
+test("where you are is the zone of the device used last; gizmod, which no one uses, never says", () => {
   const beat = (id: string, priority: number, zone?: string, used?: number): Beat => ({ id, name: id, host: "", priority, seen: 1, ...(zone && { zone }), ...(used !== undefined && { used }) });
-  assert.equal(whereYouAre([beat("mac", 1, "America/New_York", 100), beat("phone", 0, "Asia/Ho_Chi_Minh", 200), beat("gizmod", 2, "America/New_York", 300)]), "Asia/Ho_Chi_Minh");
+  assert.equal(whereYouAre([beat("mac", 1, "America/New_York", 100), beat("phone", 0, "Asia/Ho_Chi_Minh", 200), beat("gizmod", 2, "America/New_York")]), "Asia/Ho_Chi_Minh");
+  // A device as suited to background work as gizmod that a person uses (Gizmo outside Obsidian) says where they are.
+  assert.equal(whereYouAre([beat("phone", 0, "Asia/Ho_Chi_Minh", 200), beat("app", 2, "Europe/Paris", 300)]), "Europe/Paris");
   assert.equal(whereYouAre([beat("mac", 1, "America/New_York", 300), beat("phone", 0, "Asia/Ho_Chi_Minh", 200)]), "America/New_York");
   assert.equal(whereYouAre([beat("old", 1)]), undefined, "a device from before says nothing");
   assert.deepEqual(readBeat(JSON.stringify({ id: "p", name: "Phone", priority: 0, seen: 5, zone: "Asia/Ho_Chi_Minh", used: 4 })), { id: "p", name: "Phone", host: "", priority: 0, seen: 5, zone: "Asia/Ho_Chi_Minh", used: 4 });

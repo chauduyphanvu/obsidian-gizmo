@@ -50,9 +50,9 @@ export default async function tryFirst(t) {
       ${modals}
       const modal = modals().find((m) => m.querySelector(".gz-try"));
       na.button("Allow", modal).click();
-      await na.until(() => na.plugin().store.grants["Apps/Tea.md"], 3000);
+      await na.until(() => na.plugin().runtime.store.grants["Apps/Tea.md"], 3000);
       await na.settle();
-      return { data: na.exists("Apps/Tea data.md"), dailySame: (await na.read("Daily.md")) === window.__daily, grant: na.plugin().store.grants["Apps/Tea.md"], open: !!na.button("Had a cup") };`);
+      return { data: na.exists("Apps/Tea data.md"), dailySame: (await na.read("Daily.md")) === window.__daily, grant: na.plugin().runtime.store.grants["Apps/Tea.md"], open: !!na.button("Had a cup") };`);
     expect(r.prompt?.length === 2 && r.before && r.counted, r);
     expect(r.did[0] === "Enjoy" && r.did[1]?.startsWith("Added to Daily the line “- Tea") && r.did[2] === "Saved a row to cups in Tea data", r);
     expect(r.outside?.includes("Not fetched in a try: api.open-meteo.com") && r.fetchButton === "Fetch from api.open-meteo.com for this try", r);

@@ -88,6 +88,16 @@ export function captureNamesOf(stored: Pick<StoredData, "captureKeys">, key: str
   return keys && Object.hasOwn(keys, key) ? keys[key] : undefined;
 }
 
+/**
+ * data.json as a host keeps it: the settings in use, read again when it changed on disk, and written
+ * where the host may write it (gizmod only reads it: what is allowed is decided where a person is).
+ */
+export interface SettingsSource {
+  readonly data: StoredData;
+  reload(): Promise<void>;
+  save?(): Promise<void>;
+}
+
 /** How data.json is read and written whole: Obsidian's loadData and saveData. */
 export interface SettingsIO {
   load(): Promise<unknown>;
@@ -98,7 +108,7 @@ export interface SettingsIO {
  * data.json as this device keeps it: the settings in use, and each save merged with what is on disk
  * (see mergeSettings), one save or reload after another.
  */
-export class SettingsFile {
+export class SettingsFile implements SettingsSource {
   private io: SettingsIO;
   /** The settings in use: what this device changes, and what a save writes. */
   data: StoredData = { grants: {} };

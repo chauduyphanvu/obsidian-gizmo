@@ -29,9 +29,9 @@ export interface ActivityOpts {
 /** What one app (or every app) changed in the vault, newest first, each with Undo: in a window, or the side sheet's History. */
 export async function drawActivity(el: HTMLElement, plugin: GizmoPlugin, o: ActivityOpts): Promise<void> {
   const path = o.appPath;
-  const listed = await plugin.activity.list(path, path ? plugin.sharedData(path) : []);
+  const listed = await plugin.runtime.activity.list(path, path ? plugin.runtime.sharedData(path) : []);
   // An entry of ledger events is undone as the ledger says, whichever device undid it.
-  const ledger = plugin.dataLayer.ledger;
+  const ledger = plugin.runtime.dataLayer.ledger;
   const paths = new Set(listed.flatMap((e) => eventsOf(e)?.map((x) => x.path) ?? []));
   const undone = new Map<string, Set<string>>();
   for (const p of paths) undone.set(p, ledger ? (await ledger.state(p).catch(() => undefined))?.undone ?? new Set() : new Set());
@@ -82,7 +82,7 @@ function drawEntry(row: HTMLElement, entry: Entry, now: Date, plugin: GizmoPlugi
   const button = head.createEl("button", { cls: "gz-activity-undo", text: entry.undone ? "Undo the rest" : "Undo" });
   button.addEventListener("click", handler(async () => {
     button.disabled = true;
-    const result = await plugin.undo(entry);
+    const result = await plugin.runtime.undo(entry);
     new Notice(undoMessage(result));
     await again();
   }));

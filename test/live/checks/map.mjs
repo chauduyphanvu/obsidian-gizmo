@@ -41,7 +41,7 @@ export default async function map(t) {
       const pinned = () => na.status().some((s) => s.startsWith("Doses today"));
       const before = pinned();
       na.button("Revoke", meds).click();
-      await na.until(() => !na.plugin().store.grants["Apps/Meds.md"], 3000);
+      await na.until(() => !na.plugin().runtime.store.grants["Apps/Meds.md"], 3000);
       const pinGone = await na.until(() => !pinned(), 3000);
       const count = () => na.fm("Apps/Meds data.md")?.doses?.length ?? 0;
       const doses = count();
@@ -67,11 +67,11 @@ export default async function map(t) {
       await na.write(path, "---\\napp: Pausable\\npanels:\\n  - view: button\\n    label: Did it\\n    save: done\\n---\\nA button, then a weather panel added later.\\n");
       await na.until(() => na.fm(path)?.app, 3000);
       await na.open("Apps/Pausable");
-      const allowed = !!(await na.until(() => na.plugin().store.grants[path], 3000));
+      const allowed = !!(await na.until(() => na.plugin().runtime.store.grants[path], 3000));
       await app.fileManager.processFrontMatter(na.file(path), (fm) => {
         fm.panels.push({ view: "number", title: "Rain", source: "https://api.open-meteo.com/v1/forecast?latitude=51.5&longitude=-0.1&current=rain", pick: "current.rain" });
       });
-      const bg = na.plugin().background;
+      const bg = na.plugin().runtime.background;
       await na.until(() => bg.spec(path)?.panels.length === 2, 3000);
       await bg.tick();
       const shown = await na.until(() => na.status().find((s) => s.startsWith("Gizmo: ")), 3000);
@@ -101,13 +101,13 @@ export default async function map(t) {
   await check("New link key: a link copied before asks before it runs, and its window says what it would change", async () => {
     const r = await run(`
       const id = "Apps/Errands.md#add";
-      const old = na.plugin().background.shortcutLinks().find((l) => l.app === "Errands").link;
+      const old = na.plugin().runtime.background.shortcutLinks().find((l) => l.app === "Errands").link;
       app.commands.executeCommandById("gizmo:open-map");
       const box = await na.until(() => document.querySelector(".workspace-leaf.mod-active .gz-map .gz-map-app"), 5000) && document.querySelector(".workspace-leaf.mod-active .gz-map");
       const errands = [...box.querySelectorAll(".gz-map-app")].find((c) => c.querySelector(".gz-title")?.textContent === "Errands");
-      const key = na.plugin().store.linkKeys[id];
+      const key = na.plugin().runtime.store.linkKeys[id];
       na.button("New link key", errands).click();
-      await na.until(() => na.plugin().store.linkKeys[id] !== key, 3000);
+      await na.until(() => na.plugin().runtime.store.linkKeys[id] !== key, 3000);
       const url = new URL(old + "&errand=" + encodeURIComponent("Old link"));
       const mark = na.notices.length;
       app.workspace.protocolHandler.dispatch({ action: url.host, ...Object.fromEntries(url.searchParams) });
@@ -118,7 +118,7 @@ export default async function map(t) {
       const effects = modal ? [...modal.querySelectorAll(".gz-effects li")].map((li) => li.textContent) : [];
       if (modal) na.button("Cancel", modal)?.click();
       await na.sleep(300);
-      return { changed: na.plugin().store.linkKeys[id] !== key, title, effects, notices: na.notices.slice(mark), errands: (na.fm("Apps/Errands data.md")?.errands ?? []).map((e) => e.errand) };`);
+      return { changed: na.plugin().runtime.store.linkKeys[id] !== key, title, effects, notices: na.notices.slice(mark), errands: (na.fm("Apps/Errands data.md")?.errands ?? []).map((e) => e.errand) };`);
     expect(r.changed && r.title?.includes("A link asks to run") && !r.errands.includes("Old link"), r);
     expect(r.effects.join() === "Save errand Old link to errands in Errands data", r);
     return `${r.title}: ${r.effects.join(" | ")}`;
@@ -174,7 +174,7 @@ export async function canvas(t) {
       const home = await na.until(() => document.querySelector(".workspace-leaf-content[data-type='gizmo-home'] .gz-home"), 4000);
       await na.until(() => home.querySelectorAll(".gz-home-app").length, 4000);
       await na.sleep(500);
-      const bg = na.plugin().background;
+      const bg = na.plugin().runtime.background;
       const heading = [...home.querySelectorAll(".gz-home-heading")].map((h) => h.textContent);
       const names = [...home.querySelectorAll(".gz-home-name")].map((n) => n.textContent);
       const counts = Object.fromEntries([...home.querySelectorAll(".gz-home-app")].filter((li) => li.querySelector(".gz-home-count")).map((li) => [li.querySelector(".gz-home-name").textContent, Number(li.querySelector(".gz-home-count").textContent)]));
@@ -200,15 +200,15 @@ export async function canvas(t) {
       await na.write("Apps/Figure two.md", fig("Figure two"));
       await na.sleep(800);
       await na.open("Apps/Figure one");
-      await na.until(() => na.plugin().headlines.get("Apps/Figure one.md"), 4000);
+      await na.until(() => na.plugin().runtime.headlines.get("Apps/Figure one.md"), 4000);
       await na.open("Apps/Figure two");
       await na.sleep(1500);
       const row = () => [...document.querySelectorAll(".workspace-leaf-content[data-type='gizmo-home'] .gz-home-app")].find((li) => li.querySelector(".gz-home-name").textContent === "Figure one");
       await na.until(() => row(), 4000);
       const kept = row()?.querySelector(".gz-home-headline")?.textContent;
-      await na.plugin().revoke("Apps/Figure one.md");
+      await na.plugin().runtime.revoke("Apps/Figure one.md");
       await na.sleep(1000);
-      return { kept, after: row()?.querySelector(".gz-home-headline")?.textContent ?? null, map: na.plugin().headlines.has("Apps/Figure one.md") };`);
+      return { kept, after: row()?.querySelector(".gz-home-headline")?.textContent ?? null, map: na.plugin().runtime.headlines.has("Apps/Figure one.md") };`);
     expect(r.kept === "Jobs: 2" && r.after === null && !r.map, r);
     return `${r.kept} kept after another app was allowed; gone on revoke`;
   });

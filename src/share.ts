@@ -4,6 +4,7 @@
  */
 import { isPlainObject } from "./keys.ts";
 import { b64url, fromB64url } from "./share-crypto.ts";
+import { GIZMO_LINK } from "./links.ts";
 
 /** Where a shared kind's rows travel: an ntfy server, its host, and the id of the secret that holds the kind's key. */
 export interface ShareSpec {
@@ -61,12 +62,14 @@ const toB64url = (text: string) => b64url(new TextEncoder().encode(text));
  * whoever is invited and to no server: Obsidian reads the link on the device it opens on.
  */
 export function inviteLink(i: Invite): string {
-  return `obsidian://gizmo?invite=${toB64url(JSON.stringify({ v: 1, name: i.name, fm: i.fm, key: b64url(i.key), from: i.from, writer: i.writer }))}`;
+  return `${GIZMO_LINK}?invite=${toB64url(JSON.stringify({ v: 1, name: i.name, fm: i.fm, key: b64url(i.key), from: i.from, writer: i.writer }))}`;
 }
 
 /** An invite from its link, or the text after `invite=`; why not, when it isn't one. */
 export function readInvite(text: string): Invite | { error: string } {
-  const raw = text.trim().replace(/^obsidian:\/\/gizmo\?invite=/, "");
+  const given = text.trim();
+  const prefix = `${GIZMO_LINK}?invite=`;
+  const raw = given.startsWith(prefix) ? given.slice(prefix.length) : given;
   const bytes = fromB64url(decodeURIComponentSafe(raw));
   let v: unknown;
   try {

@@ -59,7 +59,7 @@ export class AppView extends FileView {
     this.registerEvent(this.app.metadataCache.on("changed", (f) => {
       if (f === this.file) this.session.seen(this.app.metadataCache.getFileCache(f)?.frontmatter, Date.now());
     }));
-    this.unwatch = this.plugin.activity.onChange(() => {
+    this.unwatch = this.plugin.runtime.activity.onChange(() => {
       void this.refreshRail();
       if (this.controller?.page === "history") this.showHistory();
     });
@@ -107,9 +107,9 @@ export class AppView extends FileView {
     const path = this.file?.path;
     if (!path) return;
     const read = ++this.railReads;
-    const listed = await this.plugin.activity.list(path, this.plugin.sharedData(path));
+    const listed = await this.plugin.runtime.activity.list(path, this.plugin.runtime.sharedData(path));
     // An entry of ledger events is undone as the ledger says, whichever device undid it.
-    const ledger = this.plugin.dataLayer.ledger;
+    const ledger = this.plugin.runtime.dataLayer.ledger;
     const undone = new Map<string, Set<string>>();
     for (const p of new Set(listed.flatMap((e) => eventsOf(e)?.map((x) => x.path) ?? []))) {
       undone.set(p, (await ledger?.state(p).catch(() => undefined))?.undone ?? new Set());
@@ -172,14 +172,14 @@ export class AppView extends FileView {
     const path = this.file?.path;
     menu.addItem((item) => item.setTitle("Activity").setIcon("history").setSection("view").onClick(() => this.showHistory()));
     menu.addItem((item) => item.setTitle("As of…").setIcon("clock").setSection("view").onClick(() => new AsOfModal(this.app, (at) => this.showAt(at)).open()));
-    if (this.plugin.dataLayer.ledger) menu.addItem((item) => item.setTitle("What if…").setIcon("sparkles").setSection("view").onClick(() => this.showAhead()));
+    if (this.plugin.runtime.dataLayer.ledger) menu.addItem((item) => item.setTitle("What if…").setIcon("sparkles").setSection("view").onClick(() => this.showAhead()));
     menu.addItem((item) => item.setTitle("Explain the first figure").setIcon("equal").setSection("view").onClick(() => {
       if (!this.controller?.explainFirst()) new Notice("This app shows no figure worked out from rows");
     }));
     menu.addItem((item) => item.setTitle("Inspect data").setIcon("search-code").setChecked(this.controller?.inspectorShown ?? false).setSection("view").onClick(() => void this.controller?.toggleInspector()));
     menu.addItem((item) => item.setTitle("Reload data").setIcon("refresh-cw").setSection("view").onClick(() => this.controller?.reload()));
-    const bg = this.plugin.background;
-    const app = bg?.list().find((a) => a.path === path);
+    const bg = this.plugin.runtime.background;
+    const app = bg.list().find((a) => a.path === path);
     if (path && this.past === undefined && this.ahead === undefined) {
       if (this.session.changed()) {
         const before = this.session.before;
@@ -189,7 +189,7 @@ export class AppView extends FileView {
     }
     for (const s of app?.shortcuts ?? []) {
       menu.addItem((item) => item.setTitle(`Copy link: ${s.label}`).setIcon("link").setSection("action").onClick(() => {
-        const link = bg?.shortcutLinks().find((l) => l.path === path && l.shortcut === s.id);
+        const link = bg.shortcutLinks().find((l) => l.path === path && l.shortcut === s.id);
         if (link) copyShortcutLink(link);
       }));
     }
@@ -269,7 +269,7 @@ export class AppView extends FileView {
     const data = this.aheadLayer(file.path);
     const now = new Date();
     const spec = readSpec(live.frontmatter(file.path), { path: file.path, notes: live.notes, now })?.spec;
-    const zone = this.plugin.beat?.whereYouAre();
+    const zone = this.plugin.runtime.beat.whereYouAre();
     const envAt = (at: number) => aheadEnv(live, data, at, { show: (t) => this.showAhead(t), back: () => this.showAt(undefined), zone, marked: (times) => this.rail.mark(times) });
     const said = line === undefined ? undefined : await this.saveWhatIf(line, envAt(now.getTime()), now);
     const notes = spec ? whatIfNotes(spec, file.path, dataPathOf(spec.store, file.path, vaultStorePath(this.app))) : [];
@@ -292,8 +292,7 @@ export class AppView extends FileView {
 
   /** Saves a Do… line, after `what if`, as a what-if row through the shortcut it names; says that it did, or why not. */
   private async saveWhatIf(line: string, env: AppEnv, now: Date): Promise<string> {
-    const bg = this.plugin.background;
-    if (!bg) return "What if lines need Gizmo's background service";
+    const bg = this.plugin.runtime.background;
     const parsed = parseWhatIf(line, bg.captureIndex(), now);
     if (!parsed.ok) return `“what if ${line}” wasn't saved: ${parsed.error}`;
     const { path, shortcut } = parsed.target;
@@ -307,7 +306,7 @@ export class AppView extends FileView {
   private aheadLayer(path: string): DataLayer {
     if (this.aheadData?.path === path) return this.aheadData.data;
     this.dropAhead();
-    const live = this.plugin.dataLayer;
+    const live = this.plugin.runtime.dataLayer;
     const data = new DataLayer(live.host, { like: live, ahead: { name: branchName(path), at: Date.now() } });
     this.aheadData = { path, data, unfollow: live.follow(data) };
     return data;

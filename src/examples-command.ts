@@ -40,12 +40,12 @@ async function make(plugin: GizmoPlugin, folder: TFolder, plan: ExamplePlan): Pr
   try {
     const kindPath = at(plan.kindNote);
     await app.vault.create(kindPath, plan.kindText);
-    const ledger = plugin.dataLayer.ledger;
+    const ledger = plugin.runtime.dataLayer.ledger;
     if (ledger) {
       const data = defaultDataPath(kindPath);
-      plugin.dataLayer.noteApp(data, kindPath);
+      plugin.runtime.dataLayer.noteApp(data, kindPath);
       await ledger.write(data, carriedOps(plan.kind, plan.rows, () => ledger.newRowId()));
-      await plugin.dataLayer.snapshotNow(data, false).catch(() => undefined);
+      await plugin.runtime.dataLayer.snapshotNow(data, false).catch(() => undefined);
     }
     const file = await app.vault.create(at(plan.appNote), plan.appText);
     await app.workspace.getLeaf("tab").setViewState({ type: VIEW_TYPE, state: { file: file.path }, active: true });
@@ -67,7 +67,7 @@ export function registerExamples(plugin: GizmoPlugin): void {
         taken: (note) => folder.children.some((c) => c.name === `${note}.md`),
         used: (name) => {
           const word = name.toLowerCase();
-          const index = plugin.background?.captureIndex();
+          const index = plugin.runtime.background.captureIndex();
           if (index?.names.has(word) || index?.clashes.has(word)) return true;
           return plugin.app.vault.getMarkdownFiles().some((f) => {
             const fm = plugin.app.metadataCache.getFileCache(f)?.frontmatter;

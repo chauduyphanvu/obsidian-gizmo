@@ -37,7 +37,7 @@ export default async function history(t) {
       return {
         files: months.size, shown: !!shown, rows: fm?.kp_log?.length, ids: fm?.["gizmo-ids"]?.kp_log?.length, newest: fm?.kp_log?.at(-1)?.kp,
         gone: fm?.["gizmo-gone"], checkpoint: checkpoint && { path: checkpoint.path, kb: Math.round(checkpoint.stat.size / 1024) },
-        runner: na.plugin().beat?.isRunner(),
+        runner: na.plugin().runtime.beat?.isRunner(),
       };`);
     expect(r.files >= 4 && r.shown && r.rows === 500 && r.ids === 500 && r.newest === 10_079 % 9 && r.gone === undefined && r.checkpoint, r);
     await shot("history.png");

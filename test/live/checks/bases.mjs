@@ -60,8 +60,8 @@ export default async function bases(t) {
       const columns = ${COLUMNS};
       const status = () => na.fm("Projects/Learn Rust.md")?.status;
       const moved = await na.until(() => status() === ${JSON.stringify(pos.to)} && columns()[${JSON.stringify(pos.to)}]?.some((c) => c.startsWith("Learn Rust")), 3000);
-      const [entry] = await na.plugin().activity.list("${BASE}");
-      const result = entry ? await na.plugin().undo(entry) : undefined;
+      const [entry] = await na.plugin().runtime.activity.list("${BASE}");
+      const result = entry ? await na.plugin().runtime.undo(entry) : undefined;
       const back = await na.until(() => status() === ${JSON.stringify(pos.from)} && columns()[${JSON.stringify(pos.from)}]?.some((c) => c.startsWith("Learn Rust")), 3000);
       return { moved: !!moved, entry: entry && { actor: entry.actor, what: entry.what, changes: entry.changes }, result, back: !!back, status: status() };`);
     const change = r.entry?.changes?.[0];

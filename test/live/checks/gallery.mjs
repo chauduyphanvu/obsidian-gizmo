@@ -256,7 +256,7 @@ export default async function gallery(t) {
       const big = (title) => panel(title)?.querySelector(".gz-big")?.textContent;
       const money = (text) => Number((text ?? "").replace(/[$,]/g, ""));
       const rows = () => na.fm("Kinds/Spend data.md")?.spend ?? [];
-      const planned = async () => ((await na.plugin().dataLayer.ledger.state("Kinds/Spend data.md", na.fm("Kinds/Spend.md"))).lists.get("spend")?.rows ?? []).filter((x) => x.line === "planned" && x.trip === "Tokyo");
+      const planned = async () => ((await na.plugin().runtime.dataLayer.ledger.state("Kinds/Spend data.md", na.fm("Kinds/Spend.md"))).lists.get("spend")?.rows ?? []).filter((x) => x.line === "planned" && x.trip === "Tokyo");
       const add = (title, line) => {
         const form = panel(title);
         na.fill(form.querySelector(".gz-addline-input"), line);
@@ -311,8 +311,8 @@ export default async function gallery(t) {
       tab("Spending");
       await na.sleep(800);
       const expenses = [...panel("Expenses").querySelectorAll("tbody tr:not(.gz-ledger-group)")].map((tr) => [...tr.querySelectorAll("td")].map((td) => td.querySelector("input")?.value ?? td.textContent).join(" | "));
-      const word = na.plugin().background.captureIndex().names.get("spend")?.app;
-      const ran = await na.plugin().background.capture("spend 14.5 food lunch");
+      const word = na.plugin().runtime.background.captureIndex().names.get("spend")?.app;
+      const ran = await na.plugin().runtime.background.capture("spend 14.5 food lunch");
       const lunch = await na.until(() => rows().length === n + 4 && rows().at(-1), 5000);
       return { days, comes, meter, over, status, told, ryokan, itinerary, start, at150, saved, kept, at100, budgetBefore, budgetAfter, expenses, total: money(spent()), word, ran: ran.ok, lunch, errors: na.errors() };`);
     await t.shot("gallery-Trip-planner-spending.png", 1280, 900);
@@ -416,8 +416,8 @@ export default async function gallery(t) {
       await na.sleep(900);
       return preview;
     };
-    const kindRows = async (name, list) => (await na.plugin().dataLayer.ledger.state("Kinds/" + name + " data.md", na.fm("Kinds/" + name + ".md"))).lists.get(list)?.rows.map((r) => ({ ...r })) ?? [];
-    const asks = () => na.plugin().background.asks.list();
+    const kindRows = async (name, list) => (await na.plugin().runtime.dataLayer.ledger.state("Kinds/" + name + " data.md", na.fm("Kinds/" + name + ".md"))).lists.get(list)?.rows.map((r) => ({ ...r })) ?? [];
+    const asks = () => na.plugin().runtime.background.asks.list();
     const pad = (n) => String(n).padStart(2, "0");
     const day = (d) => d.getFullYear() + "-" + pad(d.getMonth() + 1) + "-" + pad(d.getDate());
     /** The weekday n days back, as a line's @ takes it: never today, so never a time still to come. */
@@ -469,7 +469,7 @@ export default async function gallery(t) {
       panel("Charges from the bank, not checked yet")?.scrollIntoView({ block: "center" });
       const rows = await kindRows("Spend", "spend");
       const of = (note, n) => rows.filter((x) => x.note === note && String(x.at).startsWith(ago(n))).map((x) => (x.line ?? "logged") + " " + x.amount + (x.matched ? " settled" : "")).sort();
-      const [entry] = await na.plugin().activity.list("Apps/Budget.md");
+      const [entry] = await na.plugin().runtime.activity.list("Apps/Budget.md");
       return {
         water: of("METRO WATER", 2), streamflix: of("STREAMFLIX", 6), entry: entry && [entry.what, entry.changes.length],
         lands: big("The month lands at"), spent: big("Spent so far"), coming: big("Still to come"), waiting: big("Charges from the bank, not checked yet"),
@@ -549,7 +549,7 @@ export default async function gallery(t) {
       await na.until(() => rowsOf("Coming up").some((x) => x.startsWith("NEWSDAILY DIGITAL")), 4000);
       await na.sleep(400);
       const planned = (await kindRows("Spend", "spend")).filter((x) => x.note === "NEWSDAILY DIGITAL").map((x) => x.line);
-      await na.plugin().background.tick();
+      await na.plugin().runtime.background.tick();
       await na.sleep(500);
       return { first, preview, planned, due: ago(-12), renewalAsks: asks().filter((a) => a.app === "Renewal").map((a) => a.text), errors: na.errors() };`);
     await t.shot("week-bills-coming-up.png", 1280, 900);
@@ -635,7 +635,7 @@ export default async function gallery(t) {
       const aheadTab = () => app.workspace.getLeavesOfType("gizmo").find((l) => l.view.file?.path === "Apps/Budget.md" && l.view.contentEl.querySelector(".gz-ahead"));
       [...aheadTab().view.contentEl.querySelectorAll(".gz-ahead button")].find((b) => b.textContent === "Discard")?.click();
       await na.sleep(800);
-      const rows = (await na.plugin().dataLayer.ledger.state("Kinds/Spend data.md", na.fm("Kinds/Spend.md"))).lists.get("spend")?.rows ?? [];
+      const rows = (await na.plugin().runtime.dataLayer.ledger.state("Kinds/Spend data.md", na.fm("Kinds/Spend.md"))).lists.get("spend")?.rows ?? [];
       aheadTab()?.detach();
       await na.sleep(300);
       return rows.some((x) => x.note === "concert");`);
@@ -655,7 +655,7 @@ export default async function gallery(t) {
       const lines = ["meds @" + back(3) + " 8:05", "medb @" + back(3) + " 8:10", "medb @" + back(3) + " 20:15", "meds @" + back(2) + " 8:20", "medb @" + back(2) + " 8:20",
         'dose "Medication B" "late, felt fine" @' + back(2) + " 22:40", "meds @yday 9:45", "medb @yday 9:45"];
       const ran = [];
-      for (const line of lines) ran.push((await na.plugin().background.capture(line)).ok);
+      for (const line of lines) ran.push((await na.plugin().runtime.background.capture(line)).ok);
       await na.sleep(500);
       na.button("Took Medication A").click();
       await na.sleep(900);
@@ -826,7 +826,7 @@ export default async function gallery(t) {
       const aheadTab = () => app.workspace.getLeavesOfType("gizmo").find((l) => l.view.file?.path === "Apps/Trades.md" && l.view.contentEl.querySelector(".gz-ahead"));
       [...(aheadTab()?.view.contentEl.querySelectorAll(".gz-ahead button") ?? [])].find((b) => b.textContent === "Discard")?.click();
       await na.sleep(800);
-      const rows = (await na.plugin().dataLayer.ledger.state("Kinds/Trade data.md", na.fm("Kinds/Trade.md"))).lists.get("trade")?.rows ?? [];
+      const rows = (await na.plugin().runtime.dataLayer.ledger.state("Kinds/Trade data.md", na.fm("Kinds/Trade.md"))).lists.get("trade")?.rows ?? [];
       aheadTab()?.detach();
       await na.sleep(300);
       return rows.some((x) => x.symbol === "QQQ" && x.shares === 10 && x.price === 560);`);
@@ -851,7 +851,7 @@ export default async function gallery(t) {
       await na.sleep(400);
       const vacuumed = { done: Number(big("Done this week")), settled: (await kindRows("Chore", "chore")).filter((x) => x.task === "Vacuum the house" && x.line === "planned" && x.matched).length };
       const ran = [];
-      for (const line of ['did "Take the bins out" Sam outside @' + back(6) + " 20:30", "chore smoke Alex upkeep"]) ran.push((await na.plugin().background.capture(line)).ok);
+      for (const line of ['did "Take the bins out" Sam outside @' + back(6) + " 20:30", "chore smoke Alex upkeep"]) ran.push((await na.plugin().runtime.background.capture(line)).ok);
       await na.sleep(900);
       const after = { overdue: Number(big("Overdue")), late: rowsOf("Overdue turns"), who: rowsOf("Who did what this week") };
       return { before, preview, vacuumed, ran, after, errors: na.errors() };`);
@@ -939,7 +939,7 @@ export default async function gallery(t) {
         await na.write("Apps/Dot check.md", ${JSON.stringify(APP)});
         await na.sleep(800);
         await na.open("Apps/Dot check");
-        const bg = na.plugin().background;
+        const bg = na.plugin().runtime.background;
         await bg.tick();
         await na.until(() => bg.asks.list().some((a) => a.app === "Dot check"), 6000);
         app.commands.executeCommandById("gizmo:open-sidebar");
@@ -961,7 +961,7 @@ export default async function gallery(t) {
       return `${side.length} in the sidebar, ${tab.dots.length} in the app at 390 px`;
     } finally {
       await page.send("Emulation.clearDeviceMetricsOverride");
-      await run(`await na.remove("Apps/Dot check.md"); await na.remove("Apps/Dot check data.md"); await na.plugin().background.tick();`);
+      await run(`await na.remove("Apps/Dot check.md"); await na.remove("Apps/Dot check data.md"); await na.plugin().runtime.background.tick();`);
     }
   });
 

@@ -1,31 +1,61 @@
 /**
- * What gizmod runs the engine with, in place of Obsidian: the vault folder as a Host, writes as an
- * app's actions make them, Gizmo's settings read from its data.json (never written: grants, keys
+ * What gizmod runs Gizmo's runtime with, in place of Obsidian: the vault folder as a Host, writes as
+ * an app's actions make them, Gizmo's settings read from its data.json (never written: grants, keys
  * and the policy are given in Obsidian), and the files Gizmo keeps per device in its plugin folder.
  */
 import { existsSync, promises as fs, readFileSync, statSync } from "node:fs";
 import { hostname } from "node:os";
 import { dirname, join } from "node:path";
 import { parse } from "yaml";
-import { ActivityLog, type LogStore, type NewEntry } from "../../src/activity.ts";
-import { actionDepsOf, bodyOf, type ActionDeps, type ActionIO } from "../../src/actions.ts";
-import type { Actor } from "../../src/activity.ts";
-import type { AlertNotice, BackgroundEnv, BackgroundSink } from "../../src/background.ts";
-import { DataLayer, type Host } from "../../src/datalayer.ts";
+import type { LogStore } from "../../src/activity.ts";
+import { bodyOf, type ActionIO } from "../../src/actions.ts";
+import type { AlertNotice, BackgroundSink } from "../../src/background.ts";
+import { WebError, type Host } from "../../src/datalayer.ts";
 import { ledgerStore } from "../../src/datastore.ts";
-import { DEVICE_FOLDERS, Heartbeat, PRIORITY, UNSEEN_MS, deviceFile, otherLogs, otherShareStates, otherTriggers, whereYouAre, type PluginFiles } from "../../src/device.ts";
+import { PRIORITY, UNSEEN_MS, type PluginFiles } from "../../src/device.ts";
 import { localZone } from "../../src/time.ts";
-import { grantedOf, isGranted } from "../../src/grants.ts";
 import { clearance, rank, type AppliedPolicy } from "../../src/policy.ts";
 import { ResponseHistory, type FolderAdapter } from "../../src/responses.ts";
-import { SNAPSHOT_DELAY_MS, SNAPSHOT_GAP_MS } from "../../src/snapshots.ts";
-import { isApp, isKind, notePath, storeTarget, vaultPath } from "../../src/store.ts";
-import { captureNamesOf, destinationsOf, linkKeyOf, writersOf, type StoredData } from "../../src/stored.ts";
+import { GizmoRuntime } from "../../src/runtime.ts";
+import { urlHost } from "../../src/sources/url.ts";
+import { notePath, storeTarget, vaultPath } from "../../src/store.ts";
+import type { SettingsSource, StoredData } from "../../src/stored.ts";
 import { NodeVault, yamlText } from "./vault.ts";
 import { vaultWrites } from "../../src/vault-ops.ts";
 
-/** Gizmo's settings as Obsidian keeps them in data.json; gizmod only reads them. */
-export type Settings = Pick<StoredData, "grants" | "linkKeys" | "answerTo" | "captureKeys" | "policy" | "writers">;
+/**
+ * data.json as Obsidian last wrote it, read again whenever it changed on disk: gizmod never writes it,
+ * since what is allowed is decided where a person is. A file caught half-written reads as it was.
+ */
+export class DiskSettings implements SettingsSource {
+  private path: string;
+  private kept: StoredData = { grants: {} };
+  private mtime = -1;
+
+  constructor(pluginDir: string) {
+    this.path = join(pluginDir, "data.json");
+  }
+
+  get data(): StoredData {
+    try {
+      const m = statSync(this.path).mtimeMs;
+      if (m !== this.mtime) {
+        const read = JSON.parse(readFileSync(this.path, "utf8")) as Partial<StoredData>;
+        this.kept = { ...read, grants: read.grants ?? {} };
+        // Only once it parsed: a file caught half-written is read again next time.
+        this.mtime = m;
+      }
+    } catch {
+      // No settings yet: nothing is allowed.
+    }
+    return this.kept;
+  }
+
+  async reload(): Promise<void> {
+    this.mtime = -1;
+    void this.data;
+  }
+}
 
 /** Node's fs as the history's folder adapter. */
 export const fsAdapter: FolderAdapter = {
@@ -67,9 +97,12 @@ export function pluginFiles(pluginDir: string): PluginFiles {
   };
 }
 
-/** `{secret:id}` filled from the environment, as `op run` gives it: GIZMO_SECRET_<ID>, dashes as underscores. */
+/** The environment variable a secret comes from: GIZMO_SECRET_<ID>, dashes as underscores. */
+export const secretVar = (id: string) => `GIZMO_SECRET_${id.toUpperCase().replace(/-/g, "_")}`;
+
+/** `{secret:id}` filled from the environment, as `op run` gives it. */
 export function secretFromEnv(id: string, env: NodeJS.ProcessEnv = process.env): string | null {
-  return env[`GIZMO_SECRET_${id.toUpperCase().replace(/-/g, "_")}`] ?? null;
+  return env[secretVar(id)] ?? null;
 }
 
 /** What gizmod pushes for an alert: its whole text when the policy clears it for that host, else only where it's from. */
@@ -96,7 +129,7 @@ export interface GizmodOptions {
   answerButton?: (notice: AlertNotice) => Promise<string | undefined>;
 }
 
-/** gizmod's vault, data layer, activity log, beat and the Background's env, put together. */
+/** gizmod's vault and the Gizmo runtime it runs on, with what it does in place of Obsidian's windows. */
 export function gizmodEnv(opts: GizmodOptions) {
   const now = opts.now ?? Date.now;
   const log = opts.log ?? ((line: string) => void process.stdout.write(`${line}\n`));
@@ -105,36 +138,24 @@ export function gizmodEnv(opts: GizmodOptions) {
   const pluginDir = join(opts.vault, opts.configDir ?? ".obsidian", "plugins", "gizmo");
   const files = pluginFiles(pluginDir);
   const id = opts.device;
-
-  let settings: Settings = { grants: {} };
-  let settingsMtime = -1;
-  /** data.json as Obsidian last wrote it, read again when it changed. */
-  const store = (): Settings => {
-    const path = join(pluginDir, "data.json");
-    try {
-      const m = statSync(path).mtimeMs;
-      if (m !== settingsMtime) {
-        const read = JSON.parse(readFileSync(path, "utf8")) as Partial<Settings>;
-        settings = { ...read, grants: read.grants ?? {} };
-        // Only once it parsed: a file caught half-written is read again next time.
-        settingsMtime = m;
-      }
-    } catch {
-      // No settings yet: nothing is allowed.
-    }
-    return settings;
-  };
+  const settings = new DiskSettings(pluginDir);
 
   const host: Host = {
     async fetch(url, headers, init) {
-      const res = await doFetch(url, { headers, method: init?.method, body: init?.body });
-      return { status: res.status, text: await res.text(), contentType: res.headers.get("content-type") ?? "" };
+      try {
+        const res = await doFetch(url, { headers, method: init?.method, body: init?.body });
+        return { status: res.status, text: await res.text(), contentType: res.headers.get("content-type") ?? "" };
+      } catch (e) {
+        // An error status is an answer; this is no answer at all.
+        throw new WebError("network", urlHost(url), (e as Error).message, { cause: e });
+      }
     },
     markdownFiles: () => vault.notes(),
     fileInfo: (path) => (path.endsWith(".md") ? vault.file(path)?.info : undefined),
     frontmatter: (path) => vault.file(path)?.fm,
     tags: (path) => vault.file(path)?.tags ?? [],
     secret: (sid) => secretFromEnv(sid),
+    whereSecrets: (sid) => `Set ${secretVar(sid)} in gizmod's environment (its run script fills it through op run).`,
     now,
     schedule: (cb) => { setTimeout(cb, 30); },
     readFile: (path) => vault.read(path),
@@ -146,9 +167,12 @@ export function gizmodEnv(opts: GizmodOptions) {
     append: (path, text) => vault.append(path, text),
     writeFile: (path, text) => vault.write(path, text),
     device: () => id,
+    async postBytes(url, body, contentType) {
+      const sent = body.buffer.slice(body.byteOffset, body.byteOffset + body.byteLength) as ArrayBuffer;
+      const res = await doFetch(url, { method: "POST", body: sent, headers: { "content-type": contentType } });
+      return { status: res.status, bytes: new Uint8Array(await res.arrayBuffer()) };
+    },
   };
-  const data = new DataLayer(host);
-  const ledger = data.ledger!;
   const frontmatter = (path: string) => vault.file(path)?.fm;
   // Written as Obsidian writes them (see vault-ops.ts), each change read again just before it's written.
   const writes = vaultWrites({
@@ -156,17 +180,21 @@ export function gizmodEnv(opts: GizmodOptions) {
     exists: (path) => vault.file(path) !== undefined || existsSync(vault.abs(path)),
     read: (path) => vault.read(path),
     write: (path, text) => vault.write(path, text),
-    create: (path, text) => vault.write(path, text),
+    create: (path, text) => vault.create(path, text),
     processFrontmatter: (path, fn) => vault.process(path, fn),
     append: (path, text) => vault.append(path, text),
+    trash: (path) => vault.trash(path),
+    vanished: async (path) => !existsSync(vault.abs(path)),
   }, yamlText);
 
+  // Made below; a store is only asked for once the runtime runs.
+  let runtime: GizmoRuntime | undefined;
   const io: ActionIO = {
     now: () => new Date(now()),
     frontmatter,
     writeFrontmatter: (path, fn) => writes.writeFrontmatter(path, fn),
     updateFrontmatter: (path, fn) => writes.updateFrontmatter(path, fn),
-    store: (dataPath, appPath) => ledgerStore(ledger, dataPath, () => frontmatter(appPath) ?? {}),
+    store: (dataPath, appPath) => ledgerStore(runtime!.dataLayer.ledger!, dataPath, () => frontmatter(appPath) ?? {}),
     appendLine: (path, line) => writes.appendLine(path, line),
     createNote: (path, fm, body) => writes.createNote(path, fm, body),
     readBody: async (path) => {
@@ -179,17 +207,6 @@ export function gizmodEnv(opts: GizmodOptions) {
     openNote: () => {},
     setTaskDone: (path, line, text, done) => writes.setTaskDone(path, line, text, done),
   };
-
-  const activity = new ActivityLog(files.file(deviceFile(DEVICE_FOLDERS.activity, id)), now, () => otherLogs(files, id));
-
-  // gizmod says only on its interval; a beat it couldn't write is logged and written on the next one.
-  const beat = new Heartbeat({
-    id,
-    files,
-    now,
-    mine: (t) => ({ id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() }),
-    writeFailed: (e) => log(`couldn't write gizmod's beat: ${e.message}`),
-  });
 
   const notices: string[] = [];
   const sink: BackgroundSink = {
@@ -205,7 +222,7 @@ export function gizmodEnv(opts: GizmodOptions) {
       if (opts.macNotices) void macNotice(notice.text);
       const url = opts.ntfyUrl;
       if (!url) return;
-      const body = pushText(notice, store().policy, new URL(url).host);
+      const body = pushText(notice, settings.data.policy, new URL(url).host);
       void (async () => {
         // The button says nothing more than the push: it names gizmod's address and a token for the one line, never a key.
         // A button that can't be made (its token can't be kept) leaves the push without one.
@@ -215,56 +232,33 @@ export function gizmodEnv(opts: GizmodOptions) {
     },
   };
 
-  const bgEnv: BackgroundEnv = {
-    data,
-    frontmatter,
-    notes: { resolve: (link, from) => vault.resolve(link, from), frontmatter },
-    appPaths: () => vault.notes().filter((f) => isApp(frontmatter(f.path)) || isKind(frontmatter(f.path))).map((f) => f.path),
-    // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
-    isGranted: (path, wanted, asked) => isGranted(store().grants, path, wanted, true, asked),
-    granted: (path) => grantedOf(store().grants, path),
-    policy: () => store().policy,
-    storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? notePath(storeTarget(s)),
-    actionDeps(appPath: string, dataPath: string, actor?: Actor): ActionDeps {
-      return {
-        ...actionDepsOf(io, appPath, dataPath),
-        log: actor ? (what, changes) => activity.add({ app: appPath, actor, what, changes }).then((e) => e?.id, () => undefined) : undefined,
-      };
+  runtime = new GizmoRuntime({
+    host,
+    settings,
+    files,
+    device: { id, name: "gizmod" },
+    // gizmod says only on its interval; a beat it couldn't write is logged and written on the next one.
+    beat: {
+      mine: (t) => ({ id, name: "gizmod", host: hostname(), priority: PRIORITY.gizmod, seen: t, zone: localZone() }),
+      writeFailed: (e) => log(`couldn't write gizmod's beat: ${e.message}`),
     },
-    now: () => new Date(now()),
+    writes,
+    notes: { resolve: (link, from) => vault.resolve(link, from), frontmatter },
+    storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? notePath(storeTarget(s)),
+    // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
+    actionIO: () => io,
     sink,
-    triggers: files.file(deviceFile(DEVICE_FOLDERS.triggers, id)),
-    // gizmod never writes data.json; its own activity follows a rename it sees as a delete and a create.
-    renamed: (from, to) => void activity.rename(from, to),
-    otherTriggers: () => otherTriggers(files, id),
-    shareState: files.file(deviceFile(DEVICE_FOLDERS.share, id)),
-    otherShareStates: () => otherShareStates(files, id),
-    // Writers are accepted in Obsidian; gizmod follows what data.json says.
-    writers: (kindPath) => writersOf(store(), kindPath),
-    // gizmod uses the keys Obsidian made; it never makes one.
-    linkKey: (path, shortcut) => linkKeyOf(store(), path, shortcut),
-    captureKey: (key) => captureNamesOf(store(), key),
-    destinations: (path, shortcut) => destinationsOf(store(), path, shortcut),
-    allowDestination: () => {},
-    logSent: (entry: NewEntry) => void activity.add(entry),
-    runsBackground: () => beat.isRunner(),
-    // Deadlines mean where the person is: the zone of the phone or desktop they used last.
-    zone: () => whereYouAre(beat.beats),
-    quietAlerts: () => false,
-  };
-  // Only the device running background work writes data notes' snapshots: gizmod, when it's there.
-  data.setSnapshots({
-    isRunner: () => beat.isRunner(),
-    delayMs: SNAPSHOT_DELAY_MS,
-    gapMs: SNAPSHOT_GAP_MS,
+    every: (fn, ms) => {
+      const timer = setInterval(fn, ms);
+      return () => clearInterval(timer);
+    },
     later: (fn, ms) => {
       const timer = setTimeout(fn, ms);
       return () => clearTimeout(timer);
     },
-    writeNote: (path, fn) => io.writeFrontmatter(path, fn),
   });
 
-  return { vault, data, host, io, activity, beat, sink, notices, bgEnv, store, pluginDir, unseenMs: UNSEEN_MS };
+  return { vault, runtime, host, io, sink, notices, settings, pluginDir, unseenMs: UNSEEN_MS };
 }
 
 /** A macOS notice, as a notification from Script Editor would show it. */

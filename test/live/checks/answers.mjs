@@ -31,7 +31,7 @@ export default async function answers(t) {
       const realOpen = window.open;
       window.open = (url) => { opened.push(String(url)); return null; };
       try {
-        const link = na.plugin().background.shortcutLinks().find((l) => l.app === "Water" && l.shortcut === "glasses");
+        const link = na.plugin().runtime.background.shortcutLinks().find((l) => l.app === "Water" && l.shortcut === "glasses");
         const send = () => {
           const url = new URL(link.link);
           app.workspace.protocolHandler.dispatch({ action: url.host, ...Object.fromEntries(url.searchParams), "x-success": "shortcuts://x-callback-url/run-shortcut?name=Water", "x-source": "Shortcuts" });
@@ -46,7 +46,7 @@ export default async function answers(t) {
         send();
         await na.until(() => opened.length === 2, 3000);
         const again = modals().some((m) => m.innerText.includes("would send its value"));
-        const log = (await na.plugin().activity.list("Apps/Water.md"))[0];
+        const log = (await na.plugin().runtime.activity.list("Apps/Water.md"))[0];
         return { prompt, title, buttons, opened, again, sent: log?.sent };
       } finally {
         window.open = realOpen;

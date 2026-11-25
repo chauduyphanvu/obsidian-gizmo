@@ -183,11 +183,13 @@ test("the map says an app you revoked is not allowed because you revoked it, and
   assert.deepEqual(states, { Inbox: "allowed", Meds: "revoked", Projects: "not-opened" });
 
   const plugin = {
-    background: { list: () => apps },
-    activity: { list: async () => activity },
-    store: { grants },
-    lenses: { lenses: () => [] },
-    policyPending: () => false,
+    runtime: {
+      background: { list: () => apps },
+      activity: { list: async () => activity },
+      store: { grants },
+      lenses: { lenses: () => [] },
+      policyPending: () => false,
+    },
   };
   const view = new MapView({} as never, plugin as never);
   const el = document.body.createDiv();

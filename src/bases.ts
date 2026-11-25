@@ -103,7 +103,7 @@ class GizmoBasesView extends BasesView {
   }
 
   private rows(): Row[] {
-    const host = this.plugin.dataLayer.host;
+    const host = this.plugin.runtime.dataLayer.host;
     const picked = BASES_VIEWS[this.kind].options.flatMap((o) => (o.type === "property" ? [this.config.getAsPropertyId(o.key)] : []));
     // Every formula, for card text; of the file properties a notes row lacks, only those picked, since some (backlinks) are costly.
     const ids = entryIds([...this.allProperties.filter((id) => id.startsWith("formula.")), ...picked.filter((id) => id !== null)]);
@@ -166,7 +166,7 @@ class GizmoBasesView extends BasesView {
         fm[field] = value;
       });
       if (!written) return void new Notice("That note is gone");
-      if (change) void this.plugin.activity.add({ app: this.basePath(), actor: "you", what: this.config.name, changes: [change] });
+      if (change) void this.plugin.runtime.activity.add({ app: this.basePath(), actor: "you", what: this.config.name, changes: [change] });
     } catch (e) {
       new Notice(`Couldn't save: ${(e as Error).message}`);
     }

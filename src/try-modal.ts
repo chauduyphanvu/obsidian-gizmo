@@ -54,7 +54,8 @@ class TryModal extends Modal {
       notes: this.notes,
       parseYaml: (text) => parseYaml(text) as unknown,
       now: () => new Date(),
-      fetch: (url, headers, init) => this.plugin.dataLayer.host.fetch(url, headers, init),
+      schedule: (cb) => this.plugin.runtime.dataLayer.host.schedule(cb),
+      fetch: (url, headers, init) => this.plugin.runtime.dataLayer.host.fetch(url, headers, init),
       copy: (text) => copyText(text),
     });
     this.box = box;
@@ -127,7 +128,7 @@ export async function tryVaultApp(plugin: GizmoPlugin, path: string): Promise<vo
     const f = vault.getFileByPath(other);
     if (f && !notes.has(other)) notes.set(other, await noteOf(plugin, f));
   }
-  new TryModal(plugin, file.basename, path, notes, wanted, { label: "Allow", run: () => plugin.grant(path, wanted) }).open();
+  new TryModal(plugin, file.basename, path, notes, wanted, { label: "Allow", run: () => plugin.runtime.grant(path, wanted) }).open();
 }
 
 /** Tries a shared app before installing it, on the shared notes alone, placed as the install would place them. */

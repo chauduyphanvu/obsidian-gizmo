@@ -3,6 +3,7 @@ import { names, guestCheck, guestCode, guestPageHtml } from "./guest-page.ts";
 import { handler } from "./handler.ts";
 import { copyText, pluginFiles, vaultNotes } from "./host.ts";
 import { readFields } from "./keys.ts";
+import { GIZMO_LINK } from "./links.ts";
 import type GizmoPlugin from "./main.ts";
 import { describePermission, permissionsOf } from "./permissions.ts";
 import { inviteKeys, inviteLink, readInvite, type Invite } from "./share.ts";
@@ -33,15 +34,15 @@ async function drawMakeKey(plugin: GizmoPlugin, el: HTMLElement, file: TFile, ki
   const taken = `The secret ${share.secret} holds something that isn't a key for sharing. Gizmo won't replace it: give share another secret in key, or clear it in Settings → Keychain.`;
   if (secrets.getSecret(share.secret) !== null) return void el.createEl("p", { cls: "gz-error-text", text: taken });
   const fm = plugin.app.metadataCache.getFileCache(file)?.frontmatter ?? {};
-  const rows = (await plugin.dataLayer.ledger?.state(defaultDataPath(file.path), fm))?.lists.get(kind.name)?.rows ?? [];
-  const elsewhere = sharedAlready(file.path, rows, writersOf(plugin.store, file.path), await otherShareStates(pluginFiles(plugin), plugin.device.id));
+  const rows = (await plugin.runtime.dataLayer.ledger?.state(defaultDataPath(file.path), fm))?.lists.get(kind.name)?.rows ?? [];
+  const elsewhere = sharedAlready(file.path, rows, writersOf(plugin.runtime.store, file.path), await otherShareStates(pluginFiles(plugin), plugin.runtime.device.id));
   const said = el.createDiv({ cls: "gz-error-text" });
   if (elsewhere) {
     el.createEl("p", { text: `${file.basename} is shared already, and its key isn't on this device. On the device that has it, run Invite to a kind in ${file.basename}, select Copy key, and paste the key here. A new key would start a share of its own, which the others can't read.` });
   } else {
     el.createEl("p", { text: `${file.basename} has no key yet. Gizmo makes one and keeps it on this device as your secret ${share.secret}, never in a note.` });
     el.createEl("label", { text: "Your name, as the people you share it with see it", attr: { for: "gz-share-name" } });
-    const input = el.createEl("input", { type: "text", value: plugin.device.name, attr: { id: "gz-share-name", maxlength: "40" } });
+    const input = el.createEl("input", { type: "text", value: plugin.runtime.device.name, attr: { id: "gz-share-name", maxlength: "40" } });
     const row = el.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { cls: "mod-cta", text: "Make a key" }).addEventListener("click", handler(async () => {
       const name = input.value.trim();
@@ -151,7 +152,7 @@ class JoinModal extends Modal {
     else box.createEl("p", { text: `Creates ${path}: a kind whose rows have ${Object.keys(kind.fields).join(", ")}.` });
     box.createEl("p", { text: `Keeps the kind's key on this device as your secret ${secret}; it never goes in a note. Rows from ${invite.from} come in logged; rows from anyone else wait until you accept them.` });
     box.createEl("label", { text: "Your name, as the others see it", attr: { for: "gz-join-name" } });
-    const input = box.createEl("input", { type: "text", value: this.plugin.device.name, attr: { id: "gz-join-name", maxlength: "40" } });
+    const input = box.createEl("input", { type: "text", value: this.plugin.runtime.device.name, attr: { id: "gz-join-name", maxlength: "40" } });
     const asks = permissionsOf(read.spec!, path).map(describePermission);
     box.createEl("p", { text: "When you open it, it will ask your OK to:" });
     const ul = box.createEl("ul");
@@ -167,9 +168,9 @@ class JoinModal extends Modal {
       if (folder && !app.vault.getFolderByPath(folder)) await app.vault.createFolder(folder);
       app.secretStorage.setSecret(secret, identityText(await newIdentity(name, invite.key)));
       await app.vault.create(path, `---\n${stringifyYaml(fm)}---\n${body}`);
-      const writers = (this.plugin.store.writers ??= {});
+      const writers = (this.plugin.runtime.store.writers ??= {});
       writers[`${path}\n${invite.writer}`] = { name: invite.from, state: "accepted", at: Date.now() };
-      await this.plugin.saveSettings();
+      await this.plugin.runtime.saveSettings();
       this.close();
       await app.workspace.openLinkText(path, "", false);
     }));
@@ -221,7 +222,7 @@ class GuestModal extends Modal {
     const sign = await newSigningKey();
     const writer = await writerOf(sign);
     const key = await guestKeyBytes(id.key, writer);
-    const decided = writersOf(this.plugin.store, this.file.path);
+    const decided = writersOf(this.plugin.runtime.store, this.file.path);
     const members = [id.name, ...Object.values(decided).filter((w) => w.state === "accepted" && !w.guest).map((w) => w.name)];
     const labels = Object.fromEntries(Object.entries(readFields(fm.fields as Record<string, unknown>).info).flatMap(([f, i]) => (i.label ? [[f, i.label]] : [])));
     const html = guestPageHtml({ kind: this.file.basename, fields: kind.fields, labels, relay: kind.share!.relay, topic: await topicOf(id.key), writer, guest, members, check: await guestCheck(key, sign) });
@@ -229,9 +230,9 @@ class GuestModal extends Modal {
     let path = normalizePath(`${folder}${this.file.basename} guest page (${guest.replace(/[\\/:*?"<>|#^[\]]/g, "-")}).html`);
     for (let n = 2; app.vault.getAbstractFileByPath(path); n++) path = path.replace(/( \d+)?\.html$/, ` ${n}.html`);
     await app.vault.create(path, html);
-    const all = (this.plugin.store.writers ??= {});
+    const all = (this.plugin.runtime.store.writers ??= {});
     all[`${this.file.path}\n${writer}`] = { name: guest, state: "accepted", at: Date.now(), guest: true };
-    await this.plugin.saveSettings();
+    await this.plugin.runtime.saveSettings();
     const code = guestCode(key, sign);
     const el = this.contentEl;
     el.empty();
@@ -277,7 +278,7 @@ class PasteInviteModal extends Modal {
     this.titleEl.setText("Join a shared kind");
     const box = this.contentEl.createDiv({ cls: "gizmo gz-share" });
     box.createEl("p", { text: "Paste the invite link someone sent you." });
-    const area = box.createEl("textarea", { cls: "gz-share-text", attr: { rows: "4", spellcheck: "false", placeholder: "obsidian://gizmo?invite=…" } });
+    const area = box.createEl("textarea", { cls: "gz-share-text", attr: { rows: "4", spellcheck: "false", placeholder: `${GIZMO_LINK}?invite=…` } });
     const row = box.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { cls: "mod-cta", text: "Preview" }).addEventListener("click", () => {
       this.close();

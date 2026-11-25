@@ -130,13 +130,13 @@ try {
     await na.open("Apps/Vitamins");
     await na.open("Apps/Pause");
     await na.open("Apps/Jot");
-    const pack = na.plugin().background.captureIndex().names.get("pack");
+    const pack = na.plugin().runtime.background.captureIndex().names.get("pack");
     await na.open(pack.path.replace(/\\.md$/, ""));
-    const link = na.plugin().linkKey("Apps/Errands.md", "add", true);
-    const capture = await na.plugin().newCaptureKey([pack]);
+    const link = na.plugin().runtime.linkKey("Apps/Errands.md", "add", true);
+    const capture = await na.plugin().runtime.newCaptureKey([pack]);
     await na.sleep(1500);
     // As Obsidian quitting does; the harness stops it with a signal, which skips its quit event.
-    await na.plugin().beat.leave();
+    await na.plugin().runtime.beat.leave();
     return { link, capture, pack: pack.path };`);
   a.page.close();
   a.quit();
@@ -226,13 +226,13 @@ try {
   const tb = await tools(b.page, join(work, "shots"), "obsidian again", results);
   await check("gizmod: Obsidian opening the folder shows gizmod's rows, names gizmod as the runner, and doesn't tell Pulse's alert again", async () => {
     const seen = await tb.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       await na.until(() => p.beat?.runner, 8000);
       await p.beat.beat(true);
       await na.open("Apps/Errands");
       const shown = await na.until(() => na.text().includes("milk") && na.text().includes("bread") && na.text(), 10000);
       await na.sleep(3000);
-      return { runner: p.beat.runner?.name, here: p.beat.isRunner(), gizmodHere: p.beat.gizmodHere(), shown: !!shown, notices: na.notices.filter((n) => n.startsWith("Pulse")) };`);
+      return { runner: p.beat.runner?.name, here: p.beat.isRunner(), gizmodHere: p.beat.quietHere(), shown: !!shown, notices: na.notices.filter((n) => n.startsWith("Pulse")) };`);
     expect(seen.runner === "gizmod" && !seen.here && seen.gizmodHere && seen.shown && seen.notices.length === 0, seen);
     await tb.shot("gizmod-errands.png");
     return `runner: ${seen.runner}; errands from gizmod shown; no Pulse notice here`;
@@ -271,11 +271,11 @@ try {
     daemon.kill("SIGTERM");
     const exited = await until(() => daemon.exitCode !== null || daemon.signalCode !== null, 10000);
     const took = await tb.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       const t0 = Date.now();
       const here = await na.until(async () => { await p.beat.beat(); return p.beat.isRunner(); }, 60000);
       await na.sleep(3000);
-      return { here: !!here, ms: Date.now() - t0, runner: p.beat.runner?.name, gizmodHere: p.beat.gizmodHere(), notices: na.notices.filter((n) => n.startsWith("Pulse")) };`);
+      return { here: !!here, ms: Date.now() - t0, runner: p.beat.runner?.name, gizmodHere: p.beat.quietHere(), notices: na.notices.filter((n) => n.startsWith("Pulse")) };`);
     expect(exited && took.here && !took.gizmodHere && took.notices.length === 0, { exited, took, log: log.slice(-600) });
     daemon = undefined;
     return `Obsidian runs it ${Math.round(took.ms / 1000)} s after gizmod quit; no Pulse alert told again`;

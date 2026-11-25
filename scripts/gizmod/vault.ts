@@ -193,6 +193,30 @@ export class NodeVault {
     await this.changed(path);
   }
 
+  /** Makes a new file and its folders, as Obsidian's create does; throws when one is there already. */
+  async create(path: string, text: string): Promise<void> {
+    await fs.mkdir(dirname(this.abs(path)), { recursive: true });
+    await fs.writeFile(this.abs(path), text, { flag: "wx" });
+    await this.changed(path);
+  }
+
+  /**
+   * Moves a file into the vault's `.trash` folder, where Obsidian keeps what it deletes when set
+   * to, under a name nothing there has yet, so it can be got back.
+   */
+  async trash(path: string): Promise<void> {
+    const from = this.abs(path);
+    const dir = join(this.root, ".trash");
+    await fs.mkdir(dir, { recursive: true });
+    const name = path.slice(path.lastIndexOf("/") + 1);
+    const dot = name.lastIndexOf(".");
+    const [stem, ext] = dot > 0 ? [name.slice(0, dot), name.slice(dot)] : [name, ""];
+    let to = join(dir, name);
+    for (let n = 2; existsSync(to); n++) to = join(dir, `${stem} ${n}${ext}`);
+    await fs.rename(from, to);
+    await this.changed(path);
+  }
+
   async append(path: string, text: string): Promise<void> {
     await fs.mkdir(dirname(this.abs(path)), { recursive: true });
     await fs.appendFile(this.abs(path), text);

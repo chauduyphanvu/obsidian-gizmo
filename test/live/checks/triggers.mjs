@@ -6,7 +6,7 @@ export default async function triggers(t) {
   await check("a copied shortcut link adds an errand, and is listed with the fields it fills", async () => {
     const r = await run(`
       await na.open("Apps/Errands");
-      const links = na.plugin().background.shortcutLinks().filter((l) => l.app === "Errands" || l.app === "Calls");
+      const links = na.plugin().runtime.background.shortcutLinks().filter((l) => l.app === "Errands" || l.app === "Calls");
       const add = links.find((l) => l.app === "Errands");
       const count = () => na.fm("Apps/Errands data.md")?.errands?.length ?? 0;
       const before = count();
@@ -30,11 +30,11 @@ export default async function triggers(t) {
       const before = errands().length;
       const mark = na.notices.length;
       // The link as "Copy link to an app shortcut" gives it, key and all, with the form's values on the end.
-      const url = new URL(na.plugin().background.shortcutLinks().find((l) => l.app === "Calls" && l.shortcut === "log").link);
+      const url = new URL(na.plugin().runtime.background.shortcutLinks().find((l) => l.app === "Calls" && l.shortcut === "log").link);
       app.workspace.protocolHandler.dispatch({ action: url.host, ...Object.fromEntries(url.searchParams), who: "Sam", back: "2099-01-31" });
       const notices = await na.noticesSince(mark, "for Calls");
       await na.until(() => errands().length === before + 1, 3000);
-      const log = await na.plugin().activity.list();
+      const log = await na.plugin().runtime.activity.list();
       return { notices, last: errands().at(-1), log: log.slice(0, 2).map((e) => [e.app, e.actor, e.what, e.changes.map((c) => c.kind)]) };`);
     expect(r.last?.errand === "Call Sam back by 2099-01-31", r);
     expect(JSON.stringify(r.notices.slice(-2)) === JSON.stringify(["Calls: Log done", "Errands: Add done for Calls"]), r);
@@ -77,9 +77,9 @@ export default async function triggers(t) {
         fm.errands = fm.errands.map((e) => (e.errand === "Buy milk" ? { ...e, errand: "Buy oat milk" } : e));
       });
       const card = await na.until(() => el.querySelector(".gz-hand-edit")?.innerText, 3000);
-      const [latest] = await na.plugin().activity.list("Apps/Errands.md");
-      const result = await na.plugin().undo(latest);
-      const kept = (await na.plugin().dataLayer.ledger.state("Apps/Errands data.md")).lists.get("errands").rows.map((e) => e.errand);
+      const [latest] = await na.plugin().runtime.activity.list("Apps/Errands.md");
+      const result = await na.plugin().runtime.undo(latest);
+      const kept = (await na.plugin().runtime.dataLayer.ledger.state("Apps/Errands data.md")).lists.get("errands").rows.map((e) => e.errand);
       const note = na.fm("Apps/Errands data.md").errands.map((e) => e.errand);
       na.button("Discard it", el.querySelector(".gz-hand-edit")).click();
       const settled = await na.until(() => !el.querySelector(".gz-hand-edit") && !na.fm("Apps/Errands data.md").errands.some((e) => /milk/.test(e.errand)), 3000);

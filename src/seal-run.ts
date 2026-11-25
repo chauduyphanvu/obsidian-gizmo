@@ -4,10 +4,14 @@
  */
 import type { Row } from "./data.ts";
 import type { Host } from "./datalayer.ts";
+import type { NoteReader } from "./expand.ts";
 import { stableJson } from "./hash.ts";
 import { logFileParts, logFolder } from "./ledger.ts";
 import { rowIdOf } from "./ledger-store.ts";
 import { LATE_MS, type Extract } from "./seal-extract.ts";
+import { permissionsOf } from "./permissions.ts";
+import { readSpec, type KindSpec } from "./spec.ts";
+import { basename, isKind } from "./store.ts";
 import { checkSeals, fromBase64, isSealsFile, makeSeal, parseSeals, readTimestamp, sealsFile, timestampQuery, toBase64, type Seal, type SealCheck, type SealSpec } from "./seal.ts";
 
 /** What sealing needs of the host beyond its files: a request with bytes in and out, for the authority. */
@@ -126,3 +130,29 @@ export async function extractOf(host: SealHost, dataPath: string, kind: { name: 
 
 /** A token as bytes, for a tool that checks its signature (`openssl ts -verify`). */
 export const tokenBytes = (seal: Seal): Uint8Array | undefined => (seal.token === undefined ? undefined : fromBase64(seal.token));
+
+/** How old this device's last seal of a kind may get before the next one is made on its own. */
+export const SEAL_EVERY_MS = 24 * 3_600_000;
+/** How often the kinds are looked at for a seal that is due. */
+export const SEAL_LOOK_MS = 30 * 60_000;
+
+/** A note as a sealed kind with what it asks for, or why it can't be sealed; undefined when it isn't a kind. */
+export function sealedKind(path: string, fm: Record<string, unknown> | undefined, notes: NoteReader): { kind: KindSpec; wanted: string[] } | { why: string } | undefined {
+  if (!fm || !isKind(fm)) return undefined;
+  const name = basename(path);
+  const spec = readSpec(fm, { notes, path })?.spec;
+  if (!spec?.kind) return { why: `${name} has a problem to fix first` };
+  if (!spec.kind.seal) return { why: `${name} isn't sealed: add seal: true to its properties, or seal: {authority: https://…} for a signed time stamp` };
+  return { kind: spec.kind, wanted: permissionsOf(spec, path) };
+}
+
+/** Sealing through a host's files; `may` lets it send the hash to the kind's authority. */
+export function sealHostOf(host: Host, may: boolean): SealHost {
+  const post = host.postBytes?.bind(host);
+  return {
+    filesIn: (folder) => host.filesIn?.(folder) ?? [],
+    readFile: (path) => host.readFile(path),
+    ...(host.append && { append: (path: string, text: string) => host.append!(path, text) }),
+    ...(may && post && { postBytes: post }),
+  };
+}

@@ -61,7 +61,7 @@ try {
 
   await ta.check("two devices get different ids, and exactly one runs background work: the lowest id", async () => {
     const seen = await both(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       await p.beat.beat(true);
       await na.sleep(1500);
       await p.beat.beat();
@@ -115,7 +115,7 @@ try {
       return true;`);
     await ta.run(`${HELPERS} return na.until(() => who("dishes")?.querySelector("input")?.value === "Cy", 10000);`);
     const undone = await ta.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       const entry = (await p.activity.list("${APP}.md")).find((e) => e.changes.some((c) => c.kind === "row-added" && c.row.task === "dishes"));
       return entry ? await p.undo(entry) : { none: (await p.activity.list("${APP}.md")).map((e) => e.what) };`);
     const left = await both(`${HELPERS} await na.until(() => !tasks().includes("dishes"), 10000); return tasks();`);
@@ -147,10 +147,10 @@ try {
   await ta.check("a lens folded on one device, not yet saved, while the other allows an app: data.json keeps both", async () => {
     // Each device writes its own copy of data.json under a sync tool; here they share one file, so
     // the two writes are kept apart in time and B's change waits unsaved while A's lands.
-    await tb.run(`(na.plugin().store.folded ??= {})["Components/Some lens.md"] = true; return true;`);
-    await ta.run(`await na.plugin().grant("Apps/Elsewhere.md", ["net:a.example"]); return true;`);
+    await tb.run(`(na.plugin().runtime.store.folded ??= {})["Components/Some lens.md"] = true; return true;`);
+    await ta.run(`await na.plugin().runtime.grant("Apps/Elsewhere.md", ["net:a.example"]); return true;`);
     await new Promise((r) => setTimeout(r, 1500));
-    await tb.run(`await na.plugin().saveSettings(); return true;`);
+    await tb.run(`await na.plugin().runtime.saveSettings(); return true;`);
     // Both devices here write the one data.json a sync tool would keep a copy of per device: a read may catch a write.
     const settings = () => { try { return JSON.parse(readFileSync(join(a.vault, ".obsidian/plugins/gizmo/data.json"), "utf8")); } catch { return {}; } };
     let disk;
@@ -159,14 +159,14 @@ try {
       if (disk.grants?.["Apps/Elsewhere.md"] && disk.folded?.["Components/Some lens.md"]) break;
       await new Promise((r) => setTimeout(r, 200));
     }
-    const stores = await both(`return na.until(() => { const s = na.plugin().store; return s.grants["Apps/Elsewhere.md"] && s.folded?.["Components/Some lens.md"] && "both"; }, 8000);`);
+    const stores = await both(`return na.until(() => { const s = na.plugin().runtime.store; return s.grants["Apps/Elsewhere.md"] && s.folded?.["Components/Some lens.md"] && "both"; }, 8000);`);
     ta.expect(disk.grants["Apps/Elsewhere.md"]?.[0] === "net:a.example" && disk.folded["Components/Some lens.md"] === true && stores.every((x) => x === "both"), { disk, stores });
     return "grant from A and fold from B on disk and on both devices";
   });
 
   await ta.check("an app renamed on one device: the other drops nothing, and grants, link keys and capture keys follow the new name", async () => {
     await ta.run(`
-      const p = na.plugin();
+      const p = na.plugin().runtime;
       p.linkKey("${APP}.md", "add", true);
       await p.newCaptureKey([{ name: "chore", path: "${APP}.md", shortcut: "add" }]);
       await na.sleep(1500);
@@ -185,7 +185,7 @@ try {
     // B has seen the note go from under its old name; give it time to have dropped anything it was going to.
     await new Promise((r) => setTimeout(r, 3000));
     disk = settings();
-    const onB = await tb.run(`const s = na.plugin().store; return { grant: s.grants["Apps/Household.md"], old: s.grants["${APP}.md"], key: s.linkKeys?.["Apps/Household.md#add"] };`);
+    const onB = await tb.run(`const s = na.plugin().runtime.store; return { grant: s.grants["Apps/Household.md"], old: s.grants["${APP}.md"], key: s.linkKeys?.["Apps/Household.md#add"] };`);
     ta.expect(moved(disk) && Array.isArray(onB.grant) && onB.old === undefined && onB.key, { disk, onB });
     return "kept under Apps/Household.md on disk and on B";
   });

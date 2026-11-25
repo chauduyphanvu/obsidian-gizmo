@@ -40,7 +40,7 @@ class Picker<T> extends FuzzySuggestModal<T> {
 
 /** Every kind's maps under `import:`, as the background reads them. */
 function ways(plugin: GizmoPlugin): Way[] {
-  return (plugin.background?.list() ?? []).flatMap(({ path, name }) => (plugin.background?.spec(path)?.kind?.imports ?? [])
+  return plugin.runtime.background.list().flatMap(({ path, name }) => (plugin.runtime.background.spec(path)?.kind?.imports ?? [])
     .map((m) => ({ kind: path, name, map: m.name, ...(m.folder !== undefined && { folder: m.folder }) })));
 }
 
@@ -52,7 +52,7 @@ function files(plugin: GizmoPlugin, way: Way): string[] {
 }
 
 async function run(plugin: GizmoPlugin, way: Way, path: string): Promise<void> {
-  const r = await plugin.background?.importFile(way.kind, way.map, path, "you");
+  const r = await plugin.runtime.background.importFile(way.kind, way.map, path, "you");
   if (!r) return void new Notice("Gizmo's background service isn't running yet; try again in a moment");
   new Notice("error" in r ? `Couldn't import ${basename(path)}: ${r.error}` : importedText(r, way.name, basename(path)), 10_000);
 }

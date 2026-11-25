@@ -2,6 +2,7 @@ import {
   EditorSuggest, Modal, Notice, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo,
 } from "obsidian";
 import { handler } from "./handler.ts";
+import { GIZMO_LINK } from "./links.ts";
 import { undoMessage } from "./activity.ts";
 import { copyText } from "./host.ts";
 import { captureLine, completed, parseLine, plannedText, receipt, whenText, type CaptureTarget, type Parsed } from "./capture.ts";
@@ -32,7 +33,7 @@ function runs(parsed: Parsed & { ok: true }): string {
  * kind that app reads or saves to; else the app the line's shortcut is in.
  */
 function whatIfApp(plugin: GizmoPlugin, target: CaptureTarget): string {
-  const kindIn = (path: string, shortcut?: string) => plugin.background?.spec(path)?.panels
+  const kindIn = (path: string, shortcut?: string) => plugin.runtime.background.spec(path)?.panels
     .filter((ps) => shortcut === undefined || ps.panel.shortcut === shortcut)
     .map((ps) => kindOfPanel(ps.panel)?.path)
     .filter((p): p is string => p !== undefined) ?? [];
@@ -57,9 +58,9 @@ export function undoNotice(plugin: GizmoPlugin, text: string, entryId: string | 
     const undo = f.createEl("a", { text: "Undo", href: "#" });
     undo.addEventListener("click", handler(async (e) => {
       e.preventDefault();
-      const entry = await plugin.activity.get(entryId);
+      const entry = await plugin.runtime.activity.get(entryId);
       if (!entry) return void new Notice("That change is no longer in the activity log");
-      new Notice(undoMessage(await plugin.undo(entry)));
+      new Notice(undoMessage(await plugin.runtime.undo(entry)));
     }));
   });
   new Notice(frag, 8000);
@@ -98,8 +99,8 @@ export class LineBox {
       const asking = this.asking();
       if (e.key === "Tab") {
         // What was typed since the last preview counts: the line is read again as it is now.
-        const bg = this.plugin.background;
-        const now = asking ? undefined : bg ? (this.whatIf()?.parsed ?? parseLine(this.input.value, bg.captureIndex(), new Date())) : undefined;
+        const bg = this.plugin.runtime.background;
+        const now = asking ? undefined : this.whatIf()?.parsed ?? parseLine(this.input.value, bg.captureIndex(), new Date());
         const first = asking ? this.asked?.completions[0] : now && !now.ok ? now.completions[0] : undefined;
         if (first === undefined) return;
         e.preventDefault();
@@ -119,9 +120,9 @@ export class LineBox {
 
   /** A line that starts `what if`, read as a what-if: nothing real is run or worked out, so it shows only where it goes. */
   private whatIf(): { line: string; parsed: Parsed } | undefined {
-    const bg = this.plugin.background;
+    const bg = this.plugin.runtime.background;
     const line = whatIfLine(this.input.value);
-    return bg && line !== undefined ? { line, parsed: parseWhatIf(line, bg.captureIndex(), new Date()) } : undefined;
+    return line !== undefined ? { line, parsed: parseWhatIf(line, bg.captureIndex(), new Date()) } : undefined;
   }
 
   /** Stops a preview waiting to be worked out, and the answer an ask drew. */
@@ -147,17 +148,16 @@ export class LineBox {
    * to open, a Gizmo window), read from the line as it is now; none for a question or a what-if.
    */
   choices(): DoChoice[] {
-    const bg = this.plugin.background;
+    const bg = this.plugin.runtime.background;
     const line = this.input.value.trim();
-    if (!this.fallback || !bg || !line || this.asking() || this.whatIf()) return [];
+    if (!this.fallback || !line || this.asking() || this.whatIf()) return [];
     const parsed = parseLine(line, bg.captureIndex(), new Date());
     return parsed.ok || parsed.completions.length ? [] : this.fallback.choices(line);
   }
 
   /** Works out what the line would do as it stands, and shows it. */
   async show(): Promise<void> {
-    const bg = this.plugin.background;
-    if (!bg) return;
+    const bg = this.plugin.runtime.background;
     const run = ++this.run;
     const question = this.ask && askLine(this.input.value);
     if (this.ask && question !== undefined) {
@@ -206,9 +206,9 @@ export class LineBox {
    * couldn't read is shown where it was typed; one that ran and failed has said why in a notice.
    */
   async submit(): Promise<boolean> {
-    const bg = this.plugin.background;
+    const bg = this.plugin.runtime.background;
     const line = this.input.value.trim();
-    if (!bg || !line) return false;
+    if (!line) return false;
     // A question saves nothing: Enter only shows its answer at once.
     if (this.asking()) {
       window.clearTimeout(this.timer);
@@ -265,7 +265,7 @@ class CaptureModal extends Modal {
     const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture" });
     const plugin = this.plugin;
     const open = (path: string) => void plugin.app.workspace.openLinkText(path, "", false);
-    const apps = () => orderApps((plugin.background?.list() ?? []).map((a) => ({ name: a.name, description: a.description, path: a.path })), plugin.app.workspace.getLastOpenFiles(), new Map());
+    const apps = () => orderApps(plugin.runtime.background.list().map((a) => ({ name: a.name, description: a.description, path: a.path })), plugin.app.workspace.getLastOpenFiles(), new Map());
     const box = new LineBox(plugin, el, "spend 14.5 food lunch, an app, or ? spend this month", () => void this.submit(), (at) => new AskPane(plugin, at, () => this.close()), {
       choices: (line) => doChoices(line, apps(), doActions(), open),
       done: () => this.close(),
@@ -332,7 +332,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
   onTrigger(cursor: EditorPosition, editor: Editor): EditorSuggestTriggerInfo | null {
     const text = editor.getLine(cursor.line);
     const line = captureLine(text);
-    const index = this.plugin.background?.captureIndex();
+    const index = this.plugin.runtime.background.captureIndex();
     if (line === undefined || !index || cursor.ch < text.length - text.trimStart().length + 2) return null;
     const first = line.trimStart().split(/\s/)[0].toLowerCase();
     const known = index.names.has(first) || index.clashes.has(first);
@@ -343,9 +343,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
   }
 
   async getSuggestions(context: EditorSuggestContext): Promise<LineSuggestion[]> {
-    const bg = this.plugin.background;
-    if (!bg) return [];
-    const { parsed, effects } = await bg.previewLine(context.query);
+    const { parsed, effects } = await this.plugin.runtime.background.previewLine(context.query);
     if (parsed.ok) return [{ kind: "run", parsed, effects: effects ?? [] }];
     if (parsed.completions.length) return parsed.completions.slice(0, 12).map((text) => ({ kind: "complete", text, hint: parsed.next }));
     return [{ kind: "problem", message: parsed.next ? `${parsed.error} · ${parsed.next}` : parsed.error }];
@@ -385,7 +383,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
   }
 
   private async runLine(editor: Editor, at: number, line: string, app: string): Promise<void> {
-    const result = await this.plugin.background?.capture(line);
+    const result = await this.plugin.runtime.background.capture(line);
     if (!result?.ok) return;
     // The line may have moved while it ran; it is replaced only where it still is.
     const where = editor.getLine(at) !== undefined && captureLine(editor.getLine(at))?.trim() === line ? at
@@ -405,7 +403,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
 
   /** The id of the one row a run saved, from its entry in the activity log; undefined when it saved none, or several. */
   private async rowOf(entryId: string | undefined): Promise<string | undefined> {
-    const entry = entryId === undefined ? undefined : await this.plugin.activity.get(entryId);
+    const entry = entryId === undefined ? undefined : await this.plugin.runtime.activity.get(entryId);
     const added = entry?.changes.filter((c) => c.kind === "row-added") ?? [];
     return added.length === 1 && added[0].kind === "row-added" ? added[0].id : undefined;
   }
@@ -413,7 +411,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
 
 /** The link a phone's shortcut or a launcher opens with a capture line after `line=`. */
 export function captureLinkOf(key: string): string {
-  return `obsidian://gizmo?key=${encodeURIComponent(key)}&line=`;
+  return `${GIZMO_LINK}?key=${encodeURIComponent(key)}&line=`;
 }
 
 /**
@@ -431,7 +429,7 @@ class CaptureLinkModal extends Modal {
   onOpen(): void {
     this.titleEl.setText("Copy capture link");
     const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-capture" });
-    const index = this.plugin.background?.captureIndex();
+    const index = this.plugin.runtime.background.captureIndex();
     const targets = [...(index?.names.values() ?? [])].sort((a, b) => a.name.localeCompare(b.name));
     if (!targets.length) {
       el.createEl("p", { cls: "gz-muted", text: "No shortcut has a name to type yet: add alias: or shortcut: to a form, button or checklist." });
@@ -450,7 +448,7 @@ class CaptureLinkModal extends Modal {
     }
     const row = el.createDiv({ cls: "modal-button-container" });
     row.createEl("button", { cls: "mod-cta", text: "Copy link" }).addEventListener("click", handler(async () => {
-      const key = await this.plugin.newCaptureKey(targets.filter((t) => picked.has(t.name)));
+      const key = await this.plugin.runtime.newCaptureKey(targets.filter((t) => picked.has(t.name)));
       copyText(captureLinkOf(key), () => { new Notice(`Copied a capture link for ${picked.size ? [...picked].sort().join(", ") : "no names (every line asks)"}. Revoke it on the automation map.`); });
       this.close();
     }));

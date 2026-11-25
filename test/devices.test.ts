@@ -1,7 +1,7 @@
 import assert from "node:assert/strict";
 import { test } from "node:test";
 import { ActivityLog, type Entry } from "../src/activity.ts";
-import { PRIORITY, UNSEEN_MS, defaultName, readBeat, runnerOf, startsOver, thisDevice, type Beat, type PlatformInfo } from "../src/device.ts";
+import { PRIORITY, UNSEEN_MS, defaultName, quietHere, readBeat, runnerOf, startsOver, thisDevice, type Beat, type PlatformInfo } from "../src/device.ts";
 import { fakeBackground } from "./support/fakes.ts";
 
 const settle = async (n = 6) => { for (let i = 0; i < n; i++) await new Promise((r) => setTimeout(r, 10)); };
@@ -49,6 +49,25 @@ test("one device runs background work: gizmod over a desktop over a phone, then 
   assert.equal(readBeat(JSON.stringify({ id: "x", name: "Mac", background: true, seen: 5 })), undefined);
   assert.deepEqual(readBeat(JSON.stringify({ id: "x", name: "Mac", priority: 1, seen: 5 })), { id: "x", name: "Mac", host: "", priority: PRIORITY.desktop, seen: 5 });
   assert.equal(readBeat("{nope"), undefined);
+});
+
+test("on one computer only the program most suited to background work tells of alerts: gizmod over Obsidian, then the lowest id", () => {
+  const now = 10 * UNSEEN_MS;
+  const beat = (id: string, priority: number, host: string, ago = 0): Beat => ({ id, name: id, host, priority, seen: now - ago });
+  const obsidian = beat("o", PRIORITY.desktop, "mac");
+  const daemon = beat("g", PRIORITY.gizmod, "mac");
+  assert.equal(quietHere([obsidian, daemon], obsidian, now), true, "Obsidian beside gizmod leaves alerts to it");
+  assert.equal(quietHere([obsidian, daemon], daemon, now), false, "gizmod tells them");
+  // Another program as suited as gizmod on the same computer (Gizmo outside Obsidian): the lower id tells.
+  const app = beat("a", PRIORITY.gizmod, "mac");
+  assert.equal(quietHere([obsidian, daemon, app], app, now), false);
+  assert.equal(quietHere([obsidian, daemon, app], daemon, now), true);
+  // Another computer, a device gone quiet or one that said it left, and a phone with no computer name, change nothing.
+  assert.equal(quietHere([obsidian, beat("g", PRIORITY.gizmod, "imac")], obsidian, now), false);
+  assert.equal(quietHere([obsidian, { ...daemon, seen: now - UNSEEN_MS }], obsidian, now), false);
+  assert.equal(quietHere([obsidian, { ...daemon, left: true }], obsidian, now), false);
+  const phone = beat("p", PRIORITY.phone, "");
+  assert.equal(quietHere([phone, beat("q", PRIORITY.desktop, "")], phone, now), false);
 });
 
 test("a runner starts its alerts over when it takes over from another device, not on every launch", () => {

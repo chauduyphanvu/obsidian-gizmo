@@ -292,7 +292,7 @@ export default async function capture(t) {
       if (ask) na.button("Cancel", ask).click();
       await na.sleep(500);
       const afterCancel = rows() - before;
-      const key = await na.plugin().newCaptureKey([na.plugin().background.captureIndex().names.get("spend")]);
+      const key = await na.plugin().runtime.newCaptureKey([na.plugin().runtime.background.captureIndex().names.get("spend")]);
       app.workspace.protocolHandler.dispatch({ action: "gizmo", key, line: "spend 11 food" });
       await na.until(() => rows() === before + 1, 3000);
       const asked = modals().some((m) => m.innerText.includes("A link asks to run"));
@@ -306,7 +306,7 @@ export default async function capture(t) {
   await check("a checklist's shortcut ticks an item from a capture line", async () => {
     const r = await run(`
       await na.open("Apps/Packing");
-      const result = await na.plugin().background.capture("pack rain");
+      const result = await na.plugin().runtime.background.capture("pack rain");
       await na.until(() => na.fm("Apps/Packing data.md")?.packed?.includes("Rain jacket"), 3000);
       return { ok: result.ok, packed: na.fm("Apps/Packing data.md")?.packed };`);
     expect(r.ok && r.packed?.includes("Rain jacket"), r);
