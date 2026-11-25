@@ -130,6 +130,8 @@ export interface AppEnv {
   alerts?: AlertFeed;
   /** What the person is asked across the vault and how to answer, as Next has them; absent shown as it was, ahead or in a try. */
   asks?: AppAsks;
+  /** Tells the Gizmo sidebar the app's headline as its own tab shows it now; undefined when it shows none. */
+  headline?(appPath: string, text: string | undefined): void;
   /** A try before Allow: nothing it draws may reach out of Obsidian (pictures are drawn as their address). */
   preview?: boolean;
   /** Opens the app on copies of its own notes before it's allowed; absent where that can't be offered. */
@@ -274,6 +276,8 @@ export class AppController {
   private verbWatchers = new Map<string, (s: VerbState | undefined) => void>();
   private rhythmRun = 0;
   private rhythmTimer: number | undefined;
+  /** What the app's headline said last, as told to the sidebar. */
+  private headline: string | undefined;
   /** Of each set of records drawn as one (see mergeRecords), by its first panel's id, the panel shown. */
   private mergedShown = new Map<string, string>();
   /** The open tab; kept while the note is edited, back to the first when it's reopened. */
@@ -1208,6 +1212,16 @@ export class AppController {
     m.el.removeClass("gz-loading", "gz-error", "gz-stale", "gz-collapsed");
     m.handle.update(data);
     this.markAsOf(m, asOf);
+    if (this.ownTab && this.placements.get(m.id)?.slot === "headline") this.reportHeadline(m);
+  }
+
+  /** The app's one figure, as its headline shows it now, for the Gizmo sidebar; told only when it changes. */
+  private reportHeadline(m: Mounted): void {
+    const figure = m.el.querySelector(".gz-big, .gz-ans-text")?.textContent?.trim();
+    const text = figure ? (m.p.title ? `${m.p.title}: ${figure}` : figure) : undefined;
+    if (text === this.headline) return;
+    this.headline = text;
+    this.env.headline?.(this.appPath, text);
   }
 
   /**

@@ -167,4 +167,28 @@ export async function canvas(t) {
     await shot("map-canvas.png");
     return `${r.nodes} cards, ${r.edges} lines`;
   });
+
+  await check("the Gizmo sidebar lists every app with where it stands, says as many asks as Next has, and opens an app", async () => {
+    const r = await run(`
+      app.commands.executeCommandById("gizmo:open-sidebar");
+      const home = await na.until(() => document.querySelector(".workspace-leaf-content[data-type='gizmo-home'] .gz-home"), 4000);
+      await na.until(() => home.querySelectorAll(".gz-home-app").length, 4000);
+      await na.sleep(500);
+      const bg = na.plugin().background;
+      const heading = [...home.querySelectorAll(".gz-home-heading")].map((h) => h.textContent);
+      const names = [...home.querySelectorAll(".gz-home-name")].map((n) => n.textContent);
+      const counts = Object.fromEntries([...home.querySelectorAll(".gz-home-app")].filter((li) => li.querySelector(".gz-home-count")).map((li) => [li.querySelector(".gz-home-name").textContent, Number(li.querySelector(".gz-home-count").textContent)]));
+      const byApp = {};
+      for (const a of bg.asks.list()) byApp[a.app] = (byApp[a.app] ?? 0) + 1;
+      const target = [...home.querySelectorAll(".gz-home-app")].find((li) => li.querySelector(".gz-home-name").textContent === "Chores");
+      target?.querySelector("button.gz-home-open").click();
+      await na.until(() => na.view()?.file?.path === "Apps/Chores.md", 4000);
+      return { heading, apps: names.length, known: bg.list().length, asks: bg.asks.list().length, counts, byApp, opened: na.view()?.file?.path, type: na.view()?.getViewType() };`);
+    await shot("sidebar.png");
+    const needs = r.asks ? `Needs you · ${r.asks}` : "Needs you";
+    expect(r.heading[0] === needs && r.heading[1] === `Apps · ${r.known}` && r.apps === r.known, r);
+    expect(JSON.stringify(r.counts) === JSON.stringify(r.byApp) || Object.keys(r.byApp).every((k) => r.counts[k] === r.byApp[k]), r);
+    expect(r.opened === "Apps/Chores.md" && r.type === "gizmo", r);
+    return `${r.apps} apps, ${needs}; opened Chores`;
+  });
 }

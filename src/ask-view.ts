@@ -40,6 +40,7 @@ function askEnv(plugin: GizmoPlugin, kindFile: TFile, reads: string): AppEnv {
     opened: undefined,
     tryFirst: undefined,
     asks: undefined,
+    headline: undefined,
     preview: true,
   };
 }

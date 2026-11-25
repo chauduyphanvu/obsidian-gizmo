@@ -286,6 +286,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     opened: (path) => plugin.background?.opened(path),
     alerts: plugin.background?.alerts,
     asks: appAsks(plugin),
+    headline: (path, text) => plugin.setHeadline(path, text),
     tryFirst: () => void tryVaultApp(plugin, file.path),
     explain: (src) => new ExplainModal(app, src).open(),
     definitions: plugin.definitions,

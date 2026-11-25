@@ -30,6 +30,7 @@ import { registerCaptureCommand } from "./capture-command.ts";
 import { registerNextCommand } from "./next-command.ts";
 import { registerLinkCommand } from "./link-command.ts";
 import { registerMap } from "./map-view.ts";
+import { registerHome } from "./sidebar-view.ts";
 import { registerNewApp } from "./new-app-command.ts";
 import { registerKindCommand } from "./kind-command.ts";
 import { registerExamples } from "./examples-command.ts";
@@ -167,6 +168,7 @@ export default class GizmoPlugin extends Plugin {
     registerBacktest(this);
     registerWhatIf(this);
     registerMap(this);
+    registerHome(this);
     registerBases(this);
 
     this.addCommand({
@@ -491,12 +493,30 @@ export default class GizmoPlugin extends Plugin {
   }
 
   /** Calls `cb` whenever something is allowed or taken back; returns how to stop. */
+  /** Each open app's headline, as its own tab shows it now (see AppController.reportHeadline), for the sidebar. */
+  readonly headlines = new Map<string, string>();
+  private headlineListeners = new Set<() => void>();
+
+  setHeadline(path: string, text: string | undefined): void {
+    if (text === this.headlines.get(path)) return;
+    if (text === undefined) this.headlines.delete(path);
+    else this.headlines.set(path, text);
+    for (const cb of [...this.headlineListeners]) cb();
+  }
+
+  onHeadline(cb: () => void): () => void {
+    this.headlineListeners.add(cb);
+    return () => this.headlineListeners.delete(cb);
+  }
+
   onGrantsChange(cb: () => void): () => void {
     this.grantListeners.add(cb);
     return () => this.grantListeners.delete(cb);
   }
 
   grantsChanged(): void {
+    // A headline seen while an app was allowed isn't shown once it may not run; its tab tells it again.
+    this.headlines.clear();
     for (const leaf of this.app.workspace.getLeavesOfType(VIEW_TYPE)) (leaf.view as AppView).recheck();
     for (const cb of [...this.grantListeners]) cb();
   }

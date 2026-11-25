@@ -418,6 +418,11 @@ class CaptureLinkModal extends Modal {
 }
 
 /** "Do…" and `;;` lines: run any app's shortcut by typing its name and values. */
+/** Opens Do…. */
+export function openCapture(plugin: GizmoPlugin): void {
+  new CaptureModal(plugin).open();
+}
+
 /** Opens Do… with a line typed in, typing going in at `cursor`. */
 export function openCaptureWith(plugin: GizmoPlugin, line: string, cursor: number): void {
   new CaptureModal(plugin, { line, cursor }).open();

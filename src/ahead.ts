@@ -80,6 +80,7 @@ export function aheadEnv(live: AppEnv, data: DataLayer, at: number, opts: { show
     trigger: undefined,
     opened: undefined,
     asks: undefined,
+    headline: undefined,
     backToNow: () => opts.back(),
     ahead: { at, live, zone: opts.zone, show: (t) => opts.show(t), ...(opts.marked && { marked: (times: number[]) => opts.marked!(times) }) },
   };

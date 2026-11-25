@@ -1587,3 +1587,31 @@ button.gz-lens-toggle {
 @media (pointer: coarse) {
   .gizmo.gz-examples .gz-examples-pick { display: flex; align-items: center; gap: var(--size-4-2); min-height: 44px; }
 }
+
+/* == home: the Gizmo sidebar (sidebar-view.ts) == */
+.gizmo.gz-home { padding: var(--size-4-3) var(--size-4-2); max-width: none; display: flex; flex-direction: column; gap: var(--size-4-4); }
+.gizmo.gz-home button.gz-home-find { width: 100%; justify-content: flex-start; color: var(--text-muted); font-weight: var(--font-normal); }
+.gizmo .gz-home-heading { font-size: var(--font-ui-smaller); font-weight: var(--font-semibold); color: var(--text-muted); text-transform: uppercase; letter-spacing: 0.04em; margin-bottom: var(--size-4-1); }
+.gizmo .gz-home-empty { font-size: var(--font-ui-small); }
+.gizmo.gz-home .gz-asks { border: none; padding: 0; background: none; }
+.gizmo.gz-home .gz-asks > .gz-title { display: none; }
+.gizmo.gz-home .gz-asks-rows li { flex-wrap: wrap; }
+.gizmo.gz-home .gz-asks-what { flex-basis: 100%; }
+.gizmo.gz-home .gz-asks-rows li .gz-actions { margin: 0; }
+.gizmo.gz-home .gz-asks-rows .gz-actions { opacity: 1; }
+.gizmo .gz-asks-app { font-size: var(--font-ui-smaller); }
+.gizmo .gz-home-apps { list-style: none; padding: 0; margin: 0; }
+.gizmo .gz-home-app { padding: 2px 0; }
+.gizmo button.gz-home-open {
+  display: flex; align-items: center; gap: 8px; width: 100%; height: auto; padding: 4px 6px;
+  background: none; box-shadow: none; border: none; border-radius: var(--radius-s); text-align: left; font-weight: var(--font-normal); color: var(--text-normal);
+}
+.gizmo button.gz-home-open:hover { background: var(--background-modifier-hover); }
+.gizmo .gz-home-name { flex: 1 1 auto; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gizmo .gz-home-count { flex: none; min-width: 18px; padding: 0 5px; border-radius: 9px; background: var(--interactive-accent); color: var(--text-on-accent); font-size: var(--font-ui-smaller); text-align: center; font-variant-numeric: tabular-nums; }
+.gizmo .gz-home-state { flex: none; font-size: var(--font-ui-smaller); }
+.gizmo .gz-home-last { padding: 0 6px 2px 21px; font-size: var(--font-ui-smaller); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gizmo .gz-home-headline { color: var(--text-normal); font-variant-numeric: tabular-nums; }
+.gizmo .gz-status.is-off { background: var(--text-faint); }
+.gizmo .gz-status.is-bad { background: var(--color-red); }
+.gizmo .gz-home-app .gz-status { margin-top: 0; }

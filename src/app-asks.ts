@@ -24,12 +24,15 @@ export interface AppAsks {
   run(line: string): Promise<{ ok: boolean; error?: string; told?: string; entryId?: string }>;
   /** Opens Do… with a line still to be finished, typing going in at `cursor`. */
   fill(line: string, cursor: number): void;
+  /** Opens an app, for an ask whose answer is to open it; absent in the app itself. */
+  open?(path: string): void;
 }
 
 /** What the card needs of the app it is drawn in. */
 export interface AsksSite {
   asks: AppAsks;
-  appPath: string;
+  /** This app's asks only (see ownAsks); every app's, each named, when absent. */
+  appPath?: string;
   /** Where it goes: the section for what waits to be acted on; undefined while the app shows no panels. */
   host(): HTMLElement | undefined;
   /** Says what an answer did under `at` (the card, else the app's header), with Undo when it was kept. */
@@ -60,7 +63,8 @@ export class AsksCard {
   /** Draws the card if what is asked changed, or it is no longer on the page; follows the feed from then on. */
   draw(): void {
     this.unsubscribe ??= this.site.asks.subscribe(() => this.draw());
-    const asks = ownAsks(this.site.asks.list(), this.site.appPath);
+    const all = this.site.asks.list();
+    const asks = this.site.appPath === undefined ? all : ownAsks(all, this.site.appPath);
     const json = JSON.stringify(asks);
     if (json === this.shown && (this.card?.isConnected || !asks.length)) return;
     this.shown = json;
@@ -113,6 +117,7 @@ export class AsksCard {
       const li = ul.createEl("li");
       li.createSpan({ cls: "gz-status is-warn", attr: { "aria-hidden": "true" } });
       const what = li.createDiv({ cls: "gz-asks-what" });
+      if (this.site.appPath === undefined) what.createDiv({ cls: "gz-asks-app gz-muted", text: ask.app });
       what.createDiv({ cls: "gz-asks-text", text: ask.text });
       if ("line" in ask.answer) what.createDiv({ cls: "gz-muted gz-asks-line", text: ask.answer.line });
       const row = li.createDiv({ cls: "gz-actions" });
@@ -141,6 +146,7 @@ export class AsksCard {
 
   private async answer(ask: Ask): Promise<void> {
     const asks = this.site.asks;
+    if ("open" in ask.answer) return asks.open?.(ask.path);
     if ("line" in ask.answer) {
       if (!ask.answer.ready) return asks.fill(ask.answer.line, ask.answer.cursor);
       const r = await asks.run(ask.answer.line);
