@@ -1482,9 +1482,10 @@ button.gz-lens-toggle {
 .gizmo .gz-asks-what { flex: 1 1 auto; min-width: 0; overflow-wrap: anywhere; padding-top: var(--size-2-2); }
 .gizmo .gz-asks-line { font-family: var(--font-monospace); font-size: var(--font-ui-small); }
 .gizmo .gz-asks-rows li .gz-actions { flex: none; margin: 0 0 0 auto; }
+/* Narrow: the dot and the text share the first line; the buttons wrap under the text, past the dot. */
 .gizmo.gz-narrow .gz-asks-rows li { flex-wrap: wrap; }
-.gizmo.gz-narrow .gz-asks-what { flex-basis: 100%; }
-.gizmo.gz-narrow .gz-asks-rows li .gz-actions { margin: 0; }
+.gizmo.gz-narrow .gz-asks-what { flex: 1 1 0; }
+.gizmo.gz-narrow .gz-asks-rows li .gz-actions { flex-basis: 100%; margin: 0; padding-left: calc(7px + var(--size-4-2)); }
 /* A status dot: paired is calm, a row that pairs with nothing asks for a look. */
 .gizmo .gz-status { flex: none; width: 7px; height: 7px; margin-top: calc(var(--size-2-2) + 0.5em); border-radius: 50%; background: var(--text-faint); }
 .gizmo .gz-status.is-ok { background: var(--color-green); }
@@ -1608,8 +1609,8 @@ button.gz-lens-toggle {
 .gizmo.gz-home .gz-asks { border: none; padding: 0; background: none; }
 .gizmo.gz-home .gz-asks > .gz-title { display: none; }
 .gizmo.gz-home .gz-asks-rows li { flex-wrap: wrap; }
-.gizmo.gz-home .gz-asks-what { flex-basis: 100%; }
-.gizmo.gz-home .gz-asks-rows li .gz-actions { margin: 0; }
+.gizmo.gz-home .gz-asks-what { flex: 1 1 0; }
+.gizmo.gz-home .gz-asks-rows li .gz-actions { flex-basis: 100%; margin: 0; padding-left: calc(7px + var(--size-4-2)); }
 .gizmo.gz-home .gz-asks-rows .gz-actions { opacity: 1; }
 .gizmo .gz-asks-app { font-size: var(--font-ui-smaller); }
 .gizmo .gz-home-apps { list-style: none; padding: 0; margin: 0; }

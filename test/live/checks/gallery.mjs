@@ -924,6 +924,47 @@ export default async function gallery(t) {
     }
   });
 
+  await check("each ask's dot sits beside its text, on its first line: in the sidebar, and in the app's tab at phone width", async () => {
+    const { page } = t;
+    // An app of its own with a rhythm due later today, so there is an ask whatever earlier checks answered.
+    const later = new Date(Date.now() + 90 * 60_000);
+    const by = later.getDate() !== new Date().getDate() ? "23:59" : `${String(later.getHours()).padStart(2, "0")}:${String(later.getMinutes()).padStart(2, "0")}`;
+    const APP = `---\napp: Dot check\npanels:\n  - {view: button, label: Watered the plants, save: water, shortcut: watered}\nexpect:\n  - {id: water, every: day, by: "${by}", source: water}\n---\n`;
+    const dots = (root) => `[...${root}.querySelectorAll(".gz-asks li")].map((li) => {
+      const what = li.querySelector(".gz-asks-what"), d = li.querySelector(".gz-status").getBoundingClientRect(), w = what.getBoundingClientRect();
+      return d.right <= w.left && d.top >= w.top - 1 && d.bottom <= w.top + 2 * parseFloat(getComputedStyle(what).fontSize);
+    })`;
+    try {
+      const side = await run(`
+        await na.write("Apps/Dot check.md", ${JSON.stringify(APP)});
+        await na.sleep(800);
+        await na.open("Apps/Dot check");
+        const bg = na.plugin().background;
+        await bg.tick();
+        await na.until(() => bg.asks.list().some((a) => a.app === "Dot check"), 6000);
+        app.commands.executeCommandById("gizmo:open-sidebar");
+        app.workspace.leftSplit.expand();
+        const home = await na.until(() => document.querySelector(".workspace-leaf-content[data-type='gizmo-home'] .gz-home .gz-asks li") && document.querySelector(".workspace-leaf-content[data-type='gizmo-home'] .gz-home"), 4000);
+        if (!home) return [];
+        await na.sleep(400);
+        return ${dots("home")};`);
+      await page.send("Emulation.setDeviceMetricsOverride", { width: 390, height: 844, deviceScaleFactor: 1, mobile: false });
+      const tab = await run(`
+        app.workspace.leftSplit.collapse(); app.workspace.rightSplit.collapse();
+        await na.open("Apps/Dot check");
+        const el = await na.until(() => na.view().contentEl.querySelector(".gz-asks li") && na.view().contentEl, 6000);
+        if (!el) return { narrow: false, dots: [] };
+        await na.sleep(400);
+        return { narrow: !!el.querySelector(".gizmo.gz-narrow"), dots: ${dots("el")} };`);
+      expect(side.length > 0 && side.every(Boolean), { side });
+      expect(tab.narrow && tab.dots.length > 0 && tab.dots.every(Boolean), tab);
+      return `${side.length} in the sidebar, ${tab.dots.length} in the app at 390 px`;
+    } finally {
+      await page.send("Emulation.clearDeviceMetricsOverride");
+      await run(`await na.remove("Apps/Dot check.md"); await na.remove("Apps/Dot check data.md"); await na.plugin().background.tick();`);
+    }
+  });
+
   // Screenshots of every gallery app and kind, light and dark at desktop width, and at phone width.
   const shown = [...APPS.map((name) => `Apps/${name}`), ...KINDS.map((name) => `Kinds/${name}`)];
   for (const theme of ["light", "dark"]) {
