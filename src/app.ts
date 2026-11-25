@@ -848,8 +848,9 @@ export class AppController {
       }
       if (scope.flow.length || scope.sheet.length) {
         const flow = createDivIn(into, "gz-flow");
-        // In its own tab, records written one after another are one place, a segment each.
-        const merges = (m: Mounted) => this.ownTab && this.placements.get(m.id)?.role === "records" && !!m.p.title;
+        // In its own tab, records written one after another are one place, a segment each. One that
+        // answers an input (search results) stays in sight, since what is typed must show its answer.
+        const merges = (m: Mounted) => this.ownTab && this.placements.get(m.id)?.role === "records" && !!m.p.title && !m.ps.inputs.length;
         for (let k = 0; k < scope.flow.length; k++) {
           const run = [order[scope.flow[k]]];
           while (merges(run[0]) && k + 1 < scope.flow.length && merges(order[scope.flow[k + 1]])) run.push(order[scope.flow[++k]]);

@@ -95,7 +95,8 @@ export default async function sources(t) {
       const swim = [...agenda.querySelectorAll("li:not(.gz-ledger-group)")].find((li) => li.textContent.includes("Swim practice"));
       const mark = na.notices.length;
       na.button("Done", swim).click();
-      const notices = await na.noticesSince(mark, "Logged");
+      // Said under the panel whose row it was, with Undo, not as a notice.
+      const notices = [await na.until(() => na.view().contentEl.querySelector(".gz-notice-text")?.textContent, 3000)];
       const logged = await na.until(() => na.text(done).includes("Swim practice") && na.text(done), 3000);
       const ics = app.vault.getFileByPath("Calendar/family.ics");
       const d = new Date(Date.now() + 2 * 86400000);

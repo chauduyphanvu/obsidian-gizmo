@@ -429,6 +429,20 @@ test("in its own tab, records written one after another are one place, a segment
   segments[1].dispatchEvent(new window.Event("click", { bubbles: true }));
   assert.deepEqual(off(), [true, false]);
 
+  // A list that answers what is typed in an input stays in sight beside the table.
+  const searched = setup({ [APP]: { fm: {
+    app: "x",
+    inputs: { q: "text" },
+    panels: [
+      { view: "list", title: "Results", source: "spend", where: { note: "$q" }, item: "{amount}" },
+      { view: "table", title: "Shelf", source: "spend", columns: ["amount"] },
+    ],
+  } }, "Apps/W data.md": { fm: SPEND } });
+  searched.app.load();
+  await settle();
+  assert.equal(searched.root.querySelector(".gz-merged"), null);
+  assert.deepEqual(kinds(searched.root.querySelector(".gz-flow")!), ["gz-view-list", "gz-view-table"]);
+
   const hosted = setup({ [APP]: { fm }, "Apps/W data.md": { fm: SPEND }, "Daily.md": { fm: {} } }, { kind: "embed", grantKey: "Daily.md#gizmo", hostPath: "Daily.md", definition: () => fm });
   hosted.app.load();
   await settle();
