@@ -2,6 +2,8 @@
 
 This page gives the technical details of Gizmo. All keys are YAML in the properties of a note, and you type them by hand. Gizmo writes into an app note only when you tell it to: with **New app**, **Insert panel** or a button of the empty app card. The key language is version 1.
 
+For examples that go step by step, from basic to advanced, see the [cookbook](cookbook.md).
+
 - [Write an app](#write-an-app)
 - [The gallery](#the-gallery)
 - [Top-level keys](#top-level-keys)

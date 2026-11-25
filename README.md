@@ -6,13 +6,14 @@ Gizmo turns ordinary Obsidian notes into personal apps — with buttons, forms, 
 
 Desktop & mobile · Plain Markdown · Zero runtime dependencies · No AI · No telemetry · MIT
 
-[**Install in Obsidian**](https://obsidian.md/plugins?id=gizmo) · [14 ready-made apps](#what-you-can-make) · [Bases views](#use-it-everywhere) · [How it works](#how-it-works-with-your-vault) · [Reference](docs/reference.md)
+[**Install in Obsidian**](https://obsidian.md/plugins?id=gizmo) · [14 ready-made apps](#what-you-can-make) · [Bases views](#use-it-everywhere) · [How it works](#how-it-works-with-your-vault) · [Cookbook](docs/cookbook.md) · [Reference](docs/reference.md)
 
 ## Start in 30 seconds
 
 1. **Copy a ready-made app** *(no YAML required)* — Run **Gizmo: New app from the gallery** to install any of 14 working apps.
 2. **Add five views to Obsidian Bases** *(no YAML required)* — Open any `.base` file and pick **Gizmo board**, **Gizmo calendar** (month or year heatmap), **Gizmo timeline**, **Gizmo chart**, or **Gizmo number**.
 3. **Or build your own in three lines** — Use a reusable kit, or ask a kind a question with `?` in **Gizmo: Do…** and let Gizmo write the panel for you.
+4. **Follow a recipe** — The [cookbook](docs/cookbook.md) has 43 recipes, step by step: from a countdown in three lines to apps that run while Obsidian is closed.
 
 Here is the Practice app in Obsidian:
 
@@ -353,6 +354,8 @@ Refer to [What the relay and others can see](docs/reference.md#what-the-relay-an
 - It syncs a shared kind through its relay only if you allowed that kind in Obsidian and pass its key in `GIZMO_SECRET_<ID>`.
 
 ## Learn more
+
+The [cookbook](docs/cookbook.md) has 43 recipes that go step by step, from a countdown in three lines to `gizmod`.
 
 The [reference](docs/reference.md) has the full details: how to write an app, all keys, views and sources, kinds and shared kinds, permissions, links, devices, `gizmod`, all commands, and development.
 
