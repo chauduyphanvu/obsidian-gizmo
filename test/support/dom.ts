@@ -51,9 +51,18 @@ Object.assign(proto, {
   addClass(this: Element, ...cls: string[]) { this.classList.add(...split(cls)); },
   removeClass(this: Element, ...cls: string[]) { this.classList.remove(...split(cls)); },
   hasClass(this: Element, cls: string) { return this.classList.contains(cls); },
+  toggleClass(this: Element, cls: string | string[], on: boolean) { for (const c of split([cls].flat())) this.classList.toggle(c, on); },
   setAttr(this: Element, name: string, value: string | number | boolean | null) {
     if (value === null) this.removeAttribute(name);
     else this.setAttribute(name, String(value));
+  },
+  // An SVG element's class can't be assigned as className; it goes through classList.
+  createSvg(this: Element, tag: string, o?: { cls?: string | string[]; attr?: Record<string, string | number> }) {
+    const el = this.ownerDocument.createElementNS("http://www.w3.org/2000/svg", tag);
+    if (o?.cls) el.classList.add(...split([o.cls].flat()));
+    for (const [k, v] of Object.entries(o?.attr ?? {})) el.setAttribute(k, String(v));
+    this.appendChild(el);
+    return el;
   },
 });
 
