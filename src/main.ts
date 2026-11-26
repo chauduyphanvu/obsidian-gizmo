@@ -1,5 +1,5 @@
 import {
-  MarkdownView, Platform, Plugin, TFile, WorkspaceLeaf, type ViewState,
+  MarkdownView, Platform, Plugin, TFile, WorkspaceLeaf, normalizePath, type ViewState,
 } from "obsidian";
 import { openActivity, registerActivity } from "./activity-view.ts";
 import { registerBacktest, registerWhatIf } from "./past-views.ts";
@@ -10,7 +10,7 @@ import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { SettingsFile } from "./stored.ts";
 import {
-  adoptOldLog, obsidianAppEnv, obsidianHost, obsidianRename, obsidianWrites, pluginFiles, vaultNotes, vaultStorePath,
+  adoptOldLog, newNotesFolder, obsidianAppEnv, obsidianHost, obsidianRename, obsidianWrites, pluginFiles, vaultNotes, vaultStorePath, whenIndexed,
 } from "./host.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
 import { registerInsertPanel } from "./insert-command.ts";
@@ -72,6 +72,10 @@ export default class GizmoPlugin extends Plugin {
         return file ? obsidianAppEnv(this, undefined, file) : undefined;
       },
       rename: (from, to) => obsidianRename(this.app, from, to),
+      newNotesFolder: () => newNotesFolder(this.app),
+      exists: (path) => !!this.app.vault.getAbstractFileByPath(normalizePath(path)),
+      whenIndexed: (path) => whenIndexed(this.app, path),
+      secrets: { get: (id) => this.app.secretStorage.getSecret(id), set: (id, value) => this.app.secretStorage.setSecret(id, value) },
       sink: obsidianSink(this),
       every: (fn, ms) => {
         const id = this.registerInterval(window.setInterval(fn, ms));

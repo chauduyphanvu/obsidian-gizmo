@@ -1,48 +1,17 @@
-import { FuzzySuggestModal, Notice, Platform, parseYaml, type App, type TFile } from "obsidian";
-import { AppController, type AppEnv } from "./app.ts";
-import { addToApp, askHelp, compileAsk, panelEmbed, panelYaml, parseAsk, type AskKind } from "./ask.ts";
+import { FuzzySuggestModal, Notice, Platform, type App, type TFile } from "obsidian";
+import { AppController } from "./app.ts";
+import { addAnswer, appsToAddTo, askEnvOf, askHelp, compileAsk, panelEmbed, panelYaml, parseAsk, type AskKind } from "./ask.ts";
 import { handler } from "./handler.ts";
-import { copyText, obsidianAppEnv, vaultFrontmatter, vaultNotes } from "./host.ts";
+import { obsidianAppEnv, vaultNotes } from "./host.ts";
+import { copyText } from "./clipboard.ts";
 import type GizmoPlugin from "./main.ts";
-import { basename, isApp } from "./store.ts";
+import { basename } from "./store.ts";
 
 /** What the line under an ask says: what it asks, or why it can't, and what could be typed next. */
 export interface AskShown {
   hint: string;
   error: boolean;
   completions: string[];
-}
-
-const READ_ONLY = "an ask only reads";
-
-/**
- * The app an answer is drawn in: the kind's rows through the data layer, and nothing else. It runs
- * without a grant prompt only while all it asks for is reading that kind; it can't write a note,
- * keep a row, log, run another app or reach out of Obsidian (pictures are drawn as their address).
- */
-function askEnv(plugin: GizmoPlugin, kindFile: TFile, reads: string): AppEnv {
-  const refuse = () => Promise.reject(new Error(READ_ONLY));
-  return {
-    ...obsidianAppEnv(plugin, undefined, kindFile),
-    isGranted: (_key, wanted) => wanted.length === 1 && wanted[0] === reads,
-    granted: () => undefined,
-    grant: refuse,
-    writeFrontmatter: refuse,
-    updateFrontmatter: refuse,
-    appendLine: refuse,
-    createNote: refuse,
-    setTaskDone: refuse,
-    store: undefined,
-    addPanels: undefined,
-    log: undefined,
-    undo: undefined,
-    trigger: undefined,
-    opened: undefined,
-    tryFirst: undefined,
-    asks: undefined,
-    headline: undefined,
-    preview: true,
-  };
 }
 
 /** The vault's apps, to add an answer to. */
@@ -147,7 +116,7 @@ export class AskPane {
       this.controller?.dispose();
       this.answer.empty();
       this.shownKind = r.kind.path;
-      const env = askEnv(this.plugin, file, `kind:${r.kind.path}`);
+      const env = askEnvOf(obsidianAppEnv(this.plugin, undefined, file), `kind:${r.kind.path}`);
       this.controller = new AppController(this.answer, c.path, env, { kind: "embed", grantKey: `ask:${r.kind.path}`, hostPath: c.path, definition: () => this.fm });
       this.controller.load();
       window.setTimeout(() => this.controller?.resize(), 50);
@@ -190,22 +159,11 @@ export class AskPane {
     const current = this.current;
     if (!current) return;
     const app = this.plugin.app;
-    const frontmatter = vaultFrontmatter(app);
-    const apps = app.vault.getMarkdownFiles().filter((f) => isApp(frontmatter(f.path))).sort((a, b) => a.path.localeCompare(b.path));
+    const rt = this.plugin.runtime;
+    const apps = appsToAddTo(rt).flatMap((p) => app.vault.getFileByPath(p) ?? []);
     new AppChooser(app, apps, handler(async (file: TFile) => {
       const { kind, panel } = current;
-      // The app's own place decides what `[[Spend]]` finds from there.
-      const name = basename(kind.path);
-      const source = app.metadataCache.getFirstLinkpathDest(name, file.path)?.path === kind.path ? `[[${name}]]` : `[[${kind.path.replace(/\.md$/i, "")}]]`;
-      let refusal: string | undefined;
-      await app.vault.process(file, (text) => {
-        const found = addToApp(text, { ...panel, source }, { path: file.path, notes: vaultNotes(app), parse: (yaml) => parseYaml(yaml) as unknown, now: new Date() });
-        if ("refusal" in found) {
-          refusal = found.refusal;
-          return text;
-        }
-        return found.text;
-      });
+      const { refusal } = await addAnswer(rt, file.path, kind.path, panel);
       if (refusal) return void new Notice(`Couldn't add it to ${file.basename}: ${refusal}`);
       new Notice(`Added “${String(panel.title)}” to ${file.basename}`);
       this.done();

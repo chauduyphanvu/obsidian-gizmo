@@ -83,6 +83,9 @@ export function noteRow(f: FileInfo, frontmatter: Record<string, unknown> | unde
 
 const SECRET = /\{secret:([a-z0-9-]+)\}/g;
 
+/** Where a program without Obsidian's secret storage (gizmod) takes a secret from: GIZMO_SECRET_<ID>, dashes as underscores. */
+export const secretVar = (id: string) => `GIZMO_SECRET_${id.toUpperCase().replace(/-/g, "_")}`;
+
 /** A web response longer than this isn't read: no app's data is that big, and reading it would stall the window. */
 export const MAX_RESPONSE_CHARS = 10_000_000;
 

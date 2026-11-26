@@ -34,6 +34,8 @@ export interface VaultWrites {
   appendLine(path: string, line: string): Promise<boolean>;
   /** Makes a note; its text, or false when one is already there. Never overwrites. */
   createNote(path: string, frontmatter: Record<string, unknown>, body: string): Promise<string | false>;
+  /** Makes a file of exactly this text, and its folders; false when something is there already. Never overwrites. */
+  createText(path: string, text: string): Promise<boolean>;
   /** Ticks or unticks a task; false, writing nothing, when it can't be found for sure. */
   setTaskDone(path: string, line: number, text: string, done: boolean): Promise<boolean>;
   /** Changes an existing note's text in one read-and-write; false when the note is gone. */
@@ -112,6 +114,16 @@ export function vaultWrites(files: VaultFiles, yaml: (fm: Record<string, unknown
         throw e;
       }
       return text;
+    }),
+    createText: (given, text) => queued(given, async (path) => {
+      if (files.exists(path)) return false;
+      try {
+        await files.create(path, text);
+      } catch (e) {
+        if (files.exists(path)) return false;
+        throw e;
+      }
+      return true;
     }),
     setTaskDone: (given, line, text, done) => queued(given, async (path) => {
       if (!files.exists(path)) return false;

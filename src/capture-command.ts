@@ -2,10 +2,10 @@ import {
   EditorSuggest, Modal, Notice, type Editor, type EditorPosition, type EditorSuggestContext, type EditorSuggestTriggerInfo,
 } from "obsidian";
 import { handler } from "./handler.ts";
-import { GIZMO_LINK } from "./links.ts";
-import { undoMessage } from "./activity.ts";
-import { copyText } from "./host.ts";
-import { captureLine, completed, parseLine, plannedText, receipt, whenText, type CaptureTarget, type Parsed } from "./capture.ts";
+import { captureLinkOf } from "./links.ts";
+import { copyText } from "./clipboard.ts";
+import { captureLine, completed, parseLine, receipt, whenText, type Parsed } from "./capture.ts";
+import { capturedText, runsText, singleRowAdded, submitLine, whatIfAppOf } from "./capture-run.ts";
 import { frozen, rowLineText } from "./row-lines.ts";
 import { parseWhatIf, whatIfLine } from "./ahead.ts";
 import { askLine } from "./ask.ts";
@@ -14,37 +14,12 @@ import { doChoices, type DoChoice } from "./do-choices.ts";
 import { orderApps } from "./open-app.ts";
 import type GizmoPlugin from "./main.ts";
 import { openAppAhead } from "./past-views.ts";
-import { kindOfPanel } from "./sources/kind.ts";
 import { basename } from "./store.ts";
 import { AppView } from "./view.ts";
 
-/**
- * What a line that can run runs, and for when if not now: `Budget: Spent something at Thu Nov 19,
- * 13:00`; for a kind, `planned for` a time still to come, or each time of an `@every`.
- */
-function runs(parsed: Parsed & { ok: true }): string {
-  const now = new Date();
-  const when = parsed.at && (plannedText({ at: parsed.at, plan: parsed.plan }, now) ?? `at ${whenText(parsed.at, now)}`);
-  return `${parsed.target.app}: ${parsed.target.label}${when ? ` ${when}` : ""}`;
-}
-
-/**
- * The app a `what if` line is tried in: the app open in the active tab, when the line saves to a
- * kind that app reads or saves to; else the app the line's shortcut is in.
- */
-function whatIfApp(plugin: GizmoPlugin, target: CaptureTarget): string {
-  const kindIn = (path: string, shortcut?: string) => plugin.runtime.background.spec(path)?.panels
-    .filter((ps) => shortcut === undefined || ps.panel.shortcut === shortcut)
-    .map((ps) => kindOfPanel(ps.panel)?.path)
-    .filter((p): p is string => p !== undefined) ?? [];
-  const [kind] = kindIn(target.path, target.shortcut);
-  const open = plugin.app.workspace.getActiveViewOfType(AppView)?.file?.path;
-  return kind !== undefined && open !== undefined && kindIn(open).includes(kind) ? open : target.path;
-}
-
 /** A notice saying a capture line ran, with Undo for what it changed. */
 export function capturedNotice(plugin: GizmoPlugin, line: string, told: string | undefined, entryId: string | undefined): void {
-  const text = told === undefined ? `Ran “${line}”.` : /[.!?]$/.test(told) ? told : `${told}.`;
+  const text = capturedText(line, told);
   // A run that changed nothing to undo is still told, once.
   if (entryId) undoNotice(plugin, text, entryId);
   else new Notice(text);
@@ -58,9 +33,7 @@ export function undoNotice(plugin: GizmoPlugin, text: string, entryId: string | 
     const undo = f.createEl("a", { text: "Undo", href: "#" });
     undo.addEventListener("click", handler(async (e) => {
       e.preventDefault();
-      const entry = await plugin.runtime.activity.get(entryId);
-      if (!entry) return void new Notice("That change is no longer in the activity log");
-      new Notice(undoMessage(await plugin.runtime.undo(entry)));
+      new Notice(await plugin.runtime.undoById(entryId));
     }));
   });
   new Notice(frag, 8000);
@@ -111,6 +84,11 @@ export class LineBox {
         else onEnter();
       }
     });
+  }
+
+  /** The app open in the active tab, which a what-if is tried in when it reads the line's kind. */
+  private openApp(): string | undefined {
+    return this.plugin.app.workspace.getActiveViewOfType(AppView)?.file?.path;
   }
 
   /** Whether the line is a question for the ask pane, not a shortcut to run. */
@@ -178,8 +156,8 @@ export class LineBox {
     this.hint.empty();
     this.hint.toggleClass("gz-error-text", !parsed.ok && this.input.value.trim() !== "");
     if (!parsed.ok && this.input.value.trim() !== "") this.hint.setText(parsed.next ? `${parsed.error} · ${parsed.next}` : parsed.error);
-    else if (parsed.ok && whatIf) this.hint.setText(`What if, in ${basename(whatIfApp(this.plugin, parsed.target))}: ${parsed.target.label}${parsed.at ? ` for ${whenText(parsed.at, new Date())}` : ""}. Nothing real changes until Keep.`);
-    else if (parsed.ok) this.hint.setText(`${runs(parsed)}${parsed.next ? ` · next, ${parsed.next}` : ""}`);
+    else if (parsed.ok && whatIf) this.hint.setText(`What if, in ${basename(whatIfAppOf(this.plugin.runtime, parsed.target, this.openApp()))}: ${parsed.target.label}${parsed.at ? ` for ${whenText(parsed.at, new Date())}` : ""}. Nothing real changes until Keep.`);
+    else if (parsed.ok) this.hint.setText(`${runsText(parsed, new Date())}${parsed.next ? ` · next, ${parsed.next}` : ""}`);
     else this.hint.setText("Type a shortcut's name, then its values");
     this.chips.empty();
     for (const c of parsed.ok ? [] : parsed.completions.slice(0, 12)) {
@@ -206,36 +184,30 @@ export class LineBox {
    * couldn't read is shown where it was typed; one that ran and failed has said why in a notice.
    */
   async submit(): Promise<boolean> {
-    const bg = this.plugin.runtime.background;
-    const line = this.input.value.trim();
-    if (!line) return false;
-    // A question saves nothing: Enter only shows its answer at once.
-    if (this.asking()) {
-      window.clearTimeout(this.timer);
-      await this.show();
-      return false;
-    }
-    const whatIf = this.whatIf();
-    if (whatIf) {
-      if (!whatIf.parsed.ok) {
+    const plugin = this.plugin;
+    const done = await submitLine(plugin.runtime, this.input.value, {
+      asks: this.ask !== undefined,
+      open: this.openApp(),
+      busy: (busy) => { this.input.disabled = busy; },
+    });
+    switch (done.kind) {
+      case "ask":
+        window.clearTimeout(this.timer);
         await this.show();
         return false;
-      }
-      await openAppAhead(this.plugin, whatIfApp(this.plugin, whatIf.parsed.target), whatIf.line);
-      return true;
-    }
-    this.input.disabled = true;
-    try {
-      // What it did is told once, here, with Undo, not also by the run.
-      const result = await bg.capture(line, undefined, true);
-      if (!result.ok) {
-        if (!result.parsed.ok) await this.show();
+      case "unread":
+        await this.show();
         return false;
-      }
-      capturedNotice(this.plugin, line, result.told, result.entryId);
-      return true;
-    } finally {
-      this.input.disabled = false;
+      case "what-if":
+        await openAppAhead(plugin, done.app, done.line);
+        return true;
+      case "ran":
+        // A run that changed nothing to undo is still told, once.
+        if (done.entryId) undoNotice(plugin, done.text, done.entryId);
+        else new Notice(done.text);
+        return true;
+      default:
+        return false;
     }
   }
 }
@@ -351,7 +323,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
 
   renderSuggestion(s: LineSuggestion, el: HTMLElement): void {
     if (s.kind === "run") {
-      el.createDiv({ cls: "gz-suggest-key", text: `Run in ${runs(s.parsed)}` });
+      el.createDiv({ cls: "gz-suggest-key", text: `Run in ${runsText(s.parsed, new Date())}` });
       for (const line of s.effects) el.createDiv({ cls: "gz-suggest-hint", text: line });
     } else if (s.kind === "complete") {
       el.createDiv({ cls: "gz-suggest-key", text: s.text });
@@ -390,7 +362,7 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
       : [...Array(editor.lineCount()).keys()].find((i) => captureLine(editor.getLine(i))?.trim() === line);
     if (where === undefined) return;
     const text = editor.getLine(where);
-    const id = await this.rowOf(result.entryId);
+    const id = await singleRowAdded(this.plugin.runtime, result.entryId);
     // A line that saved one row stays as that row (see row-lines.ts); any other gets a receipt.
     const parsed = result.parsed;
     const written = id !== undefined && parsed.ok
@@ -401,17 +373,6 @@ class CaptureSuggest extends EditorSuggest<LineSuggestion> {
     if (id !== undefined && path) this.plugin.rowLines?.seen(path, editor.getValue());
   }
 
-  /** The id of the one row a run saved, from its entry in the activity log; undefined when it saved none, or several. */
-  private async rowOf(entryId: string | undefined): Promise<string | undefined> {
-    const entry = entryId === undefined ? undefined : await this.plugin.runtime.activity.get(entryId);
-    const added = entry?.changes.filter((c) => c.kind === "row-added") ?? [];
-    return added.length === 1 && added[0].kind === "row-added" ? added[0].id : undefined;
-  }
-}
-
-/** The link a phone's shortcut or a launcher opens with a capture line after `line=`. */
-export function captureLinkOf(key: string): string {
-  return `${GIZMO_LINK}?key=${encodeURIComponent(key)}&line=`;
 }
 
 /**

@@ -1,10 +1,10 @@
-import { FuzzySuggestModal, Modal, Notice, parseYaml, type App, type TFile } from "obsidian";
+import { FuzzySuggestModal, Modal, Notice, type App, type TFile } from "obsidian";
 import { vaultNotes } from "./host.ts";
-import { carriedOps, convertible, planKind, type KindPlan } from "./kind-convert.ts";
-import type { Op } from "./ledger.ts";
+import { convertible, type KindPlan } from "./kind-convert.ts";
+import { offerKind } from "./kind-make.ts";
 import type GizmoPlugin from "./main.ts";
 import { readSpec, type AppSpec } from "./spec.ts";
-import { basename, defaultDataPath, isApp } from "./store.ts";
+import { basename, isApp } from "./store.ts";
 
 /** Says what making the kind does, line by line, before anything is written. */
 class KindModal extends Modal {
@@ -81,46 +81,15 @@ class ListPicker extends FuzzySuggestModal<string> {
   }
 }
 
-/** The list's rows as the app keeps them now, each as an add to the kind's rows (see carriedOps). */
-async function carried(plugin: GizmoPlugin, file: TFile, fm: Record<string, unknown>, list: string): Promise<Op[]> {
-  const ledger = plugin.runtime.dataLayer.ledger;
-  if (!ledger) return [];
-  const state = await ledger.state(defaultDataPath(file.path), fm);
-  return carriedOps(list, state.lists.get(list)?.rows ?? [], () => ledger.newRowId());
-}
-
 async function offer(plugin: GizmoPlugin, file: TFile, fm: Record<string, unknown>, spec: AppSpec, list: string): Promise<void> {
-  const { app } = plugin;
-  const appText = await app.vault.read(file);
-  const plan = planKind({
-    appPath: file.path, appText, fm, spec, list, notes: vaultNotes(app), parse: parseYaml,
-    taken: (path) => app.vault.getAbstractFileByPath(path) !== null,
-  });
-  if ("error" in plan) return void new Notice(plan.error, 12_000);
-  const shown = (await carried(plugin, file, fm, list)).length;
-  const make = async (): Promise<string | undefined> => {
-    try {
-      // The rows as they are at the click, not as the modal opened on.
-      const adds = await carried(plugin, file, fm, list);
-      // The kind and its rows first: if the app's lines can't be changed after, nothing is lost and the app still reads its own list.
-      await app.vault.create(plan.path, plan.text);
-      const kindData = defaultDataPath(plan.path);
-      plugin.runtime.dataLayer.noteApp(kindData, plan.path);
-      await plugin.runtime.dataLayer.ledger?.write(kindData, adds);
-      await plugin.runtime.dataLayer.snapshotNow(kindData, false).catch(() => undefined);
-      let changed = false;
-      await app.vault.process(file, (now) => {
-        changed = now === appText;
-        return changed ? plan.appText : now;
-      });
-      if (!changed) return `${basename(plan.path)} is made, but ${file.basename} changed meanwhile; point its source and save at "[[${basename(plan.path)}]]" yourself`;
-      new Notice(`${basename(plan.path)} is a kind now, with ${adds.length} ${adds.length === 1 ? "row" : "rows"} from ${file.basename}`);
-      return undefined;
-    } catch (e) {
-      return `Couldn't make the kind: ${(e as Error).message}`;
-    }
-  };
-  new KindModal(app, file.basename, plan, shown, make).open();
+  const offered = await offerKind(plugin.runtime, file.path, await plugin.app.vault.read(file), fm, spec, list);
+  if ("error" in offered) return void new Notice(offered.error, 12_000);
+  new KindModal(plugin.app, file.basename, offered.plan, offered.rows, async () => {
+    const made = await offered.make();
+    if (!made.ok) return made.said;
+    new Notice(made.said);
+    return undefined;
+  }).open();
 }
 
 /** "Make a list a kind": an app's own saved list becomes rows every app can read, with the rows it has. */

@@ -1,86 +1,41 @@
-import { FuzzySuggestModal, Modal, Notice, Setting, normalizePath, parseYaml, type App, type Plugin, type TFile } from "obsidian";
-import { previewInstall } from "./bundle.ts";
-import {
-  askLine, componentsNeeded, galleryApps, kitParams, planCopy, setUp, type GalleryApp, type GalleryNote, type KitParam, type Plan,
-} from "./gallery.ts";
-import { vaultNotes } from "./host.ts";
-import { basename } from "./store.ts";
+import { FuzzySuggestModal, Modal, Notice, Setting, normalizePath, type App, type TFile } from "obsidian";
+import { galleryApps, setUp, type GalleryApp, type GalleryNote, type KitParam, type Plan } from "./gallery.ts";
+import { asksOf, galleryChoice, installNotes, planGallery } from "./install.ts";
+import type GizmoPlugin from "./main.ts";
 import notes from "../scripts/gallery-notes.ts";
 
-/** Resolves once Obsidian has read the note's properties, which is when it can open as an app. */
-function indexed(app: App, file: TFile): Promise<void> {
-  return new Promise((resolve) => {
-    if (app.metadataCache.getFileCache(file)) return resolve();
-    const done = () => {
-      app.metadataCache.offref(ref);
-      window.clearTimeout(timer);
-      resolve();
-    };
-    const ref = app.metadataCache.on("changed", (changed) => { if (changed === file) done(); });
-    const timer = window.setTimeout(done, 3000);
-  });
-}
-
-/** The text of every note in the vault named like each of these, in any folder or case: links go by name. */
-export async function existingNotes(app: App, names: string[]): Promise<Record<string, string[]>> {
-  const files = app.vault.getMarkdownFiles();
-  const existing: Record<string, string[]> = {};
-  for (const name of names) {
-    existing[name] = await Promise.all(files.filter((f) => f.basename.toLowerCase() === name.toLowerCase()).map((f) => app.vault.read(f)));
-  }
-  return existing;
-}
-
-/** Where new notes go, as an install reads it: `""` for the vault's root. */
-function newNotesFolder(app: App): string {
-  const folder = app.fileManager.getNewFileParent("").path;
-  return folder === "/" ? "" : folder;
-}
-
-/** Creates a plan's notes where new notes go, the app last, then opens it; says why when it can't. */
-export async function installNotes(app: App, plan: Plan, label: string): Promise<boolean> {
-  if ("refusal" in plan) {
-    new Notice(plan.refusal);
+/** Installs a plan, then opens the app it made; says why when it can't. */
+export async function installAndOpen(plugin: GizmoPlugin, plan: Plan, label: string): Promise<boolean> {
+  const made = await installNotes(plugin.runtime, plan, label);
+  if ("error" in made) {
+    new Notice(made.error);
     return false;
   }
-  const folder = app.fileManager.getNewFileParent("");
-  const created: TFile[] = [];
-  try {
-    for (const note of plan.create) created.push(await app.vault.create(normalizePath(`${folder.path}/${basename(note.path)}.md`), note.text));
-  } catch (e) {
-    new Notice(`Couldn't copy “${label}”: ${e instanceof Error ? e.message : String(e)}`);
-    return false;
-  }
-  await Promise.all(created.map((f) => indexed(app, f)));
-  await app.workspace.getLeaf(false).openFile(created[created.length - 1]);
+  const file = plugin.app.vault.getFileByPath(normalizePath(made.opened));
+  if (file) await plugin.app.workspace.getLeaf(false).openFile(file);
   return true;
 }
 
 /** Creates the app's note (as `note` has it) and the component notes it uses where new notes go, then opens the app. */
-async function copyApp(app: App, gallery: GalleryApp, note: GalleryNote, components: GalleryNote[]): Promise<void> {
-  const existing = await existingNotes(app, [note, ...components].map((n) => basename(n.path)));
-  await installNotes(app, planCopy(note, components, existing), gallery.name);
-}
-
-/** What the app will ask for once copied, in one line, as installing it would say. */
-function asksOf(app: App, note: GalleryNote, components: GalleryNote[]): string {
-  const shared = [note, ...components].map((n) => ({ name: basename(n.path), text: n.text }));
-  const preview = previewInstall(shared, { folder: newNotesFolder(app), existing: () => [], notes: vaultNotes(app), parse: parseYaml });
-  return "error" in preview ? "" : askLine(preview.asks);
+async function copyApp(plugin: GizmoPlugin, gallery: GalleryApp, note: GalleryNote, components: GalleryNote[]): Promise<void> {
+  await installAndOpen(plugin, await planGallery(plugin.runtime, note, components), gallery.name);
 }
 
 /**
  * Choosing a gallery app: one you already have is offered to open instead; one that is a kit with
  * params asks for your values first; any other is copied as it is.
  */
-function chooseApp(app: App, gallery: GalleryApp): void {
-  const name = basename(gallery.note.path).toLowerCase();
-  const yours = app.vault.getMarkdownFiles().find((f) => f.basename.toLowerCase() === name);
-  if (yours) return new HaveItModal(app, gallery.name, yours).open();
-  const components = componentsNeeded(gallery.note, notes);
-  const params = kitParams(gallery.note, components, parseYaml);
-  if (!params.length) return void copyApp(app, gallery, gallery.note, components);
-  new SetUpModal(app, gallery, params, asksOf(app, gallery.note, components), (note) => void copyApp(app, gallery, note, components)).open();
+function chooseApp(plugin: GizmoPlugin, gallery: GalleryApp): void {
+  const app = plugin.app;
+  const choice = galleryChoice(plugin.runtime, gallery, notes);
+  if ("yours" in choice) {
+    const file = app.vault.getFileByPath(choice.yours);
+    if (file) new HaveItModal(app, gallery.name, file).open();
+    return;
+  }
+  const { components, params } = choice;
+  if (!params.length) return void copyApp(plugin, gallery, gallery.note, components);
+  new SetUpModal(app, gallery, params, asksOf(plugin.runtime, gallery.note, components), (note) => void copyApp(plugin, gallery, note, components)).open();
 }
 
 /** The app chosen is in the vault already: open yours, or leave it. */
@@ -165,8 +120,11 @@ class SetUpModal extends Modal {
 
 /** The gallery's apps, each with the line saying what it is for. */
 class GalleryPicker extends FuzzySuggestModal<GalleryApp> {
-  constructor(app: App) {
-    super(app);
+  private plugin: GizmoPlugin;
+
+  constructor(plugin: GizmoPlugin) {
+    super(plugin.app);
+    this.plugin = plugin;
     this.setPlaceholder("New app from the gallery");
   }
 
@@ -184,15 +142,15 @@ class GalleryPicker extends FuzzySuggestModal<GalleryApp> {
   }
 
   onChooseItem(item: GalleryApp): void {
-    chooseApp(this.app, item);
+    chooseApp(this.plugin, item);
   }
 }
 
 /** "New app from the gallery": copies a ready-made app, and the components it uses, into the vault. */
-export function registerGalleryCommand(plugin: Plugin): void {
+export function registerGalleryCommand(plugin: GizmoPlugin): void {
   plugin.addCommand({
     id: "new-app-from-gallery",
     name: "New app from the gallery",
-    callback: () => new GalleryPicker(plugin.app).open(),
+    callback: () => new GalleryPicker(plugin).open(),
   });
 }

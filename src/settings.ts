@@ -1,5 +1,5 @@
 import { PluginSettingTab, Setting, type App, type SettingDefinitionItem } from "obsidian";
-import { when } from "./activity-view.ts";
+import { when } from "./activity.ts";
 import { PRIORITY, saveDevice } from "./device.ts";
 import type GizmoPlugin from "./main.ts";
 import { openMap } from "./map-view.ts";

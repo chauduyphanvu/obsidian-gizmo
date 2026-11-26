@@ -12,7 +12,9 @@ import { LINES } from "./kind.ts";
 import { yamlInline } from "./kind-convert.ts";
 import { permissionsOf } from "./permissions.ts";
 import { readSpec, type AppSpec } from "./spec.ts";
-import { basename } from "./store.ts";
+import { basename, isApp } from "./store.ts";
+import type { AppEnv } from "./app.ts";
+import type { GizmoRuntime } from "./runtime.ts";
 import { nearMiss } from "./template.ts";
 import { listed, textOf } from "./text.ts";
 import { dateWindow, PERIODS, type Per } from "./time.ts";
@@ -410,4 +412,61 @@ export function compileAsk(kind: AskKind, panel: Record<string, unknown>, opts: 
   if (more.length || (read.spec && !wanted.includes(only))) errors.push(`an ask only reads ${basename(kind.path)}, and this one would need ${listed(more.length ? more : ["nothing of it"])}`);
   const spec = !errors.length && read.spec?.panels.length === 1 ? read.spec : undefined;
   return { path, fm, spec, wanted, errors: spec || errors.length ? errors : ["the answer has nothing to draw"] };
+}
+
+const READ_ONLY = "an ask only reads";
+
+/**
+ * The app an answer is drawn in: the kind's rows through the data layer, and nothing else. It runs
+ * without a grant prompt only while all it asks for is reading that kind (`reads`); it can't write a
+ * note, keep a row, log, run another app or reach out (pictures are drawn as their address).
+ */
+export function askEnvOf(base: AppEnv, reads: string): AppEnv {
+  const refuse = () => Promise.reject(new Error(READ_ONLY));
+  return {
+    ...base,
+    isGranted: (_key, wanted) => wanted.length === 1 && wanted[0] === reads,
+    granted: () => undefined,
+    grant: refuse,
+    writeFrontmatter: refuse,
+    updateFrontmatter: refuse,
+    appendLine: refuse,
+    createNote: refuse,
+    setTaskDone: refuse,
+    store: undefined,
+    addPanels: undefined,
+    log: undefined,
+    undo: undefined,
+    trigger: undefined,
+    opened: undefined,
+    tryFirst: undefined,
+    asks: undefined,
+    headline: undefined,
+    preview: true,
+  };
+}
+
+/** The vault's apps an answer can be kept in, by path. */
+export function appsToAddTo(rt: GizmoRuntime): string[] {
+  const host = rt.dataLayer.host;
+  return host.markdownFiles().filter((f) => isApp(host.frontmatter(f.path))).map((f) => f.path).sort((a, b) => a.localeCompare(b));
+}
+
+/**
+ * Keeps an answer as an app's last panel, as Insert panel adds one; the app then asks to read the
+ * kind. The kind is named as the app finds it from where it is: by name when that reaches it.
+ */
+export async function addAnswer(rt: GizmoRuntime, appPath: string, kindPath: string, panel: Record<string, unknown>): Promise<{ refusal?: string }> {
+  const name = basename(kindPath);
+  const source = rt.host.notes.resolve(name, appPath) === kindPath ? `[[${name}]]` : `[[${kindPath.replace(/\.md$/i, "")}]]`;
+  let refusal: string | undefined;
+  const there = await rt.host.writes.processText(appPath, (text) => {
+    const found = addToApp(text, { ...panel, source }, { path: appPath, notes: rt.host.notes, parse: (yaml) => rt.dataLayer.host.parseYaml(yaml), now: new Date(rt.dataLayer.host.now()) });
+    if ("refusal" in found) {
+      refusal = found.refusal;
+      return text;
+    }
+    return found.text;
+  });
+  return there ? { refusal } : { refusal: "it isn't there any more" };
 }

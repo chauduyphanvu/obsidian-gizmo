@@ -1,11 +1,8 @@
 import { Modal, type App } from "obsidian";
-import { backtest, MAX_STEPS, type BacktestResult, type Fire } from "./backtest.ts";
-import { DataLayer } from "./datalayer.ts";
-import { vaultNotes, vaultStorePath } from "./host.ts";
+import { backtestApp, MAX_STEPS, type BacktestResult, type Fire } from "./backtest.ts";
 import type GizmoPlugin from "./main.ts";
 import { pastText } from "./replay.ts";
-import { readSpec, type AppSpec } from "./spec.ts";
-import { basename, dataPathOf, devicesFolder } from "./store.ts";
+import { basename } from "./store.ts";
 import { AppView, VIEW_TYPE } from "./view.ts";
 import { minuteIn } from "./time.ts";
 
@@ -112,36 +109,17 @@ export class BacktestModal extends Modal {
 
   private async run(): Promise<void> {
     const box = this.contentEl.createDiv({ cls: "gizmo gz-backtest" });
-    const now = new Date();
-    const read = (fm: Record<string, unknown> | undefined) => readSpec(fm, { path: this.path, notes: vaultNotes(this.app), now })?.spec;
-    const after = read(this.app.metadataCache.getFileCache(this.app.vault.getFileByPath(this.path)!)?.frontmatter);
-    const before = this.before && read(this.before);
-    if (!after) return void box.createEl("p", { text: "The app has a mistake in it now; fix it first." });
-    const watches = (s: AppSpec | undefined) => !!s && (s.panels.some((ps) => ps.panel.alert !== undefined) || s.expect.some((r) => r.kind !== "value"));
-    if (!watches(after) && !watches(before)) return void box.createEl("p", { text: "This app has no alerts and no expect rules (a rhythm or none:) to backtest." });
+    const planned = backtestApp(this.plugin.runtime, this.path, this.before, new Date());
+    if ("message" in planned) return void box.createEl("p", { text: planned.message });
     const status = box.createEl("p", { cls: "gz-muted", text: "Reading what it kept…" });
     const bar = box.createEl("progress");
     const cancel = box.createEl("button", { text: "Cancel" });
     cancel.addEventListener("click", () => this.close());
-    const host = this.plugin.runtime.dataLayer.host;
-    // Another device's history may have grown since it was last read.
-    host.responses?.changed?.();
-    const dataPath = dataPathOf(after.store, this.path, vaultStorePath(this.app));
-    const result = await backtest({
-      layer: new DataLayer(host, { at: now.getTime(), like: this.plugin.runtime.dataLayer }),
-      appPath: this.path,
-      dataPath,
-      devices: after.split ? devicesFolder(dataPath) : undefined,
-      before,
-      after,
-      to: now.getTime(),
-      progress: (done, total) => {
-        bar.max = total;
-        bar.value = done;
-        status.setText(`Step ${done} of ${total}`);
-      },
-      cancelled: () => this.cancelled,
-    }).catch((e: Error) => e);
+    const result = await planned.run((done, total) => {
+      bar.max = total;
+      bar.value = done;
+      status.setText(`Step ${done} of ${total}`);
+    }, () => this.cancelled);
     if (this.cancelled) return;
     box.empty();
     if (result instanceof Error) return void box.createEl("p", { cls: "gz-error", text: result.message });

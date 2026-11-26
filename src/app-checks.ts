@@ -15,6 +15,7 @@ import { kindFiles } from "./sources/kind.ts";
 import { readSpec, type AppSpec, type Panel } from "./spec.ts";
 import { basename, defaultDataPath } from "./store.ts";
 import { toTime } from "./time.ts";
+import { watches } from "./backtest.ts";
 import type { PanelCtx } from "./views/registry.ts";
 
 /** What the checks ask of the app they belong to, as it is at the moment they ask. */
@@ -148,8 +149,7 @@ export class AppChecks {
     if (!ahead || !spec || !card || !ledger) return;
     const notes = whatIfNotes(spec, this.appPath, this.dataPath);
     const rows = await whatIfRows(ledger, notes, (path) => env.frontmatter(path));
-    const watches = spec.panels.some((ps) => ps.panel.alert !== undefined) || spec.expect.some((r) => r.kind !== "value");
-    const r = watches ? await lookAhead(env, ahead.live.data, spec, this.files(), notes).catch(() => undefined) : undefined;
+    const r = watches(spec) ? await lookAhead(env, ahead.live.data, spec, this.files(), notes).catch(() => undefined) : undefined;
     if (check !== this.aheadChecks || card !== this.aheadCard) return;
     ahead.marked?.(rows.map((r) => toTime(r.row.at)).filter((t): t is number => t !== undefined));
     card.fill({ rows, ...(r && { lines: aheadLines(r, spec, ahead.live.now(), this.current()), ...(r.cut && { cutAt: r.to }) }), errors: r?.errors ?? [] });

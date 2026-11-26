@@ -7,7 +7,7 @@
  * through its RuntimeHost, so nothing here imports Obsidian.
  */
 import { actionDepsOf, type ActionIO } from "./actions.ts";
-import { ActivityLog, undoEntry, type Entry, type UndoIO, type UndoResult } from "./activity.ts";
+import { ActivityLog, eventsOf, undoEntry, undoMessage, undoneIn, type Entry, type UndoIO, type UndoResult } from "./activity.ts";
 import { Background, TICK_MS, type BackgroundEnv, type BackgroundSink } from "./background.ts";
 import type { WriterRecord } from "./background-share.ts";
 import { DataLayer, type Host } from "./datalayer.ts";
@@ -55,12 +55,29 @@ export interface RuntimeHost {
    * something is there or nothing is at `from`. Only a host that sees renames as renames has it.
    */
   rename?(from: string, to: string): Promise<boolean>;
+  /** Where new notes go, as the person set it: `""` for the vault's root. */
+  newNotesFolder(): string;
+  /** Whether anything, a file or a folder, is at a vault path. */
+  exists(path: string): boolean;
+  /** Resolves once the host has read a new note's properties, which is when it can open as an app. */
+  whenIndexed(path: string): Promise<void>;
+  /**
+   * Where shared kinds' keys are kept, read and written. A host without one can't make or keep a
+   * key; the data layer's `Host.secret` only ever reads.
+   */
+  secrets?: SecretStore;
   /** What the background tells and asks the person, and shows them. */
   sink: BackgroundSink;
   /** Runs `fn` every `ms` until the cancel it gives is called. */
   every(fn: () => void, ms: number): () => void;
   /** Runs `fn` once after `ms` unless the cancel it gives is called first. */
   later(fn: () => void, ms: number): () => void;
+}
+
+/** Secrets by id, as Obsidian's secret storage keeps them (or gizmod's Keychain). */
+export interface SecretStore {
+  get(id: string): string | null;
+  set(id: string, value: string): void;
 }
 
 export class GizmoRuntime {
@@ -357,6 +374,25 @@ export class GizmoRuntime {
   }
 
   // ---- Activity, headlines and what apps share --------------------------------------------------
+
+  /** Undoes the entry with this id, as Undo on a notice or a link does; what to say of it. */
+  async undoById(id: string): Promise<string> {
+    const entry = await this.activity.get(id);
+    return entry ? undoMessage(await this.undo(entry)) : "That change is no longer in the activity log";
+  }
+
+  /**
+   * What one app (or every app) changed, newest first, each with how many of its changes are undone:
+   * an entry of ledger events as the ledger says, whichever device undid it.
+   */
+  async activityShown(appPath?: string): Promise<Entry[]> {
+    const listed = await this.activity.list(appPath, appPath ? this.sharedData(appPath) : []);
+    const ledger = this.dataLayer.ledger;
+    const paths = new Set(listed.flatMap((e) => eventsOf(e)?.map((x) => x.path) ?? []));
+    const undone = new Map<string, Set<string>>();
+    for (const p of paths) undone.set(p, ledger ? (await ledger.state(p).catch(() => undefined))?.undone ?? new Set() : new Set());
+    return listed.map((e) => ({ ...e, undone: undoneIn(e, (p) => undone.get(p) ?? new Set()) }));
+  }
 
   /** Undoes what's left of an entry's changes, newest first, and keeps how far it got. */
   async undo(entry: Entry): Promise<UndoResult> {

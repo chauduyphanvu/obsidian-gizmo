@@ -3,7 +3,7 @@ import {
   Notice, TFile, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type WorkspaceLeaf,
 } from "obsidian";
 import { bodyOf } from "./actions.ts";
-import { undoMessage, type LogStore } from "./activity.ts";
+import type { LogStore } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
 import type { AppAsks } from "./app-asks.ts";
 import { openCaptureWith } from "./capture-command.ts";
@@ -14,6 +14,7 @@ import { urlHost } from "./sources/url.ts";
 import { WebError, type FileInfo, type Host } from "./datalayer.ts";
 import type { NoteReader } from "./expand.ts";
 import type GizmoPlugin from "./main.ts";
+import { copyText } from "./clipboard.ts";
 import { tryVaultApp } from "./try-modal.ts";
 import { ExplainModal } from "./explain-command.ts";
 import { notePath, storeTarget } from "./store.ts";
@@ -78,11 +79,6 @@ export async function adoptOldLog(plugin: GizmoPlugin, device: string): Promise<
   if ((await pluginFolder(plugin, DEVICE_FOLDERS.activity)).length) return;
   if (!(await adapter.exists(normalizePath(`${dir}/${DEVICE_FOLDERS.activity}`)))) await adapter.mkdir(normalizePath(`${dir}/${DEVICE_FOLDERS.activity}`));
   await adapter.rename(old, mine);
-}
-
-/** Puts text on the clipboard, then runs `done`; says so when it can't. */
-export function copyText(text: string, done?: () => void): void {
-  void navigator.clipboard.writeText(text).then(done, () => { new Notice("Couldn't copy to the clipboard"); });
 }
 
 function info(f: TFile): FileInfo {
@@ -199,6 +195,27 @@ function obsidianFiles(app: App): VaultFiles {
   };
 }
 
+/** Where new notes go, as the person set it in Obsidian: `""` for the vault's root. */
+export function newNotesFolder(app: App): string {
+  const folder = app.fileManager.getNewFileParent("").path;
+  return folder === "/" ? "" : folder;
+}
+
+/** Resolves once Obsidian has read the note's properties, which is when it can open as an app. */
+export function whenIndexed(app: App, path: string): Promise<void> {
+  return new Promise((resolve) => {
+    const file = app.vault.getFileByPath(normalizePath(path));
+    if (!file || app.metadataCache.getFileCache(file)) return resolve();
+    const done = () => {
+      app.metadataCache.offref(ref);
+      window.clearTimeout(timer);
+      resolve();
+    };
+    const ref = app.metadataCache.on("changed", (changed) => { if (changed === file) done(); });
+    const timer = window.setTimeout(done, 3000);
+  });
+}
+
 /** Moves a file or folder where nothing is yet, as a rename here does: Obsidian updates the links to it. */
 export async function obsidianRename(app: App, from: string, to: string): Promise<boolean> {
   const file = app.vault.getAbstractFileByPath(from);
@@ -281,10 +298,7 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     }),
     copy: (text) => copyText(text),
     log: (entry) => plugin.runtime.activity.add(entry),
-    async undo(id) {
-      const entry = await plugin.runtime.activity.get(id);
-      return entry ? undoMessage(await plugin.runtime.undo(entry)) : "That change is no longer in the activity log";
-    },
+    undo: (id) => plugin.runtime.undoById(id),
     trigger: async (from, then, ctx) => plugin.runtime.background.runThen(from, then, ctx),
     now: () => new Date(),
     opened: (path) => plugin.runtime.background.opened(path),

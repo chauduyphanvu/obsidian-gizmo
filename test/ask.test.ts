@@ -1,7 +1,9 @@
 import assert from "node:assert/strict";
 import { readFileSync } from "node:fs";
 import { test } from "node:test";
-import { addToApp, askHelp, askLine, compileAsk, NO_KINDS, panelEmbed, panelYaml, parseAsk, type AskKind } from "../src/ask.ts";
+import { addAnswer, addToApp, appsToAddTo, askEnvOf, askHelp, askLine, compileAsk, NO_KINDS, panelEmbed, panelYaml, parseAsk, type AskKind } from "../src/ask.ts";
+import type { AppEnv } from "../src/app.ts";
+import { runtimeOn } from "./support/runtime.ts";
 import type { NoteReader } from "../src/expand.ts";
 import { readFields } from "../src/keys.ts";
 import { permissionsOf } from "../src/permissions.ts";
@@ -282,4 +284,30 @@ test("the ask line is a Do… line that starts with ?; a kind's shortcut without
   assert.equal(askLine("  ?"), "");
   assert.equal(askLine("spend 14.5 food lunch"), undefined);
   assert.equal(askLine("what if spend 5"), undefined);
+});
+
+test("an answer is kept in an app the person picks, naming the kind as that app finds it", async () => {
+  const t = await runtimeOn({
+    [KIND_PATH]: { fm: SPEND_FM, body: "" },
+    "Apps/Sleep.md": { fm: { app: "Sleep", panels: [{ view: "button", label: "Slept", save: "nights" }] }, body: "Body\n" },
+    "Apps/Budget.md": { fm: { app: "Budget", panels: [{ view: "button", label: "Spent", save: "spend" }] }, body: "" },
+    "Notes/Plain.md": { body: "not an app" },
+  });
+  assert.deepEqual(appsToAddTo(t.runtime), ["Apps/Budget.md", "Apps/Sleep.md"]);
+  const panel = answer("spend this month");
+  assert.deepEqual(await addAnswer(t.runtime, "Apps/Sleep.md", KIND_PATH, panel), { refusal: undefined });
+  const panels = (t.f.files.get("Apps/Sleep.md")!.fm as { panels: { source?: string }[] }).panels;
+  assert.equal(panels.at(-1)!.source, "[[Spend]]");
+  assert.deepEqual(await addAnswer(t.runtime, "Apps/Gone.md", KIND_PATH, panel), { refusal: "it isn't there any more" });
+});
+
+test("the app an answer is drawn in reads the kind and nothing else, and writes nothing", async () => {
+  const base = { isGranted: () => false, preview: false } as unknown as AppEnv;
+  const env = askEnvOf(base, "kind:Kinds/Spend.md");
+  assert.equal(env.isGranted("x", ["kind:Kinds/Spend.md"]), true);
+  assert.equal(env.isGranted("x", ["kind:Kinds/Spend.md", "net:example.com"]), false);
+  await assert.rejects(() => env.appendLine("Daily.md", "- x"), /an ask only reads/);
+  await assert.rejects(() => env.createNote("A.md", {}, ""), /an ask only reads/);
+  assert.equal(env.store, undefined);
+  assert.equal(env.preview, true);
 });

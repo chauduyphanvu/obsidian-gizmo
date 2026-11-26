@@ -132,3 +132,26 @@ test("an editing session's before is the definition from before its first change
   s.seen({ alert: "< 79" }, 2000 + 3 * SESSION_GAP_MS + 1);
   assert.equal(s.changed(), false, "back as it was");
 });
+
+test("a backtest of an app in the vault: refused while the app has a mistake or nothing to replay, else run on a replay of what was kept", async () => {
+  const { runtimeOn } = await import("./support/runtime.ts");
+  const { backtestApp, watches } = await import("../src/backtest.ts");
+  const t = await runtimeOn({
+    "Apps/Quiet.md": { fm: { app: "Quiet", panels: [{ view: "number", source: "items", agg: "count" }] }, body: "" },
+    "Apps/Loud.md": { fm: { app: "Loud", panels: [{ view: "number", title: "Many", source: "items", agg: "count", alert: "> 1" }] }, body: "" },
+    "Apps/Loud data.md": { fm: { items: [{ n: 1, at: "2026-11-17T09:00" }, { n: 2, at: "2026-11-18T09:00" }] }, body: "" },
+  });
+  const now = new Date(2026, 10, 19, 12);
+  assert.deepEqual(backtestApp(t.runtime, "Apps/Quiet.md", undefined, now), { message: "This app has no alerts and no expect rules (a rhythm or none:) to backtest." });
+  assert.deepEqual(backtestApp(t.runtime, "Apps/Broken.md", undefined, now), { message: "The app has a mistake in it now; fix it first." });
+  // A change that adds an alert is backtested though the app as it is has none.
+  const change = backtestApp(t.runtime, "Apps/Quiet.md", { app: "Quiet", panels: [{ view: "number", source: "items", agg: "count", alert: "> 0" }] }, now);
+  assert.ok("run" in change);
+  const loud = backtestApp(t.runtime, "Apps/Loud.md", undefined, now);
+  assert.ok("run" in loud);
+  const steps: number[] = [];
+  const r = await loud.run((done) => steps.push(done), () => false);
+  assert.ok(r && !(r instanceof Error), String(r));
+  assert.ok(steps.length > 0, "told of its steps");
+  assert.equal(watches(undefined), false);
+});

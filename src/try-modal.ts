@@ -1,24 +1,11 @@
-import { Modal, parseYaml, type TFile } from "obsidian";
+import { Modal, parseYaml } from "obsidian";
 import { handler } from "./handler.ts";
 import { AppController } from "./app.ts";
-import { frontmatterOf, type BundleNote } from "./bundle.ts";
-import { copyText, vaultNotes } from "./host.ts";
+import type { BundleNote } from "./bundle.ts";
+import { copyText } from "./clipboard.ts";
 import type GizmoPlugin from "./main.ts";
-import { describePermission, permissionsOf } from "./permissions.ts";
 import { makeSandbox, plainHosts, type Sandbox, type SandboxNote } from "./sandbox.ts";
-import { readSpec } from "./spec.ts";
-
-/** What a try leaves out, in words: what the app would read, use or send once allowed. */
-function leftOut(wanted: string[]): string[] {
-  return wanted.flatMap((perm) => {
-    const kind = perm.split(":")[0];
-    if (kind === "read" && !/\.[A-Za-z0-9]+$/.test(perm)) return [`${describePermission(perm)}: none of them here`];
-    if (kind === "kind") return [`${describePermission(perm)}: none of them here`];
-    if (kind === "kind-write" || kind === "edit" || kind === "tasks" || kind === "secret" || kind === "send" || kind === "post" || kind === "share") return [describePermission(perm)];
-    if (perm === "images") return ["Load pictures: their addresses are shown instead"];
-    return [];
-  });
-}
+import { bundleTry, leftOut, vaultTry } from "./try.ts";
 
 /**
  * The real app on copies of its own notes, before anything is allowed (see makeSandbox): it can
@@ -107,36 +94,18 @@ class TryModal extends Modal {
   }
 }
 
-/** A note as a try sees it, read from the vault. */
-async function noteOf(plugin: GizmoPlugin, file: TFile): Promise<SandboxNote> {
-  return { frontmatter: plugin.app.metadataCache.getFileCache(file)?.frontmatter, text: await plugin.app.vault.cachedRead(file) };
-}
-
 /**
  * Tries an app in the vault before it's allowed: it sees its own note, the components it uses and
  * the templates it names, and nothing else. Allow there allows it as the prompt would.
  */
 export async function tryVaultApp(plugin: GizmoPlugin, path: string): Promise<void> {
-  const vault = plugin.app.vault;
-  const file = vault.getFileByPath(path);
-  if (!file) return;
-  const spec = readSpec(plugin.app.metadataCache.getFileCache(file)?.frontmatter, { path, notes: vaultNotes(plugin.app), now: new Date() })?.spec;
-  const wanted = spec ? permissionsOf(spec, path) : [];
-  const notes = new Map<string, SandboxNote>([[path, await noteOf(plugin, file)]]);
-  const templates = wanted.filter((p) => p.startsWith("read:") && p.endsWith(".md")).map((p) => p.slice(5));
-  for (const other of [...Object.keys(spec?.read ?? {}), ...templates]) {
-    const f = vault.getFileByPath(other);
-    if (f && !notes.has(other)) notes.set(other, await noteOf(plugin, f));
-  }
-  new TryModal(plugin, file.basename, path, notes, wanted, { label: "Allow", run: () => plugin.runtime.grant(path, wanted) }).open();
+  const t = await vaultTry(plugin.runtime, path);
+  if (!t) return;
+  new TryModal(plugin, t.name, t.appPath, t.notes, t.wanted, { label: "Allow", run: () => plugin.runtime.grant(path, t.wanted) }).open();
 }
 
 /** Tries a shared app before installing it, on the shared notes alone, placed as the install would place them. */
 export function tryBundle(plugin: GizmoPlugin, notes: BundleNote[], folder: string, install: () => Promise<void>): void {
-  const pathOf = (name: string) => (folder ? `${folder}/${name}.md` : `${name}.md`);
-  const all = new Map(notes.map((n): [string, SandboxNote] => [pathOf(n.name), { frontmatter: frontmatterOf(n.text, (y) => parseYaml(y) as unknown), text: n.text }]));
-  const appPath = pathOf(notes[0].name);
-  const reader = { resolve: (link: string) => [...all.keys()].find((p) => p.toLowerCase().endsWith(`${link.replace(/\.md$/i, "").toLowerCase()}.md`)), frontmatter: (p: string) => all.get(p)?.frontmatter };
-  const spec = readSpec(all.get(appPath)?.frontmatter, { path: appPath, notes: reader, now: new Date() })?.spec;
-  new TryModal(plugin, notes[0].name, appPath, all, spec ? permissionsOf(spec, appPath) : [], { label: "Install", run: install }).open();
+  const t = bundleTry(notes, folder, (yaml) => parseYaml(yaml) as unknown);
+  new TryModal(plugin, t.name, t.appPath, t.notes, t.wanted, { label: "Install", run: install }).open();
 }

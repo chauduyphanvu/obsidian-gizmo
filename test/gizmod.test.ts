@@ -816,3 +816,40 @@ test("gizmod makes a note only where none is, and undoing a note it made moves i
   await env.runtime.undo(second!);
   assert.deepEqual(readdirSync(join(root, ".trash")).sort(), ["Idea 2.md", "Idea.md"]);
 });
+
+test("what the commands' helpers ask of gizmod: new notes at the root, a raw create that never overwrites, whether a path is there, and secrets kept in its store", async () => {
+  const root = vaultDir({ "Apps/Inbox.md": { fm: INBOX }, "Notes/Plain.md": "plain\n" });
+  const kept = new Map<string, string>();
+  const security: Security = (args, input) => {
+    if (args[0] === "find-generic-password") {
+      const v = kept.get(args[args.indexOf("-a") + 1]);
+      return v === undefined ? { status: 44, stdout: "", stderr: "not found" } : { status: 0, stdout: "", stderr: `password: "${v}"\n` };
+    }
+    if (args[0] === "-i") {
+      const m = /-a (\S+) .* -w "((?:[^"\\]|\\.)*)"/.exec(input!)!;
+      kept.set(m[1], m[2].replace(/\\(.)/g, "$1"));
+      return { status: 0, stdout: "", stderr: "" };
+    }
+    return { status: 1, stdout: "", stderr: "" };
+  };
+  const env = gizmodEnv({ vault: root, device: "gzhelp01", log: () => {}, keychain: new KeychainSecrets({ security, available: true }) });
+  const host = env.runtime.host;
+  assert.equal(host.newNotesFolder(), "");
+  assert.equal(host.exists("Apps/Inbox.md"), true);
+  assert.equal(host.exists("Apps"), true, "a folder is there too");
+  assert.equal(host.exists("Apps/Gone.md"), false);
+  assert.equal(host.exists("../outside.md"), false, "nothing outside the vault");
+
+  assert.equal(await host.writes.createText("Notes/Plain.md", "over\n"), false);
+  assert.equal(readFileSync(join(root, "Notes/Plain.md"), "utf8"), "plain\n", "never overwritten");
+  const text = "---\nkind: chore\n---\n---not frontmatter\n";
+  assert.equal(await host.writes.createText("Kinds/Chore.md", text), true);
+  assert.equal(readFileSync(join(root, "Kinds/Chore.md"), "utf8"), text, "exactly the text, and its folder made");
+  await host.whenIndexed("Kinds/Chore.md");
+  assert.equal(env.runtime.dataLayer.host.frontmatter("Kinds/Chore.md")?.kind, "chore", "read into the index as it's written");
+
+  assert.equal(host.secrets!.get("chore-key"), null);
+  host.secrets!.set("chore-key", "gzk1.value");
+  assert.equal(kept.get("chore-key"), "gzk1.value", "kept in the Keychain");
+  assert.equal(host.secrets!.get("chore-key"), "gzk1.value");
+});

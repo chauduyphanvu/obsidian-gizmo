@@ -306,3 +306,29 @@ test("another device's entry kept as ledger events can be undone here, and shows
   // A change not kept as an event (a line added to a note) stays the other device's to undo.
   assert.equal(eventsOf({ ...theirs, changes: [{ kind: "line-added", path: "Daily.md", line: "x", created: false }] }), undefined);
 });
+
+test("History on any host: each entry's undo state from the log and the ledger, Undo by id, drawn with the host's own notice", async () => {
+  const { runtimeOn } = await import("./support/runtime.ts");
+  const { drawActivity } = await import("../src/activity-list.ts");
+  const { undoButton } = await import("../src/activity.ts");
+  const t = await runtimeOn({ "Books/Emma.md": { fm: { status: "read" }, body: "" } });
+  const id = await t.runtime.activity.add({ app: "Apps/Books.md", actor: "you", what: "Mark read", changes: [{ kind: "property", path: "Books/Emma.md", field: "status", from: undefined, to: "read", had: false }] });
+  assert.ok(id);
+  const [shown] = await t.runtime.activityShown("Apps/Books.md");
+  assert.equal(undoButton(shown), "Undo");
+  assert.equal(undoButton({ ...shown, changes: [] }), "none", "nothing to undo");
+  assert.equal(undoButton({ ...shown, device: "Phone" }), "none", "another device's, not kept as events");
+
+  const el = document.createElement("div");
+  const said: string[] = [];
+  await drawActivity(el, t.runtime, (m) => said.push(m), { appPath: "Apps/Books.md" });
+  const undo = el.querySelector<HTMLButtonElement>(".gz-activity-undo")!;
+  assert.equal(undo.textContent, "Undo");
+  click(undo);
+  await settle();
+  assert.deepEqual(said, ["Undone"]);
+  assert.equal(t.f.files.get("Books/Emma.md")!.fm!.status, undefined);
+  assert.equal(el.querySelector(".gz-activity-undone")?.textContent, "Undone", "drawn again");
+  assert.equal(undoButton((await t.runtime.activityShown("Apps/Books.md"))[0]), "undone");
+  assert.equal(await t.runtime.undoById("gone"), "That change is no longer in the activity log");
+});

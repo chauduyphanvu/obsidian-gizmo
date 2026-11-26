@@ -522,3 +522,26 @@ export function describeActor(a: Actor): string {
   if (a === "share") return "Someone you share the kind with";
   return `Triggered by ${a.slice("trigger:".length)}`;
 }
+
+/** When something happened, as a list of recent things says it. */
+export function when(at: number, now: Date): string {
+  const d = new Date(at);
+  const time = d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" });
+  const day = (x: Date) => new Date(x.getFullYear(), x.getMonth(), x.getDate()).getTime();
+  const days = Math.round((day(now) - day(d)) / 86_400_000);
+  if (days === 0) return `Today ${time}`;
+  if (days === 1) return `Yesterday ${time}`;
+  return `${d.toLocaleDateString([], { month: "short", day: "numeric", year: d.getFullYear() === now.getFullYear() ? undefined : "numeric" })} ${time}`;
+}
+
+/**
+ * What an entry offers to undo: nothing when it changed nothing or is another device's not kept as
+ * events (what was sent out can't be taken back); "Undone" when all of it is; else Undo, or Undo the
+ * rest once some of it is.
+ */
+export function undoButton(entry: Entry): "none" | "undone" | "Undo" | "Undo the rest" {
+  const total = entry.changes.length;
+  if (total === 0 || (entry.device && !eventsOf(entry))) return "none";
+  if (entry.undone >= total) return "undone";
+  return entry.undone ? "Undo the rest" : "Undo";
+}

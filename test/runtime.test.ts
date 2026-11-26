@@ -3,111 +3,18 @@ import { test } from "node:test";
 import { stringify } from "yaml";
 // Imported as Node imports it, with nothing standing in for Obsidian: had anything the runtime
 // reaches imported "obsidian", this file would not load.
-import { GizmoRuntime, type RuntimeHost } from "../src/runtime.ts";
-import { SettingsFile, type SettingsSource, type StoredData } from "../src/stored.ts";
-import { DEVICE_FOLDERS, PRIORITY, deviceFile, type PluginFiles } from "../src/device.ts";
+import { GizmoRuntime } from "../src/runtime.ts";
+import { DEVICE_FOLDERS, PRIORITY, deviceFile } from "../src/device.ts";
 import { textHash } from "../src/hash.ts";
-import { vaultWrites, type VaultFiles } from "../src/vault-ops.ts";
 import { backtest } from "../src/backtest.ts";
 import { DataLayer } from "../src/datalayer.ts";
 import { makeSandbox } from "../src/sandbox.ts";
 import { readSpec } from "../src/spec.ts";
-import { fakeEnv, fakeHost } from "./support/fakes.ts";
+import { fakeEnv } from "./support/fakes.ts";
+import { runtimeOn } from "./support/runtime.ts";
 import { parseYaml } from "./support/yaml.ts";
 
-type Notes = Parameters<typeof fakeHost>[0];
 const DAY = 86_400_000;
-
-/** A note's text as the fake vault keeps it: its frontmatter apart from its body. */
-function memoryFiles(f: ReturnType<typeof fakeHost>, trashed: string[]): VaultFiles {
-  const textOf = (path: string) => {
-    const note = f.files.get(path);
-    if (!note) return f.others.get(path) ?? "";
-    return note.fm ? `---\n${stringify(note.fm)}---\n${note.body ?? ""}` : note.body ?? "";
-  };
-  const write = async (path: string, text: string) => {
-    if (!path.endsWith(".md")) return void f.others.set(path, text);
-    const m = /^---\n([\s\S]*?)---\n([\s\S]*)$/.exec(text);
-    f.files.set(path, m ? { fm: parseYaml(m[1]) as Record<string, unknown>, body: m[2] } : { body: text });
-  };
-  return {
-    normalize: (path) => path,
-    exists: (path) => f.files.has(path) || f.others.has(path),
-    read: async (path) => textOf(path),
-    write,
-    async create(path, text) {
-      if (f.files.has(path) || f.others.has(path)) throw new Error("File already exists.");
-      await write(path, text);
-    },
-    async processFrontmatter(path, fn) {
-      const note = f.files.get(path) ?? {};
-      note.fm ??= {};
-      fn(note.fm);
-      f.files.set(path, note);
-    },
-    append: async (path, text) => write(path, textOf(path) + text),
-    async trash(path) {
-      f.files.delete(path);
-      trashed.push(path);
-    },
-  };
-}
-
-/** The plugin's folder, in memory. */
-function memoryPluginFiles(kept: Map<string, string>): PluginFiles {
-  return {
-    file: (name) => ({ read: async () => kept.get(name), write: async (text) => { kept.set(name, text); } }),
-    folder: async (name) => [...kept].filter(([k]) => k.startsWith(`${name}/`) && k.endsWith(".json")).map(([k, text]) => ({ name: k.slice(name.length + 1, -".json".length), text })),
-  };
-}
-
-/**
- * A runtime on an in-memory vault: `disk` is data.json as the sync leaves it; without `writes`, the
- * host only reads it, as gizmod does. Timers never fire on their own: a test ticks or seals itself.
- */
-async function runtimeOn(notes: Notes, opts: { settings?: Partial<StoredData>; writes?: boolean; device?: string } = {}) {
-  const f = fakeHost(notes);
-  const disk = { json: JSON.stringify({ grants: {}, ...opts.settings }) };
-  const file = new SettingsFile({ load: async () => JSON.parse(disk.json) as unknown, save: async (data) => { disk.json = JSON.stringify(data); } });
-  await file.open();
-  const settings: SettingsSource = opts.writes === false ? { get data() { return file.data; }, reload: () => file.reload() } : file;
-  const kept = new Map<string, string>();
-  const trashed: string[] = [];
-  const renamed: [string, string][] = [];
-  const id = opts.device ?? "d1mac000";
-  // Set below: a rename made here is told back to the runtime, as Obsidian tells of it.
-  let runtime: GizmoRuntime | undefined;
-  const host: RuntimeHost = {
-    host: f.host,
-    settings,
-    files: memoryPluginFiles(kept),
-    device: { id, name: "Mac" },
-    beat: { mine: (t) => ({ id, name: "Mac", host: "mac", priority: PRIORITY.desktop, seen: t, zone: "UTC", used: t }) },
-    writes: vaultWrites(memoryFiles(f, trashed), (fm) => stringify(fm)),
-    notes: { resolve: (link) => [...f.files.keys()].find((p) => p === `${link}.md` || p.endsWith(`/${link}.md`)), frontmatter: (p) => f.files.get(p)?.fm },
-    storePath: (store) => `${store}.md`,
-    actionIO: () => undefined,
-    // Moves a note, or every file under a folder, as a rename in Obsidian does.
-    async rename(from, to) {
-      const under = [...f.files.keys(), ...f.others.keys()].filter((p) => p === from || p.startsWith(`${from}/`));
-      if (!under.length || [...f.files.keys(), ...f.others.keys()].some((p) => p === to || p.startsWith(`${to}/`))) return false;
-      renamed.push([from, to]);
-      for (const p of under) {
-        const moved = `${to}${p.slice(from.length)}`;
-        if (f.files.has(p)) { f.files.set(moved, f.files.get(p)!); f.files.delete(p); }
-        else { f.others.set(moved, f.others.get(p)!); f.others.delete(p); }
-        runtime!.fileRenamed(moved, p);
-      }
-      return true;
-    },
-    sink: { notify: () => {}, setCommands: () => {}, setStatus: () => {}, openApp: () => {}, confirm: async () => false, choose: async () => undefined, openUrl: () => {} },
-    every: () => () => {},
-    later: (fn) => { fn(); return () => {}; },
-  };
-  runtime = new GizmoRuntime(host);
-  await runtime.open();
-  return { runtime, f, disk, kept, trashed, renamed, saved: () => JSON.parse(disk.json) as StoredData };
-}
 
 test("the runtime loads in plain Node: no window, and nothing it reaches imports Obsidian", () => {
   assert.equal(typeof (globalThis as { window?: unknown }).window, "undefined");

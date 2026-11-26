@@ -155,7 +155,8 @@ export function gizmodEnv(opts: GizmodOptions) {
   const id = opts.device;
   const settings = new DiskSettings(pluginDir);
   const name = opts.name ?? "gizmod";
-  const secrets = gizmodSecrets(opts.keychain ?? new KeychainSecrets({ available: false }));
+  const keychain = opts.keychain ?? new KeychainSecrets({ available: false });
+  const secrets = gizmodSecrets(keychain);
 
   const host: Host = {
     async fetch(url, headers, init) {
@@ -267,6 +268,17 @@ export function gizmodEnv(opts: GizmodOptions) {
     storePath: (s, from) => vault.resolve(storeTarget(s), from) ?? nodePath(notePath(storeTarget(s))) ?? notePath(storeTarget(s)),
     // gizmod never opens an app: one runs here once it was opened and allowed in Obsidian, as in its background.
     actionIO: (appPath) => ioFor(appPath),
+    // New notes go at the vault's root; a note gizmod makes is read into its index as it's written.
+    newNotesFolder: () => "",
+    exists: (path) => {
+      try {
+        return existsSync(vault.abs(path));
+      } catch {
+        return false;
+      }
+    },
+    whenIndexed: async () => {},
+    secrets: { get: (sid) => secrets.secret(sid), set: (sid, value) => keychain.set(sid, value) },
     sink,
     every: (fn, ms) => {
       const timer = setInterval(fn, ms);

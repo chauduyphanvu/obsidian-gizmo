@@ -1,40 +1,11 @@
-import { Modal, Notice, parseYaml, type App, type TFile } from "obsidian";
-import {
-  fromBundle, fromFetched, previewInstall, sharedUrl, thenTargets, toBundle, type BundleNote, type InstallPreview,
-} from "./bundle.ts";
-import { existingNotes, installNotes } from "./gallery-command.ts";
-import { copyText, vaultNotes } from "./host.ts";
-import { permissionsOf } from "./permissions.ts";
-import { planCopy } from "./gallery.ts";
+import { Modal, Notice, type App } from "obsidian";
+import { toBundle, type BundleNote, type InstallPreview } from "./bundle.ts";
+import { installAndOpen } from "./gallery-command.ts";
+import { copyText } from "./clipboard.ts";
+import { notesToShare, planShared, previewShared, readShared, sharedLink } from "./install.ts";
 import type GizmoPlugin from "./main.ts";
 import { tryBundle } from "./try-modal.ts";
-import { readComponentPreview, readSpec } from "./spec.ts";
-import { basename, dataPathOf, isApp, isComponent, notePath, storeTarget } from "./store.ts";
-
-/**
- * The notes sharing an app takes along: the note itself, every component it reads at any depth,
- * and the template notes its panels make notes from. Never its data note or the notes it keeps.
- */
-async function notesToShare(app: App, file: TFile): Promise<{ notes: BundleNote[]; about: string; runs: string[] } | { error: string }> {
-  const fm = app.metadataCache.getFileCache(file)?.frontmatter;
-  const notes = vaultNotes(app);
-  const component = isComponent(fm);
-  if (!fm || (!component && !isApp(fm))) return { error: "Only an app or a component can be shared" };
-  const opts = { now: new Date(), notes, path: file.path };
-  const spec = (component ? readComponentPreview(fm, opts).result : readSpec(fm, opts))?.spec;
-  if (!spec) return { error: `${file.basename} has a problem to fix before it can be shared` };
-  const paths = new Set(Object.keys(spec.read));
-  for (const { panel } of spec.panels) {
-    const template = panel.template && notes.resolve(storeTarget(panel.template), file.path);
-    if (template) paths.add(template);
-  }
-  paths.delete(file.path);
-  const others = [...paths].flatMap((p) => app.vault.getFileByPath(p) ?? []);
-  const read = await Promise.all([file, ...others].map(async (f) => ({ name: f.basename, text: await app.vault.read(f) })));
-  const names = new Set(read.map((n) => n.name.toLowerCase()));
-  const runs = thenTargets(spec.panels).filter((t) => !names.has(t.app.toLowerCase())).map((t) => `It runs “${t.do}” in ${t.app}, which isn't included; whoever installs it needs an app of that name with that shortcut.`);
-  return { notes: read, about: String((component ? fm.component : fm.app) ?? ""), runs };
-}
+import { basename } from "./store.ts";
 
 /** Shows the shared text before it leaves: every line of it travels, the note's own text included. */
 class ShareModal extends Modal {
@@ -109,7 +80,7 @@ class InstallModal extends Modal {
     this.installButton.disabled = true;
     this.installButton.addEventListener("click", () => void this.install());
     // A link fills the box but fetches nothing until Preview: any web page can send an install link.
-    const url = /^\w+:\/\//.test(this.start.trim()) ? sharedUrl(this.start.trim()) : undefined;
+    const { url } = sharedLink(this.start);
     if (url) this.say(`Press Preview to fetch ${new URL(url).hostname}`);
     else if (this.start) void this.read(this.start);
     else area.focus();
@@ -128,42 +99,15 @@ class InstallModal extends Modal {
   }
 
   private async read(input: string): Promise<void> {
-    const trimmed = input.trim();
-    if (!trimmed) return this.say("Paste something first");
-    const url = /^\w+:\/\//.test(trimmed) ? sharedUrl(trimmed) : undefined;
-    if (/^\w+:\/\//.test(trimmed) && !url) return this.say("Only https links can be installed", "gz-error-text");
-    let got: { notes: BundleNote[] } | { error: string };
-    if (url) {
-      this.say(`Fetching ${new URL(url).hostname}…`);
-      try {
-        const res = await this.plugin.runtime.dataLayer.host.fetch(url, {});
-        if (res.status >= 400) return this.say(`${new URL(url).hostname} answered ${res.status}`, "gz-error-text");
-        got = fromFetched(res.text, url, parseYaml);
-        if ("error" in got && new URL(trimmed).hostname === "gist.github.com") got = { error: `${got.error}. For a gist of several files, use the raw link of the shared file` };
-      } catch (e) {
-        return this.say(`Couldn't fetch it: ${(e as Error).message}`, "gz-error-text");
-      }
-    } else {
-      got = fromBundle(trimmed);
-    }
-    if ("error" in got) return this.say(cap(got.error), "gz-error-text");
+    if (!input.trim()) return this.say("Paste something first");
+    const rt = this.plugin.runtime;
+    const got = await readShared(input, (url, headers) => rt.dataLayer.host.fetch(url, headers), (yaml) => rt.dataLayer.host.parseYaml(yaml), (host) => this.say(`Fetching ${host}…`));
+    if ("error" in got) return this.say(got.error, "gz-error-text");
     this.notes = got.notes;
-    const existing = await existingNotes(this.app, got.notes.map((n) => n.name));
-    const folder = this.app.fileManager.getNewFileParent("").path;
-    this.folder = folder === "/" ? "" : folder;
-    const preview = previewInstall(got.notes, {
-      folder: this.folder,
-      existing: (name) => existing[name] ?? [],
-      notes: vaultNotes(this.app),
-      parse: parseYaml,
-      judge: (spec, path, notes) => {
-        // The shared notes resolve as they will once installed: a store or a then target among them counts.
-        const storePath = (store: string, from: string) => notes.resolve(storeTarget(store), from) ?? notePath(storeTarget(store));
-        return this.plugin.runtime.verdict(spec, permissionsOf(spec, path), { appPath: path, dataPath: dataPathOf(spec.store, path, storePath), hostPath: path }, undefined, notes, storePath);
-      },
-    });
-    if ("error" in preview) return this.say(cap(preview.error), "gz-error-text");
-    this.show(preview);
+    const previewed = await previewShared(rt, got.notes);
+    if ("error" in previewed) return this.say(previewed.error, "gz-error-text");
+    this.folder = previewed.folder;
+    this.show(previewed.preview);
   }
 
   private show(p: InstallPreview): void {
@@ -205,15 +149,9 @@ class InstallModal extends Modal {
   private async install(): Promise<void> {
     const p = this.preview;
     if (!p || "refusal" in p.plan) return;
-    // Names may have been taken since the preview.
-    const existing = await existingNotes(this.app, this.notes.map((n) => n.name));
-    const asGallery = (n: BundleNote) => ({ path: `${n.name}.md`, text: n.text });
-    const plan = planCopy(asGallery(this.notes[0]), this.notes.slice(1).map(asGallery), existing);
-    if (await installNotes(this.app, plan, p.name)) this.close();
+    if (await installAndOpen(this.plugin, await planShared(this.plugin.runtime, this.notes), p.name)) this.close();
   }
 }
-
-const cap = (s: string) => s.charAt(0).toUpperCase() + s.slice(1);
 
 /** Opens the install window, reading `start` (a link or shared text) right away when given. */
 export function openInstall(plugin: GizmoPlugin, start = ""): void {
@@ -230,7 +168,7 @@ export function registerShareCommands(plugin: GizmoPlugin): void {
       if (!file || !plugin.isApp(file)) return false;
       if (!checking) {
         void (async () => {
-          const got = await notesToShare(plugin.app, file);
+          const got = await notesToShare(plugin.runtime, file.path);
           if ("error" in got) return void new Notice(got.error);
           const bundle = toBundle(got.notes, got.about);
           if ("error" in bundle) return void new Notice(`Can't share ${file.basename}: ${bundle.error}`);

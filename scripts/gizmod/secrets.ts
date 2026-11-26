@@ -6,6 +6,9 @@
  */
 import { spawnSync } from "node:child_process";
 import { existsSync } from "node:fs";
+import { secretVar } from "../../src/datalayer.ts";
+
+export { secretVar };
 
 export const SECRET_SERVICE = "gizmo";
 /** A secret's id, as Obsidian's secret storage and `share.key.secret` take one. */
@@ -14,8 +17,6 @@ const SECRET_ID = /^[a-z0-9-]+$/;
 const KEEP_MS = 5 * 60_000;
 const SECURITY = "/usr/bin/security";
 
-/** The environment variable a secret comes from: GIZMO_SECRET_<ID>, dashes as underscores. */
-export const secretVar = (id: string) => `GIZMO_SECRET_${id.toUpperCase().replace(/-/g, "_")}`;
 
 /** `{secret:id}` filled from the environment, as `op run` gives it. */
 export function secretFromEnv(id: string, env: NodeJS.ProcessEnv = process.env): string | null {

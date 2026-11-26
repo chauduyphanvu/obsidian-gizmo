@@ -1,5 +1,5 @@
 import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
-import { when } from "./activity-view.ts";
+import { when } from "./activity.ts";
 import { AsksCard } from "./app-asks.ts";
 import { openCapture, openCaptureWith, undoNotice } from "./capture-command.ts";
 import { buildMap } from "./map.ts";

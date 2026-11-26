@@ -4,8 +4,10 @@ import { addWhatIf, aheadEnv, branchName, defaultHorizon, parseWhatIf, whatIfNot
 import { AppController, type AppEnv } from "./app.ts";
 import { EditSession } from "./backtest.ts";
 import { DataLayer } from "./datalayer.ts";
-import { copyText, obsidianAppEnv, vaultStorePath } from "./host.ts";
-import { drawActivity, openActivity } from "./activity-view.ts";
+import { obsidianAppEnv, vaultStorePath } from "./host.ts";
+import { copyText } from "./clipboard.ts";
+import { openActivity } from "./activity-view.ts";
+import { drawActivity } from "./activity-list.ts";
 import { copyShortcutLink } from "./link-command.ts";
 import type GizmoPlugin from "./main.ts";
 import { embedBlock } from "./open-app.ts";
@@ -90,7 +92,7 @@ export class AppView extends FileView {
     if (!path) return;
     const shown = this.controller?.openPage("history", "History", (el) => {
       el.createEl("h2", { cls: "gz-sheet-title", text: `What ${this.file?.basename ?? "this app"} did` });
-      void drawActivity(el.createDiv(), this.plugin, { appPath: path, seeThen: (at) => this.showAt(at) });
+      void drawActivity(el.createDiv(), this.plugin.runtime, (message) => { new Notice(message); }, { appPath: path, seeThen: (at) => this.showAt(at) });
     });
     if (!shown) openActivity(this.plugin, path);
   }

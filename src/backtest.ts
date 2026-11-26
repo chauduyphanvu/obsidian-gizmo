@@ -10,13 +10,14 @@
  */
 import { splitByWindow } from "./compare.ts";
 import { compileWhere, matches, rowsOf } from "./data.ts";
-import { cacheKey, type DataLayer } from "./datalayer.ts";
+import { cacheKey, DataLayer } from "./datalayer.ts";
 import { metIn, windowsDue, type Rhythm, type Window } from "./expect.ts";
 import { periodStart, shiftPeriod } from "./time.ts";
 import { stableJson } from "./hash.ts";
-import { resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then } from "./spec.ts";
+import { readSpec, resolvePanel, startingValues, type AppSpec, type Panel, type PanelSpec, type Then } from "./spec.ts";
 import { thisValues } from "./sources/this.ts";
-import { basename } from "./store.ts";
+import { basename, dataPathOf, devicesFolder } from "./store.ts";
+import type { GizmoRuntime } from "./runtime.ts";
 import { THIS } from "./template.ts";
 import { sourceOf } from "./views/registry.ts";
 import { panelValue } from "./panel-value.ts";
@@ -297,4 +298,42 @@ export class EditSession {
   changed(): boolean {
     return !!this.before && !!this.last && stableJson(this.before) !== this.last.text;
   }
+}
+
+/** Whether an app has anything a backtest replays: an alert, or an expect rule beyond a value's check (a rhythm or none:). */
+export function watches(spec: AppSpec | undefined): boolean {
+  return !!spec && (spec.panels.some((ps) => ps.panel.alert !== undefined) || spec.expect.some((r) => r.kind !== "value"));
+}
+
+/**
+ * A backtest of an app in the vault as it is now, or of a change to it (`before`: its keys before),
+ * on a replay of what this vault kept: why it can't be run, or the run, which reports its steps.
+ */
+export function backtestApp(
+  rt: GizmoRuntime, path: string, before: Record<string, unknown> | undefined, now: Date,
+): { message: string } | { run(progress: (done: number, total: number) => void, cancelled: () => boolean): Promise<BacktestResult | undefined | Error> } {
+  const read = (fm: Record<string, unknown> | undefined) => readSpec(fm, { path, notes: rt.host.notes, now })?.spec;
+  const after = read(rt.dataLayer.host.frontmatter(path));
+  const was = before && read(before);
+  if (!after) return { message: "The app has a mistake in it now; fix it first." };
+  if (!watches(after) && !watches(was)) return { message: "This app has no alerts and no expect rules (a rhythm or none:) to backtest." };
+  return {
+    run: (progress, cancelled) => {
+      const host = rt.dataLayer.host;
+      // Another device's history may have grown since it was last read.
+      host.responses?.changed?.();
+      const dataPath = dataPathOf(after.store, path, (store, from) => rt.host.storePath(store, from));
+      return backtest({
+        layer: new DataLayer(host, { at: now.getTime(), like: rt.dataLayer }),
+        appPath: path,
+        dataPath,
+        devices: after.split ? devicesFolder(dataPath) : undefined,
+        before: was,
+        after,
+        to: now.getTime(),
+        progress,
+        cancelled,
+      }).catch((e: Error) => e);
+    },
+  };
 }

@@ -211,3 +211,8 @@ function expectedOf(type: string | string[]): string {
     default: return "must be a time like 08:30";
   }
 }
+
+/** The link a phone's shortcut or a launcher opens with a capture line after `line=`. */
+export function captureLinkOf(key: string): string {
+  return `${GIZMO_LINK}?key=${encodeURIComponent(key)}&line=`;
+}
