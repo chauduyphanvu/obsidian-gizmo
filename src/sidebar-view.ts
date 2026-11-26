@@ -2,9 +2,8 @@ import { ItemView, Notice, type WorkspaceLeaf } from "obsidian";
 import { when } from "./activity.ts";
 import { AsksCard } from "./app-asks.ts";
 import { openCapture, openCaptureWith, undoNotice } from "./capture-command.ts";
-import { buildMap } from "./map.ts";
 import type GizmoPlugin from "./main.ts";
-import { sidebarModel, type SidebarModel } from "./sidebar.ts";
+import { onSidebarChange, sidebarNow } from "./sidebar.ts";
 
 export const HOME_VIEW = "gizmo-home";
 
@@ -31,13 +30,7 @@ export class HomeView extends ItemView {
   getIcon(): string { return "layout-dashboard"; }
 
   async onOpen(): Promise<void> {
-    const later = () => this.schedule();
-    this.register(this.plugin.runtime.onGrantsChange(later));
-    this.register(this.plugin.runtime.activity.onChange(later));
-    this.register(this.plugin.runtime.onHeadline(later));
-    const bg = this.plugin.runtime.background;
-    this.register(bg.onIndexChange(later));
-    this.register(bg.asks.subscribe(later));
+    this.register(onSidebarChange(this.plugin.runtime, () => this.schedule()));
     this.registerEvent(this.app.workspace.on("layout-change", () => { if (this.stale && this.shown()) this.schedule(); }));
     void this.draw();
   }
@@ -60,17 +53,9 @@ export class HomeView extends ItemView {
     this.timer = window.setTimeout(() => void this.draw(), 200);
   }
 
-  /** The model as it is now: the map's apps (as the automation map reads them) and Next's asks. */
-  private async model(): Promise<SidebarModel> {
-    const plugin = this.plugin;
-    const activity = await plugin.runtime.activity.list();
-    const map = buildMap(plugin.runtime.background.list(), plugin.runtime.store.grants, plugin.runtime.lenses.lenses(), activity);
-    return sidebarModel(map, plugin.runtime.background.asks.list(), plugin.runtime.headlines);
-  }
-
   private async draw(): Promise<void> {
     const run = ++this.drawing;
-    const model = await this.model();
+    const model = await sidebarNow(this.plugin.runtime);
     if (run !== this.drawing) return;
     this.stale = false;
     const plugin = this.plugin;

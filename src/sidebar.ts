@@ -1,5 +1,6 @@
 import type { Ask } from "./asks.ts";
-import type { AppState, VaultMap } from "./map.ts";
+import { buildMap, type AppState, type VaultMap } from "./map.ts";
+import type { GizmoRuntime } from "./runtime.ts";
 
 /** One app in the Gizmo sidebar: where it stands, how many asks wait on it, and its latest change. */
 export interface SidebarApp {
@@ -44,4 +45,18 @@ export function sidebarModel(map: VaultMap, asks: readonly Ask[], headlines: Rea
     })),
     asks: [...asks],
   };
+}
+
+/** The sidebar as it is now: the map's apps (as the automation map reads them) and Next's asks. */
+export async function sidebarNow(rt: GizmoRuntime): Promise<SidebarModel> {
+  const activity = await rt.activity.list();
+  const map = buildMap(rt.background.list(), rt.store.grants, rt.lenses.lenses(), activity);
+  return sidebarModel(map, rt.background.asks.list(), rt.headlines);
+}
+
+/** Calls `cb` whenever what the sidebar shows may have changed; returns what stops it. */
+export function onSidebarChange(rt: GizmoRuntime, cb: () => void): () => void {
+  const bg = rt.background;
+  const stops = [rt.onGrantsChange(cb), rt.activity.onChange(cb), rt.onHeadline(cb), bg.onIndexChange(cb), bg.asks.subscribe(cb)];
+  return () => { for (const stop of stops) stop(); };
 }
