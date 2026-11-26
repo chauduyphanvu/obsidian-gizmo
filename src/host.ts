@@ -1,11 +1,10 @@
-import { ledgerStore, type DataStore } from "./datastore.ts";
 import {
   Notice, TFile, getAllTags, getLinkpath, normalizePath, parseYaml, requestUrl, stringifyYaml, type App, type WorkspaceLeaf,
 } from "obsidian";
 import { bodyOf } from "./actions.ts";
 import type { LogStore } from "./activity.ts";
 import type { AppEnv } from "./app.ts";
-import type { AppAsks } from "./app-asks.ts";
+import { runtimeAppEnv } from "./app-env.ts";
 import { openCaptureWith } from "./capture-command.ts";
 import { DEVICE_FOLDERS, deviceFile, type PluginFiles } from "./device.ts";
 import { withPanels } from "./insert.ts";
@@ -237,38 +236,16 @@ export function obsidianWrites(app: App): VaultWrites {
   return w;
 }
 
-/** Where an app's lists are kept: the ledger, when the vault's data layer keeps one. */
-export function vaultStore(plugin: GizmoPlugin): ((dataPath: string, appPath: string) => DataStore) | undefined {
-  const ledger = plugin.runtime.dataLayer.ledger;
-  const fm = vaultFrontmatter(plugin.app);
-  return ledger && ((dataPath, appPath) => ledgerStore(ledger, dataPath, () => fm(appPath) ?? {}));
-}
-
 /** Without a leaf (an embed, a lens) there is no app tab to show the source in. */
 export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefined, file: TFile): AppEnv {
   const app = plugin.app;
-  return {
-    data: plugin.runtime.dataLayer,
-    frontmatter: vaultFrontmatter(app),
-    notes: vaultNotes(app),
-    isGranted: (path, wanted, asked) => plugin.runtime.isGranted(path, wanted, false, asked),
-    granted: (path) => plugin.runtime.granted(path),
-    grant: (path, wanted) => plugin.runtime.grant(path, wanted),
-    verdict: (spec, wanted, where) => plugin.runtime.verdict(spec, wanted, where),
-    policyPending: () => plugin.runtime.policyPending(),
-    storePath: vaultStorePath(app),
-    writeFrontmatter: (path, fn) => obsidianWrites(app).writeFrontmatter(path, fn),
-    store: vaultStore(plugin),
-    updateFrontmatter: (path, fn) => obsidianWrites(app).updateFrontmatter(path, fn),
-    appendLine: (path, line) => obsidianWrites(app).appendLine(path, line),
-    createNote: (path, frontmatter, body) => obsidianWrites(app).createNote(path, frontmatter, body),
+  return runtimeAppEnv(plugin.runtime, {
     async readBody(path) {
       const target = storeTarget(path);
       const f = app.metadataCache.getFirstLinkpathDest(target, file.path) ?? app.vault.getFileByPath(notePath(normalizePath(target)));
       if (!f) throw new Error(`can't find [[${target}]]`);
       return bodyOf(await app.vault.cachedRead(f));
     },
-    setTaskDone: (path, line, text, done) => obsidianWrites(app).setTaskDone(path, line, text, done),
     notify: (message) => { new Notice(message); },
     // openLinkText creates a note when nothing matches, and the text may come from a row or a link.
     openNote(path, fromPath) {
@@ -280,49 +257,22 @@ export function obsidianAppEnv(plugin: GizmoPlugin, leaf: WorkspaceLeaf | undefi
     showSource: () => { if (leaf) void plugin.editSource(leaf, file); },
     showSourceAt: (line, ch) => { if (leaf) void plugin.showSourceAt(leaf, file, line, ch); },
     sourceLines: async () => (await app.vault.cachedRead(file)).split(/\r?\n/),
-    // An edit of the app note the person asks for, as Insert panel is; saving data never edits it.
-    ...(leaf && {
-      async addPanels(panels: string[][]) {
-        let out: { cursor: { line: number; ch: number } } | { refusal: string } = { refusal: "Couldn't read the note" };
-        await app.vault.process(file, (text) => {
-          const found = withPanels(text, panels);
-          if ("refusal" in found) {
-            out = found;
-            return text;
-          }
-          out = { cursor: found.cursor };
-          return found.text;
-        });
-        return out;
-      },
+    addPanels: leaf && (async (panels: string[][]) => {
+      let out: { cursor: { line: number; ch: number } } | { refusal: string } = { refusal: "Couldn't read the note" };
+      await app.vault.process(file, (text) => {
+        const found = withPanels(text, panels);
+        if ("refusal" in found) {
+          out = found;
+          return text;
+        }
+        out = { cursor: found.cursor };
+        return found.text;
+      });
+      return out;
     }),
     copy: (text) => copyText(text),
-    log: (entry) => plugin.runtime.activity.add(entry),
-    undo: (id) => plugin.runtime.undoById(id),
-    trigger: async (from, then, ctx) => plugin.runtime.background.runThen(from, then, ctx),
-    now: () => new Date(),
-    opened: (path) => plugin.runtime.background.opened(path),
-    alerts: plugin.runtime.background.alerts,
-    asks: appAsks(plugin),
-    headline: (path, text) => plugin.runtime.setHeadline(path, text),
     tryFirst: () => void tryVaultApp(plugin, file.path),
     explain: (src) => new ExplainModal(app, src).open(),
-    definitions: plugin.runtime.definitions,
-    deviceName: (id) => (id === plugin.runtime.device.id ? plugin.runtime.device.name : plugin.runtime.beat.beats.find((b) => b.id === id)?.name),
-    leftAlone: (key) => plugin.runtime.leftAlone(key),
-    leaveAlone: (key) => plugin.runtime.leaveAlone(key),
-  };
-}
-
-/** What the person is asked, and how an app's tab answers, through the background service. */
-function appAsks(plugin: GizmoPlugin): AppAsks {
-  const bg = plugin.runtime.background;
-  return {
-    list: () => bg.asks.list(),
-    subscribe: (cb) => bg.asks.subscribe(cb),
-    settle: (ask, how) => bg.settleAsk(ask, how),
-    skip: async (id) => bg.skipAsk(id),
-    run: (line) => bg.capture(line, undefined, true),
     fill: (line, cursor) => openCaptureWith(plugin, line, cursor),
-  };
+  });
 }

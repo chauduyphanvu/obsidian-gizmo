@@ -7,10 +7,9 @@
  * test/live/parity.mjs checks all of this against a real Obsidian.
  */
 import { existsSync, promises as fs, statSync, watch, type FSWatcher } from "node:fs";
-import { dirname, join, posix, relative, sep } from "node:path";
-import { parse, stringify } from "yaml";
+import { dirname, join, relative, sep } from "node:path";
 import type { FileInfo } from "../../src/datalayer.ts";
-import { fenceStep } from "../../src/fences.ts";
+import { noteTags, readFrontmatter, resolveLink, splitNote, withFrontmatter } from "../../src/note-text.ts";
 import { vaultPath } from "../../src/store.ts";
 
 export interface VaultFile {
@@ -26,79 +25,6 @@ const isNote = (path: string) => path.endsWith(".md");
 /** A vault path as Obsidian keeps one: inside the vault, slashes tidied, NFC. */
 export function nodePath(path: string): string | undefined {
   return vaultPath(path)?.normalize("NFC");
-}
-
-/** Where a note's frontmatter YAML sits (from after its opening line to its closing line), and where the block ends. */
-function frontmatterSpan(text: string): { from: number; to: number; end: number } | undefined {
-  const open = /^---\r?\n/.exec(text);
-  if (!open) return undefined;
-  const close = /^---[ \t]*(?:\r?\n|$)/gm;
-  close.lastIndex = open[0].length;
-  const m = close.exec(text);
-  return m ? { from: open[0].length, to: m.index, end: m.index + m[0].length } : undefined;
-}
-
-/** A note's frontmatter block and the text after it; no block when the note doesn't start with one. */
-export function splitNote(text: string): { yaml?: string; body: string } {
-  const m = /^---\r?\n([\s\S]*?)(?:\r?\n)?^---[ \t]*(?:\r?\n|$)/m.exec(text);
-  if (!m || m.index !== 0) return { body: text };
-  return { yaml: m[1], body: text.slice(m[0].length) };
-}
-
-/** YAML as Obsidian reads frontmatter: a map, or nothing at all when any of it can't be read. */
-export function readFrontmatter(yaml: string | undefined): Record<string, unknown> | undefined {
-  if (yaml === undefined || !yaml.trim()) return undefined;
-  try {
-    const v = parse(yaml) as unknown;
-    return v && typeof v === "object" && !Array.isArray(v) ? (v as Record<string, unknown>) : undefined;
-  } catch {
-    return undefined;
-  }
-}
-
-export function yamlText(fm: Record<string, unknown>): string {
-  return stringify(fm, { lineWidth: 0 });
-}
-
-/** A tag as Obsidian takes one: letters, digits, _, / and -, not all digits. */
-const isTag = (t: string) => /^[\p{L}\p{N}_/-]+$/u.test(t) && /[^\d]/.test(t);
-
-/** The tags `tags:` gives, as Obsidian reads them: each of a list, or one string as one tag; anything else isn't a tag. */
-function frontmatterTags(fm: Record<string, unknown> | undefined): string[] {
-  const raw = fm?.tags;
-  const list = Array.isArray(raw) ? raw.map(String) : typeof raw === "string" ? [raw] : [];
-  return list.map((t) => t.trim().replace(/^#/, "")).filter(isTag).map((t) => `#${t}`);
-}
-
-/**
- * Inline #tags in a note's body, outside code blocks, inline code and HTML comments; a tag isn't all
- * digits. Tags in `%% %%` comments count, as Obsidian counts them.
- */
-export function inlineTags(body: string): string[] {
-  const out: string[] = [];
-  let fence: string | undefined;
-  let comment = false;
-  for (const raw of body.split("\n")) {
-    let line = raw.replace(/\r$/, "");
-    if (comment) {
-      const end = line.indexOf("-->");
-      if (end < 0) continue;
-      comment = false;
-      line = line.slice(end + 3);
-    } else {
-      const step = fenceStep(fence, line);
-      fence = step.open;
-      if (step.code) continue;
-    }
-    let plain = line.replace(/`[^`]*`/g, " ").replace(/<!--[\s\S]*?-->/g, " ");
-    const opened = plain.indexOf("<!--");
-    if (opened >= 0) {
-      comment = true;
-      plain = plain.slice(0, opened);
-    }
-    for (const m of plain.matchAll(/(?:^|\s)#([\p{L}\p{N}_/-]+)/gu)) if (/[^\d]/.test(m[1])) out.push(`#${m[1]}`);
-  }
-  return out;
 }
 
 export class NodeVault {
@@ -206,7 +132,7 @@ export class NodeVault {
     const text = (await fs.readFile(this.abs(path), "utf8").catch(() => "")).replace(/^\uFEFF/, "");
     const { yaml, body } = splitNote(text);
     const fm = readFrontmatter(yaml);
-    this.files.set(path, { info, fm, tags: [...new Set([...frontmatterTags(fm), ...inlineTags(body)])] });
+    this.files.set(path, { info, fm, tags: noteTags(fm, body) });
     return true;
   }
 
@@ -229,27 +155,7 @@ export class NodeVault {
    * link, case aside; of several, the one in `from`'s folder, else the shortest path.
    */
   resolve(link: string, from: string): string | undefined {
-    const target = link.split("#")[0].split("|")[0].trim().normalize("NFC");
-    if (!target) return undefined;
-    // A path is a path whatever its case, and wins over a note of that name nearer the link.
-    const lower = target.toLowerCase();
-    const exact = [...this.files.keys()].find((p) => p.toLowerCase() === lower || p.toLowerCase() === `${lower}.md`);
-    if (exact) return exact;
-    const fromDir = from.includes("/") ? from.slice(0, from.lastIndexOf("/")) : "";
-    if (target.startsWith("./") || target.startsWith("../")) {
-      // Case aside, as for any other path; one that leaves the vault finds nothing.
-      const joined = posix.normalize(posix.join(fromDir || ".", target)).toLowerCase();
-      const found = [...this.files.keys()].find((p) => p.toLowerCase() === joined || p.toLowerCase() === `${joined}.md`);
-      if (found) return found;
-    }
-    const want = target.toLowerCase();
-    const candidates = [...this.files.keys()].filter((p) => {
-      const lower = p.toLowerCase();
-      return [want, `${want}.md`].some((w) => lower === w || lower.endsWith(`/${w}`));
-    });
-    if (!candidates.length) return undefined;
-    const here = candidates.find((p) => (p.includes("/") ? p.slice(0, p.lastIndexOf("/")) : "") === fromDir);
-    return here ?? candidates.sort((a, b) => a.length - b.length || (a < b ? -1 : 1))[0];
+    return resolveLink(this.files.keys(), link, from);
   }
 
   /** A file's size in bytes, without reading it; undefined when there's none. */
@@ -310,16 +216,7 @@ export class NodeVault {
   async process(path: string, fn: (fm: Record<string, unknown>) => void): Promise<void> {
     for (let attempt = 0; ; attempt++) {
       const before = existsSync(this.abs(path)) ? await fs.readFile(this.abs(path), "utf8") : "";
-      const span = frontmatterSpan(before);
-      const yaml = span && before.slice(span.from, span.to);
-      const fm = yaml === undefined ? {} : readFrontmatter(yaml) ?? (yaml.trim() ? undefined : {});
-      if (!fm) throw new Error(`${path} has frontmatter that isn't YAML`);
-      fn(fm);
-      // Only the YAML is replaced, the block's own lines kept as they were; a block left empty goes.
-      const empty = Object.keys(fm).length === 0;
-      const text = !span ? (empty ? before : `---\n${yamlText(fm)}---\n${before}`)
-        : empty ? before.slice(span.end)
-        : before.slice(0, span.from) + yamlText(fm) + before.slice(span.to);
+      const text = withFrontmatter(before, fn, path);
       const now = existsSync(this.abs(path)) ? await fs.readFile(this.abs(path), "utf8") : "";
       if (now !== before && attempt < 3) continue;
       await this.write(path, text);

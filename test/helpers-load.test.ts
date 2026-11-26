@@ -6,7 +6,7 @@ import { test } from "node:test";
  * nothing standing in for Obsidian: had any of these reached "obsidian", the import would fail.
  */
 const HELPERS = [
-  "install", "try", "kind-make", "share-setup", "ask", "backtest", "activity", "activity-list", "capture-run", "links", "runtime",
+  "install", "try", "kind-make", "share-setup", "ask", "backtest", "activity", "activity-list", "capture-run", "links", "runtime", "app-env", "note-text",
 ];
 
 test("the commands' helpers load without Obsidian", async () => {

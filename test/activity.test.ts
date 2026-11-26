@@ -312,8 +312,8 @@ test("History on any host: each entry's undo state from the log and the ledger, 
   const { drawActivity } = await import("../src/activity-list.ts");
   const { undoButton } = await import("../src/activity.ts");
   const t = await runtimeOn({ "Books/Emma.md": { fm: { status: "read" }, body: "" } });
-  const id = await t.runtime.activity.add({ app: "Apps/Books.md", actor: "you", what: "Mark read", changes: [{ kind: "property", path: "Books/Emma.md", field: "status", from: undefined, to: "read", had: false }] });
-  assert.ok(id);
+  const logged = await t.runtime.activity.add({ app: "Apps/Books.md", actor: "you", what: "Mark read", changes: [{ kind: "property", path: "Books/Emma.md", field: "status", from: undefined, to: "read", had: false }] });
+  assert.ok(logged);
   const [shown] = await t.runtime.activityShown("Apps/Books.md");
   assert.equal(undoButton(shown), "Undo");
   assert.equal(undoButton({ ...shown, changes: [] }), "none", "nothing to undo");

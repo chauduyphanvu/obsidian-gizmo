@@ -20,7 +20,8 @@ import { GizmoRuntime } from "../../src/runtime.ts";
 import { urlHost } from "../../src/sources/url.ts";
 import { notePath, storeTarget } from "../../src/store.ts";
 import type { SettingsSource, StoredData } from "../../src/stored.ts";
-import { nodePath, NodeVault, yamlText } from "./vault.ts";
+import { nodePath, NodeVault } from "./vault.ts";
+import { yamlText } from "../../src/note-text.ts";
 import { gizmodSecrets, KeychainSecrets } from "./secrets.ts";
 import { vaultWrites } from "../../src/vault-ops.ts";
 

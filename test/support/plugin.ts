@@ -116,7 +116,7 @@ export function workspace(notes: Notes, index: (text: string) => Record<string, 
   };
   const plugin = new GizmoPlugin(app as never, { id: "gizmo", dir: ".obsidian/plugins/gizmo" } as never);
   // What the env reads of the plugin's runtime when it is made; nothing these tests drive uses it.
-  (plugin as unknown as { runtime: unknown }).runtime = { dataLayer: { ledger: undefined }, background: {} };
+  (plugin as unknown as { runtime: unknown }).runtime = { dataLayer: { ledger: undefined }, background: {}, host: {} };
   /** A tab showing a note: as the app, or as text in a mode. */
   const open = async (path: string, type: "gizmo" | "markdown", root: unknown = rootSplit, state: Record<string, unknown> = {}) => {
     const leaf = new Leaf(root);

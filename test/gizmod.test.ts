@@ -9,7 +9,8 @@ import { ANSWER_MS, AnswerTokens, adminToken, deviceOf, ownHost, plist, runScrip
 import { gizmodEnv, pushText } from "../scripts/gizmod/host.ts";
 import { KeychainSecrets, gizmodSecrets, passwordOf, secretFromEnv, type Security } from "../scripts/gizmod/secrets.ts";
 import { identityText, kindKeys, newIdentity } from "../src/share-crypto.ts";
-import { NodeVault, inlineTags, nodePath, splitNote } from "../scripts/gizmod/vault.ts";
+import { NodeVault, nodePath } from "../scripts/gizmod/vault.ts";
+import { inlineTags, splitNote } from "../src/note-text.ts";
 import { permissionsOf } from "../src/permissions.ts";
 import { readSpec } from "../src/spec.ts";
 import { PRIORITY, readBeat, runnerOf } from "../src/device.ts";
