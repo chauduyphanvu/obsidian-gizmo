@@ -5,7 +5,7 @@ import { tmpdir } from "node:os";
 import { basename, join, resolve } from "node:path";
 import { after, test } from "node:test";
 import { stringify } from "yaml";
-import { ANSWER_MS, AnswerTokens, adminToken, deviceOf, ownHost, plist, runScript, serve } from "../scripts/gizmod/gizmod.ts";
+import { ANSWER_MS, AnswerTokens, adminToken, deviceOf, ownHost, plist, runScript, serve, type ExtraRoute, type ServeOptions } from "../scripts/gizmod/gizmod.ts";
 import { gizmodEnv, pushText } from "../scripts/gizmod/host.ts";
 import { KeychainSecrets, gizmodSecrets, passwordOf, secretFromEnv, type Security } from "../scripts/gizmod/secrets.ts";
 import { identityText, kindKeys, newIdentity } from "../src/share-crypto.ts";
@@ -219,7 +219,7 @@ const LINK_KEY = "k".repeat(32);
 const CAPTURE_KEY = "c".repeat(32);
 
 /** A vault with Inbox allowed in Obsidian, its link keys and a capture key in data.json, and gizmod serving it without listening. */
-async function served(settings: Record<string, unknown> = {}, inbox: Record<string, unknown> = INBOX) {
+async function served(settings: Record<string, unknown> = {}, inbox: Record<string, unknown> = INBOX, extra: Pick<ServeOptions, "pages" | "routes"> = {}) {
   const wanted = permissionsOf(readSpec(inbox, { path: "Apps/Inbox.md" })!.spec!, "Apps/Inbox.md");
   const root = vaultDir({
     "Apps/Inbox.md": { fm: inbox },
@@ -233,13 +233,13 @@ async function served(settings: Record<string, unknown> = {}, inbox: Record<stri
   const home = mkdtempSync(join(tmpdir(), "gizmod-home-"));
   made.push(home);
   const lines: string[] = [];
-  const s = await serve({ vault: root, home, listen: false, log: (l) => lines.push(l) });
+  const s = await serve({ vault: root, home, listen: false, log: (l) => lines.push(l), ...extra });
   const token = await adminToken(home);
   /** One request, as the server would hand it over. */
-  const ask = async (method: string, url: string, opts: { auth?: string; body?: unknown; from?: string } = {}) => {
+  const ask = async (method: string, url: string, opts: { auth?: string; body?: unknown; from?: string; host?: string } = {}) => {
     const text = opts.body === undefined ? "" : JSON.stringify(opts.body);
     const req = {
-      method, url, headers: opts.auth ? { authorization: `Bearer ${opts.auth}` } : {}, socket: { remoteAddress: opts.from ?? "127.0.0.1" },
+      method, url, headers: { ...(opts.auth && { authorization: `Bearer ${opts.auth}` }), ...(opts.host && { host: opts.host }) }, socket: { remoteAddress: opts.from ?? "127.0.0.1" },
       async *[Symbol.asyncIterator]() { if (text) yield Buffer.from(text); },
     } as unknown as IncomingMessage;
     let status = 0;
@@ -853,4 +853,25 @@ test("what the commands' helpers ask of gizmod: new notes at the root, a raw cre
   host.secrets!.set("chore-key", "gzk1.value");
   assert.equal(kept.get("chore-key"), "gzk1.value", "kept in the Keychain");
   assert.equal(host.secrets!.get("chore-key"), "gzk1.value");
+});
+
+test("a program built on gizmod adds its own answers: pages to anyone at gizmod's address, routes to this computer's own user only", async () => {
+  const reply = (body: unknown): ExtraRoute => async (_req, res, url) => {
+    if (!url.pathname.startsWith("/app")) return false;
+    res.writeHead(200, { "content-type": "application/json" });
+    res.end(JSON.stringify(body));
+    return true;
+  };
+  const t = await served({}, INBOX, { pages: reply({ page: true }), routes: reply({ route: true }) });
+  try {
+    assert.deepEqual(await t.ask("GET", "/app/index.html"), { status: 200, body: { page: true } }, "a page needs no key");
+    assert.equal((await t.ask("GET", "/app/index.html", { host: "evil.example.com" })).status, 403, "past the host check only");
+    assert.deepEqual(await t.ask("POST", "/app/api", { auth: t.token }), { status: 200, body: { route: true } });
+    assert.equal((await t.ask("POST", "/app/api")).status, 401);
+    assert.equal((await t.ask("POST", "/app/api", { auth: LINK_KEY })).status, 404, "a link key reaches no route");
+    assert.equal((await t.ask("POST", "/app/api", { auth: t.token, from: "100.64.0.9" })).status, 404, "nor the token from another computer");
+    assert.equal((await t.ask("GET", "/status", { auth: t.token })).status, 200, "gizmod's own answers come first");
+  } finally {
+    await t.s.close();
+  }
 });

@@ -242,6 +242,9 @@ export interface Served {
   close(): Promise<void>;
 }
 
+/** A request a program built on gizmod answers itself: true when it did. */
+export type ExtraRoute = (req: IncomingMessage, res: ServerResponse, url: URL) => Promise<boolean>;
+
 export interface ServeOptions {
   vault: string;
   port?: number;
@@ -259,6 +262,10 @@ export interface ServeOptions {
   /** Listen at all; tests may call `handle` instead. */
   listen?: boolean;
   log?: (line: string) => void;
+  /** GETs answered before any key is asked for, past the host check: a page and its files, which hold nothing secret. */
+  pages?: ExtraRoute;
+  /** Requests answered for this computer's own user only: the admin token, from this computer. gizmod's own come first. */
+  routes?: ExtraRoute;
 }
 
 export async function serve(opts: ServeOptions): Promise<Served> {
@@ -310,6 +317,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       if (!ownHost(req.headers.host, [...servers.keys()], port)) throw new HttpError(403, "gizmod answers only at its own address: 127.0.0.1, or this computer's Tailscale address or name");
       const url = new URL(req.url ?? "/", "http://gizmod");
       const parts = url.pathname.split("/").filter(Boolean).map(decodeURIComponent);
+      if (req.method === "GET" && opts.pages && (await opts.pages(req, res, url))) return;
       if (req.method === "POST" && parts[0] === "answer" && parts.length === 2) {
         // A pushed button: its token is all it carries, good once for the shortcut it was made for,
         // while that app may run and the window it answers still waits.
@@ -377,8 +385,11 @@ export async function serve(opts: ServeOptions): Promise<Served> {
         const r = await bg.runFrom(path, shortcut, { params: parsed.params, captureKeyed: true });
         return reply(statusOf(r), { ok: r.ok, error: r.error, entryId: r.entryId });
       }
+      if (trusted && opts.routes && (await opts.routes(req, res, url))) return;
       throw new HttpError(404, "no such request: POST /run/<app>/<shortcut>, GET /get/<app>/<shortcut>, POST /do, POST /dry/<app>/<shortcut>, GET /status");
     } catch (e) {
+      // A route that began its answer and then failed can only end it.
+      if (res.headersSent) return void res.end();
       const status = e instanceof HttpError ? e.status : 500;
       reply(status, { ok: false, error: (e as Error).message });
     }
