@@ -855,6 +855,18 @@ test("what the commands' helpers ask of gizmod: new notes at the root, a raw cre
   assert.equal(host.secrets!.get("chore-key"), "gzk1.value");
 });
 
+test("the vault lists every file it holds: notes with their frontmatter and tags, and the rest", async () => {
+  const root = vaultDir({ "Apps/Inbox.md": { fm: INBOX, body: "#todo\n" }, "Trips/Tokyo.ics": "BEGIN:VCALENDAR\n", ".hidden/x.md": "no" });
+  const v = new NodeVault(root);
+  await v.scan();
+  const all = Object.fromEntries(v.all().map((f) => [f.info.path, f]));
+  assert.deepEqual(Object.keys(all).sort(), ["Apps/Inbox.md", "Trips/Tokyo.ics"]);
+  assert.equal((all["Apps/Inbox.md"].fm as { app: string }).app, "Inbox");
+  assert.deepEqual(all["Apps/Inbox.md"].tags, ["#todo"]);
+  assert.equal(all["Trips/Tokyo.ics"].fm, undefined);
+  v.close();
+});
+
 test("a program built on gizmod adds its own answers: pages to anyone at gizmod's address, routes to this computer's own user only", async () => {
   const reply = (body: unknown): ExtraRoute => async (_req, res, url) => {
     if (!url.pathname.startsWith("/app")) return false;

@@ -144,6 +144,11 @@ export class NodeVault {
     return [...this.files.values()].filter((f) => isNote(f.info.path)).map((f) => f.info);
   }
 
+  /** Every file it holds, notes and the rest, as it read them. */
+  all(): VaultFile[] {
+    return [...this.files.values()];
+  }
+
   /** The files directly in a folder, of any kind. */
   filesIn(folder: string): string[] {
     return [...this.files.keys()].filter((p) => p.startsWith(`${folder}/`) && !p.slice(folder.length + 1).includes("/"));
