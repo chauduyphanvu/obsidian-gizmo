@@ -11,10 +11,10 @@ import type { Op } from "../src/ledger.ts";
 import { buildMap } from "../src/map.ts";
 import { pastEnv } from "../src/replay.ts";
 import { fakeBackground, fakeEnv } from "./support/fakes.ts";
-// Loaded for its "obsidian" stand-in, which the map's view and Obsidian's host take their classes from.
+import { MapPane } from "../src/map-pane.ts";
+// Loaded for its "obsidian" stand-in, which Obsidian's host takes its classes from.
 import "./support/plugin.ts";
 
-const { MapView } = await import("../src/map-view.ts");
 const { obsidianHost } = await import("../src/host.ts");
 
 // Say why it didn't run: each dead end gives its reason where the person is looking, and a next step
@@ -182,19 +182,19 @@ test("the map says an app you revoked is not allowed because you revoked it, and
   const states = Object.fromEntries(buildMap(apps, grants, [], activity).apps.map((a) => [a.name, a.state]));
   assert.deepEqual(states, { Inbox: "allowed", Meds: "revoked", Projects: "not-opened" });
 
-  const plugin = {
-    runtime: {
-      background: { list: () => apps },
-      activity: { list: async () => activity },
-      store: { grants },
-      lenses: { lenses: () => [] },
-      policyPending: () => false,
-    },
+  const off = () => () => {};
+  const rt = {
+    background: { list: () => apps, onIndexChange: off },
+    activity: { list: async () => activity, onChange: off },
+    store: { grants },
+    lenses: { lenses: () => [] },
+    policyPending: () => false,
+    onGrantsChange: off,
   };
-  const view = new MapView({} as never, plugin as never);
   const el = document.body.createDiv();
-  Object.assign(view, { contentEl: el });
-  await (view as unknown as { draw(): Promise<void> }).draw();
+  const pane = new MapPane(el, { rt: rt as never, notify: () => {}, open: () => {}, activity: () => {}, dryRun: () => {}, policy: () => {} });
+  await settle();
+  pane.stop();
   assert.equal(text(el.querySelector(".gz-map-summary")), "3 apps: 1 allowed, 1 never opened, 1 revoked");
   const card = (name: string) => [...el.querySelectorAll(".gz-map-app")].find((c) => text(c.querySelector(".gz-title")) === name)!;
   const head = (name: string) => [text(card(name).querySelector(".gz-map-state")), [...card(name).querySelectorAll(".gz-map-app-head button")].map(text)];
