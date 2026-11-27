@@ -8,6 +8,7 @@ import { rowId } from "./ledger.ts";
 import { basename } from "./store.ts";
 import { parseICS } from "./sources/ics.ts";
 import { stampFrom } from "./time.ts";
+import type { GizmoRuntime } from "./runtime.ts";
 
 /**
  * One way to read a file of rows into a kind, named under its `import:`: for each field, the
@@ -242,4 +243,36 @@ export function importedText(r: Imported, kind: string, file: string): string {
     ...(r.skipped.length ? [`${rows(r.skipped.length)} skipped (${r.skipped[0]}${r.skipped.length > 1 ? ", …" : ""})`] : []),
   ];
   return parts.join("; ");
+}
+
+/** What's said when no kind can import, or no file of the vault can be imported. */
+export const NO_IMPORT_WAYS = "No kind has a way to import yet: give a kind note an import: map, e.g. import: {bank: {at: Date, amount: Amount}}";
+export const NO_IMPORT_FILES = "No .csv, .json or .ics file in this vault to import";
+
+/** One way to import: a kind and one of its maps, and the folder that map names, if any. */
+export interface ImportWay {
+  kind: string;
+  name: string;
+  map: string;
+  folder?: string;
+}
+
+/** Every kind's maps under `import:`, as the background service reads them. */
+export function importWays(rt: GizmoRuntime): ImportWay[] {
+  return rt.background.list().flatMap(({ path, name }) => (rt.background.spec(path)?.kind?.imports ?? [])
+    .map((m) => ({ kind: path, name, map: m.name, ...(m.folder !== undefined && { folder: m.folder }) })));
+}
+
+/** The files of `paths` a map can read, those in its folder first. */
+export function importFiles(paths: string[], way: ImportWay): string[] {
+  const all = paths.filter(importable);
+  const inFolder = (p: string) => way.folder !== undefined && p.startsWith(`${way.folder}/`);
+  return [...all.filter(inFolder).sort(), ...all.filter((p) => !inFolder(p)).sort()];
+}
+
+/** Reads a file into a kind under one of its maps: what to tell of it, and the activity entry an Undo takes back. */
+export async function importNow(rt: GizmoRuntime, way: ImportWay, path: string): Promise<{ text: string; entry?: string }> {
+  const r = await rt.background.importFile(way.kind, way.map, path, "you");
+  if ("error" in r) return { text: `Couldn't import ${basename(path)}: ${r.error}` };
+  return { text: importedText(r, way.name, basename(path)), ...(r.entry && { entry: r.entry }) };
 }

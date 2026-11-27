@@ -1,8 +1,8 @@
 import { PluginSettingTab, Setting, type App, type SettingDefinitionItem } from "obsidian";
-import { when } from "./activity.ts";
-import { PRIORITY, saveDevice } from "./device.ts";
+import { saveDevice } from "./device.ts";
 import type GizmoPlugin from "./main.ts";
 import { openMap } from "./map-view.ts";
+import { devicesNow } from "./settings-model.ts";
 
 const NAME_DESC = "What other devices call this one.";
 const MAP_DESC = "Every app in this vault: what it may do, what makes it act, and Revoke.";
@@ -15,18 +15,8 @@ export class GizmoSettings extends PluginSettingTab {
     this.plugin = plugin;
   }
 
-  /** Where background work runs, and the other devices with when each was last open. */
-  private devices(): { background: string; others: { name: string; desc: string }[] } {
-    const { device, beat } = this.plugin.runtime;
-    // One device runs records and alerts' thens: the one most suited to it that is open, chosen by every device alike.
-    const runner = beat.runner;
-    const background = !runner || runner.id === device.id
-      ? "Runs on this device: records, and the thens alerts run. Shortcuts, links, pins and alert notices work on every device."
-      : `Runs on ${runner.name}${runner.priority === PRIORITY.gizmod ? " (gizmod)" : ""}, last heard from ${when(runner.seen, new Date())}. This device takes it over if that one isn't heard from for 20 minutes.`;
-    const now = new Date();
-    const others = beat.beats.filter((s) => s.id !== device.id).sort((a, b) => b.seen - a.seen)
-      .map((s) => ({ name: s.name, desc: `${s.id === runner?.id ? "Runs background work" : "Doesn't run background work"} · last open ${when(s.seen, now)}` }));
-    return { background, others };
+  private devices(): ReturnType<typeof devicesNow> {
+    return devicesNow(this.plugin.runtime, new Date());
   }
 
   private rename(value: string): void {
