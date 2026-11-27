@@ -1,8 +1,8 @@
 import { Modal, type App, type TFolder } from "obsidian";
 import { drawExamples, type ExampleActs, type ExamplePlan } from "./examples-view.ts";
-import { carriedOps } from "./kind-convert.ts";
+import { makeFromLines } from "./examples-make.ts";
 import type GizmoPlugin from "./main.ts";
-import { defaultDataPath, isKind } from "./store.ts";
+import { isKind } from "./store.ts";
 import { VIEW_TYPE } from "./view.ts";
 
 class ExamplesModal extends Modal {
@@ -29,30 +29,12 @@ class ExamplesModal extends Modal {
   }
 }
 
-/**
- * Makes what the window showed: the kind note, its rows as events written now (each row keeps the
- * day its line gave), then the app note, which opens. The kind and its rows come first, so a
- * failure after them loses nothing.
- */
+/** Makes what the window showed (see makeFromLines), then opens the app. */
 async function make(plugin: GizmoPlugin, folder: TFolder, plan: ExamplePlan): Promise<string | undefined> {
-  const { app } = plugin;
-  const at = (note: string) => (folder.isRoot() ? `${note}.md` : `${folder.path}/${note}.md`);
-  try {
-    const kindPath = at(plan.kindNote);
-    await app.vault.create(kindPath, plan.kindText);
-    const ledger = plugin.runtime.dataLayer.ledger;
-    if (ledger) {
-      const data = defaultDataPath(kindPath);
-      plugin.runtime.dataLayer.noteApp(data, kindPath);
-      await ledger.write(data, carriedOps(plan.kind, plan.rows, () => ledger.newRowId()));
-      await plugin.runtime.dataLayer.snapshotNow(data, false).catch(() => undefined);
-    }
-    const file = await app.vault.create(at(plan.appNote), plan.appText);
-    await app.workspace.getLeaf("tab").setViewState({ type: VIEW_TYPE, state: { file: file.path }, active: true });
-    return undefined;
-  } catch (e) {
-    return `Couldn't make the notes: ${(e as Error).message}`;
-  }
+  const made = await makeFromLines(plugin.runtime, folder.isRoot() ? "" : folder.path, plan);
+  if ("error" in made) return made.error;
+  await plugin.app.workspace.getLeaf("tab").setViewState({ type: VIEW_TYPE, state: { file: made.path }, active: true });
+  return undefined;
 }
 
 /** "New app from lines…": lines a person already has become a kind, its rows and an app, shown as keys before anything is made. */

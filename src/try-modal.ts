@@ -1,16 +1,12 @@
 import { Modal, parseYaml } from "obsidian";
-import { handler } from "./handler.ts";
-import { AppController } from "./app.ts";
 import type { BundleNote } from "./bundle.ts";
 import { copyText } from "./clipboard.ts";
 import type GizmoPlugin from "./main.ts";
-import { makeSandbox, plainHosts, type Sandbox, type SandboxNote } from "./sandbox.ts";
-import { bundleTry, leftOut, vaultTry } from "./try.ts";
+import type { SandboxNote } from "./sandbox.ts";
+import { drawTry, tryTitle } from "./try-pane.ts";
+import { bundleTry, vaultTry } from "./try.ts";
 
-/**
- * The real app on copies of its own notes, before anything is allowed (see makeSandbox): it can
- * be used, what it does is listed as it happens, and closing the window drops all of it.
- */
+/** A try in a window of its own (see drawTry). */
 class TryModal extends Modal {
   private plugin: GizmoPlugin;
   private name: string;
@@ -18,8 +14,7 @@ class TryModal extends Modal {
   private notes: Map<string, SandboxNote>;
   private wanted: string[];
   private done: { label: string; run: () => void | Promise<void> } | undefined;
-  private controller: AppController | undefined;
-  private box: Sandbox | undefined;
+  private stop: (() => void) | undefined;
 
   constructor(plugin: GizmoPlugin, name: string, appPath: string, notes: Map<string, SandboxNote>, wanted: string[], done?: { label: string; run: () => void | Promise<void> }) {
     super(plugin.app);
@@ -33,63 +28,17 @@ class TryModal extends Modal {
 
   onOpen(): void {
     this.modalEl.addClass("gz-try-modal");
-    this.titleEl.setText(`Try ${this.name}`);
-    const el = this.contentEl.createDiv({ cls: "gizmo gz-share gz-try" });
-    el.createEl("p", { cls: "gz-muted", text: "A try reads none of your notes, keeps nothing, and sends nothing anywhere. Use it as you would; closing this window drops everything it did." });
-    const box = makeSandbox({
-      appPath: this.appPath,
-      notes: this.notes,
-      parseYaml: (text) => parseYaml(text) as unknown,
-      now: () => new Date(),
-      schedule: (cb) => this.plugin.runtime.dataLayer.host.schedule(cb),
-      fetch: (url, headers, init) => this.plugin.runtime.dataLayer.host.fetch(url, headers, init),
+    this.titleEl.setText(tryTitle(this.name));
+    this.stop = drawTry(this.contentEl, this.plugin.runtime, {
+      name: this.name, appPath: this.appPath, notes: this.notes, wanted: this.wanted, done: this.done,
       copy: (text) => copyText(text),
+      close: () => this.close(),
     });
-    this.box = box;
-    const out = leftOut(this.wanted);
-    if (out.length) {
-      el.createEl("h4", { text: "Not in this try" });
-      const ul = el.createEl("ul");
-      for (const line of out) ul.createEl("li", { text: line });
-    }
-    const hosts = plainHosts(this.wanted);
-    if (hosts.length) {
-      const fetch = el.createEl("button", { text: `Fetch from ${hosts.join(", ")} for this try` });
-      fetch.addEventListener("click", () => {
-        box.allow(hosts);
-        fetch.disabled = true;
-        fetch.setText(`Fetching from ${hosts.join(", ")} for this try only`);
-        this.controller?.reload();
-      });
-    }
-    const body = el.createDiv({ cls: "gz-try-app" });
-    el.createEl("h4", { text: "What it did here" });
-    const did = el.createEl("ul", { cls: "gz-effects" });
-    const show = () => {
-      did.empty();
-      if (!box.events.length) did.createEl("li", { cls: "gz-muted", text: "Nothing yet." });
-      for (const e of box.events) did.createEl("li", { text: e.text });
-    };
-    show();
-    box.onEvent(show);
-    const row = el.createDiv({ cls: "modal-button-container" });
-    row.createEl("button", { text: "Close" }).addEventListener("click", () => this.close());
-    if (this.done) {
-      const { label, run } = this.done;
-      row.createEl("button", { cls: "mod-cta", text: label }).addEventListener("click", handler(async () => {
-        this.close();
-        await run();
-      }));
-    }
-    this.controller = new AppController(body, this.appPath, box.env);
-    this.controller.load();
-    window.setTimeout(() => this.controller?.resize(), 50);
   }
 
   onClose(): void {
-    this.controller?.dispose();
-    this.controller = undefined;
-    this.box = undefined;
+    this.stop?.();
+    this.stop = undefined;
     this.contentEl.empty();
   }
 }

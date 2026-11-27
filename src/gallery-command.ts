@@ -1,5 +1,6 @@
-import { FuzzySuggestModal, Modal, Notice, Setting, normalizePath, type App, type TFile } from "obsidian";
-import { galleryApps, setUp, type GalleryApp, type GalleryNote, type KitParam, type Plan } from "./gallery.ts";
+import { FuzzySuggestModal, Modal, Notice, normalizePath, type App, type TFile } from "obsidian";
+import { galleryApps, type GalleryApp, type GalleryNote, type KitParam, type Plan } from "./gallery.ts";
+import { drawHaveIt, drawSetUp, setUpTitle } from "./gallery-pane.ts";
 import { asksOf, galleryChoice, installNotes, planGallery } from "./install.ts";
 import type GizmoPlugin from "./main.ts";
 import notes from "../scripts/gallery-notes.ts";
@@ -38,7 +39,7 @@ function chooseApp(plugin: GizmoPlugin, gallery: GalleryApp): void {
   new SetUpModal(app, gallery, params, asksOf(plugin.runtime, gallery.note, components), (note) => void copyApp(plugin, gallery, note, components)).open();
 }
 
-/** The app chosen is in the vault already: open yours, or leave it. */
+/** The app chosen is in the vault already (see drawHaveIt). */
 class HaveItModal extends Modal {
   private name: string;
   private file: TFile;
@@ -50,14 +51,7 @@ class HaveItModal extends Modal {
   }
 
   onOpen(): void {
-    const el = this.contentEl.createDiv({ cls: "gizmo" });
-    el.createEl("p", { text: `You already have “${this.name}”.` });
-    const row = el.createDiv({ cls: "modal-button-container" });
-    row.createEl("button", { text: "Cancel" }).addEventListener("click", () => this.close());
-    row.createEl("button", { cls: "mod-cta", text: "Open yours" }).addEventListener("click", () => {
-      void this.app.workspace.getLeaf(false).openFile(this.file);
-      this.close();
-    });
+    drawHaveIt(this.contentEl, this.name, { open: () => void this.app.workspace.getLeaf(false).openFile(this.file), close: () => this.close() });
   }
 
   onClose(): void {
@@ -65,7 +59,7 @@ class HaveItModal extends Modal {
   }
 }
 
-/** Asks for the values of the kit an app is before it's copied: one field for each param, filled in with the gallery's. */
+/** Asks for the values of the kit an app is before it's copied (see drawSetUp). */
 class SetUpModal extends Modal {
   private gallery: GalleryApp;
   private params: KitParam[];
@@ -81,36 +75,8 @@ class SetUpModal extends Modal {
   }
 
   onOpen(): void {
-    this.titleEl.setText(`Set up ${this.gallery.name}`);
-    const el = this.contentEl.createDiv({ cls: "gizmo" });
-    el.createEl("p", { text: "Give it your own values. You can change them later in its with: line." });
-    if (this.asks) el.createEl("p", { cls: "gz-muted", text: this.asks });
-    const typed: Record<string, string> = {};
-    const done = () => {
-      this.close();
-      this.copy(setUp(this.gallery.note, this.params, typed));
-    };
-    const inputs: HTMLInputElement[] = [];
-    for (const p of this.params) {
-      new Setting(el).setName(p.name).addText((t) => {
-        if (typeof p.value === "number") {
-          t.inputEl.type = "number";
-          t.inputEl.step = "any";
-        }
-        t.setValue(p.value === undefined ? "" : String(p.value));
-        t.onChange((v) => { typed[p.name] = v; });
-        t.inputEl.addEventListener("keydown", (e) => {
-          if (e.key !== "Enter" || e.isComposing) return;
-          e.preventDefault();
-          done();
-        });
-        inputs.push(t.inputEl);
-      });
-    }
-    const row = el.createDiv({ cls: "modal-button-container" });
-    row.createEl("button", { text: "Cancel" }).addEventListener("click", () => this.close());
-    row.createEl("button", { cls: "mod-cta", text: "Copy" }).addEventListener("click", done);
-    inputs[0]?.select();
+    this.titleEl.setText(setUpTitle(this.gallery));
+    drawSetUp(this.contentEl, this.gallery, this.params, this.asks, { copy: this.copy, close: () => this.close() });
   }
 
   onClose(): void {

@@ -98,6 +98,8 @@ for (const target of [window.Element.prototype, window.HTMLElement.prototype] as
     blur(this: Element) { if (focused === this) focused = null; },
   });
 }
+// Nor selection: selecting a field's text focuses it, which is all a test can see of it.
+Object.assign(window.HTMLInputElement.prototype, { select(this: Element & { focus(): void }) { this.focus(); } });
 
 // linkedom has no caret: where it was put is kept, for code that puts it after drawing a box again.
 Object.assign(window.HTMLElement.prototype, {
