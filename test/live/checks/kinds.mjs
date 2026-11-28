@@ -56,6 +56,14 @@ const ADD = `const add = async (line) => {
     el.querySelector(".gz-addline-go").click();
   };`;
 
+const SEALED = `---
+kind: reading
+fields:
+  value: number
+seal: true
+---
+`;
+
 export default async function kinds(t) {
   const { check, run, expect, shot } = t;
 
@@ -167,5 +175,26 @@ export default async function kinds(t) {
     expect(r.text.includes('save: "[[Rounds rows]]"') && r.text.includes('source: "[[Rounds rows]]"'), r);
     expect(JSON.stringify([...(r.moved ?? [])].sort()) === JSON.stringify(["hill", "park", "river"]), r);
     return `${r.moved.length} rows moved; app ${r.allow ? "asks again" : "still open"}`;
+  });
+
+  await check("Seal this kind's rows now, Check this kind's seals and Make a sealed extract say what they did on a sealed kind; the extract is a page beside it", async () => {
+    const r = await run(`
+      await na.write("Kinds/Readings.md", ${JSON.stringify(SEALED)});
+      await na.sleep(800);
+      await na.plugin().runtime.dataLayer.ledger.write("Kinds/Readings data.md", [{ op: "add", l: "reading", row: "livesea00000001", v: { value: 4.2, at: "2026-11-01T08:00" } }]);
+      await na.open("Kinds/Readings");
+      const notice = (re) => na.until(() => [...document.querySelectorAll(".notice")].map((n) => n.textContent).find((t) => re.test(t)), 5000);
+      app.commands.executeCommandById("gizmo:seal-now");
+      const sealed = await notice(/^Sealed \\d+ line/);
+      app.commands.executeCommandById("gizmo:seal-check");
+      const held = await notice(/^Readings: 1 seal holds/);
+      app.commands.executeCommandById("gizmo:seal-extract");
+      const made = await notice(/^Made Kinds\\/Readings sealed .+\\.html: one file that checks itself/);
+      const path = /^Made (.+\\.html):/.exec(made ?? "")?.[1];
+      const page = path ? await na.read(path) : "";
+      if (path) await na.remove(path);
+      return { sealed, held, made, page: page.length, errors: na.errors() };`);
+    expect(r.sealed && r.held && r.made && r.page > 1000 && r.errors === 0, r);
+    return `“${r.sealed}”; “${r.held.slice(0, 40)}…”; ${r.made.slice(0, 60)}…`;
   });
 }

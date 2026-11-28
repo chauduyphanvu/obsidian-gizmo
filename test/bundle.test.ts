@@ -57,7 +57,7 @@ test("the shared text says what it is and how to install it, and reads as Markdo
   const kit = gallery.find((n) => n.path === "Components/Tracker kit.md")!;
   const practice = gallery.find((n) => n.path === "Apps/Practice.md")!;
   const text = bundled([note("Practice", practice.text), note("Tracker kit", kit.text)], "Log how long I practise and see this week against the last and the trend toward my goal");
-  assert.ok(text.startsWith("# Practice\n\nLog how long I practise and see this week against the last and the trend toward my goal\n\nA Gizmo app for Obsidian: Practice and the note it uses (Tracker kit). To install it, run “Gizmo: Install an app from a link or text”"), text.slice(0, 300));
+  assert.ok(text.startsWith("# Practice\n\nLog how long I practise and see this week against the last and the trend toward my goal\n\nA Gizmo app: Practice and the note it uses (Tracker kit). To install it, use Gizmo's “Install an app from a link or text”"), text.slice(0, 300));
   assert.ok(text.includes("\n````gizmo-note Practice\n---\napp: Log how long I practise"));
   assert.ok(text.includes("\n````gizmo-note Tracker kit\n---\ncomponent:"));
 });

@@ -1,4 +1,4 @@
-import { Modal, parseYaml } from "obsidian";
+import { Modal } from "obsidian";
 import type { BundleNote } from "./bundle.ts";
 import { copyText } from "./clipboard.ts";
 import type GizmoPlugin from "./main.ts";
@@ -55,6 +55,6 @@ export async function tryVaultApp(plugin: GizmoPlugin, path: string): Promise<vo
 
 /** Tries a shared app before installing it, on the shared notes alone, placed as the install would place them. */
 export function tryBundle(plugin: GizmoPlugin, notes: BundleNote[], folder: string, install: () => Promise<void>): void {
-  const t = bundleTry(notes, folder, (yaml) => parseYaml(yaml) as unknown);
+  const t = bundleTry(notes, folder, (yaml) => plugin.runtime.dataLayer.host.parseYaml(yaml));
   new TryModal(plugin, t.name, t.appPath, t.notes, t.wanted, { label: "Install", run: install }).open();
 }

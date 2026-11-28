@@ -63,7 +63,7 @@ export function toBundle(notes: BundleNote[], about: string): { text: string } |
     `# ${first.name}`,
     ...(about ? ["", about] : []),
     "",
-    `A Gizmo app for Obsidian: ${what}. To install it, run “Gizmo: Install an app from a link or text” and give it this text, or a link to it.`,
+    `A Gizmo app: ${what}. To install it, use Gizmo's “Install an app from a link or text”, in Obsidian or in the Gizmo app, and give it this text or a link to it.`,
   ].join("\n");
   return { text: `${head}\n\n${notes.map(fenced).join("\n\n")}\n` };
 }
