@@ -214,6 +214,27 @@ test("a template note is found from the app that uses it, as Obsidian finds it",
   assert.equal((await env.runtime.host.actionIO("Notes/Other.md")!.readBody("Tpl")).trim(), "old one", "from elsewhere, the shortest path");
 });
 
+test("a program built on gizmod shows alerts itself, in place of a macOS notice; the push goes out as before", async () => {
+  const pushes: string[] = [];
+  const stub = createServer((req, res) => {
+    let body = "";
+    req.on("data", (c) => { body += c; });
+    req.on("end", () => { pushes.push(body); res.end("ok"); });
+  });
+  await new Promise<void>((r) => stub.listen(0, "127.0.0.1", r));
+  const shown: string[] = [];
+  const root = vaultDir({ "Apps/A.md": "---\napp: A\n---\n" });
+  const env = gizmodEnv({ vault: root, device: "gztest01", log: () => {}, notice: (n) => shown.push(`${n.app}: ${n.text}`), ntfyUrl: `http://127.0.0.1:${(stub.address() as { port: number }).port}/ntfy` });
+  try {
+    env.sink.alert!({ app: "Apps/A.md", panel: "0", text: "A: the Kp index is 6" });
+    for (let i = 0; i < 20 && !pushes.length; i++) await new Promise((r) => setTimeout(r, 50));
+    assert.deepEqual(shown, ["Apps/A.md: A: the Kp index is 6"]);
+    assert.equal(pushes.length, 1);
+  } finally {
+    stub.close();
+  }
+});
+
 const INBOX = { app: "Inbox", panels: [{ view: "form", title: "Add", fields: { task: "text" }, save: "todo", shortcut: "add", alias: "task" }, { view: "number", title: "Open", source: "todo", agg: "count", shortcut: "open" }] };
 const LINK_KEY = "k".repeat(32);
 const CAPTURE_KEY = "c".repeat(32);
@@ -886,4 +907,25 @@ test("a program built on gizmod adds its own answers: pages to anyone at gizmod'
   } finally {
     await t.s.close();
   }
+});
+
+test("closing gizmod ends what a client holds open (a window's stream), so a program quitting isn't kept waiting", async () => {
+  const root = mkdtempSync(join(tmpdir(), "gizmod-vault-"));
+  const home = mkdtempSync(join(tmpdir(), "gizmod-home-"));
+  made.push(root, home);
+  const free = createServer();
+  const port = await new Promise<number>((r) => free.listen(0, "127.0.0.1", () => r((free.address() as { port: number }).port)));
+  await new Promise((r) => free.close(r));
+  const stream: ExtraRoute = async (_req, res, url) => {
+    if (url.pathname !== "/stream") return false;
+    res.writeHead(200, { "content-type": "text/event-stream" });
+    res.write(": open\n\n");
+    return true;
+  };
+  const s = await serve({ vault: root, home, port, tailscale: false, log: () => {}, routes: stream });
+  const held = await fetch(`http://127.0.0.1:${port}/stream`, { headers: { authorization: `Bearer ${await adminToken(home)}` } });
+  assert.equal(held.status, 200);
+  const closed = await Promise.race([s.close().then(() => "closed"), new Promise((r) => setTimeout(() => r("held open"), 3000))]);
+  assert.equal(closed, "closed");
+  await held.body?.cancel().catch(() => {});
 });

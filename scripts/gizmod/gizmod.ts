@@ -251,6 +251,8 @@ export interface ServeOptions {
   home?: string;
   ntfyUrl?: string;
   macNotices?: boolean;
+  /** Shows an alert as a program built on gizmod shows one, in place of a macOS notice. */
+  notice?: (notice: AlertNotice) => void;
   /** What this gizmod is called among the devices, kept for next time. */
   name?: string;
   /** Where secrets are kept besides the environment. */
@@ -288,7 +290,7 @@ export async function serve(opts: ServeOptions): Promise<Served> {
     const token = await answers.mint({ line: notice.answer!, path: parsed.target.path, shortcut: parsed.target.shortcut, params: parsed.params ?? {}, ...(notice.window && { window: notice.window }) });
     return `http, Done, http://${ip}:${port}/answer/${token}, method=POST, clear=true`;
   };
-  const env = gizmodEnv({ vault: vaultPath, device: id, name, keychain: opts.keychain, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, log, answerButton });
+  const env = gizmodEnv({ vault: vaultPath, device: id, name, keychain: opts.keychain, ntfyUrl: opts.ntfyUrl, macNotices: opts.macNotices, notice: opts.notice, log, answerButton });
   const { runtime } = env;
   const bg = runtime.background;
   await env.vault.scan();
@@ -438,7 +440,11 @@ export async function serve(opts: ServeOptions): Promise<Served> {
       await runtime.quit().catch(() => {});
       runtime.stop();
       env.vault.close();
-      await Promise.all([...servers.values()].map((s) => new Promise((r) => s.close(r))));
+      await Promise.all([...servers.values()].map((s) => new Promise((r) => {
+        s.close(r);
+        // An open stream, or a client's next request on a kept-alive connection, would hold the close open.
+        s.closeAllConnections();
+      })));
     },
   };
 }

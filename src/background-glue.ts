@@ -5,6 +5,7 @@ import { openMap } from "./map-view.ts";
 import type GizmoPlugin from "./main.ts";
 import { openActivity } from "./activity-view.ts";
 import { askToRun, askWhereTo } from "./link-command.ts";
+import { routeLink } from "./link-route.ts";
 import type { RuntimeHost } from "./runtime.ts";
 import { openInstall } from "./share-command.ts";
 import { openInvite } from "./invite-command.ts";
@@ -110,18 +111,15 @@ export function registerBackground(plugin: GizmoPlugin): void {
     asksItem.setText(`${n} to do`);
   });
 
-  // A link may open Obsidian; it's answered once the apps are known. An install or invite link only
-  // opens its window, which writes nothing until the person says so.
+  // A link may open Obsidian; it's answered once the apps are known (see routeLink).
   plugin.registerObsidianProtocolHandler("gizmo", (params) => {
-    app.workspace.onLayoutReady(() => {
-      if (typeof params.install === "string") return openInstall(plugin, params.install);
-      if (typeof params.invite === "string") return openInvite(plugin, params.invite);
-      // A capture line's receipt: opening the activity log changes nothing, whoever sent it.
-      if (typeof params.activity === "string") return openActivity(plugin, undefined, params.activity);
-      // A link naming no app but carrying a line is a capture line; one naming an app fills its form, even a field called line.
-      if (typeof params.line === "string" && params.app === undefined) return void bg.runCaptureLink({ ...params });
-      void bg.runUri({ ...params });
-    });
+    app.workspace.onLayoutReady(() => routeLink(params, {
+      install: (link) => openInstall(plugin, link),
+      invite: (text) => openInvite(plugin, text),
+      activity: (entryId) => openActivity(plugin, undefined, entryId),
+      capture: (p) => void bg.runCaptureLink(p),
+      run: (p) => void bg.runUri(p),
+    }));
   });
   app.workspace.onLayoutReady(() => void plugin.runtime.start());
   plugin.register(() => asksItem?.remove());

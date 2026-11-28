@@ -138,6 +138,8 @@ export interface GizmodOptions {
   ntfyUrl?: string;
   /** Shows alerts as macOS notices too. */
   macNotices?: boolean;
+  /** Shows an alert as a program built on gizmod shows one (the app's own notifications), in place of a macOS notice. */
+  notice?: (notice: AlertNotice) => void;
   log?: (line: string) => void;
   now?: () => number;
   fetch?: typeof fetch;
@@ -241,7 +243,8 @@ export function gizmodEnv(opts: GizmodOptions) {
     choose: async () => undefined,
     openUrl: () => {},
     alert(notice) {
-      if (opts.macNotices) void macNotice(notice.text);
+      if (opts.notice) opts.notice(notice);
+      else if (opts.macNotices) void macNotice(notice.text);
       const url = opts.ntfyUrl;
       if (!url) return;
       const body = pushText(notice, settings.data.policy, new URL(url).host);
