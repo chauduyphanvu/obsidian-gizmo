@@ -102,7 +102,15 @@ export interface SettingsSource {
 export interface SettingsIO {
   load(): Promise<unknown>;
   save(data: StoredData): Promise<void>;
+  /**
+   * Writes only over data.json as `load` last read it; false, writing nothing, when it changed since
+   * (another program on this vault wrote it). A host whose writes can't check that has none.
+   */
+  saveOver?(data: StoredData): Promise<boolean>;
 }
+
+/** How many times a save reads data.json again after another program wrote it in between, before it writes over it. */
+const SAVE_TRIES = 3;
 
 /**
  * data.json as this device keeps it: the settings in use, and each save merged with what is on disk
@@ -143,8 +151,17 @@ export class SettingsFile implements SettingsSource {
   save(): Promise<void> {
     return this.queueSettings(async () => {
       const local = structuredClone(this.data);
-      const merged = mergeSettings(this.settingsBase, await this.readSettings(), local);
-      await this.io.save(merged);
+      let merged = mergeSettings(this.settingsBase, await this.readSettings(), local);
+      // Where the host can tell, a write lands only over what was just read: one that lost the race
+      // to another program reads again and merges again, so neither save is lost.
+      for (let tries = 1; this.io.saveOver && !(await this.io.saveOver(merged)); tries++) {
+        if (tries >= SAVE_TRIES) {
+          await this.io.save(merged);
+          break;
+        }
+        merged = mergeSettings(this.settingsBase, await this.readSettings(), local);
+      }
+      if (!this.io.saveOver) await this.io.save(merged);
       this.settingsBase = structuredClone(merged);
       // What changed here while this was written stays; what came from disk comes in.
       this.data = mergeSettings(local, merged, this.data);

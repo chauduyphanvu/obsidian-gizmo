@@ -10,7 +10,7 @@ import { registerEmbeds } from "./embed.ts";
 import { registerGalleryCommand } from "./gallery-command.ts";
 import { SettingsFile } from "./stored.ts";
 import {
-  adoptOldLog, newNotesFolder, obsidianAppEnv, obsidianHost, obsidianRename, obsidianWrites, pluginFiles, vaultNotes, vaultStorePath, whenIndexed,
+  adoptOldLog, newNotesFolder, obsidianAppEnv, obsidianHost, obsidianRename, obsidianWrites, pluginFile, pluginFiles, vaultNotes, vaultStorePath, whenIndexed,
 } from "./host.ts";
 import { registerPolicyCommand } from "./policy-command.ts";
 import { registerInsertPanel } from "./insert-command.ts";
@@ -50,8 +50,22 @@ export default class GizmoPlugin extends Plugin {
   private unloading = false;
 
   async onload(): Promise<void> {
-    // data.json: the settings every device a sync reaches shares, saved by merging (see stored.ts).
-    const settings = new SettingsFile({ load: () => this.loadData(), save: (data) => this.saveData(data) });
+    // data.json: the settings every device a sync reaches shares, saved by merging (see stored.ts). A
+    // save lands only over what was last read, since the standalone app may write it at the same time.
+    const dataFile = pluginFile(this, "data.json");
+    let read: string | undefined;
+    const settings = new SettingsFile({
+      load: async () => {
+        read = await dataFile.read();
+        return read ? (JSON.parse(read) as unknown) : null;
+      },
+      save: (data) => this.saveData(data),
+      saveOver: async (data) => {
+        if ((await dataFile.read()) !== read) return false;
+        await this.saveData(data);
+        return true;
+      },
+    });
     await settings.open();
     this.deviceStore = { load: (key) => this.app.loadLocalStorage(key) as unknown, save: (key, value) => this.app.saveLocalStorage(key, value) };
     const device = thisDevice(this.deviceStore, Platform);
