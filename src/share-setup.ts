@@ -61,8 +61,8 @@ export function keepKey(rt: GizmoRuntime, secret: string, text: string): { id: I
 }
 
 /** The link that lets someone share the kind: its keys, the key itself, and who sends it. */
-export async function inviteLinkOf(fm: Record<string, unknown>, name: string, id: Identity): Promise<string> {
-  return inviteLink({ name, fm: inviteKeys(fm), key: id.key, from: id.name, writer: await writerOf(id.sign) });
+export async function inviteLinkOf(fm: Record<string, unknown>, name: string, id: Identity, base?: string): Promise<string> {
+  return inviteLink({ name, fm: inviteKeys(fm), key: id.key, from: id.name, writer: await writerOf(id.sign) }, base);
 }
 
 /** What joining from an invite would make here, before anything is written. */
@@ -85,9 +85,7 @@ export function joinPlan(rt: GizmoRuntime, invite: Invite): JoinPlan {
   const folder = rt.host.newNotesFolder();
   const path = (folder ? `${folder}/${invite.name}.md` : `${invite.name}.md`).normalize("NFC");
   const share = invite.fm.share as { relay: string; key: { secret: string } };
-  const secrets = store(rt);
-  let secret = share.key.secret;
-  for (let n = 2; secrets.get(secret) !== null; n++) secret = `${share.key.secret}-${n}`;
+  const secret = freeSecret(store(rt), share.key.secret);
   const fm = { ...invite.fm, share: { relay: share.relay, key: { secret } } };
   const read = readSpec(fm, { notes: rt.host.notes, path });
   const kind = read?.spec?.kind;
@@ -98,17 +96,30 @@ export function joinPlan(rt: GizmoRuntime, invite: Invite): JoinPlan {
   };
 }
 
+/** The secret a kind's key would be kept as: `wanted`, or the next one free here (`-2`, `-3`, …). */
+function freeSecret(secrets: SecretStore, wanted: string): string {
+  let secret = wanted;
+  for (let n = 2; secrets.get(secret) !== null; n++) secret = `${wanted}-${n}`;
+  return secret;
+}
+
 /**
- * Joins: the key kept as the secret, then the kind's note, then the inviter accepted as a writer,
- * saved before it's done. The path to open, or why not.
+ * Joins: the kind's note, then its key kept as the secret, then the inviter accepted as a writer,
+ * saved before it's done. The secret is chosen again at the click, so one filled since the preview
+ * is never replaced; and the note comes first, so a note that can't be made leaves no secret
+ * behind. The path to open, or why not.
  */
 export async function join(rt: GizmoRuntime, plan: JoinPlan, name: string): Promise<{ path: string } | { error: string }> {
   const { invite, kind } = plan;
   if (!kind?.share) return { error: `This invite's kind can't be read` };
   if (rt.host.exists(plan.path)) return { error: `You already have a note called ${invite.name}` };
+  const secrets = store(rt);
+  const share = invite.fm.share as { relay: string; key: { secret: string } };
+  const secret = secrets.get(plan.secret) === null ? plan.secret : freeSecret(secrets, share.key.secret);
+  const fm = secret === plan.secret ? plan.fm : { ...plan.fm, share: { relay: share.relay, key: { secret } } };
   const body = `Shared with you by ${invite.from} through ${kind.share.host}. Each row you add here goes to the people you share it with, sealed; theirs come in here.\n`;
-  store(rt).set(plan.secret, identityText(await newIdentity(name, invite.key)));
-  if ((await rt.host.writes.createNote(plan.path, plan.fm, body)) === false) return { error: `You already have a note called ${invite.name}` };
+  if ((await rt.host.writes.createNote(plan.path, fm, body)) === false) return { error: `You already have a note called ${invite.name}` };
+  secrets.set(secret, identityText(await newIdentity(name, invite.key)));
   const writers = (rt.store.writers ??= {});
   writers[`${plan.path}\n${invite.writer}`] = { name: invite.from, state: "accepted", at: Date.now() };
   await rt.saveSettings();

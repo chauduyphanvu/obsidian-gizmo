@@ -61,6 +61,34 @@ test("joining from an invite: the next free secret, the kind's note where new no
   assert.deepEqual(await join(bo.runtime, again, "Bo"), { error: "You already have a note called Chore" });
 });
 
+test("joining keeps to a secret free at the click, and a note that can't be made leaves no secret behind", async () => {
+  const ann = await runtimeOn({ [KIND]: { fm: CHORE, body: "" } });
+  const { id } = (await makeKey(ann.runtime, "chore-key", "Ann")) as { id: NonNullable<ReturnType<typeof readIdentity>> };
+  const invite = readInvite(await inviteLinkOf(CHORE, "Chore", id, "gizmo://open"));
+  assert.ok(!("error" in invite), "an invite from the app reads as one from Obsidian does");
+
+  // The secret the preview named is filled meanwhile: it stays as it is, and the key goes in the next one free.
+  const bo = await runtimeOn({});
+  const plan = joinPlan(bo.runtime, invite);
+  assert.equal(plan.secret, "chore-key");
+  bo.secrets.set("chore-key", "filled since the preview");
+  assert.deepEqual(await join(bo.runtime, plan, "Bo"), { path: "Chore.md" });
+  assert.equal(bo.secrets.get("chore-key"), "filled since the preview", "never replaced");
+  assert.equal(readIdentity(bo.secrets.get("chore-key-2")!)?.name, "Bo");
+  assert.deepEqual((bo.f.files.get("Chore.md")!.fm as { share: unknown }).share, { relay: "https://ntfy.sh", key: { secret: "chore-key-2" } });
+
+  // The note can't be made: nothing is kept, so joining again takes the same secret.
+  const cy = await runtimeOn({});
+  const planned = joinPlan(cy.runtime, invite);
+  const createNote = cy.runtime.host.writes.createNote;
+  cy.runtime.host.writes.createNote = async () => false;
+  assert.deepEqual(await join(cy.runtime, planned, "Cy"), { error: "You already have a note called Chore" });
+  assert.equal(cy.secrets.has("chore-key"), false, "no secret left behind");
+  cy.runtime.host.writes.createNote = createNote;
+  assert.deepEqual(await join(cy.runtime, joinPlan(cy.runtime, invite), "Cy"), { path: "Chore.md" });
+  assert.equal(readIdentity(cy.secrets.get("chore-key")!)?.name, "Cy");
+});
+
 test("a guest page: beside the kind, named for the guest, never over a file; the code given back, the kind's key nowhere in the page", async () => {
   const taken = new Set(["Kinds/Chore guest page (Sitter).html"]);
   assert.equal(guestPagePath(KIND, "Sitter", (p) => taken.has(p)), "Kinds/Chore guest page (Sitter) 2.html");

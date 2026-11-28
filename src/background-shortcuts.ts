@@ -219,11 +219,11 @@ export class Shortcuts {
         const p = ps.panel;
         const apps = this.apps;
         const env = this.env;
-        const full = shortcutLink(apps, e.path, shortcut, "");
+        const full = shortcutLink(apps, e.path, shortcut, "", env.linkBase);
         return {
           path: e.path, app: e.name, shortcut, label: labelOf(p, shortcut), view: p.view, fields: shortcutFields(p),
           // A key is made, and data.json written, only when a link is copied, not each time the list is drawn.
-          get link() { return shortcutLink(apps, e.path, shortcut, env.linkKey(e.path, shortcut, true)!); },
+          get link() { return shortcutLink(apps, e.path, shortcut, env.linkKey(e.path, shortcut, true)!, env.linkBase); },
           address: full.slice(0, full.indexOf("&key=")),
           allowed: this.granted(e),
           answers: answers(p),

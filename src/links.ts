@@ -5,8 +5,16 @@ import type { Panel } from "./spec.ts";
 import { basename } from "./store.ts";
 import { asField } from "./units.ts";
 
-/** Where every Gizmo link starts: what the program it opens in answers. */
+/** Where a Gizmo link starts in Obsidian: what Obsidian answers. A host that opens links of its own gives its own (RuntimeHost.linkBase). */
 export const GIZMO_LINK = "obsidian://gizmo";
+/** Where a link starts in the Gizmo app. */
+export const APP_LINK = "gizmo://open";
+
+/** The parameters of a Gizmo link, from Obsidian or from the app; undefined for any other text. */
+export function linkParams(text: string): URLSearchParams | undefined {
+  const m = /^(?:obsidian:\/\/gizmo|gizmo:\/\/[a-z]*)\/?\?(.*)$/is.exec(text.trim());
+  return m ? new URLSearchParams(m[1]) : undefined;
+}
 
 /** A shortcut as a link from outside Obsidian (a phone's shortcut, a tag, a bookmark) runs it. */
 export interface ShortcutLink {
@@ -146,10 +154,10 @@ export function appsNamed<T extends { path: string; name: string }>(apps: Readon
 }
 
 /** The link that runs an app's shortcut, with its key: it names the app by name, or by path when another app has that name. */
-export function shortcutLink(apps: ReadonlyMap<string, { path: string; name: string }>, path: string, shortcut: string, key: string): string {
+export function shortcutLink(apps: ReadonlyMap<string, { path: string; name: string }>, path: string, shortcut: string, key: string, base = GIZMO_LINK): string {
   const name = basename(path);
   const app = appsNamed(apps, name).length === 1 ? name : path.replace(/\.md$/i, "");
-  return `${GIZMO_LINK}?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}&key=${encodeURIComponent(key)}`;
+  return `${base}?app=${encodeURIComponent(app)}&do=${encodeURIComponent(shortcut)}&key=${encodeURIComponent(key)}`;
 }
 /**
  * A form's row from a link's parameters, each read as its field's type; a field the link doesn't
@@ -213,6 +221,6 @@ function expectedOf(type: string | string[]): string {
 }
 
 /** The link a phone's shortcut or a launcher opens with a capture line after `line=`. */
-export function captureLinkOf(key: string): string {
-  return `${GIZMO_LINK}?key=${encodeURIComponent(key)}&line=`;
+export function captureLinkOf(key: string, base = GIZMO_LINK): string {
+  return `${base}?key=${encodeURIComponent(key)}&line=`;
 }

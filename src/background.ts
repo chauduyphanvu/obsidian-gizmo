@@ -132,6 +132,8 @@ export interface BackgroundEnv {
   renamed?(from: string, to: string): void;
   /** An app note gone for good (PENDING_MS with no create to match): what is kept for it elsewhere (data.json) can go. */
   dropped?(path: string): void;
+  /** What a copied link starts with, where the host opens links of its own; Obsidian's otherwise. */
+  linkBase?: string;
   /** The key a shortcut's copied link carries; with `create`, made and kept when there is none yet. */
   linkKey(path: string, shortcut: string, create: boolean): string | undefined;
   /** What a capture link's key may run without asking: name → `<app path>#<shortcut>`; undefined for a key Gizmo never made. */

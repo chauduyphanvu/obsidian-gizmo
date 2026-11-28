@@ -55,6 +55,8 @@ export interface RuntimeHost {
    * something is there or nothing is at `from`. Only a host that sees renames as renames has it.
    */
   rename?(from: string, to: string): Promise<boolean>;
+  /** What a link that opens Gizmo starts with where the host opens links of its own (the app's gizmo://open); obsidian://gizmo when absent. */
+  linkBase?: string;
   /** Where new notes go, as the person set it: `""` for the vault's root. */
   newNotesFolder(): string;
   /** Whether anything, a file or a folder, is at a vault path. */
@@ -561,6 +563,7 @@ export class GizmoRuntime {
       writers: (kindPath) => writersOf(this.store, kindPath),
       // Where data.json is only read, writers are accepted elsewhere.
       ...(writes && { setWriter: (kindPath: string, writer: string, record: WriterRecord | undefined) => this.setWriter(kindPath, writer, record) }),
+      linkBase: this.host.linkBase,
       linkKey: (path, shortcut, create) => this.linkKey(path, shortcut, create),
       captureKey: (key) => captureNamesOf(this.store, key),
       destinations: (path, shortcut) => destinationsOf(this.store, path, shortcut),
